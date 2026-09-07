@@ -14,7 +14,10 @@ export default async function CursosPage() {
     <main className="min-h-screen bg-[#080808] text-white">
       <header className="border-b border-white/10">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 lg:px-8">
-          <Link href="/" className="text-xl font-black tracking-[0.25em]">
+          <Link
+            href="/"
+            className="text-xl font-black tracking-[0.25em]"
+          >
             FILMATTA
           </Link>
 
@@ -47,52 +50,66 @@ export default async function CursosPage() {
           </div>
         )}
 
-        <div className="mt-20 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-20 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {courses?.map((course) => (
             <article
               key={course.id}
-              className="group flex min-h-[360px] flex-col rounded-2xl border border-white/10 bg-white/[0.025] p-7 transition hover:bg-white/[0.05]"
+              className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025] transition duration-300 hover:-translate-y-1 hover:bg-white/[0.05]"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-xs uppercase tracking-[0.2em] text-white/35">
-                  {course.category}
-                </span>
+              <div className="relative aspect-video overflow-hidden bg-white/[0.04]">
+                {course.cover_image_url ? (
+                  <img
+                    src={course.cover_image_url}
+                    alt={course.title}
+                    className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs uppercase tracking-[0.25em] text-white/15">
+                    FILMATTA
+                  </div>
+                )}
 
                 {course.featured && (
-                  <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/50">
+                  <span className="absolute right-4 top-4 rounded-full border border-white/20 bg-black/60 px-3 py-1 text-xs backdrop-blur">
                     Destacado
                   </span>
                 )}
               </div>
 
-              <div className="mt-auto">
-                <div className="mb-4 flex gap-3 text-xs text-white/35">
-                  <span>{course.level}</span>
+              <div className="flex min-h-[300px] flex-col p-7">
+                <span className="text-xs uppercase tracking-[0.2em] text-white/35">
+                  {course.category}
+                </span>
 
-                  {course.duration_minutes && (
-                    <>
-                      <span>•</span>
-                      <span>
-                        {Math.round(course.duration_minutes / 60)} h
-                      </span>
-                    </>
-                  )}
+                <div className="mt-auto">
+                  <div className="mb-4 flex gap-3 text-xs text-white/35">
+                    {course.level && <span>{course.level}</span>}
+
+                    {course.duration_minutes && (
+                      <>
+                        <span>•</span>
+                        <span>
+                          {Math.round(course.duration_minutes / 60)} h
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  <h2 className="text-3xl font-semibold tracking-tight">
+                    {course.title}
+                  </h2>
+
+                  <p className="mt-4 line-clamp-3 leading-7 text-white/45">
+                    {course.short_description}
+                  </p>
+
+                  <Link
+                    href={`/cursos/${course.slug}`}
+                    className="mt-8 inline-block text-sm font-semibold text-white/70 transition group-hover:text-white"
+                  >
+                    Ver curso →
+                  </Link>
                 </div>
-
-                <h2 className="text-3xl font-semibold tracking-tight">
-                  {course.title}
-                </h2>
-
-                <p className="mt-4 leading-7 text-white/45">
-                  {course.short_description}
-                </p>
-
-                <Link
-                  href={`/cursos/${course.slug}`}
-                  className="mt-8 inline-block text-sm font-semibold text-white/70 transition group-hover:text-white"
-                >
-                  Ver curso →
-                </Link>
               </div>
             </article>
           ))}
