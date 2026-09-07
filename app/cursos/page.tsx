@@ -1,6 +1,15 @@
 ﻿import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 
-export default function Page() {
+export default async function CursosPage() {
+  const supabase = await createClient();
+
+  const { data: courses, error } = await supabase
+    .from("courses")
+    .select("*")
+    .eq("status", "published")
+    .order("sort_order", { ascending: true });
+
   return (
     <main className="min-h-screen bg-[#080808] text-white">
       <header className="border-b border-white/10">
@@ -18,22 +27,82 @@ export default function Page() {
         </div>
       </header>
 
-      <section className="mx-auto flex min-h-[80vh] max-w-7xl flex-col justify-center px-6 py-24 lg:px-8">
-        <p className="mb-6 text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
-          FILMATTA
+      <section className="mx-auto max-w-7xl px-6 py-24 lg:px-8">
+        <p className="mb-5 text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
+          Aprende
         </p>
 
-        <h1 className="max-w-5xl text-5xl font-semibold tracking-[-0.04em] sm:text-7xl">
-          Cursos
+        <h1 className="max-w-4xl text-5xl font-semibold tracking-[-0.04em] sm:text-7xl">
+          Cursos para llevar tus ideas a la pantalla.
         </h1>
 
         <p className="mt-8 max-w-2xl text-lg leading-8 text-white/50">
-          Aprende producción audiovisual con herramientas y conocimientos aplicables a proyectos reales.
+          Aprende producción audiovisual con conocimientos diseñados para
+          llevarse directamente a proyectos reales.
         </p>
 
-        <div className="mt-12 border-t border-white/10 pt-8 text-sm text-white/30">
-          Próximamente.
+        {error && (
+          <div className="mt-12 rounded-xl border border-red-500/30 p-6 text-red-300">
+            Error cargando cursos: {error.message}
+          </div>
+        )}
+
+        <div className="mt-20 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+          {courses?.map((course) => (
+            <article
+              key={course.id}
+              className="group flex min-h-[360px] flex-col rounded-2xl border border-white/10 bg-white/[0.025] p-7 transition hover:bg-white/[0.05]"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-[0.2em] text-white/35">
+                  {course.category}
+                </span>
+
+                {course.featured && (
+                  <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/50">
+                    Destacado
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-auto">
+                <div className="mb-4 flex gap-3 text-xs text-white/35">
+                  <span>{course.level}</span>
+
+                  {course.duration_minutes && (
+                    <>
+                      <span>•</span>
+                      <span>
+                        {Math.round(course.duration_minutes / 60)} h
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                <h2 className="text-3xl font-semibold tracking-tight">
+                  {course.title}
+                </h2>
+
+                <p className="mt-4 leading-7 text-white/45">
+                  {course.short_description}
+                </p>
+
+                <Link
+                  href={`/cursos/${course.slug}`}
+                  className="mt-8 inline-block text-sm font-semibold text-white/70 transition group-hover:text-white"
+                >
+                  Ver curso →
+                </Link>
+              </div>
+            </article>
+          ))}
         </div>
+
+        {!error && courses?.length === 0 && (
+          <p className="mt-16 text-white/40">
+            Todavía no hay cursos publicados.
+          </p>
+        )}
       </section>
     </main>
   );
