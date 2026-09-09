@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { COURSE_CATEGORIES, COURSE_LEVELS } from "@/lib/course-options";
 import { createCourse } from "../actions";
 
 export default async function NuevoCursoPage({
@@ -67,19 +68,24 @@ export default async function NuevoCursoPage({
 
           <div className="grid gap-6 sm:grid-cols-2">
             <Field label="Categoría">
-              <input
-                name="category"
-                className={selectClass}
-                placeholder="Video"
-              />
+              <select name="category" defaultValue="" className={selectClass}>
+                <option value="">Seleccionar</option>
+                {COURSE_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
             </Field>
 
             <Field label="Nivel">
-              <select name="level" className={selectClass}>
+              <select name="level" defaultValue="" className={selectClass}>
                 <option value="">Seleccionar</option>
-                <option value="Principiante">Principiante</option>
-                <option value="Intermedio">Intermedio</option>
-                <option value="Avanzado">Avanzado</option>
+                {COURSE_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
               </select>
             </Field>
           </div>
@@ -125,14 +131,6 @@ export default async function NuevoCursoPage({
   </p>
 </Field>
 
-          <Field label="URL de Hotmart">
-            <input
-              name="hotmart_url"
-              className={selectClass}
-              placeholder="https://hotmart.com/..."
-            />
-          </Field>
-
           <Field label="Estado">
             <select
               name="status"
@@ -167,9 +165,6 @@ export default async function NuevoCursoPage({
     </main>
   );
 }
-
-const inputClass =
-  "w-full rounded-xl border border-white/10 bg-[#111111] px-4 py-3 text-white outline-none transition placeholder:text-white/20 focus:border-white/30";
 
 const selectClass =
   "w-full appearance-none rounded-xl border border-white/10 bg-[#111111] px-4 py-3 text-white outline-none transition focus:border-white/30";

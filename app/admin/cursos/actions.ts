@@ -3,18 +3,38 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { isCourseCategory, isCourseLevel } from "@/lib/course-options";
+import { slugify } from "@/lib/slugify";
 
 function getText(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
 }
 
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+function getCourseEditFeedbackUrl(
+  courseId: string,
+  key: "error" | "success",
+  message: string
+) {
+  const searchParams = new URLSearchParams({
+    [key]: message,
+    notice: crypto.randomUUID(),
+  });
+
+  return `/admin/cursos/${courseId}?${searchParams.toString()}`;
+}
+
+function getCoverUploadError(error: unknown) {
+  const knownMessages = [
+    "La portada debe ser JPG, PNG o WEBP.",
+    "La portada no puede pesar más de 5 MB.",
+  ];
+
+  if (error instanceof Error && knownMessages.includes(error.message)) {
+    return error.message;
+  }
+
+  console.error("Error subiendo la portada del curso:", error);
+  return "No se pudo subir la portada. Inténtalo de nuevo.";
 }
 
 async function uploadCourseCover(
@@ -92,6 +112,25 @@ export async function createCourse(formData: FormData) {
     "duration_minutes"
   );
 
+  const category = getText(formData, "category");
+  const level = getText(formData, "level");
+
+  if (category && !isCourseCategory(category)) {
+    redirect(
+      `/admin/cursos/nuevo?error=${encodeURIComponent(
+        "Selecciona una categoría válida."
+      )}`
+    );
+  }
+
+  if (level && !isCourseLevel(level)) {
+    redirect(
+      `/admin/cursos/nuevo?error=${encodeURIComponent(
+        "Selecciona un nivel válido."
+      )}`
+    );
+  }
+
   const sortValue = getText(
     formData,
     "sort_order"
@@ -107,10 +146,7 @@ export async function createCourse(formData: FormData) {
       formData
     );
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Error subiendo portada";
+    const message = getCoverUploadError(error);
 
     redirect(
       `/admin/cursos/nuevo?error=${encodeURIComponent(
@@ -138,12 +174,9 @@ export async function createCourse(formData: FormData) {
       cover_image_url: cover?.url ?? null,
       cover_image_path: cover?.path ?? null,
 
-      category:
-        getText(formData, "category") ||
-        null,
+      category: category || null,
 
-      level:
-        getText(formData, "level") || null,
+      level: level || null,
 
       duration_minutes: durationValue
         ? Number(durationValue)
@@ -151,10 +184,6 @@ export async function createCourse(formData: FormData) {
 
       instructor:
         getText(formData, "instructor") ||
-        null,
-
-      hotmart_url:
-        getText(formData, "hotmart_url") ||
         null,
 
       status:
@@ -202,11 +231,7 @@ export async function updateCourse(
   let slug = getText(formData, "slug");
 
   if (!title) {
-    redirect(
-      `/admin/cursos/${courseId}?error=${encodeURIComponent(
-        "Falta el título"
-      )}`
-    );
+    redirect(getCourseEditFeedbackUrl(courseId, "error", "Falta el título"));
   }
 
   if (!slug) {
@@ -217,6 +242,9 @@ export async function updateCourse(
     formData,
     "duration_minutes"
   );
+
+  const category = getText(formData, "category");
+  const level = getText(formData, "level");
 
   const sortValue = getText(
     formData,
@@ -231,16 +259,46 @@ export async function updateCourse(
   } = await supabase
     .from("courses")
     .select(
-      "slug, cover_image_url, cover_image_path"
+      "slug, category, level, cover_image_url, cover_image_path"
     )
     .eq("id", courseId)
     .single();
 
   if (existingCourseError) {
+    console.error(
+      "Error cargando el curso antes de actualizarlo:",
+      existingCourseError
+    );
     redirect(
-      `/admin/cursos/${courseId}?error=${encodeURIComponent(
-        existingCourseError.message
-      )}`
+      getCourseEditFeedbackUrl(
+        courseId,
+        "error",
+        "No se pudo preparar el curso para guardar los cambios."
+      )
+    );
+  }
+
+  if (
+    category &&
+    !isCourseCategory(category) &&
+    category !== existingCourse.category
+  ) {
+    redirect(
+      getCourseEditFeedbackUrl(
+        courseId,
+        "error",
+        "Selecciona una categoría válida."
+      )
+    );
+  }
+
+  if (level && !isCourseLevel(level) && level !== existingCourse.level) {
+    redirect(
+      getCourseEditFeedbackUrl(
+        courseId,
+        "error",
+        "Selecciona un nivel válido."
+      )
     );
   }
 
@@ -254,16 +312,9 @@ export async function updateCourse(
       formData
     );
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Error subiendo portada";
+    const message = getCoverUploadError(error);
 
-    redirect(
-      `/admin/cursos/${courseId}?error=${encodeURIComponent(
-        message
-      )}`
-    );
+    redirect(getCourseEditFeedbackUrl(courseId, "error", message));
   }
 
   const { error } = await supabase
@@ -292,12 +343,9 @@ export async function updateCourse(
         existingCourse?.cover_image_path ??
         null,
 
-      category:
-        getText(formData, "category") ||
-        null,
+      category: category || null,
 
-      level:
-        getText(formData, "level") || null,
+      level: level || null,
 
       duration_minutes: durationValue
         ? Number(durationValue)
@@ -305,10 +353,6 @@ export async function updateCourse(
 
       instructor:
         getText(formData, "instructor") ||
-        null,
-
-      hotmart_url:
-        getText(formData, "hotmart_url") ||
         null,
 
       status:
@@ -327,6 +371,8 @@ export async function updateCourse(
     .eq("id", courseId);
 
   if (error) {
+    console.error("Error guardando el curso:", error);
+
     // Si subimos una nueva portada pero falló
     // el UPDATE, eliminamos la nueva imagen
     // para no dejar archivos huérfanos.
@@ -337,9 +383,11 @@ export async function updateCourse(
     }
 
     redirect(
-      `/admin/cursos/${courseId}?error=${encodeURIComponent(
-        error.message
-      )}`
+      getCourseEditFeedbackUrl(
+        courseId,
+        "error",
+        "No se pudo guardar el curso. Inténtalo de nuevo."
+      )
     );
   }
 
@@ -370,7 +418,7 @@ export async function updateCourse(
     `/admin/cursos/${courseId}`
   );
 
-  redirect("/admin/cursos");
+  redirect(getCourseEditFeedbackUrl(courseId, "success", "course-saved"));
 }
 
 export async function deleteCourse(

@@ -1,14 +1,37 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import {
+  COURSE_CATEGORIES,
+  COURSE_LEVELS,
+  isCourseCategory,
+  isCourseLevel,
+} from "@/lib/course-options";
+import AdminToast from "../AdminToast";
+import CourseContent from "../CourseContent";
 import { updateCourse } from "../actions";
+
+const SUCCESS_MESSAGES: Record<string, string> = {
+  "course-saved": "Curso guardado.",
+  "module-created": "Módulo creado.",
+  "module-updated": "Módulo actualizado.",
+  "module-deleted": "Módulo eliminado.",
+  "lesson-created": "Lección creada.",
+  "lesson-updated": "Lección actualizada.",
+  "lesson-deleted": "Lección eliminada.",
+};
 
 export default async function EditarCursoPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    content_error?: string;
+    success?: string;
+    notice?: string;
+  }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -25,11 +48,61 @@ export default async function EditarCursoPage({
     notFound();
   }
 
+  const [modulesResult, lessonsResult] = await Promise.all([
+    supabase
+      .from("course_modules")
+      .select("id, title, description, sort_order, status")
+      .eq("course_id", id)
+      .order("sort_order", { ascending: true })
+      .order("id", { ascending: true }),
+    supabase
+      .from("course_lessons")
+      .select(
+        "id, module_id, title, slug, description, duration_minutes, sort_order, is_preview, status"
+      )
+      .eq("course_id", id)
+      .order("sort_order", { ascending: true })
+      .order("id", { ascending: true }),
+  ]);
+
+  if (modulesResult.error) {
+    console.error("Error cargando los módulos del curso:", modulesResult.error);
+  }
+
+  if (lessonsResult.error) {
+    console.error("Error cargando las lecciones del curso:", lessonsResult.error);
+  }
+
+  const contentLoadError =
+    modulesResult.error || lessonsResult.error
+      ? "No se pudo cargar todo el contenido del curso. Inténtalo de nuevo."
+      : undefined;
+  const errorMessage = contentLoadError ?? query.content_error ?? query.error;
+  const successMessage = query.success
+    ? SUCCESS_MESSAGES[query.success]
+    : undefined;
+
   const updateCourseWithId = updateCourse.bind(null, id);
 
   return (
     <main className="min-h-screen bg-[#080808] text-white">
-      <section className="mx-auto max-w-3xl px-6 py-20">
+      {errorMessage && (
+        <AdminToast
+          key={`error-${query.notice ?? errorMessage}`}
+          message={errorMessage}
+          variant="error"
+        />
+      )}
+
+      {!errorMessage && successMessage && (
+        <AdminToast
+          key={`success-${query.notice ?? query.success}`}
+          message={successMessage}
+          variant="success"
+        />
+      )}
+
+      <section className="mx-auto max-w-5xl px-6 py-20">
         <Link
           href="/admin/cursos"
           className="text-sm text-white/40 transition hover:text-white"
@@ -37,23 +110,31 @@ export default async function EditarCursoPage({
           ← Cursos
         </Link>
 
-        <div className="mt-10">
-          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
-            Editar curso
-          </p>
+        <div className="mt-10 flex flex-col justify-between gap-7 sm:flex-row sm:items-end">
+          <div>
+            <p className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
+              Editar curso
+            </p>
 
-          <h1 className="text-5xl font-semibold tracking-[-0.04em]">
-            {course.title}
-          </h1>
+            <h1 className="text-5xl font-semibold tracking-[-0.04em]">
+              {course.title}
+            </h1>
+          </div>
+
+          <button
+            type="submit"
+            form="course-form"
+            className="w-fit rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          >
+            Guardar cambios
+          </button>
         </div>
 
-        {query.error && (
-          <div className="mt-8 rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-red-300">
-            {query.error}
-          </div>
-        )}
-
-        <form action={updateCourseWithId} className="mt-12 space-y-7">
+        <form
+          id="course-form"
+          action={updateCourseWithId}
+          className="mt-12 max-w-3xl space-y-7"
+        >
           <Field label="Título">
             <input
               name="title"
@@ -91,11 +172,23 @@ export default async function EditarCursoPage({
 
           <div className="grid gap-6 sm:grid-cols-2">
             <Field label="Categoría">
-              <input
+              <select
                 name="category"
                 defaultValue={course.category ?? ""}
-                className={inputClass}
-              />
+                className={selectClass}
+              >
+                <option value="">Seleccionar</option>
+                {course.category && !isCourseCategory(course.category) && (
+                  <option value={course.category}>
+                    {course.category} (actual)
+                  </option>
+                )}
+                {COURSE_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
             </Field>
 
             <Field label="Nivel">
@@ -105,9 +198,14 @@ export default async function EditarCursoPage({
                 className={selectClass}
               >
                 <option value="">Seleccionar</option>
-                <option value="Principiante">Principiante</option>
-                <option value="Intermedio">Intermedio</option>
-                <option value="Avanzado">Avanzado</option>
+                {course.level && !isCourseLevel(course.level) && (
+                  <option value={course.level}>{course.level} (actual)</option>
+                )}
+                {COURSE_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
               </select>
             </Field>
           </div>
@@ -164,14 +262,6 @@ export default async function EditarCursoPage({
   </p>
 </Field>
 
-          <Field label="URL de Hotmart">
-            <input
-              name="hotmart_url"
-              defaultValue={course.hotmart_url ?? ""}
-              className={inputClass}
-            />
-          </Field>
-
           <Field label="Estado">
             <select
               name="status"
@@ -210,6 +300,12 @@ export default async function EditarCursoPage({
             </Link>
           </div>
         </form>
+
+        <CourseContent
+          courseId={id}
+          modules={modulesResult.data ?? []}
+          lessons={lessonsResult.data ?? []}
+        />
       </section>
     </main>
   );
