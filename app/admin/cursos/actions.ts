@@ -186,6 +186,7 @@ export async function createCourse(formData: FormData) {
   }
 
   revalidatePath("/cursos");
+  revalidatePath(`/cursos/${slug}`);
   revalidatePath("/admin/cursos");
 
   redirect("/admin/cursos");
@@ -230,7 +231,7 @@ export async function updateCourse(
   } = await supabase
     .from("courses")
     .select(
-      "cover_image_url, cover_image_path"
+      "slug, cover_image_url, cover_image_path"
     )
     .eq("id", courseId)
     .single();
@@ -358,6 +359,12 @@ export async function updateCourse(
   }
 
   revalidatePath("/cursos");
+  revalidatePath(`/cursos/${slug}`);
+
+  if (existingCourse.slug !== slug) {
+    revalidatePath(`/cursos/${existingCourse.slug}`);
+  }
+
   revalidatePath("/admin/cursos");
   revalidatePath(
     `/admin/cursos/${courseId}`
@@ -381,7 +388,7 @@ export async function deleteCourse(
   // eliminarla también del Storage.
   const { data: course } = await supabase
     .from("courses")
-    .select("cover_image_path")
+    .select("slug, cover_image_path")
     .eq("id", id)
     .single();
 
@@ -405,6 +412,11 @@ export async function deleteCourse(
   }
 
   revalidatePath("/cursos");
+
+  if (course?.slug) {
+    revalidatePath(`/cursos/${course.slug}`);
+  }
+
   revalidatePath("/admin/cursos");
 
   redirect("/admin/cursos");

@@ -52,9 +52,10 @@ export default async function CursosPage() {
 
         <div className="mt-20 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {courses?.map((course) => (
-            <article
+            <Link
               key={course.id}
-              className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025] transition duration-300 hover:-translate-y-1 hover:bg-white/[0.05]"
+              href={`/cursos/${course.slug}`}
+              className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025] transition duration-300 hover:-translate-y-1 hover:bg-white/[0.05] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
             >
               <div className="relative aspect-video overflow-hidden bg-white/[0.04]">
                 {course.cover_image_url ? (
@@ -103,15 +104,12 @@ export default async function CursosPage() {
                     {course.short_description}
                   </p>
 
-                  <Link
-                    href={`/cursos/${course.slug}`}
-                    className="mt-8 inline-block text-sm font-semibold text-white/70 transition group-hover:text-white"
-                  >
+                  <span className="mt-8 inline-block text-sm font-semibold text-white/70 transition group-hover:text-white">
                     Ver curso →
-                  </Link>
+                  </span>
                 </div>
               </div>
-            </article>
+            </Link>
           ))}
         </div>
 
