@@ -1,9 +1,18 @@
+"use client";
+
+import {
+  type FormEvent,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import AdminToast from "./AdminToast";
 import DeleteContentButton from "./DeleteContentButton";
 import {
   createCourseLesson,
   createCourseModule,
-  updateCourseLesson,
-  updateCourseModule,
+  saveAllCourseContent,
 } from "./content-actions";
 
 type CourseModule = {
@@ -43,6 +52,14 @@ export default function CourseContent({
   modules,
   lessons,
 }: CourseContentProps) {
+  const contentRef = useRef<HTMLElement>(null);
+  const [dirty, setDirty] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    message: string;
+    variant: "success" | "error";
+    notice: string;
+  } | null>(null);
+  const [pending, startTransition] = useTransition();
   const lessonsByModule = new Map<string, CourseLesson[]>();
 
   for (const lesson of lessons) {
@@ -52,12 +69,130 @@ export default function CourseContent({
   }
 
   const createModuleForCourse = createCourseModule.bind(null, courseId);
+  const actionsDisabled = dirty || pending;
+
+  useEffect(() => {
+    if (!dirty) {
+      return;
+    }
+
+    const courseForm = document.getElementById("course-form");
+    const preventCourseSubmit = (event: Event) => {
+      event.preventDefault();
+      setFeedback({
+        message: "Guarda primero los cambios del contenido.",
+        variant: "error",
+        notice: crypto.randomUUID(),
+      });
+    };
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    courseForm?.addEventListener("submit", preventCourseSubmit);
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+
+    return () => {
+      courseForm?.removeEventListener("submit", preventCourseSubmit);
+      window.removeEventListener("beforeunload", warnBeforeLeaving);
+    };
+  }, [dirty]);
+
+  function markDirty(event: FormEvent<HTMLElement>) {
+    const target = event.target as HTMLElement;
+
+    if (target.closest("form[data-content-record]")) {
+      setDirty(true);
+    }
+  }
+
+  function handleExistingRecordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    saveAllChanges();
+  }
+
+  function preventActionWhileDirty(event: FormEvent<HTMLFormElement>) {
+    if (!actionsDisabled) {
+      return;
+    }
+
+    event.preventDefault();
+    setFeedback({
+      message: "Guarda primero los cambios pendientes.",
+      variant: "error",
+      notice: crypto.randomUUID(),
+    });
+  }
+
+  function saveAllChanges() {
+    if (!dirty || pending || !contentRef.current) {
+      return;
+    }
+
+    const payload = {
+      modules: [] as Array<Record<string, FormDataEntryValue | boolean>>,
+      lessons: [] as Array<Record<string, FormDataEntryValue | boolean>>,
+    };
+    const editorForms = contentRef.current.querySelectorAll<HTMLFormElement>(
+      "form[data-content-record]"
+    );
+
+    for (const form of editorForms) {
+      const values = Object.fromEntries(new FormData(form).entries());
+      const record = {
+        id: form.dataset.recordId ?? "",
+        ...values,
+        is_preview: values.is_preview === "on",
+      };
+
+      if (form.dataset.contentRecord === "module") {
+        payload.modules.push(record);
+      } else if (form.dataset.contentRecord === "lesson") {
+        payload.lessons.push(record);
+      }
+    }
+
+    const actionData = new FormData();
+    actionData.set("payload", JSON.stringify(payload));
+
+    startTransition(async () => {
+      try {
+        const result = await saveAllCourseContent(courseId, actionData);
+
+        setFeedback({
+          message: result.message,
+          variant: result.ok ? "success" : "error",
+          notice: result.notice,
+        });
+
+        if (result.ok) {
+          setDirty(false);
+        }
+      } catch {
+        setFeedback({
+          message: "No se pudieron guardar todos los cambios.",
+          variant: "error",
+          notice: crypto.randomUUID(),
+        });
+      }
+    });
+  }
 
   return (
     <section
+      ref={contentRef}
       id="contenido"
       className="mt-20 scroll-mt-8 border-t border-white/10 pt-16"
+      onChangeCapture={markDirty}
     >
+      {feedback && (
+        <AdminToast
+          key={feedback.notice}
+          message={feedback.message}
+          variant={feedback.variant}
+        />
+      )}
       <div className="max-w-3xl">
         <p className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
           Learn
@@ -81,7 +216,11 @@ export default function CourseContent({
           </span>
         </summary>
 
-        <form action={createModuleForCourse} className="mt-7 space-y-5 border-t border-white/10 pt-7">
+        <form
+          action={createModuleForCourse}
+          onSubmit={preventActionWhileDirty}
+          className="mt-7 space-y-5 border-t border-white/10 pt-7"
+        >
           <Field label="Título">
             <input name="title" required maxLength={200} className={inputClass} />
           </Field>
@@ -106,7 +245,14 @@ export default function CourseContent({
             </Field>
           </div>
 
-          <button type="submit" className={primaryButtonClass}>
+          <button
+            type="submit"
+            disabled={actionsDisabled}
+            title={
+              dirty ? "Guarda primero los cambios pendientes" : undefined
+            }
+            className={`${primaryButtonClass} disabled:cursor-not-allowed disabled:opacity-40`}
+          >
             Crear módulo
           </button>
         </form>
@@ -115,11 +261,6 @@ export default function CourseContent({
       <div className="mt-10 space-y-8">
         {modules.map((courseModule, moduleIndex) => {
           const moduleLessons = lessonsByModule.get(courseModule.id) ?? [];
-          const updateModule = updateCourseModule.bind(
-            null,
-            courseId,
-            courseModule.id
-          );
           const createLesson = createCourseLesson.bind(
             null,
             courseId,
@@ -147,10 +288,16 @@ export default function CourseContent({
                     courseId={courseId}
                     moduleId={courseModule.id}
                     title={courseModule.title}
+                    disabled={actionsDisabled}
                   />
                 </div>
 
-                <form action={updateModule} className="space-y-5">
+                <form
+                  data-content-record="module"
+                  data-record-id={courseModule.id}
+                  onSubmit={handleExistingRecordSubmit}
+                  className="space-y-5"
+                >
                   <Field label="Título">
                     <input
                       name="title"
@@ -189,9 +336,6 @@ export default function CourseContent({
                     </Field>
                   </div>
 
-                  <button type="submit" className={primaryButtonClass}>
-                    Guardar módulo
-                  </button>
                 </form>
               </div>
 
@@ -217,6 +361,8 @@ export default function CourseContent({
                       moduleId={courseModule.id}
                       lesson={lesson}
                       position={lessonIndex + 1}
+                      actionsDisabled={actionsDisabled}
+                      onSubmit={handleExistingRecordSubmit}
                     />
                   ))}
 
@@ -244,6 +390,8 @@ export default function CourseContent({
                     action={createLesson}
                     submitLabel="Crear lección"
                     className="mt-6 border-t border-white/10 pt-6"
+                    actionsDisabled={actionsDisabled}
+                    onSubmit={preventActionWhileDirty}
                   />
                 </details>
               </div>
@@ -258,6 +406,28 @@ export default function CourseContent({
           </div>
         )}
       </div>
+
+      <div className="sticky bottom-4 z-20 mt-10 flex flex-col justify-between gap-4 rounded-2xl border border-white/10 bg-[#111111]/95 p-5 shadow-2xl backdrop-blur-md sm:flex-row sm:items-center">
+        <div>
+          <p className="text-sm font-medium text-white/75">
+            {dirty ? "Tienes cambios sin guardar" : "Contenido actualizado"}
+          </p>
+          <p className="mt-1 text-xs text-white/35">
+            {dirty
+              ? "Se guardarán juntos todos los módulos y lecciones editados."
+              : "Edita cualquier campo para activar el guardado conjunto."}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={saveAllChanges}
+          disabled={!dirty || pending}
+          className={`${primaryButtonClass} shrink-0 disabled:cursor-not-allowed disabled:opacity-40`}
+        >
+          {pending ? "Guardando..." : "Guardar todos los cambios"}
+        </button>
+      </div>
     </section>
   );
 }
@@ -267,19 +437,16 @@ function LessonEditor({
   moduleId,
   lesson,
   position,
+  actionsDisabled,
+  onSubmit,
 }: {
   courseId: string;
   moduleId: string;
   lesson: CourseLesson;
   position: number;
+  actionsDisabled: boolean;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const updateLesson = updateCourseLesson.bind(
-    null,
-    courseId,
-    moduleId,
-    lesson.id
-  );
-
   return (
     <details className="group py-5">
       <summary className="cursor-pointer list-none marker:hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
@@ -311,13 +478,14 @@ function LessonEditor({
             moduleId={moduleId}
             lessonId={lesson.id}
             title={lesson.title}
+            disabled={actionsDisabled}
           />
         </div>
 
         <LessonForm
-          action={updateLesson}
-          submitLabel="Guardar lección"
           lesson={lesson}
+          recordId={lesson.id}
+          onSubmit={onSubmit}
         />
       </div>
     </details>
@@ -329,14 +497,26 @@ function LessonForm({
   submitLabel,
   lesson,
   className = "",
+  recordId,
+  actionsDisabled = false,
+  onSubmit,
 }: {
-  action: (formData: FormData) => void | Promise<void>;
-  submitLabel: string;
+  action?: (formData: FormData) => void | Promise<void>;
+  submitLabel?: string;
   lesson?: CourseLesson;
   className?: string;
+  recordId?: string;
+  actionsDisabled?: boolean;
+  onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form action={action} className={`space-y-5 ${className}`}>
+    <form
+      action={action}
+      data-content-record={recordId ? "lesson" : undefined}
+      data-record-id={recordId}
+      onSubmit={onSubmit}
+      className={`space-y-5 ${className}`}
+    >
       <Field label="Título">
         <input
           name="title"
@@ -411,9 +591,18 @@ function LessonForm({
         Permitir preview público
       </label>
 
-      <button type="submit" className={primaryButtonClass}>
-        {submitLabel}
-      </button>
+      {action && submitLabel && (
+        <button
+          type="submit"
+          disabled={actionsDisabled}
+          title={
+            actionsDisabled ? "Guarda primero los cambios pendientes" : undefined
+          }
+          className={`${primaryButtonClass} disabled:cursor-not-allowed disabled:opacity-40`}
+        >
+          {submitLabel}
+        </button>
+      )}
     </form>
   );
 }

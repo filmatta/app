@@ -11,11 +11,14 @@ const MAX_INTEGER = 2_147_483_647;
 
 type ContentSuccess =
   | "module-created"
-  | "module-updated"
   | "module-deleted"
   | "lesson-created"
-  | "lesson-updated"
   | "lesson-deleted";
+
+type BulkContentPayload = {
+  modules: Array<Record<string, unknown>>;
+  lessons: Array<Record<string, unknown>>;
+};
 
 type AdminSupabaseClient = Awaited<
   ReturnType<typeof requireAdmin>
@@ -28,8 +31,10 @@ function getText(formData: FormData, key: string) {
 }
 
 function getTitle(formData: FormData) {
-  const title = getText(formData, "title");
+  return validateTitle(getText(formData, "title"));
+}
 
+function validateTitle(title: string) {
   if (!title) {
     throw new ContentActionError("El título es obligatorio.");
   }
@@ -42,8 +47,10 @@ function getTitle(formData: FormData) {
 }
 
 function getStatus(formData: FormData) {
-  const status = getText(formData, "status");
+  return validateStatus(getText(formData, "status"));
+}
 
+function validateStatus(status: string) {
   if (!CONTENT_STATUSES.includes(status as (typeof CONTENT_STATUSES)[number])) {
     throw new ContentActionError("Selecciona un estado válido.");
   }
@@ -57,7 +64,31 @@ function getNonNegativeInteger(
   label: string,
   options: { optional?: boolean } = {}
 ) {
-  const rawValue = getText(formData, key);
+  return validateNonNegativeInteger(getText(formData, key), label, options);
+}
+
+function getLessonSlug(formData: FormData, title: string) {
+  return validateLessonSlug(getText(formData, "slug"), title);
+}
+
+function validateLessonSlug(typedSlug: string, title: string) {
+  const slug = typedSlug || slugify(title);
+
+  if (!slug || slug.length > 160 || !LESSON_SLUG_PATTERN.test(slug)) {
+    throw new ContentActionError(
+      "El slug debe usar minúsculas, números y guiones, sin espacios."
+    );
+  }
+
+  return slug;
+}
+
+function validateNonNegativeInteger(
+  value: unknown,
+  label: string,
+  options: { optional?: boolean } = {}
+) {
+  const rawValue = String(value ?? "").trim();
 
   if (!rawValue && options.optional) {
     return null;
@@ -71,26 +102,52 @@ function getNonNegativeInteger(
     );
   }
 
-  const value = Number(normalizedValue);
+  const parsedValue = Number(normalizedValue);
 
-  if (!Number.isSafeInteger(value) || value > MAX_INTEGER) {
+  if (!Number.isSafeInteger(parsedValue) || parsedValue > MAX_INTEGER) {
     throw new ContentActionError(`${label} es demasiado grande.`);
   }
 
-  return value;
+  return parsedValue;
 }
 
-function getLessonSlug(formData: FormData, title: string) {
-  const typedSlug = getText(formData, "slug");
-  const slug = typedSlug || slugify(title);
+function parseBulkContentPayload(formData: FormData): BulkContentPayload {
+  const rawPayload = getText(formData, "payload");
 
-  if (!slug || slug.length > 160 || !LESSON_SLUG_PATTERN.test(slug)) {
-    throw new ContentActionError(
-      "El slug debe usar minúsculas, números y guiones, sin espacios."
-    );
+  if (!rawPayload || rawPayload.length > 1_000_000) {
+    throw new ContentActionError("No se pudieron leer los cambios pendientes.");
   }
 
-  return slug;
+  try {
+    const payload = JSON.parse(rawPayload) as unknown;
+
+    if (
+      !isRecord(payload) ||
+      !Array.isArray(payload.modules) ||
+      !Array.isArray(payload.lessons) ||
+      !payload.modules.every(isRecord) ||
+      !payload.lessons.every(isRecord)
+    ) {
+      throw new ContentActionError(
+        "No se pudieron leer los cambios pendientes."
+      );
+    }
+
+    return {
+      modules: payload.modules,
+      lessons: payload.lessons,
+    };
+  } catch {
+    throw new ContentActionError("No se pudieron leer los cambios pendientes.");
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getRecordText(record: Record<string, unknown>, key: string) {
+  return String(record[key] ?? "").trim();
 }
 
 async function getCourse(
@@ -182,14 +239,18 @@ function finishContentMutation(
   courseSlug: string,
   success: ContentSuccess
 ): never {
-  revalidatePath("/admin/cursos");
-  revalidatePath(`/admin/cursos/${courseId}`);
-  revalidatePath("/cursos");
-  revalidatePath(`/cursos/${courseSlug}`);
+  revalidateCourseContent(courseId, courseSlug);
 
   redirect(
     `/admin/cursos/${courseId}?success=${success}&notice=${crypto.randomUUID()}#contenido`
   );
+}
+
+function revalidateCourseContent(courseId: string, courseSlug: string) {
+  revalidatePath("/admin/cursos");
+  revalidatePath(`/admin/cursos/${courseId}`);
+  revalidatePath("/cursos");
+  revalidatePath(`/cursos/${courseSlug}`);
 }
 
 function mutationError(
@@ -200,6 +261,163 @@ function mutationError(
 ): never {
   console.error(context, error);
   contentError(courseId, publicMessage);
+}
+
+export async function saveAllCourseContent(
+  courseId: string,
+  formData: FormData
+) {
+  const { supabase } = await requireAdmin();
+
+  try {
+    const course = await getCourse(supabase, courseId);
+    const payload = parseBulkContentPayload(formData);
+
+    const [modulesResult, lessonsResult] = await Promise.all([
+      supabase
+        .from("course_modules")
+        .select("id, course_id")
+        .eq("course_id", courseId),
+      supabase
+        .from("course_lessons")
+        .select("id, course_id, module_id")
+        .eq("course_id", courseId),
+    ]);
+
+    if (modulesResult.error || lessonsResult.error) {
+      console.error("Error verificando el contenido para guardado masivo:", {
+        modulesError: modulesResult.error,
+        lessonsError: lessonsResult.error,
+      });
+
+      throw new ContentActionError(
+        "No se pudo verificar el contenido del curso."
+      );
+    }
+
+    const existingModules = new Map(
+      (modulesResult.data ?? []).map((courseModule) => [
+        courseModule.id,
+        courseModule,
+      ])
+    );
+    const existingLessons = new Map(
+      (lessonsResult.data ?? []).map((lesson) => [lesson.id, lesson])
+    );
+    const seenModuleIds = new Set<string>();
+    const seenLessonIds = new Set<string>();
+
+    const moduleRows = payload.modules.map((record) => {
+      const id = getRecordText(record, "id");
+      const existingModule = existingModules.get(id);
+
+      if (!existingModule || seenModuleIds.has(id)) {
+        throw new ContentActionError(
+          "Uno de los módulos cambió. Recarga la página e inténtalo de nuevo."
+        );
+      }
+
+      seenModuleIds.add(id);
+
+      return {
+        id,
+        course_id: existingModule.course_id,
+        title: validateTitle(getRecordText(record, "title")),
+        description: getRecordText(record, "description") || null,
+        sort_order: validateNonNegativeInteger(
+          record.sort_order,
+          "El número de módulo"
+        ),
+        status: validateStatus(getRecordText(record, "status")),
+      };
+    });
+
+    const lessonRows = payload.lessons.map((record) => {
+      const id = getRecordText(record, "id");
+      const existingLesson = existingLessons.get(id);
+
+      if (!existingLesson || seenLessonIds.has(id)) {
+        throw new ContentActionError(
+          "Una de las lecciones cambió. Recarga la página e inténtalo de nuevo."
+        );
+      }
+
+      seenLessonIds.add(id);
+
+      const title = validateTitle(getRecordText(record, "title"));
+
+      return {
+        id,
+        course_id: existingLesson.course_id,
+        module_id: existingLesson.module_id,
+        title,
+        slug: validateLessonSlug(getRecordText(record, "slug"), title),
+        description: getRecordText(record, "description") || null,
+        duration_minutes: validateNonNegativeInteger(
+          record.duration_minutes,
+          "La duración",
+          { optional: true }
+        ),
+        sort_order: validateNonNegativeInteger(
+          record.sort_order,
+          "El número de lección"
+        ),
+        is_preview: record.is_preview === true,
+        status: validateStatus(getRecordText(record, "status")),
+      };
+    });
+
+    if (lessonRows.length > 0) {
+      const { error } = await supabase
+        .from("course_lessons")
+        .upsert(lessonRows, { onConflict: "id" });
+
+      if (error) {
+        console.error("Error guardando las lecciones en bloque:", error);
+
+        throw new ContentActionError(
+          error.code === "23505"
+            ? "Hay lecciones con un slug repetido en el curso."
+            : "No se pudieron guardar todas las lecciones."
+        );
+      }
+    }
+
+    if (moduleRows.length > 0) {
+      const { error } = await supabase
+        .from("course_modules")
+        .upsert(moduleRows, { onConflict: "id" });
+
+      if (error) {
+        console.error("Error guardando los módulos en bloque:", error);
+        throw new ContentActionError("No se pudieron guardar todos los módulos.");
+      }
+    }
+
+    revalidateCourseContent(courseId, course.slug);
+
+    return {
+      ok: true as const,
+      message: "Todos los cambios fueron guardados.",
+      notice: crypto.randomUUID(),
+    };
+  } catch (error) {
+    if (error instanceof ContentActionError) {
+      return {
+        ok: false as const,
+        message: error.message,
+        notice: crypto.randomUUID(),
+      };
+    }
+
+    console.error("Error inesperado guardando todo el contenido:", error);
+
+    return {
+      ok: false as const,
+      message: "No se pudieron guardar todos los cambios.",
+      notice: crypto.randomUUID(),
+    };
+  }
 }
 
 export async function createCourseModule(
@@ -245,58 +463,6 @@ export async function createCourseModule(
 
     console.error("Error inesperado creando el módulo:", error);
     contentError(courseId, "No se pudo crear el módulo.");
-  }
-}
-
-export async function updateCourseModule(
-  courseId: string,
-  moduleId: string,
-  formData: FormData
-) {
-  const { supabase } = await requireAdmin();
-
-  try {
-    const course = await getCourse(supabase, courseId);
-    await requireModule(supabase, courseId, moduleId);
-
-    const title = getTitle(formData);
-    const status = getStatus(formData);
-    const sortOrder = getNonNegativeInteger(
-      formData,
-      "sort_order",
-      "El número de módulo"
-    );
-
-    const { error } = await supabase
-      .from("course_modules")
-      .update({
-        title,
-        description: getText(formData, "description") || null,
-        sort_order: sortOrder,
-        status,
-      })
-      .eq("id", moduleId)
-      .eq("course_id", courseId);
-
-    if (error) {
-      mutationError(
-        courseId,
-        "Error actualizando el módulo:",
-        error,
-        "No se pudo guardar el módulo. Revisa los datos e inténtalo de nuevo."
-      );
-    }
-
-    finishContentMutation(courseId, course.slug, "module-updated");
-  } catch (error) {
-    unstable_rethrow(error);
-
-    if (error instanceof ContentActionError) {
-      contentError(courseId, error.message);
-    }
-
-    console.error("Error inesperado actualizando el módulo:", error);
-    contentError(courseId, "No se pudo guardar el módulo.");
   }
 }
 
@@ -395,71 +561,6 @@ export async function createCourseLesson(
 
     console.error("Error inesperado creando la lección:", error);
     contentError(courseId, "No se pudo crear la lección.");
-  }
-}
-
-export async function updateCourseLesson(
-  courseId: string,
-  moduleId: string,
-  lessonId: string,
-  formData: FormData
-) {
-  const { supabase } = await requireAdmin();
-
-  try {
-    const course = await getCourse(supabase, courseId);
-    await requireModule(supabase, courseId, moduleId);
-    await requireLesson(supabase, courseId, moduleId, lessonId);
-
-    const title = getTitle(formData);
-    const slug = getLessonSlug(formData, title);
-    const status = getStatus(formData);
-    const durationMinutes = getNonNegativeInteger(
-      formData,
-      "duration_minutes",
-      "La duración",
-      { optional: true }
-    );
-    const sortOrder = getNonNegativeInteger(
-      formData,
-      "sort_order",
-      "El número de lección"
-    );
-
-    const { error } = await supabase
-      .from("course_lessons")
-      .update({
-        title,
-        slug,
-        description: getText(formData, "description") || null,
-        duration_minutes: durationMinutes,
-        sort_order: sortOrder,
-        is_preview: formData.get("is_preview") === "on",
-        status,
-      })
-      .eq("id", lessonId)
-      .eq("module_id", moduleId)
-      .eq("course_id", courseId);
-
-    if (error) {
-      const message =
-        error.code === "23505"
-          ? "Ya existe una lección con ese slug en este curso."
-          : "No se pudo guardar la lección. Revisa los datos e inténtalo de nuevo.";
-
-      mutationError(courseId, "Error actualizando la lección:", error, message);
-    }
-
-    finishContentMutation(courseId, course.slug, "lesson-updated");
-  } catch (error) {
-    unstable_rethrow(error);
-
-    if (error instanceof ContentActionError) {
-      contentError(courseId, error.message);
-    }
-
-    console.error("Error inesperado actualizando la lección:", error);
-    contentError(courseId, "No se pudo guardar la lección.");
   }
 }
 

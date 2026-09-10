@@ -1,4 +1,5 @@
 ﻿import Link from "next/link";
+import SiteHeader from "@/components/SiteHeader";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function CursosPage() {
@@ -12,23 +13,7 @@ export default async function CursosPage() {
 
   return (
     <main className="min-h-screen bg-[#080808] text-white">
-      <header className="border-b border-white/10">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 lg:px-8">
-          <Link
-            href="/"
-            className="text-xl font-black tracking-[0.25em]"
-          >
-            FILMATTA
-          </Link>
-
-          <Link
-            href="/"
-            className="text-sm text-white/50 transition hover:text-white"
-          >
-            ← Volver
-          </Link>
-        </div>
-      </header>
+      <SiteHeader contextLink={{ href: "/", label: "← Volver" }} />
 
       <section className="mx-auto max-w-7xl px-6 py-24 lg:px-8">
         <p className="mb-5 text-xs font-semibold uppercase tracking-[0.3em] text-white/35">

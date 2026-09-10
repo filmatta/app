@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SiteHeader from "@/components/SiteHeader";
 
 const features = [
   {
@@ -38,51 +39,7 @@ const features = [
 export default function Home() {
   return (
     <main className="min-h-screen bg-[#080808] text-white">
-      {/* NAVBAR */}
-      <header className="border-b border-white/10">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 lg:px-8">
-          <Link
-            href="/"
-            className="text-xl font-black tracking-[0.25em]"
-          >
-            FILMATTA
-          </Link>
-
-          <nav className="hidden items-center gap-8 text-sm text-white/70 md:flex">
-            <Link href="/cursos" className="transition hover:text-white">
-              Cursos
-            </Link>
-            <Link href="/comunidad" className="transition hover:text-white">
-              Comunidad
-            </Link>
-            <Link
-              href="/oportunidades"
-              className="transition hover:text-white"
-            >
-              Oportunidades
-            </Link>
-            <Link href="/perfiles" className="transition hover:text-white">
-              Profesionales
-            </Link>
-          </nav>
-
-          <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="hidden px-4 py-2 text-sm text-white/70 transition hover:text-white sm:block"
-            >
-              Entrar
-            </Link>
-
-            <Link
-              href="/registro"
-              className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-white/85"
-            >
-              Crear cuenta
-            </Link>
-          </div>
-        </div>
-      </header>
+      <SiteHeader showPrimaryNavigation />
 
       {/* HERO */}
       <section className="mx-auto flex min-h-[78vh] max-w-7xl flex-col justify-center px-6 py-24 lg:px-8">
