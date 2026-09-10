@@ -7,6 +7,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import type { LearnContentType } from "@/lib/learn/content-type";
 import AdminToast from "./AdminToast";
 import DeleteContentButton from "./DeleteContentButton";
 import {
@@ -39,6 +40,7 @@ type CourseContentProps = {
   courseId: string;
   modules: CourseModule[];
   lessons: CourseLesson[];
+  contentType: LearnContentType;
 };
 
 const inputClass =
@@ -51,6 +53,7 @@ export default function CourseContent({
   courseId,
   modules,
   lessons,
+  contentType,
 }: CourseContentProps) {
   const contentRef = useRef<HTMLElement>(null);
   const [dirty, setDirty] = useState(false);
@@ -70,6 +73,7 @@ export default function CourseContent({
 
   const createModuleForCourse = createCourseModule.bind(null, courseId);
   const actionsDisabled = dirty || pending;
+  const isQuickGuide = contentType === "quick_guide";
 
   useEffect(() => {
     if (!dirty) {
@@ -198,15 +202,17 @@ export default function CourseContent({
           Learn
         </p>
         <h2 className="text-4xl font-semibold tracking-[-0.04em]">
-          Contenido del curso
+          {isQuickGuide ? "Contenido de la guía" : "Contenido del curso"}
         </h2>
         <p className="mt-4 leading-7 text-white/45">
-          Organiza módulos y lecciones. El orden se controla manualmente con
-          números; los valores menores aparecen primero.
+          {isQuickGuide
+            ? "Añade una o pocas lecciones breves para resolver una necesidad concreta. La estructura técnica se gestiona automáticamente."
+            : "Organiza módulos y lecciones. El orden se controla manualmente con números; los valores menores aparecen primero."}
         </p>
       </div>
 
-      <details className="group mt-10 max-w-3xl rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+      {!isQuickGuide && (
+        <details className="group mt-10 max-w-3xl rounded-2xl border border-white/10 bg-white/[0.02] p-6">
         <summary className="cursor-pointer list-none font-semibold text-white/80 marker:hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
           <span className="flex items-center justify-between gap-4">
             + Crear módulo
@@ -256,7 +262,8 @@ export default function CourseContent({
             Crear módulo
           </button>
         </form>
-      </details>
+        </details>
+      )}
 
       <div className="mt-10 space-y-8">
         {modules.map((courseModule, moduleIndex) => {
@@ -272,7 +279,8 @@ export default function CourseContent({
               key={courseModule.id}
               className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.015]"
             >
-              <div className="border-b border-white/10 p-6 sm:p-8">
+              {!isQuickGuide && (
+                <div className="border-b border-white/10 p-6 sm:p-8">
                 <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/30">
@@ -337,18 +345,21 @@ export default function CourseContent({
                   </div>
 
                 </form>
-              </div>
+                </div>
+              )}
 
               <div className="p-6 sm:p-8">
                 <div className="flex items-end justify-between gap-4">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/30">
-                      Lecciones
+                      {isQuickGuide ? "Pasos de la guía" : "Lecciones"}
                     </p>
                     <p className="mt-2 text-sm text-white/40">
                       {moduleLessons.length === 1
-                        ? "1 lección"
-                        : `${moduleLessons.length} lecciones`}
+                        ? isQuickGuide
+                          ? "1 paso"
+                          : "1 lección"
+                        : `${moduleLessons.length} ${isQuickGuide ? "pasos" : "lecciones"}`}
                     </p>
                   </div>
                 </div>
@@ -363,6 +374,7 @@ export default function CourseContent({
                       position={lessonIndex + 1}
                       actionsDisabled={actionsDisabled}
                       onSubmit={handleExistingRecordSubmit}
+                      quickGuide={isQuickGuide}
                     />
                   ))}
 
@@ -376,7 +388,7 @@ export default function CourseContent({
                 <details className="group mt-6 rounded-xl border border-dashed border-white/15 p-5">
                   <summary className="cursor-pointer list-none text-sm font-semibold text-white/65 marker:hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
                     <span className="flex items-center justify-between gap-4">
-                      + Crear lección
+                      + Crear {isQuickGuide ? "paso" : "lección"}
                       <span
                         className="text-white/30 transition group-open:rotate-45"
                         aria-hidden="true"
@@ -388,10 +400,11 @@ export default function CourseContent({
 
                   <LessonForm
                     action={createLesson}
-                    submitLabel="Crear lección"
+                    submitLabel={`Crear ${isQuickGuide ? "paso" : "lección"}`}
                     className="mt-6 border-t border-white/10 pt-6"
                     actionsDisabled={actionsDisabled}
                     onSubmit={preventActionWhileDirty}
+                    quickGuide={isQuickGuide}
                   />
                 </details>
               </div>
@@ -401,8 +414,9 @@ export default function CourseContent({
 
         {modules.length === 0 && (
           <div className="rounded-2xl border border-dashed border-white/10 p-10 text-center text-white/35">
-            Todavía no hay módulos. Crea el primero para empezar a estructurar el
-            curso.
+            {isQuickGuide
+              ? "La guía todavía no tiene su contenedor técnico. Vuelve a crearla después de aplicar la migración o contacta al equipo técnico."
+              : "Todavía no hay módulos. Crea el primero para empezar a estructurar el curso."}
           </div>
         )}
       </div>
@@ -439,6 +453,7 @@ function LessonEditor({
   position,
   actionsDisabled,
   onSubmit,
+  quickGuide,
 }: {
   courseId: string;
   moduleId: string;
@@ -446,6 +461,7 @@ function LessonEditor({
   position: number;
   actionsDisabled: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  quickGuide: boolean;
 }) {
   return (
     <details className="group py-5">
@@ -486,6 +502,7 @@ function LessonEditor({
           lesson={lesson}
           recordId={lesson.id}
           onSubmit={onSubmit}
+          quickGuide={quickGuide}
         />
       </div>
     </details>
@@ -500,6 +517,7 @@ function LessonForm({
   recordId,
   actionsDisabled = false,
   onSubmit,
+  quickGuide = false,
 }: {
   action?: (formData: FormData) => void | Promise<void>;
   submitLabel?: string;
@@ -508,6 +526,7 @@ function LessonForm({
   recordId?: string;
   actionsDisabled?: boolean;
   onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
+  quickGuide?: boolean;
 }) {
   return (
     <form
@@ -562,7 +581,7 @@ function LessonForm({
           />
         </Field>
 
-        <Field label="Número de lección">
+        <Field label={quickGuide ? "Número de paso" : "Número de lección"}>
           <input
             name="sort_order"
             type="number"

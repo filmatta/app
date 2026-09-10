@@ -1,6 +1,9 @@
 import Link from "next/link";
+import AdminHeader from "@/app/admin/AdminHeader";
+import VisibilitySwitch from "@/components/admin/VisibilitySwitch";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { COURSE_CATEGORIES, COURSE_LEVELS } from "@/lib/course-options";
+import { getContentTypeSupport } from "../content-type-support";
 import { createCourse } from "../actions";
 
 export default async function NuevoCursoPage({
@@ -8,22 +11,23 @@ export default async function NuevoCursoPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  await requireAdmin();
-
-  const params = await searchParams;
+  const [{ supabase }, params] = await Promise.all([requireAdmin(), searchParams]);
+  const contentTypeSupport = await getContentTypeSupport(supabase);
+  const contentTypesAvailable = contentTypeSupport === "available";
 
   return (
     <main className="min-h-screen bg-[#080808] text-white">
+      <AdminHeader />
       <section className="mx-auto max-w-3xl px-6 py-20">
         <Link
           href="/admin/cursos"
-          className="text-sm text-white/40 hover:text-white"
+          className="inline-flex w-fit rounded-full border border-white/10 px-4 py-2 text-sm text-white/50 transition hover:border-white/20 hover:bg-white/[0.03] hover:text-white"
         >
-          ← Cursos
+          ← Contenido de Aprender
         </Link>
 
         <h1 className="mt-10 text-5xl font-semibold tracking-tight">
-          Nuevo curso
+          Nuevo contenido
         </h1>
 
         {params.error && (
@@ -33,6 +37,41 @@ export default async function NuevoCursoPage({
         )}
 
         <form action={createCourse} className="mt-12 space-y-7">
+          <fieldset
+            aria-describedby={
+              contentTypesAvailable ? undefined : "content-type-help"
+            }
+          >
+            <legend className="mb-3 text-sm text-white/50">
+              Tipo de contenido
+            </legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ContentTypeOption
+                value="course"
+                title="Curso"
+                description="Contenido estructurado en módulos y lecciones."
+                enabled={contentTypesAvailable}
+                defaultChecked
+              />
+              <ContentTypeOption
+                value="quick_guide"
+                title="Guía rápida"
+                description="Tutorial breve para resolver una tarea concreta."
+                enabled={contentTypesAvailable}
+              />
+            </div>
+            {!contentTypesAvailable && (
+              <p
+                id="content-type-help"
+                className="mt-3 text-xs leading-5 text-amber-200/65"
+              >
+                {contentTypeSupport === "missing"
+                  ? "Aplica primero la migración de content_type para habilitar las guías rápidas. Los cursos actuales siguen funcionando."
+                  : "No pudimos verificar content_type. El selector queda deshabilitado para evitar una escritura insegura."}
+              </p>
+            )}
+          </fieldset>
+
           <Field label="Título">
             <input
               name="title"
@@ -118,7 +157,7 @@ export default async function NuevoCursoPage({
             />
           </Field>
 
-         <Field label="Portada del curso">
+         <Field label="Portada">
   <input
     name="cover_image"
     type="file"
@@ -131,17 +170,7 @@ export default async function NuevoCursoPage({
   </p>
 </Field>
 
-          <Field label="Estado">
-            <select
-              name="status"
-              defaultValue="draft"
-              className={selectClass}
-            >
-              <option value="draft">Borrador</option>
-              <option value="published">Publicado</option>
-              <option value="archived">Archivado</option>
-            </select>
-          </Field>
+          <VisibilitySwitch id="new-content-public" />
 
           <label className="flex items-center gap-3 text-sm text-white/60">
             <input
@@ -149,7 +178,7 @@ export default async function NuevoCursoPage({
               type="checkbox"
               className="size-4"
             />
-            Destacar este curso
+            Destacar este contenido
           </label>
 
           <div className="border-t border-white/10 pt-8">
@@ -157,7 +186,7 @@ export default async function NuevoCursoPage({
               type="submit"
               className="rounded-full bg-white px-8 py-4 font-semibold text-black transition hover:bg-white/85"
             >
-              Crear curso
+              Crear contenido
             </button>
           </div>
         </form>
@@ -183,6 +212,45 @@ function Field({
       </span>
 
       {children}
+    </label>
+  );
+}
+
+function ContentTypeOption({
+  value,
+  title,
+  description,
+  enabled,
+  defaultChecked = false,
+}: {
+  value: "course" | "quick_guide";
+  title: string;
+  description: string;
+  enabled: boolean;
+  defaultChecked?: boolean;
+}) {
+  return (
+    <label
+      className={`flex items-start gap-4 rounded-xl border border-white/10 bg-white/[0.025] p-5 transition ${
+        enabled
+          ? "cursor-pointer hover:border-white/25 hover:bg-white/[0.04]"
+          : "cursor-not-allowed opacity-55"
+      }`}
+    >
+      <input
+        type="radio"
+        name={enabled ? "content_type" : undefined}
+        value={value}
+        defaultChecked={defaultChecked}
+        disabled={!enabled}
+        className="mt-1 size-4 shrink-0 accent-white"
+      />
+      <span>
+        <span className="block font-semibold text-white/80">{title}</span>
+        <span className="mt-2 block text-sm leading-6 text-white/40">
+          {description}
+        </span>
+      </span>
     </label>
   );
 }

@@ -8,6 +8,9 @@ import {
 } from "@/app/cuenta/actions";
 import SiteHeader from "@/components/SiteHeader";
 import { getViewer } from "@/lib/auth/get-viewer";
+import { getLearnContentType } from "@/lib/learn/content-type";
+import { getResumeActions, type ResumeAction } from "@/lib/learn/resume";
+import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
 import { createClient } from "@/lib/supabase/server";
 
 type Enrollment = {
@@ -27,6 +30,7 @@ type EnrolledCourse = {
   category: string | null;
   level: string | null;
   duration_minutes: number | null;
+  content_type?: unknown;
 };
 
 type CourseWithEnrollment = Enrollment & { course: EnrolledCourse };
@@ -49,7 +53,7 @@ export default async function CuentaPage({
   const viewer = await getViewer();
 
   if (!viewer) {
-    redirect("/login?next=%2Fcuenta");
+    redirect("/acceso?next=%2Fcuenta");
   }
 
   const feedback = await searchParams;
@@ -67,9 +71,7 @@ export default async function CuentaPage({
   const coursesResult = courseIds.length
     ? await supabase
         .from("courses")
-        .select(
-          "id, title, slug, short_description, cover_image_url, category, level, duration_minutes"
-        )
+        .select("*")
         .in("id", courseIds)
     : { data: [] as EnrolledCourse[], error: null };
 
@@ -81,8 +83,17 @@ export default async function CuentaPage({
   );
   const visibleEnrollments = enrollments.flatMap((enrollment) => {
     const course = courseById.get(enrollment.course_id);
-    return course ? [{ ...enrollment, course }] : [];
+    return course && getLearnContentType(course) === "course"
+      ? [{ ...enrollment, course }]
+      : [];
   });
+  const resumeActions = await getResumeActions(
+    viewer.id,
+    visibleEnrollments.map(({ course }) => ({
+      id: course.id,
+      slug: course.slug,
+    }))
+  );
   const activeCourses = visibleEnrollments.filter(
     (item) => item.status === "active"
   );
@@ -173,14 +184,14 @@ export default async function CuentaPage({
                 <CourseGroup
                   title="Cursos activos"
                   courses={activeCourses}
-                  actionLabel="Continuar curso"
+                  resumeActions={resumeActions}
                 />
               )}
               {completedCourses.length > 0 && (
                 <CourseGroup
                   title="Cursos completados"
                   courses={completedCourses}
-                  actionLabel="Volver al curso"
+                  resumeActions={resumeActions}
                 />
               )}
             </div>
@@ -468,54 +479,67 @@ function PasswordInput({
 function CourseGroup({
   title,
   courses,
-  actionLabel,
+  resumeActions,
 }: {
   title: string;
   courses: CourseWithEnrollment[];
-  actionLabel: string;
+  resumeActions: Map<string, ResumeAction>;
 }) {
   return (
     <div>
       <h3 className="mb-5 text-sm font-medium text-white/50">{title}</h3>
       <div className="grid gap-5 lg:grid-cols-2">
-        {courses.map(({ id, course }) => (
-          <article
-            key={id}
-            className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025] sm:grid sm:grid-cols-[11rem_minmax(0,1fr)]"
-          >
-            <div className="aspect-video bg-white/[0.04] sm:aspect-auto">
-              {course.cover_image_url ? (
-                <img
-                  src={course.cover_image_url}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full min-h-36 items-center justify-center text-[10px] font-semibold tracking-[0.25em] text-white/15">
-                  FILMATTA
-                </div>
-              )}
-            </div>
-            <div className="flex min-h-56 flex-col p-6">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/30">
-                {[course.category, course.level].filter(Boolean).join(" · ") ||
-                  "FILMATTA Learn"}
-              </p>
-              <h4 className="mt-3 text-xl font-semibold">{course.title}</h4>
-              {course.short_description && (
-                <p className="mt-3 line-clamp-2 text-sm leading-6 text-white/40">
-                  {course.short_description}
+        {courses.map(({ id, course }) => {
+          const resumeAction = resumeActions.get(course.id) ?? {
+            kind: "fallback",
+            href: `/cursos/${course.slug}`,
+            label: "Ver curso",
+          } satisfies ResumeAction;
+
+          return (
+            <article
+              key={id}
+              className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025] sm:grid sm:grid-cols-[11rem_minmax(0,1fr)]"
+            >
+              <div className="aspect-video bg-white/[0.04] sm:aspect-auto">
+                {course.cover_image_url ? (
+                  <img
+                    src={course.cover_image_url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full min-h-36 items-center justify-center text-[10px] font-semibold tracking-[0.25em] text-white/15">
+                    FILMATTA
+                  </div>
+                )}
+              </div>
+              <div className="flex min-h-56 flex-col p-6">
+                <p className="text-xs uppercase tracking-[0.18em] text-white/30">
+                  {[course.category, course.level].filter(Boolean).join(" · ") ||
+                    "FILMATTA Learn"}
                 </p>
-              )}
-              <Link
-                href={`/cursos/${course.slug}#contenido`}
-                className="mt-auto pt-6 text-sm font-semibold text-white/70 transition hover:text-white"
-              >
-                {actionLabel} →
-              </Link>
-            </div>
-          </article>
-        ))}
+                <h4 className="mt-3 text-xl font-semibold">{course.title}</h4>
+                {course.short_description && (
+                  <p className="mt-3 line-clamp-2 text-sm leading-6 text-white/40">
+                    {course.short_description}
+                  </p>
+                )}
+                {resumeAction.kind === "plus" && (
+                  <p className="mt-4 text-sm leading-6 text-emerald-100/55">
+                    {`Ya terminaste las lecciones gratuitas. Accede a todos los cursos regulares desde $${FILMATTA_PLAN_PRICES.plus}/mes.`}
+                  </p>
+                )}
+                <Link
+                  href={resumeAction.href}
+                  className="mt-auto pt-6 text-sm font-semibold text-white/70 transition hover:text-white"
+                >
+                  {resumeAction.label} →
+                </Link>
+              </div>
+            </article>
+          );
+        })}
       </div>
     </div>
   );

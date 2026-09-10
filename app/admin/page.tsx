@@ -100,13 +100,13 @@ export default async function AdminPage() {
             <QuickLink
               href="/admin/cursos/nuevo"
               eyebrow="Contenido"
-              title="Crear curso"
+              title="Crear contenido"
               primary
             />
             <QuickLink
               href="/admin/cursos"
-              eyebrow="Catálogo"
-              title="Administrar cursos"
+              eyebrow="Aprender"
+              title="Administrar contenido"
             />
             <QuickLink href="/" eyebrow="FILMATTA" title="Ver sitio público" />
           </div>

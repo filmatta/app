@@ -7,9 +7,11 @@ import { deleteCourse } from "./actions";
 export default function DeleteCourseButton({
   id,
   title,
+  contentLabel = "curso",
 }: {
   id: string;
   title: string;
+  contentLabel?: "curso" | "guía rápida";
 }) {
   const [open, setOpen] = useState(false);
 
@@ -27,7 +29,7 @@ export default function DeleteCourseButton({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-6 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#111111] p-8 shadow-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-300/70">
-              Eliminar curso
+              Eliminar {contentLabel}
             </p>
 
             <h2 className="mt-5 text-3xl font-semibold tracking-tight">

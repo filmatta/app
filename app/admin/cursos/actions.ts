@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { isCourseCategory, isCourseLevel } from "@/lib/course-options";
+import {
+  getLearnContentType,
+  isLearnContentType,
+} from "@/lib/learn/content-type";
 import { slugify } from "@/lib/slugify";
+import { getContentTypeSupport } from "./content-type-support";
 
 function getText(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -98,6 +103,7 @@ export async function createCourse(formData: FormData) {
 
   const title = getText(formData, "title");
   let slug = getText(formData, "slug");
+  const requestedContentType = getText(formData, "content_type");
 
   if (!title) {
     redirect("/admin/cursos/nuevo?error=Falta el título");
@@ -107,10 +113,33 @@ export async function createCourse(formData: FormData) {
     slug = slugify(title);
   }
 
+  if (requestedContentType && !isLearnContentType(requestedContentType)) {
+    redirect(
+      `/admin/cursos/nuevo?error=${encodeURIComponent(
+        "Selecciona un tipo de contenido válido."
+      )}`
+    );
+  }
+
+  if (requestedContentType) {
+    const contentTypeSupport = await getContentTypeSupport(supabase);
+
+    if (contentTypeSupport !== "available") {
+      redirect(
+        `/admin/cursos/nuevo?error=${encodeURIComponent(
+          contentTypeSupport === "missing"
+            ? "Aplica la migración de content_type antes de crear guías rápidas."
+            : "No se pudo verificar el tipo de contenido. Inténtalo de nuevo."
+        )}`
+      );
+    }
+  }
+
   const durationValue = getText(
     formData,
     "duration_minutes"
   );
+  const courseStatus = getText(formData, "status") || "draft";
 
   const category = getText(formData, "category");
   const level = getText(formData, "level");
@@ -155,9 +184,7 @@ export async function createCourse(formData: FormData) {
     );
   }
 
-  const { error } = await supabase
-    .from("courses")
-    .insert({
+  const courseValues: Record<string, unknown> = {
       title,
       slug,
 
@@ -186,9 +213,7 @@ export async function createCourse(formData: FormData) {
         getText(formData, "instructor") ||
         null,
 
-      status:
-        getText(formData, "status") ||
-        "draft",
+      status: courseStatus,
 
       featured:
         formData.get("featured") === "on",
@@ -196,7 +221,17 @@ export async function createCourse(formData: FormData) {
       sort_order: sortValue
         ? Number(sortValue)
         : 0,
-    });
+    };
+
+  if (requestedContentType) {
+    courseValues.content_type = requestedContentType;
+  }
+
+  const { data: createdCourse, error } = await supabase
+    .from("courses")
+    .insert(courseValues)
+    .select("id")
+    .single();
 
   if (error) {
     // Si la imagen se subió pero falló la creación
@@ -212,6 +247,33 @@ export async function createCourse(formData: FormData) {
         error.message
       )}`
     );
+  }
+
+  if (requestedContentType === "quick_guide") {
+    // Las guías reutilizan course_lessons mediante un único módulo técnico.
+    // El editor oculta esta capa para mantener una experiencia simple.
+    const { error: moduleError } = await supabase.from("course_modules").insert({
+      course_id: createdCourse.id,
+      title: "Contenido de la guía",
+      description: null,
+      sort_order: 0,
+      status: courseStatus,
+    });
+
+    if (moduleError) {
+      console.error("Error preparando el contenido de la guía:", moduleError);
+      await supabase.from("courses").delete().eq("id", createdCourse.id);
+
+      if (cover?.path) {
+        await supabase.storage.from("course-covers").remove([cover.path]);
+      }
+
+      redirect(
+        `/admin/cursos/nuevo?error=${encodeURIComponent(
+          "No se pudo preparar el contenido de la guía. Inténtalo de nuevo."
+        )}`
+      );
+    }
   }
 
   revalidatePath("/cursos");
@@ -242,6 +304,7 @@ export async function updateCourse(
     formData,
     "duration_minutes"
   );
+  const courseStatus = getText(formData, "status") || "draft";
 
   const category = getText(formData, "category");
   const level = getText(formData, "level");
@@ -258,9 +321,7 @@ export async function updateCourse(
     error: existingCourseError,
   } = await supabase
     .from("courses")
-    .select(
-      "slug, category, level, cover_image_url, cover_image_path"
-    )
+    .select("*")
     .eq("id", courseId)
     .single();
 
@@ -355,9 +416,7 @@ export async function updateCourse(
         getText(formData, "instructor") ||
         null,
 
-      status:
-        getText(formData, "status") ||
-        "draft",
+      status: courseStatus,
 
       featured:
         formData.get("featured") === "on",
@@ -389,6 +448,27 @@ export async function updateCourse(
         "No se pudo guardar el curso. Inténtalo de nuevo."
       )
     );
+  }
+
+  if (getLearnContentType(existingCourse) === "quick_guide") {
+    const { error: moduleStatusError } = await supabase
+      .from("course_modules")
+      .update({ status: courseStatus })
+      .eq("course_id", courseId);
+
+    if (moduleStatusError) {
+      console.error(
+        "Error sincronizando el contenedor de la guía:",
+        moduleStatusError
+      );
+      redirect(
+        getCourseEditFeedbackUrl(
+          courseId,
+          "error",
+          "El contenido se guardó, pero no se pudo sincronizar la publicación de la guía."
+        )
+      );
+    }
   }
 
   // Si el UPDATE fue correcto y había una

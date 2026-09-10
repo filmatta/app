@@ -20,7 +20,7 @@ export default async function SiteHeader({
         {showPrimaryNavigation && (
           <nav className="hidden items-center gap-8 text-sm text-white/70 md:flex">
             <Link href="/cursos" className="transition hover:text-white">
-              Cursos
+              Aprender
             </Link>
             <Link href="/comunidad" className="transition hover:text-white">
               Comunidad

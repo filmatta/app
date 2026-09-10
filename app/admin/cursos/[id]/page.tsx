@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import AdminHeader from "@/app/admin/AdminHeader";
+import VisibilitySwitch from "@/components/admin/VisibilitySwitch";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import {
   COURSE_CATEGORIES,
@@ -7,12 +9,16 @@ import {
   isCourseCategory,
   isCourseLevel,
 } from "@/lib/course-options";
+import {
+  getLearnContentType,
+  getLearnContentTypeLabel,
+} from "@/lib/learn/content-type";
 import AdminToast from "../AdminToast";
 import CourseContent from "../CourseContent";
 import { updateCourse } from "../actions";
 
 const SUCCESS_MESSAGES: Record<string, string> = {
-  "course-saved": "Curso guardado.",
+  "course-saved": "Contenido guardado.",
   "module-created": "Módulo creado.",
   "module-updated": "Módulo actualizado.",
   "module-deleted": "Módulo eliminado.",
@@ -47,6 +53,9 @@ export default async function EditarCursoPage({
   if (error || !course) {
     notFound();
   }
+
+  const contentType = getLearnContentType(course);
+  const isQuickGuide = contentType === "quick_guide";
 
   const [modulesResult, lessonsResult] = await Promise.all([
     supabase
@@ -86,6 +95,7 @@ export default async function EditarCursoPage({
 
   return (
     <main className="min-h-screen bg-[#080808] text-white">
+      <AdminHeader />
       {errorMessage && (
         <AdminToast
           key={`error-${query.notice ?? errorMessage}`}
@@ -105,16 +115,26 @@ export default async function EditarCursoPage({
       <section className="mx-auto max-w-5xl px-6 py-20">
         <Link
           href="/admin/cursos"
-          className="text-sm text-white/40 transition hover:text-white"
+          className="inline-flex w-fit rounded-full border border-white/10 px-4 py-2 text-sm text-white/50 transition hover:border-white/20 hover:bg-white/[0.03] hover:text-white"
         >
-          ← Cursos
+          ← Contenido de Aprender
         </Link>
 
         <div className="mt-10 flex flex-col justify-between gap-7 sm:flex-row sm:items-end">
           <div>
             <p className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
-              Editar curso
+              Editar {isQuickGuide ? "guía rápida" : "curso"}
             </p>
+
+            <span
+              className={`mb-4 inline-flex rounded-full px-3 py-1.5 text-xs font-semibold ${
+                isQuickGuide
+                  ? "bg-blue-400/10 text-blue-200"
+                  : "bg-white/[0.07] text-white/50"
+              }`}
+            >
+              {getLearnContentTypeLabel(contentType)}
+            </span>
 
             <h1 className="text-5xl font-semibold tracking-[-0.04em]">
               {course.title}
@@ -135,6 +155,25 @@ export default async function EditarCursoPage({
           action={updateCourseWithId}
           className="mt-12 max-w-3xl space-y-7"
         >
+          <Field label="Tipo de contenido">
+            <select
+              value={contentType}
+              disabled
+              aria-describedby="content-type-note"
+              className={`${selectClass} cursor-not-allowed opacity-60`}
+            >
+              <option value="course">Curso</option>
+              <option value="quick_guide">Guía rápida</option>
+            </select>
+            <span
+              id="content-type-note"
+              className="mt-2 block text-xs leading-5 text-white/35"
+            >
+              El tipo queda bloqueado después de crear el contenido para evitar
+              inconsistencias en su estructura.
+            </span>
+          </Field>
+
           <Field label="Título">
             <input
               name="title"
@@ -239,7 +278,7 @@ export default async function EditarCursoPage({
             />
           </Field>
 
-          <Field label="Portada del curso">
+          <Field label="Portada">
   {course.cover_image_url && (
     <div className="mb-4 overflow-hidden rounded-2xl border border-white/10">
       <img
@@ -262,17 +301,11 @@ export default async function EditarCursoPage({
   </p>
 </Field>
 
-          <Field label="Estado">
-            <select
-              name="status"
-              defaultValue={course.status}
-              className={selectClass}
-            >
-              <option value="draft">Borrador</option>
-              <option value="published">Publicado</option>
-              <option value="archived">Archivado</option>
-            </select>
-          </Field>
+          <VisibilitySwitch
+            id="content-public"
+            defaultPublic={course.status === "published"}
+            archived={course.status === "archived"}
+          />
 
           <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-4 text-sm text-white/60">
             <input
@@ -281,7 +314,7 @@ export default async function EditarCursoPage({
               defaultChecked={course.featured}
               className="size-4 accent-white"
             />
-            Destacar este curso
+            Destacar este contenido
           </label>
 
           <div className="flex flex-col gap-4 border-t border-white/10 pt-8 sm:flex-row">
@@ -305,6 +338,7 @@ export default async function EditarCursoPage({
           courseId={id}
           modules={modulesResult.data ?? []}
           lessons={lessonsResult.data ?? []}
+          contentType={contentType}
         />
       </section>
     </main>

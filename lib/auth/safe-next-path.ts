@@ -21,9 +21,14 @@ export function getSafePostAuthPath(
   fallback = "/cuenta"
 ) {
   const path = getSafeNextPath(value, fallback);
-  const pathname = path.split(/[?#]/, 1)[0];
+  const rawPathname = path.split(/[?#]/, 1)[0];
+  const pathname = rawPathname.replace(/\/+$/, "") || "/";
 
-  if (pathname === "/login" || pathname === "/registro") {
+  if (
+    pathname === "/acceso" ||
+    pathname === "/login" ||
+    pathname === "/registro"
+  ) {
     return fallback;
   }
 
