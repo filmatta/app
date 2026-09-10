@@ -73,6 +73,13 @@ export default async function EditarCursoPage({
       .order("sort_order", { ascending: true })
       .order("id", { ascending: true }),
   ]);
+  const lessonIds = (lessonsResult.data ?? []).map((lesson) => lesson.id);
+  const videosResult = lessonIds.length
+    ? await supabase
+        .from("lesson_videos")
+        .select("lesson_id, status")
+        .in("lesson_id", lessonIds)
+    : { data: [], error: null };
 
   if (modulesResult.error) {
     console.error("Error cargando los módulos del curso:", modulesResult.error);
@@ -82,8 +89,12 @@ export default async function EditarCursoPage({
     console.error("Error cargando las lecciones del curso:", lessonsResult.error);
   }
 
+  if (videosResult.error) {
+    console.error("Error cargando los videos del curso:", videosResult.error);
+  }
+
   const contentLoadError =
-    modulesResult.error || lessonsResult.error
+    modulesResult.error || lessonsResult.error || videosResult.error
       ? "No se pudo cargar todo el contenido del curso. Inténtalo de nuevo."
       : undefined;
   const errorMessage = contentLoadError ?? query.content_error ?? query.error;
@@ -338,6 +349,7 @@ export default async function EditarCursoPage({
           courseId={id}
           modules={modulesResult.data ?? []}
           lessons={lessonsResult.data ?? []}
+          videos={videosResult.data ?? []}
           contentType={contentType}
         />
       </section>

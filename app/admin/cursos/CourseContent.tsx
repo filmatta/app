@@ -10,6 +10,7 @@ import {
 import type { LearnContentType } from "@/lib/learn/content-type";
 import AdminToast from "./AdminToast";
 import DeleteContentButton from "./DeleteContentButton";
+import LessonVideoUploader from "./LessonVideoUploader";
 import {
   createCourseLesson,
   createCourseModule,
@@ -36,10 +37,16 @@ type CourseLesson = {
   status: string;
 };
 
+type LessonVideo = {
+  lesson_id: string;
+  status: "preparing" | "ready" | "errored";
+};
+
 type CourseContentProps = {
   courseId: string;
   modules: CourseModule[];
   lessons: CourseLesson[];
+  videos: LessonVideo[];
   contentType: LearnContentType;
 };
 
@@ -53,6 +60,7 @@ export default function CourseContent({
   courseId,
   modules,
   lessons,
+  videos,
   contentType,
 }: CourseContentProps) {
   const contentRef = useRef<HTMLElement>(null);
@@ -64,6 +72,9 @@ export default function CourseContent({
   } | null>(null);
   const [pending, startTransition] = useTransition();
   const lessonsByModule = new Map<string, CourseLesson[]>();
+  const videoByLesson = new Map(
+    videos.map((video) => [video.lesson_id, video.status])
+  );
 
   for (const lesson of lessons) {
     const moduleLessons = lessonsByModule.get(lesson.module_id) ?? [];
@@ -375,6 +386,7 @@ export default function CourseContent({
                       actionsDisabled={actionsDisabled}
                       onSubmit={handleExistingRecordSubmit}
                       quickGuide={isQuickGuide}
+                      videoStatus={videoByLesson.get(lesson.id) ?? null}
                     />
                   ))}
 
@@ -454,6 +466,7 @@ function LessonEditor({
   actionsDisabled,
   onSubmit,
   quickGuide,
+  videoStatus,
 }: {
   courseId: string;
   moduleId: string;
@@ -462,6 +475,7 @@ function LessonEditor({
   actionsDisabled: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   quickGuide: boolean;
+  videoStatus: "preparing" | "ready" | "errored" | null;
 }) {
   return (
     <details className="group py-5">
@@ -503,6 +517,12 @@ function LessonEditor({
           recordId={lesson.id}
           onSubmit={onSubmit}
           quickGuide={quickGuide}
+        />
+        <LessonVideoUploader
+          lessonId={lesson.id}
+          initialStatus={videoStatus}
+          quickGuide={quickGuide}
+          disabled={actionsDisabled}
         />
       </div>
     </details>
