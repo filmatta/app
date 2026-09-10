@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import {
   logout,
   requestEmailChange,
+  updateAccountPassword,
   updatePersonalProfile,
 } from "@/app/cuenta/actions";
 import SiteHeader from "@/components/SiteHeader";
@@ -36,6 +37,7 @@ type AccountSearchParams = {
   email?: string;
   email_error?: string;
   password?: string;
+  password_error?: string;
   session_error?: string;
 };
 
@@ -291,7 +293,7 @@ export default async function CuentaPage({
                 Seguridad de cuenta
               </h2>
               <p className="mt-4 max-w-md leading-7 text-white/40">
-                Administra el correo de acceso, recupera tu contraseña o cierra
+                Administra el correo de acceso, actualiza tu contraseña o cierra
                 la sesión actual.
               </p>
             </div>
@@ -337,25 +339,41 @@ export default async function CuentaPage({
                 )}
               </form>
 
-              <div className="flex flex-col justify-between gap-4 py-7 sm:flex-row sm:items-center">
+              <form action={updateAccountPassword} className="py-7">
                 <div>
                   <h3 className="font-medium">Contraseña</h3>
                   <p className="mt-2 text-sm text-white/35">
-                    Recibe un enlace seguro para establecer una nueva.
+                    Actualiza la contraseña de esta cuenta. No enviaremos ningún
+                    correo.
                   </p>
-                  {feedback.password === "updated" && (
-                    <Feedback variant="success">
-                      Contraseña actualizada.
-                    </Feedback>
-                  )}
                 </div>
-                <Link
-                  href={`/recuperar-contrasena?next=${encodeURIComponent("/cuenta")}`}
-                  className="w-fit rounded-full border border-white/15 px-5 py-3 text-sm font-medium transition hover:bg-white/[0.06]"
-                >
-                  Cambiar contraseña
-                </Link>
-              </div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <PasswordInput
+                    id="account_password"
+                    name="password"
+                    label="Nueva contraseña"
+                  />
+                  <PasswordInput
+                    id="account_password_confirmation"
+                    name="password_confirmation"
+                    label="Confirmar contraseña"
+                  />
+                </div>
+                {feedback.password === "updated" && (
+                  <Feedback variant="success">Contraseña actualizada.</Feedback>
+                )}
+                {feedback.password_error && (
+                  <Feedback variant="error">{feedback.password_error}.</Feedback>
+                )}
+                <div className="mt-5 flex justify-end">
+                  <button
+                    type="submit"
+                    className="rounded-full border border-white/15 px-5 py-3 text-sm font-medium transition hover:bg-white/[0.06]"
+                  >
+                    Guardar contraseña
+                  </button>
+                </div>
+              </form>
 
               <div className="flex flex-col justify-between gap-4 py-7 sm:flex-row sm:items-center">
                 <div>
@@ -417,6 +435,33 @@ function Feedback({
     >
       {children}
     </p>
+  );
+}
+
+function PasswordInput({
+  id,
+  name,
+  label,
+}: {
+  id: string;
+  name: string;
+  label: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="mb-2 block text-sm text-white/60">
+        {label}
+      </label>
+      <input
+        id={id}
+        name={name}
+        type="password"
+        minLength={8}
+        required
+        autoComplete="new-password"
+        className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none transition focus:border-white/30"
+      />
+    </div>
   );
 }
 

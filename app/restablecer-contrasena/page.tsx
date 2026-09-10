@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { updatePassword } from "@/app/cuenta/actions";
+import { updateRecoveredPassword } from "@/app/cuenta/actions";
 import { getSafeNextPath } from "@/lib/auth/safe-next-path";
 import { createClient } from "@/lib/supabase/server";
 
@@ -40,7 +40,7 @@ export default async function ResetPasswordPage({
             <p className="mt-4 leading-7 text-white/45">
               Elige una contraseña nueva de al menos 8 caracteres.
             </p>
-            <form action={updatePassword} className="mt-9 space-y-5">
+            <form action={updateRecoveredPassword} className="mt-9 space-y-5">
               <input type="hidden" name="next" value={nextPath} />
               <PasswordField
                 id="password"

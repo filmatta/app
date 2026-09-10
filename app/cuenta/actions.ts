@@ -107,19 +107,44 @@ export async function requestPasswordReset(formData: FormData) {
   redirect(`/recuperar-contrasena?${searchParams.toString()}`);
 }
 
-export async function updatePassword(formData: FormData) {
+export async function updateAccountPassword(formData: FormData) {
+  const supabase = await createClient();
+  await requireUser(supabase);
+  const password = String(formData.get("password") ?? "");
+  const confirmation = String(formData.get("password_confirmation") ?? "");
+  const validationError = validateNewPassword(password, confirmation);
+
+  if (validationError) {
+    redirect(accountFeedback("password_error", validationError, "seguridad"));
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+
+  if (error) {
+    console.error("Error actualizando la contraseña de la cuenta:", error);
+    redirect(
+      accountFeedback(
+        "password_error",
+        "No pudimos actualizar la contraseña",
+        "seguridad"
+      )
+    );
+  }
+
+  revalidatePath("/", "layout");
+  redirect(accountFeedback("password", "updated", "seguridad"));
+}
+
+export async function updateRecoveredPassword(formData: FormData) {
   const supabase = await createClient();
   await requireUser(supabase, "/restablecer-contrasena");
   const password = String(formData.get("password") ?? "");
   const confirmation = String(formData.get("password_confirmation") ?? "");
   const nextPath = getSafeNextPath(formData.get("next"), "/cuenta");
+  const validationError = validateNewPassword(password, confirmation);
 
-  if (password.length < 8) {
-    redirect(passwordFeedback(nextPath, "Usa al menos 8 caracteres"));
-  }
-
-  if (password !== confirmation) {
-    redirect(passwordFeedback(nextPath, "Las contraseñas no coinciden"));
+  if (validationError) {
+    redirect(passwordFeedback(nextPath, validationError));
   }
 
   const { error } = await supabase.auth.updateUser({ password });
@@ -153,6 +178,18 @@ async function requireUser(
 
 function isValidEmail(value: string) {
   return value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function validateNewPassword(password: string, confirmation: string) {
+  if (password.length < 8) {
+    return "Usa al menos 8 caracteres";
+  }
+
+  if (password !== confirmation) {
+    return "Las contraseñas no coinciden";
+  }
+
+  return null;
 }
 
 function accountFeedback(key: string, value: string, anchor: string) {
