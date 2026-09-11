@@ -23,7 +23,7 @@ export async function syncMuxUpload(
   const attemptId = getVideoAttemptId(passthrough);
   const externalId = upload.new_asset_settings?.meta?.external_id;
 
-  if (!lessonId || !attemptId || (externalId && externalId !== lessonId)) {
+  if (!lessonId || !attemptId || externalId !== lessonId) {
     console.info("Mux upload skipped", {
       uploadId: upload.id,
       assetId: upload.asset_id,
@@ -92,7 +92,8 @@ export async function syncMuxUpload(
   if (
     asset.id !== upload.asset_id ||
     (asset.upload_id && asset.upload_id !== upload.id) ||
-    asset.passthrough !== passthrough
+    asset.passthrough !== passthrough ||
+    asset.meta?.external_id !== lessonId
   ) {
     console.info("Mux upload skipped", {
       uploadId: upload.id,
@@ -122,7 +123,11 @@ export async function syncMuxUpload(
 export async function syncMuxAsset(supabase: SupabaseClient, asset: Asset) {
   const lessonId = getLessonIdFromPassthrough(asset.passthrough);
   const attemptId = getVideoAttemptId(asset.passthrough);
-  if (!lessonId || (asset.meta?.external_id && asset.meta.external_id !== lessonId)) {
+  if (
+    !lessonId ||
+    (attemptId && asset.meta?.external_id !== lessonId) ||
+    (!attemptId && asset.meta?.external_id && asset.meta.external_id !== lessonId)
+  ) {
     console.info("Mux asset skipped", { reason: "invalid-association" });
     return { outcome: "skipped" as const, reason: "invalid-association" };
   }
@@ -150,6 +155,18 @@ export async function syncMuxAsset(supabase: SupabaseClient, asset: Asset) {
     console.info("Mux asset skipped", { lessonId, reason: "unidentified-replacement" });
     return { outcome: "skipped" as const, reason: "unidentified-replacement" };
   }
+  if (replacingAsset && !asset.upload_id) {
+    console.info("Mux asset skipped", {
+      assetId: asset.id,
+      lessonId,
+      attemptId,
+      reason: "replacement-missing-upload-association",
+    });
+    return {
+      outcome: "skipped" as const,
+      reason: "replacement-missing-upload-association",
+    };
+  }
   if (!attemptId && !video.mux_asset_id &&
       (video.status !== "preparing" || Number(asset.created_at) < Math.floor(Date.parse(video.created_at) / 1000))) {
     console.info("Mux asset skipped", { lessonId, reason: "stale-legacy-upload" });
@@ -170,6 +187,15 @@ export async function syncMuxAsset(supabase: SupabaseClient, asset: Asset) {
     return { outcome: "skipped" as const, reason: "replacement-errored" };
   }
   const previousAssetId = replacingAsset ? video.mux_asset_id : null;
+
+  if (status === "ready" && Number.isFinite(asset.duration) && asset.duration! > 0) {
+    // Persist duration before promotion. If this write fails, the previous
+    // asset remains authoritative and a later webhook/poll can retry safely.
+    const { error: durationError } = await supabase.from("course_lessons")
+      .update({ duration_minutes: Math.ceil(asset.duration! / 60) }).eq("id", lessonId);
+    if (durationError) throw durationError;
+  }
+
   let alreadySynchronized = false;
   const { data: updated, error: updateError } = await supabase.from("lesson_videos")
     .update({ mux_asset_id: asset.id, mux_playback_id: playback?.id ?? null, status })
@@ -202,11 +228,6 @@ export async function syncMuxAsset(supabase: SupabaseClient, asset: Asset) {
     } else {
       throw new Error("Mux sync conflict; retry event.");
     }
-  }
-  if (asset.status === "ready" && Number.isFinite(asset.duration) && asset.duration! > 0) {
-    const { error: durationError } = await supabase.from("course_lessons")
-      .update({ duration_minutes: Math.ceil(asset.duration! / 60) }).eq("id", lessonId);
-    if (durationError) throw durationError;
   }
   console.info("Mux lesson_videos updated", {
     assetId: asset.id,

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { signUp } from "@/app/auth/actions";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getSafePostAuthPath } from "@/lib/auth/safe-next-path";
+import LoadingButton from "@/components/ui/LoadingButton";
 
 export default async function RegistroPage({
   searchParams,
@@ -91,12 +92,13 @@ export default async function RegistroPage({
 
           {params.error && <p className="text-sm text-red-400">{params.error}</p>}
 
-          <button
+          <LoadingButton
             type="submit"
+            loadingText="Creando cuenta…"
             className="w-full rounded-full bg-white px-6 py-4 font-semibold text-black transition hover:bg-white/85"
           >
             Crear cuenta
-          </button>
+          </LoadingButton>
         </form>
 
         <p className="mt-8 text-center text-sm text-white/40">

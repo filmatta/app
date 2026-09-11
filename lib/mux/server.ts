@@ -20,6 +20,23 @@ export function createMuxClient() {
   });
 }
 
+export function getMuxErrorStatus(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof error.status === "number"
+  ) {
+    return error.status;
+  }
+
+  return null;
+}
+
+export function isMuxNotFoundError(error: unknown) {
+  return getMuxErrorStatus(error) === 404;
+}
+
 export function getLessonVideoPassthrough(lessonId: string, videoId?: string) {
   if (!UUID_PATTERN.test(lessonId) || (videoId && !UUID_PATTERN.test(videoId))) {
     throw new Error("Identificador de lección inválido.");

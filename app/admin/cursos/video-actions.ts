@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
+import type { Asset } from "@mux/mux-node/resources/video/assets";
 import type { Upload } from "@mux/mux-node/resources/video/uploads";
 import { syncMuxAsset, syncMuxUpload } from "@/lib/mux/sync-asset";
 import { presentVideo } from "@/lib/mux/playback";
@@ -11,39 +12,101 @@ import {
   createMuxClient,
   getLessonIdFromPassthrough,
   getLessonVideoPassthrough,
+  getMuxErrorStatus,
   getVideoAttemptId,
+  isMuxNotFoundError,
 } from "@/lib/mux/server";
 
 type AdminSupabaseClient = Awaited<ReturnType<typeof requireAdmin>>["supabase"];
 const FAILED_UPLOAD_GRACE_MS = 5 * 60 * 1000;
 
 function readMuxErrorStatus(error: unknown) {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "status" in error &&
-    typeof error.status === "number"
-  ) {
-    return error.status;
-  }
-
-  return null;
+  return getMuxErrorStatus(error);
 }
 
-function muxUploadCreationMessage(status: number | null) {
-  if (status === 401) {
+type MuxErrorDetails = {
+  status: number | null;
+  type: string | null;
+  messages: string[];
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function sanitizeMuxMessage(value: unknown) {
+  if (typeof value !== "string") return null;
+
+  const message = value
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/https?:\/\/\S+/gi, "[URL]")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return message ? message.slice(0, 500) : null;
+}
+
+function readMuxErrorDetails(error: unknown): MuxErrorDetails {
+  const status = readMuxErrorStatus(error);
+  if (!isRecord(error) || !isRecord(error.error)) {
+    return { status, type: null, messages: [] };
+  }
+
+  const payload = isRecord(error.error.error)
+    ? error.error.error
+    : error.error;
+  const type = typeof payload.type === "string" ? payload.type : null;
+  const rawMessages = Array.isArray(payload.messages)
+    ? payload.messages
+    : [payload.message];
+  const messages = rawMessages
+    .map(sanitizeMuxMessage)
+    .filter((message): message is string => Boolean(message));
+
+  return { status, type, messages };
+}
+
+function muxUploadCreationMessage(details: MuxErrorDetails) {
+  if (details.status === 401) {
     return "Mux rechazó las credenciales configuradas para crear la subida.";
   }
 
-  if (status === 403) {
+  if (details.status === 403) {
     return "Mux no permitió crear la subida. Revisa el permiso Video Write del entorno.";
   }
 
-  if (status) {
-    return `Mux rechazó la creación de la subida (HTTP ${status}).`;
+  const assetLimit = details.messages
+    .map((message) => message.match(/free plan is limited to (\d+) assets/i))
+    .find((match) => match !== null)?.[1];
+  if (details.status === 400 && assetLimit) {
+    return `Mux alcanzó el límite de ${assetLimit} assets del plan Free. Libera espacio en ese environment o amplía el plan antes de volver a subir.`;
+  }
+
+  if (details.status === 400 && details.messages[0]) {
+    return `Mux rechazó la configuración de la subida: ${details.messages[0]}`;
+  }
+
+  if (details.status) {
+    return `Mux rechazó la creación de la subida (HTTP ${details.status}).`;
   }
 
   return "No se pudo conectar con Mux para crear la subida.";
+}
+
+function muxAssetVerificationMessage(status: number | null) {
+  if (status === 401) {
+    return "No se pudo validar el video: las credenciales del servicio no son válidas.";
+  }
+  if (status === 403) {
+    return "No se pudo validar el video: faltan permisos en el servicio.";
+  }
+  if (status === 429) {
+    return "El servicio está recibiendo demasiadas solicitudes. Inténtalo de nuevo en unos minutos.";
+  }
+  if (status && status >= 500) {
+    return "El servicio de video no está disponible temporalmente. Inténtalo de nuevo más tarde.";
+  }
+  return "No se pudo validar el video actual. Conservamos su referencia para evitar pérdida de datos.";
 }
 
 function getSecureDirectUploadUrl(upload: Upload) {
@@ -83,6 +146,80 @@ type RestorableLessonVideo = {
   mux_playback_id: string | null;
   playback_policy: string;
 };
+
+type StoredLessonVideo = RestorableLessonVideo & {
+  lesson_id: string;
+  updated_at: string;
+  created_at: string;
+};
+
+async function repairOrphanedVideoReference(
+  supabase: AdminSupabaseClient,
+  video: StoredLessonVideo,
+) {
+  if (
+    video.status !== "ready" ||
+    !video.mux_asset_id ||
+    !video.mux_playback_id
+  ) {
+    return { repaired: false as const, video };
+  }
+
+  console.warn("Orphaned lesson video reference detected", {
+    lessonId: video.lesson_id,
+    attemptId: video.id,
+    assetId: video.mux_asset_id,
+  });
+
+  const repaired = await supabase
+    .from("lesson_videos")
+    .update({
+      mux_asset_id: null,
+      mux_playback_id: null,
+      status: "errored",
+    })
+    .eq("id", video.id)
+    .eq("lesson_id", video.lesson_id)
+    .eq("mux_asset_id", video.mux_asset_id)
+    .eq("mux_playback_id", video.mux_playback_id)
+    .eq("status", "ready")
+    .eq("updated_at", video.updated_at)
+    .select(
+      "id, lesson_id, status, mux_asset_id, mux_playback_id, playback_policy, updated_at, created_at",
+    )
+    .maybeSingle();
+
+  if (repaired.error) throw repaired.error;
+  if (!repaired.data) return { repaired: false as const, video };
+
+  const { data: current, error: currentError } = await supabase
+    .from("lesson_videos")
+    .select(
+      "id, lesson_id, status, mux_asset_id, mux_playback_id, playback_policy, updated_at, created_at",
+    )
+    .eq("id", repaired.data.id)
+    .eq("lesson_id", video.lesson_id)
+    .maybeSingle();
+
+  if (currentError) throw currentError;
+  if (
+    !current ||
+    current.status !== "errored" ||
+    current.mux_asset_id !== null ||
+    current.mux_playback_id !== null
+  ) {
+    return { repaired: false as const, video: current ?? video };
+  }
+
+  console.warn("Orphaned lesson video reference repaired", {
+    lessonId: video.lesson_id,
+    attemptId: video.id,
+    assetId: video.mux_asset_id,
+  });
+  revalidatePath("/admin/cursos/[id]", "page");
+  revalidatePath("/cursos/[slug]/lecciones/[lessonSlug]", "page");
+  return { repaired: true as const, video: current };
+}
 
 async function restoreActiveVideoAttempt(
   supabase: AdminSupabaseClient,
@@ -290,15 +427,13 @@ async function readLessonVideoPresentation(
 ) {
   const { data, error } = await supabase
     .from("lesson_videos")
-    .select("id, status, playback_policy, mux_playback_id, mux_asset_id, created_at")
+    .select("id, lesson_id, status, playback_policy, mux_playback_id, mux_asset_id, created_at, updated_at")
     .eq("lesson_id", lessonId)
     .maybeSingle();
 
   if (error) {
     throw new Error("No se pudo consultar el estado del video.");
   }
-
-  const presentation = await presentVideo(data);
 
   if (data?.status === "ready" && data.mux_asset_id) {
     try {
@@ -316,23 +451,46 @@ async function readLessonVideoPresentation(
       );
       if (replacementPending) {
         return {
-          ...presentation,
+          ...(await presentVideo(data)),
           replacementPending: true,
           policyCoherent,
         };
       }
       return {
-        ...presentation,
+        ...(await presentVideo(data)),
         replacementPending: false,
         policyCoherent,
       };
-    } catch {
-      // The current video presentation remains valid even if this optional
-      // replacement check cannot reach Mux.
+    } catch (error) {
+      if (isMuxNotFoundError(error)) {
+        const repaired = await repairOrphanedVideoReference(supabase, data);
+        if (repaired.repaired) {
+          return {
+            status: "none" as const,
+            orphanRepaired: true,
+          };
+        }
+
+        return {
+          status: "unavailable" as const,
+          message: "El estado del video cambió. Vuelve a comprobarlo.",
+        };
+      }
+
+      console.warn("Lesson video verification deferred", {
+        lessonId,
+        assetId: data.mux_asset_id,
+        status: readMuxErrorStatus(error),
+        type: error instanceof Error ? error.name : "unknown",
+      });
+      return {
+        ...(await presentVideo(data)),
+        verificationDeferred: true,
+      };
     }
   }
 
-  return presentation;
+  return presentVideo(data);
 }
 
 async function finishReconciliation(
@@ -388,15 +546,96 @@ export async function createLessonVideoUpload(
   }
   const isQuickGuide = getLearnContentType(course) === "quick_guide";
 
-  const { data: currentVideo, error: videoError } = await supabase
+  const { data: loadedVideo, error: videoError } = await supabase
     .from("lesson_videos")
-    .select("id, status, mux_asset_id, mux_playback_id, playback_policy, updated_at, created_at")
+    .select("id, lesson_id, status, mux_asset_id, mux_playback_id, playback_policy, updated_at, created_at")
     .eq("lesson_id", lesson.id)
     .maybeSingle();
 
   if (videoError) {
     console.error("Error cargando el video de la lección:", videoError);
     return { ok: false as const, message: "No pudimos preparar la subida." };
+  }
+
+  let currentVideo = loadedVideo;
+  let effectiveReplacement = replaceExisting;
+  let orphanRepaired = false;
+  let currentAsset: Asset | null = null;
+
+  let mux: ReturnType<typeof createMuxClient>;
+  let origin: string;
+  try {
+    origin = await getTrustedOrigin();
+    mux = createMuxClient();
+  } catch {
+    return { ok: false as const, message: "Revisa la configuración del servicio de video y el origen de la aplicación antes de subir." };
+  }
+
+  if (
+    currentVideo?.status === "ready" &&
+    currentVideo.mux_asset_id &&
+    currentVideo.mux_playback_id
+  ) {
+    try {
+      currentAsset = await mux.video.assets.retrieve(currentVideo.mux_asset_id);
+      const currentPlaybackMatches = currentAsset.playback_ids?.some(
+        (playback) =>
+          playback.id === currentVideo?.mux_playback_id &&
+          playback.policy === currentVideo?.playback_policy,
+      );
+      if (
+        getLessonIdFromPassthrough(currentAsset.passthrough) !== lessonId ||
+        (currentAsset.meta?.external_id &&
+          currentAsset.meta.external_id !== lessonId) ||
+        !currentPlaybackMatches
+      ) {
+        return {
+          ok: false as const,
+          message: "La referencia del video actual no coincide con esta lección. Comprueba su estado antes de reemplazarlo.",
+        };
+      }
+    } catch (error) {
+      if (!isMuxNotFoundError(error)) {
+        return {
+          ok: false as const,
+          message: muxAssetVerificationMessage(readMuxErrorStatus(error)),
+        };
+      }
+
+      const pendingUpload = await findExactMuxUpload(
+        mux,
+        getLessonVideoPassthrough(lessonId, currentVideo.id),
+      );
+      const pendingDifferentAsset = Boolean(
+        pendingUpload &&
+        !["errored", "timed_out", "cancelled"].includes(pendingUpload.status) &&
+        (!pendingUpload.asset_id ||
+          pendingUpload.asset_id !== currentVideo.mux_asset_id),
+      );
+      if (pendingUpload && pendingDifferentAsset) {
+        if (pendingUpload.asset_id) {
+          await syncMuxUpload(supabase, mux, pendingUpload);
+        }
+        return {
+          ok: false as const,
+          message: "Ya existe una subida activa para esta lección. Espera a que termine de procesarse.",
+        };
+      }
+
+      const repaired = await repairOrphanedVideoReference(
+        supabase,
+        currentVideo,
+      );
+      if (!repaired.repaired) {
+        return {
+          ok: false as const,
+          message: "El estado del video cambió mientras se reparaba. Vuelve a intentarlo.",
+        };
+      }
+      currentVideo = repaired.video;
+      effectiveReplacement = false;
+      orphanRepaired = true;
+    }
   }
 
   if (isQuickGuide && currentVideo?.playback_policy !== undefined && currentVideo.playback_policy !== "signed") {
@@ -406,7 +645,7 @@ export async function createLessonVideoUpload(
     };
   }
 
-  if (currentVideo?.status === "ready" && !replaceExisting) {
+  if (currentVideo?.status === "ready" && !effectiveReplacement) {
     return {
       ok: false as const,
       message: "Esta lección ya tiene un video listo.",
@@ -420,7 +659,7 @@ export async function createLessonVideoUpload(
     };
   }
 
-  if (replaceExisting && currentVideo?.status !== "ready") {
+  if (effectiveReplacement && currentVideo?.status !== "ready") {
     return {
       ok: false as const,
       message: "Sólo puedes reemplazar un video que ya está listo.",
@@ -434,46 +673,30 @@ export async function createLessonVideoUpload(
       : lesson.is_preview
         ? "public"
         : "signed");
-  let mux: ReturnType<typeof createMuxClient>;
-  let origin: string;
-  try {
-    origin = await getTrustedOrigin();
-    mux = createMuxClient();
-  } catch {
-    return { ok: false as const, message: "Revisa la configuración del servicio de video y el origen de la aplicación antes de subir." };
-  }
-
   if (
-    replaceExisting &&
+    effectiveReplacement &&
+    currentAsset &&
     currentVideo?.mux_asset_id &&
     currentVideo.mux_playback_id
   ) {
-    try {
-      const currentAsset = await mux.video.assets.retrieve(currentVideo.mux_asset_id);
-      if (getVideoAttemptId(currentAsset.passthrough) !== currentVideo.id) {
-        const pendingUpload = await findExactMuxUpload(
-          mux,
-          getLessonVideoPassthrough(lessonId, currentVideo.id),
-        );
-        const terminalFailure = pendingUpload &&
-          ["errored", "timed_out", "cancelled"].includes(pendingUpload.status);
-        const missingAndExpired =
-          !pendingUpload &&
-          Date.now() - Date.parse(currentVideo.created_at) > 60 * 60 * 1000;
+    if (getVideoAttemptId(currentAsset.passthrough) !== currentVideo.id) {
+      const pendingUpload = await findExactMuxUpload(
+        mux,
+        getLessonVideoPassthrough(lessonId, currentVideo.id),
+      );
+      const terminalFailure = pendingUpload &&
+        ["errored", "timed_out", "cancelled"].includes(pendingUpload.status);
+      const missingAndExpired =
+        !pendingUpload &&
+        Date.now() - Date.parse(currentVideo.created_at) > 60 * 60 * 1000;
 
-        if (!terminalFailure && !missingAndExpired) {
-          return {
-            ok: false as const,
-            message:
-              "Ya existe un reemplazo pendiente. Comprueba su estado antes de iniciar otro.",
-          };
-        }
+      if (!terminalFailure && !missingAndExpired) {
+        return {
+          ok: false as const,
+          message:
+            "Ya existe un reemplazo pendiente. Comprueba su estado antes de iniciar otro.",
+        };
       }
-    } catch {
-      return {
-        ok: false as const,
-        message: "No se pudo validar el video actual antes de reemplazarlo.",
-      };
     }
   }
 
@@ -499,20 +722,28 @@ export async function createLessonVideoUpload(
       return {
         ok: false as const,
         message: "Mux creó una sesión de subida incompleta o no segura.",
+        orphanRepaired,
       };
     }
     uploadUrl = secureUploadUrl;
   } catch (error) {
-    const status = readMuxErrorStatus(error);
+    const details = readMuxErrorDetails(error);
     console.error("Error creando el Direct Upload de Mux", {
       lessonId,
       type: error instanceof Error ? error.name : "unknown",
-      status,
+      status: details.status,
+      muxErrorType: details.type,
+      muxMessages: details.messages,
+      corsOrigin: origin,
+      playbackPolicies: [playbackPolicy],
+      passthroughLength: passthrough.length,
+      hasExternalId: true,
     });
 
     return {
       ok: false as const,
-      message: muxUploadCreationMessage(status),
+      message: muxUploadCreationMessage(details),
+      orphanRepaired,
     };
   }
 
@@ -563,6 +794,7 @@ export async function createLessonVideoUpload(
     return {
       ok: false as const,
       message: "Ya existe otra subida activa para esta lección.",
+      orphanRepaired,
     };
   }
 
@@ -571,6 +803,8 @@ export async function createLessonVideoUpload(
     uploadUrl,
     uploadId: upload.id,
     attemptId,
+    replacement: effectiveReplacement,
+    previousAssetAvailable: effectiveReplacement && Boolean(currentAsset),
   };
 }
 
@@ -656,7 +890,8 @@ export async function getLessonVideoState(
   let trackedAttemptId = attemptId;
   let trackedUploadStatus: Upload["status"] | null = null;
   let replacementFailed = false;
-  let replacementResolved = false;
+  let initialUploadFailed = false;
+  let trackedUploadResolved = false;
 
   try {
     const shouldInspectMux = Boolean(trackedUploadId || discoverReplacement);
@@ -707,9 +942,55 @@ export async function getLessonVideoState(
         throw new Error("Mux upload association mismatch.");
       }
       trackedAttemptId = uploadAttemptId;
+      const { data: attemptVideo, error: attemptError } = await supabase
+        .from("lesson_videos")
+        .select("id, status, mux_asset_id, mux_playback_id, playback_policy")
+        .eq("lesson_id", lessonId)
+        .maybeSingle();
+      if (attemptError) throw attemptError;
+      const wasReplacement = Boolean(
+        attemptVideo?.id === uploadAttemptId &&
+        attemptVideo.status === "ready" &&
+        attemptVideo.mux_asset_id &&
+        attemptVideo.mux_playback_id,
+      );
       const result = await syncMuxUpload(supabase, mux, upload);
-      replacementFailed = result.outcome === "failed";
-      replacementResolved =
+      const terminalUploadFailure = result.outcome === "failed";
+      const replacementAssetFailure =
+        result.outcome === "skipped" &&
+        result.reason === "replacement-errored";
+
+      if (terminalUploadFailure) {
+        const closed = await closeFailedUploadAttempt(
+          supabase,
+          mux,
+          lessonId,
+          upload,
+        );
+        if (!closed.ok) throw new Error(closed.message);
+      } else if (
+        replacementAssetFailure &&
+        wasReplacement &&
+        attemptVideo &&
+        trackedAttemptId
+      ) {
+        const restored = await restoreActiveVideoAttempt(
+          supabase,
+          mux,
+          lessonId,
+          trackedAttemptId,
+          attemptVideo,
+        );
+        if (!restored.ok) throw new Error(restored.message);
+      }
+
+      replacementFailed =
+        wasReplacement && (terminalUploadFailure || replacementAssetFailure);
+      initialUploadFailed =
+        !wasReplacement &&
+        (terminalUploadFailure ||
+          ("status" in result && result.status === "errored"));
+      trackedUploadResolved =
         (result.outcome === "updated" || result.outcome === "unchanged") &&
         result.status === "ready";
     }
@@ -732,10 +1013,11 @@ export async function getLessonVideoState(
       ? false
       : presentation.replacementPending,
     replacementFailed,
+    initialUploadFailed,
     trackedUploadId,
     trackedAttemptId,
     trackedUploadStatus,
-    replacementResolved,
+    trackedUploadResolved,
   };
 }
 
@@ -743,17 +1025,58 @@ export async function reconcileLessonVideo(lessonId: string) {
   const { supabase } = await requireAdmin();
   getLessonVideoPassthrough(lessonId);
   const { data: video, error } = await supabase.from("lesson_videos")
-    .select("id, mux_asset_id, mux_playback_id, playback_policy, status, updated_at, created_at").eq("lesson_id", lessonId).maybeSingle();
+    .select("id, lesson_id, mux_asset_id, mux_playback_id, playback_policy, status, updated_at, created_at").eq("lesson_id", lessonId).maybeSingle();
   if (error || !video) return { ok: false as const, message: "No se pudo consultar el registro de video." };
   try {
     const mux = createMuxClient();
     let needsUploadLookup = !video.mux_asset_id;
     if (video.mux_asset_id) {
-      const currentAsset = await mux.video.assets.retrieve(video.mux_asset_id);
-      if (getVideoAttemptId(currentAsset.passthrough) === video.id) {
-        await syncMuxAsset(supabase, currentAsset);
-      } else {
-        needsUploadLookup = true;
+      try {
+        const currentAsset = await mux.video.assets.retrieve(video.mux_asset_id);
+        if (getVideoAttemptId(currentAsset.passthrough) === video.id) {
+          await syncMuxAsset(supabase, currentAsset);
+        } else {
+          needsUploadLookup = true;
+        }
+      } catch (assetError) {
+        if (!isMuxNotFoundError(assetError)) throw assetError;
+
+        const exactUpload = await findExactMuxUpload(
+          mux,
+          getLessonVideoPassthrough(lessonId, video.id),
+        );
+        const validReplacement = Boolean(
+          exactUpload &&
+          !["errored", "timed_out", "cancelled"].includes(exactUpload.status) &&
+          (!exactUpload.asset_id || exactUpload.asset_id !== video.mux_asset_id),
+        );
+        if (exactUpload && validReplacement) {
+          if (exactUpload.asset_id) {
+            await syncMuxUpload(supabase, mux, exactUpload);
+          }
+          return finishReconciliation(
+            supabase,
+            lessonId,
+            "El nuevo video todavía se está procesando.",
+            { replacementPending: true },
+          );
+        }
+
+        const repaired = await repairOrphanedVideoReference(
+          supabase,
+          video,
+        );
+        if (!repaired.repaired) {
+          return {
+            ok: false as const,
+            message: "El estado cambió mientras se reparaba. Comprueba otra vez.",
+          };
+        }
+        return finishReconciliation(
+          supabase,
+          lessonId,
+          "La referencia del video ya no existía y se reparó. Ya puedes subir uno nuevo.",
+        );
       }
     }
 

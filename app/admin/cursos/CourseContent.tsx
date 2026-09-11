@@ -8,13 +8,13 @@ import {
   useState,
   useTransition,
 } from "react";
-import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { LearnContentType } from "@/lib/learn/content-type";
 import AdminToast from "./AdminToast";
 import DeleteContentButton from "./DeleteContentButton";
 import LessonVideoUploader from "./LessonVideoUploader";
 import VisibilitySwitch from "@/components/admin/VisibilitySwitch";
+import LoadingButton from "@/components/ui/LoadingButton";
 import {
   createCourseLesson,
   createCourseModule,
@@ -33,7 +33,6 @@ type CourseLesson = {
   id: string;
   module_id: string;
   title: string;
-  slug: string;
   description: string | null;
   duration_minutes: number | null;
   sort_order: number;
@@ -254,6 +253,12 @@ export default function CourseContent({
 
   useEffect(() => { saveRef.current = saveAllChanges; });
 
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("filmatta:course-save-pending", { detail: pending }),
+    );
+  }, [pending]);
+
   function onVideoChanged(lessonId: string, status: VideoStatus) {
     if (status) {
       setVideoStatuses((current) => ({ ...current, [lessonId]: status }));
@@ -323,17 +328,10 @@ export default function CourseContent({
             <VisibilitySwitch id="new-module-public" compact />
           </div>
 
-          <button
-            type="submit"
+          <CreateContentSubmitButton
+            label="Crear módulo"
             disabled={actionsDisabled}
-            title={
-              dirty ? "Guarda primero los cambios pendientes" : undefined
-            }
-            className={`${primaryButtonClass} inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-40`}
-          >
-            <span aria-hidden="true">+</span>
-            Crear módulo
-          </button>
+          />
         </form>
         </details>
       )}
@@ -516,14 +514,16 @@ export default function CourseContent({
           </p>
         </div>
 
-        <button
+        <LoadingButton
           type="button"
           onClick={saveAllChanges}
-          disabled={!dirty || pending}
+          disabled={!dirty}
+          loading={pending}
+          loadingText="Guardando cambios…"
           className={`${primaryButtonClass} shrink-0 disabled:cursor-not-allowed disabled:opacity-40`}
         >
-          {pending ? "Guardando..." : "Guardar todos los cambios"}
-        </button>
+          Guardar todos los cambios
+        </LoadingButton>
       </div>
     </section>
   );
@@ -707,26 +707,19 @@ function CreateContentSubmitButton({
   label: string;
   disabled: boolean;
 }) {
-  const { pending } = useFormStatus();
-
   return (
-    <button
+    <LoadingButton
       type="submit"
-      disabled={disabled || pending}
+      disabled={disabled}
+      loadingText="Creando…"
       title={
         disabled ? "Guarda primero los cambios pendientes" : undefined
       }
       className={`${primaryButtonClass} disabled:cursor-not-allowed disabled:opacity-40`}
     >
-      {pending ? (
-        "Creando…"
-      ) : (
-        <span className="inline-flex items-center gap-2">
-          <span aria-hidden="true">+</span>
-          {label}
-        </span>
-      )}
-    </button>
+      <span aria-hidden="true">+</span>
+      {label}
+    </LoadingButton>
   );
 }
 

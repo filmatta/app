@@ -2,6 +2,7 @@ import Link from "next/link";
 import { updateRecoveredPassword } from "@/app/cuenta/actions";
 import { getSafeNextPath } from "@/lib/auth/safe-next-path";
 import { createClient } from "@/lib/supabase/server";
+import LoadingButton from "@/components/ui/LoadingButton";
 
 export default async function ResetPasswordPage({
   searchParams,
@@ -55,12 +56,13 @@ export default async function ResetPasswordPage({
               {params.error && (
                 <p className="text-sm text-red-300">{params.error}</p>
               )}
-              <button
+              <LoadingButton
                 type="submit"
+                loadingText="Guardando…"
                 className="w-full rounded-full bg-white px-6 py-4 font-semibold text-black transition hover:bg-white/85"
               >
                 Guardar contraseña
-              </button>
+              </LoadingButton>
             </form>
           </>
         ) : (

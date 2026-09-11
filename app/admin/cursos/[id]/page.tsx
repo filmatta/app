@@ -76,7 +76,7 @@ export default async function EditarCursoPage({
     supabase
       .from("course_lessons")
       .select(
-        "id, module_id, title, slug, description, duration_minutes, sort_order, is_preview, status"
+        "id, module_id, title, description, duration_minutes, sort_order, is_preview, status"
       )
       .eq("course_id", id)
       .order("sort_order", { ascending: true })

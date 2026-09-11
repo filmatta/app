@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requestPasswordReset } from "@/app/cuenta/actions";
 import { getSafeNextPath } from "@/lib/auth/safe-next-path";
+import LoadingButton from "@/components/ui/LoadingButton";
 
 export default async function PasswordRecoveryPage({
   searchParams,
@@ -48,12 +49,13 @@ export default async function PasswordRecoveryPage({
               className={inputClass}
             />
           </div>
-          <button
+          <LoadingButton
             type="submit"
+            loadingText="Enviando…"
             className="w-full rounded-full bg-white px-6 py-4 font-semibold text-black transition hover:bg-white/85"
           >
             Enviar enlace
-          </button>
+          </LoadingButton>
         </form>
       </section>
     </main>

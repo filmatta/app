@@ -1,22 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useFormStatus } from "react-dom";
+import LoadingButton from "@/components/ui/LoadingButton";
 
 export default function CourseFormActions() {
   const [dirty, setDirty] = useState(false);
-  const { pending } = useFormStatus();
+  const [coordinatedPending, setCoordinatedPending] = useState(false);
 
   useEffect(() => {
     const form = document.getElementById("course-form");
     const markDirty = () => setDirty(true);
+    const syncPending = (event: Event) => {
+      setCoordinatedPending(Boolean((event as CustomEvent).detail));
+    };
 
     form?.addEventListener("input", markDirty);
     form?.addEventListener("change", markDirty);
+    window.addEventListener("filmatta:course-save-pending", syncPending);
 
     return () => {
       form?.removeEventListener("input", markDirty);
       form?.removeEventListener("change", markDirty);
+      window.removeEventListener("filmatta:course-save-pending", syncPending);
     };
   }, []);
 
@@ -33,13 +38,15 @@ export default function CourseFormActions() {
         </p>
       </div>
 
-      <button
+      <LoadingButton
         type="submit"
-        disabled={!dirty || pending}
+        disabled={!dirty}
+        loading={coordinatedPending}
+        loadingText="Guardando…"
         className="shrink-0 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/30"
       >
-        {pending ? "Guardando…" : "Guardar cambios"}
-      </button>
+        Guardar cambios
+      </LoadingButton>
     </div>
   );
 }

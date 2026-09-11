@@ -11,11 +11,11 @@ type StoredVideo = {
 // Caller must first authorize access to this exact lesson on the server.
 export async function presentVideo(video: StoredVideo | null): Promise<VideoPresentation> {
   if (!video) return { status: "none" };
+  if (!video.mux_playback_id) return { status: "none" };
   if (video.status !== "ready") return { status: video.status === "errored" ? "errored" : "preparing" };
-  if (!video.mux_playback_id) return { status: "errored" };
   if (video.playback_policy === "public") return { status: "ready", playbackId: video.mux_playback_id };
   if (video.playback_policy !== "signed") return { status: "errored" };
-  if (!process.env.MUX_SIGNING_KEY || !process.env.MUX_PRIVATE_KEY) return { status: "ready", message: "Video listo. La reproducción protegida requiere configurar las claves de firma de Mux." };
+  if (!process.env.MUX_SIGNING_KEY || !process.env.MUX_PRIVATE_KEY) return { status: "ready", message: "Video listo. La reproducción protegida requiere configurar las claves de firma del servicio de video." };
   const mux = createMuxClient();
   const privateKey = process.env.MUX_PRIVATE_KEY.replace(/\\n/g, "\n");
   const [playback, thumbnail, storyboard] = await Promise.all([

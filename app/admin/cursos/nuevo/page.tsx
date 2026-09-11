@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { COURSE_CATEGORIES, COURSE_LEVELS } from "@/lib/course-options";
 import { getContentTypeSupport } from "../content-type-support";
 import { createCourse } from "../actions";
+import LoadingButton from "@/components/ui/LoadingButton";
 
 export default async function NuevoCursoPage({
   searchParams,
@@ -165,12 +166,13 @@ export default async function NuevoCursoPage({
           </label>
 
           <div className="border-t border-white/10 pt-8">
-            <button
+            <LoadingButton
               type="submit"
+              loadingText="Creando…"
               className="rounded-full bg-white px-8 py-4 font-semibold text-black transition hover:bg-white/85"
             >
               Crear y continuar
-            </button>
+            </LoadingButton>
           </div>
         </form>
       </section>

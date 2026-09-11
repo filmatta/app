@@ -7,6 +7,7 @@ import {
   updatePersonalProfile,
 } from "@/app/cuenta/actions";
 import SiteHeader from "@/components/SiteHeader";
+import LoadingButton from "@/components/ui/LoadingButton";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getLearnContentType } from "@/lib/learn/content-type";
 import { getResumeActions, type ResumeAction } from "@/lib/learn/resume";
@@ -279,12 +280,13 @@ export default async function CuentaPage({
                   Nombre profesional, ciudad, bio y avatar estarán disponibles
                   cuando exista su estructura de perfil.
                 </p>
-                <button
+                <LoadingButton
                   type="submit"
+                  loadingText="Guardando…"
                   className="rounded-full bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-white/85"
                 >
                   Guardar nombre
-                </button>
+                </LoadingButton>
               </div>
             </form>
           </div>
@@ -330,12 +332,13 @@ export default async function CuentaPage({
                     placeholder="Nuevo correo"
                     className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none transition placeholder:text-white/25 focus:border-white/30"
                   />
-                  <button
+                  <LoadingButton
                     type="submit"
+                    loadingText="Cambiando…"
                     className="rounded-full border border-white/15 px-5 py-3 text-sm font-medium transition hover:bg-white/[0.06]"
                   >
                     Cambiar correo
-                  </button>
+                  </LoadingButton>
                 </div>
                 {feedback.email === "confirmation" && (
                   <Feedback variant="success">
@@ -377,12 +380,13 @@ export default async function CuentaPage({
                   <Feedback variant="error">{feedback.password_error}.</Feedback>
                 )}
                 <div className="mt-5 flex justify-end">
-                  <button
+                  <LoadingButton
                     type="submit"
+                    loadingText="Guardando…"
                     className="rounded-full border border-white/15 px-5 py-3 text-sm font-medium transition hover:bg-white/[0.06]"
                   >
                     Guardar contraseña
-                  </button>
+                  </LoadingButton>
                 </div>
               </form>
 
@@ -397,12 +401,13 @@ export default async function CuentaPage({
                   )}
                 </div>
                 <form action={logout}>
-                  <button
+                  <LoadingButton
                     type="submit"
+                    loadingText="Saliendo…"
                     className="rounded-full border border-red-500/20 px-5 py-3 text-sm font-medium text-red-200 transition hover:bg-red-500/10"
                   >
                     Cerrar sesión
-                  </button>
+                  </LoadingButton>
                 </form>
               </div>
             </div>

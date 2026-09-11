@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useFormStatus } from "react-dom";
+import LoadingButton from "@/components/ui/LoadingButton";
 import { deleteCourse } from "./actions";
 
 export default function DeleteCourseButton({
@@ -71,15 +71,13 @@ export default function DeleteCourseButton({
 }
 
 function DeleteSubmitButton() {
-  const { pending } = useFormStatus();
-
   return (
-    <button
+    <LoadingButton
       type="submit"
-      disabled={pending}
+      loadingText="Eliminando…"
       className="w-full rounded-full bg-red-500 px-6 py-3 font-semibold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-50"
     >
-      {pending ? "Eliminando..." : "Sí, eliminar"}
-    </button>
+      Sí, eliminar
+    </LoadingButton>
   );
 }

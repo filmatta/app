@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import LoadingButton from "@/components/ui/LoadingButton";
 import {
   completeLesson,
   startLesson,
@@ -137,14 +138,15 @@ export default function LessonProgressControls({
             </span>
           </Link>
         ) : (
-          <button
+          <LoadingButton
             type="button"
             onClick={markComplete}
-            disabled={pending}
+            loading={pending}
+            loadingText="Guardando…"
             className="shrink-0 rounded-full bg-white px-6 py-3.5 text-sm font-semibold text-black transition hover:bg-white/85 disabled:cursor-wait disabled:bg-white/10 disabled:text-white/40"
           >
-            {pending ? "Guardando…" : "Marcar como completada"}
-          </button>
+            Marcar como completada
+          </LoadingButton>
         )}
       </div>
 

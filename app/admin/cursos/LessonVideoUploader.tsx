@@ -8,11 +8,14 @@ import {
   reconcileLessonVideo,
 } from "./video-actions";
 import LessonVideoPlayer, { type VideoPresentation } from "@/components/LessonVideoPlayer";
+import PendingState from "@/components/ui/PendingState";
+import SectionLoader from "@/components/ui/SectionLoader";
 
 type VideoStatus = "preparing" | "ready" | "errored" | null;
 type LocalStatus = VideoStatus | "starting" | "uploading";
 type ReplacementStage = "starting" | "uploading" | "processing" | null;
 type UploadFailure = "initial" | "replacement" | null;
+type ActiveUploadKind = "initial" | "replacement" | null;
 
 class DirectUploadError extends Error {
   constructor(
@@ -65,16 +68,21 @@ export default function LessonVideoUploader({
   const [showRecovery, setShowRecovery] = useState(initialStatus === "errored");
   const [replacementStage, setReplacementStage] =
     useState<ReplacementStage>(null);
-  const [trackedReplacementUploadId, setTrackedReplacementUploadId] =
+  const [trackedUploadId, setTrackedUploadId] =
     useState<string | null>(null);
-  const [trackedReplacementAttemptId, setTrackedReplacementAttemptId] =
+  const [trackedAttemptId, setTrackedAttemptId] =
     useState<string | null>(null);
+  const [activeUploadKind, setActiveUploadKind] =
+    useState<ActiveUploadKind>(null);
   const [uploadFailure, setUploadFailure] = useState<UploadFailure>(null);
   const [policySyncing, setPolicySyncing] = useState(false);
   const [policyFailed, setPolicyFailed] = useState(false);
   const inFlight = useRef(false);
-  const replacementStartedAt = useRef<number | null>(null);
+  const uploadProcessingStartedAt = useRef<number | null>(null);
+  const pollingAttempt = useRef(0);
   const replacementDiscoveryAttempts = useRef(0);
+  const authoritativeNoneRef = useRef(false);
+  const asyncGenerationRef = useRef(0);
   const lastRefreshVersion = useRef(refreshVersion);
   const lastPolicyFailureVersion = useRef(policyFailureVersion);
   const changedRef = useRef(onChanged);
@@ -105,15 +113,35 @@ export default function LessonVideoUploader({
     setShowRecovery(false);
 
     async function checkPolicy() {
+      const requestGeneration = asyncGenerationRef.current;
       try {
         const video = await getLessonVideoState(lessonId);
-        if (stopped) return;
+        if (
+          stopped ||
+          requestGeneration !== asyncGenerationRef.current
+        ) return;
+
+        if (video.status === "none") {
+          asyncGenerationRef.current += 1;
+          authoritativeNoneRef.current = true;
+          setPresentation(video);
+          setStatus(null);
+          setReplacementStage(null);
+          setPolicySyncing(false);
+          setPolicyFailed(false);
+          setShowRecovery(false);
+          setErrorMessage(null);
+          setNotice(null);
+          if (video.orphanRepaired) changedRef.current(null);
+          return;
+        }
 
         if (
           video.status === "ready" &&
           video.policyCoherent === true &&
           !video.replacementPending
         ) {
+          authoritativeNoneRef.current = false;
           setPresentation(video);
           setStatus("ready");
           setPolicySyncing(false);
@@ -124,7 +152,10 @@ export default function LessonVideoUploader({
           return;
         }
       } catch {
-        if (stopped) return;
+        if (
+          stopped ||
+          requestGeneration !== asyncGenerationRef.current
+        ) return;
       }
 
       if (Date.now() < deadline) {
@@ -144,28 +175,31 @@ export default function LessonVideoUploader({
     };
   }, [lessonId, refreshVersion]);
   useEffect(() => {
-    if (!inFlight.current) setStatus(initialStatus);
+    if (!inFlight.current && !authoritativeNoneRef.current) {
+      setStatus(initialStatus);
+    }
   }, [initialStatus]);
   useEffect(() => {
     if (policySyncing) return;
     if (
       status !== "preparing" &&
       !(status === "ready" && !hasPresentation) &&
+      !(status === "errored" && !hasPresentation) &&
       replacementStage !== "processing"
     ) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     let consecutiveFailures = 0;
-    if (replacementStage === "processing" && !replacementStartedAt.current) {
-      replacementStartedAt.current = Date.now();
+    if (!uploadProcessingStartedAt.current) {
+      uploadProcessingStartedAt.current = Date.now();
     }
-    const deadline = replacementStage === "processing"
-      ? (replacementStartedAt.current ?? Date.now()) + 10 * 60 * 1000
-      : Date.now() + 10 * 60 * 1000;
+    const deadline =
+      (uploadProcessingStartedAt.current ?? Date.now()) + 10 * 60 * 1000;
     async function check() {
+      const requestGeneration = asyncGenerationRef.current;
       try {
         const shouldDiscoverReplacement =
-          !trackedReplacementUploadId &&
+          !trackedUploadId &&
           (replacementStage === "processing" ||
             (status === "ready" && !hasPresentation)) &&
           replacementDiscoveryAttempts.current < 3;
@@ -174,31 +208,49 @@ export default function LessonVideoUploader({
         }
         const video = await getLessonVideoState(
           lessonId,
-          trackedReplacementUploadId ?? undefined,
-          trackedReplacementAttemptId ?? undefined,
+          trackedUploadId ?? undefined,
+          trackedAttemptId ?? undefined,
           shouldDiscoverReplacement,
         );
-        if (stopped) return;
+        if (
+          stopped ||
+          requestGeneration !== asyncGenerationRef.current
+        ) return;
         consecutiveFailures = 0;
         if (
           video.trackedUploadId &&
-          video.trackedUploadId !== trackedReplacementUploadId
+          video.trackedUploadId !== trackedUploadId
         ) {
-          setTrackedReplacementUploadId(video.trackedUploadId);
+          setTrackedUploadId(video.trackedUploadId);
         }
         if (
           video.trackedAttemptId &&
-          video.trackedAttemptId !== trackedReplacementAttemptId
+          video.trackedAttemptId !== trackedAttemptId
         ) {
-          setTrackedReplacementAttemptId(video.trackedAttemptId);
+          setTrackedAttemptId(video.trackedAttemptId);
         }
         setPresentation(video);
         setShowRecovery(false);
+        if (video.initialUploadFailed) {
+          setStatus("errored");
+          setTrackedUploadId(null);
+          setTrackedAttemptId(null);
+          setActiveUploadKind(null);
+          uploadProcessingStartedAt.current = null;
+          pollingAttempt.current = 0;
+          setUploadFailure("initial");
+          setShowRecovery(true);
+          setNotice(null);
+          setErrorMessage("El video no pudo procesarse. Puedes volver a intentarlo.");
+          return;
+        }
         if (video.replacementFailed) {
           setReplacementStage(null);
-          setTrackedReplacementUploadId(null);
-          setTrackedReplacementAttemptId(null);
-          replacementStartedAt.current = null;
+          setTrackedUploadId(null);
+          setTrackedAttemptId(null);
+          setActiveUploadKind(null);
+          uploadProcessingStartedAt.current = null;
+          pollingAttempt.current = 0;
           replacementDiscoveryAttempts.current = 0;
           setUploadFailure("replacement");
           setShowRecovery(true);
@@ -207,6 +259,23 @@ export default function LessonVideoUploader({
           );
           return;
         }
+        if (video.status === "none") {
+          asyncGenerationRef.current += 1;
+          authoritativeNoneRef.current = true;
+          setStatus(null);
+          setReplacementStage(null);
+          setTrackedUploadId(null);
+          setTrackedAttemptId(null);
+          setActiveUploadKind(null);
+          uploadProcessingStartedAt.current = null;
+          pollingAttempt.current = 0;
+          setUploadFailure(null);
+          setNotice(null);
+          setErrorMessage(null);
+          if (video.orphanRepaired) changedRef.current(null);
+          return;
+        }
+        authoritativeNoneRef.current = false;
         if (
           video.replacementPending &&
           replacementStage !== "processing" &&
@@ -236,17 +305,37 @@ export default function LessonVideoUploader({
         setErrorMessage(null);
         setUploadFailure(null);
         if (
+          activeUploadKind === "initial" &&
+          video.trackedUploadResolved === true &&
+          video.status === "ready" &&
+          video.trackedUploadId === trackedUploadId &&
+          video.trackedAttemptId === trackedAttemptId
+        ) {
+          setStatus("ready");
+          setTrackedUploadId(null);
+          setTrackedAttemptId(null);
+          setActiveUploadKind(null);
+          uploadProcessingStartedAt.current = null;
+          pollingAttempt.current = 0;
+          setShowRecovery(false);
+          setNotice("El video está listo.");
+          changedRef.current("ready");
+          return;
+        }
+        if (
           replacementStage === "processing" &&
-          video.replacementResolved === true &&
+          video.trackedUploadResolved === true &&
           Boolean(video.trackedUploadId) &&
-          video.trackedUploadId === trackedReplacementUploadId &&
+          video.trackedUploadId === trackedUploadId &&
           Boolean(video.trackedAttemptId) &&
-          video.trackedAttemptId === trackedReplacementAttemptId
+          video.trackedAttemptId === trackedAttemptId
         ) {
           setReplacementStage(null);
-          setTrackedReplacementUploadId(null);
-          setTrackedReplacementAttemptId(null);
-          replacementStartedAt.current = null;
+          setTrackedUploadId(null);
+          setTrackedAttemptId(null);
+          setActiveUploadKind(null);
+          uploadProcessingStartedAt.current = null;
+          pollingAttempt.current = 0;
           replacementDiscoveryAttempts.current = 0;
           setShowRecovery(false);
           setNotice("El nuevo video está listo.");
@@ -265,31 +354,39 @@ export default function LessonVideoUploader({
         if (video.status === "preparing" && status === "ready") {
           setStatus("preparing");
         }
-        if (Date.now() < deadline) timer = setTimeout(check, 8000);
+        if (Date.now() < deadline) {
+          timer = setTimeout(check, nextPollingDelay(pollingAttempt.current++));
+        }
         else {
           setShowRecovery(true);
           setNotice("El procesamiento tarda más de lo esperado.");
         }
       } catch {
-        if (stopped) return;
+        if (
+          stopped ||
+          requestGeneration !== asyncGenerationRef.current
+        ) return;
         consecutiveFailures += 1;
         if (consecutiveFailures >= 3) {
           setShowRecovery(true);
           setErrorMessage("No se pudo consultar el estado del procesamiento. Volveremos a intentarlo.");
         }
-        if (Date.now() < deadline) timer = setTimeout(check, 8000);
+        if (Date.now() < deadline) {
+          timer = setTimeout(check, nextPollingDelay(pollingAttempt.current++));
+        }
       }
     }
     void check();
     return () => { stopped = true; clearTimeout(timer); };
   }, [
     hasPresentation,
+    activeUploadKind,
     lessonId,
     policySyncing,
     replacementStage,
     status,
-    trackedReplacementAttemptId,
-    trackedReplacementUploadId,
+    trackedAttemptId,
+    trackedUploadId,
   ]);
   const busy =
     status === "starting" ||
@@ -308,6 +405,7 @@ export default function LessonVideoUploader({
       return;
     }
 
+    let authoritativeReplacement = replacing;
     const logContext = { lessonId, replacement: replacing };
     logUploadStage("file-selected", {
       ...logContext,
@@ -328,17 +426,24 @@ export default function LessonVideoUploader({
     }
 
     setErrorMessage(null);
+    asyncGenerationRef.current += 1;
+    authoritativeNoneRef.current = false;
     setUploadFailure(null);
     setNotice(null);
     setShowRecovery(false);
     setProgress(0);
     if (replacing) {
-      setTrackedReplacementUploadId(null);
-      setTrackedReplacementAttemptId(null);
-      replacementStartedAt.current = null;
+      setTrackedUploadId(null);
+      setTrackedAttemptId(null);
+      setActiveUploadKind("replacement");
+      uploadProcessingStartedAt.current = null;
+      pollingAttempt.current = 0;
       replacementDiscoveryAttempts.current = 0;
       setReplacementStage("starting");
     } else {
+      setActiveUploadKind("initial");
+      uploadProcessingStartedAt.current = null;
+      pollingAttempt.current = 0;
       setStatus("starting");
     }
     inFlight.current = true;
@@ -349,12 +454,21 @@ export default function LessonVideoUploader({
       if (!result.ok) {
         logUploadStage("create-upload-failed", logContext);
         setUploadFailure(replacing ? "replacement" : "initial");
-        setTrackedReplacementUploadId(null);
-        setTrackedReplacementAttemptId(null);
-        replacementStartedAt.current = null;
+        setTrackedUploadId(null);
+        setTrackedAttemptId(null);
+        setActiveUploadKind(null);
+        uploadProcessingStartedAt.current = null;
+        pollingAttempt.current = 0;
         replacementDiscoveryAttempts.current = 0;
         setShowRecovery(false);
-        if (replacing) {
+        if ("orphanRepaired" in result && result.orphanRepaired) {
+          authoritativeNoneRef.current = true;
+          setReplacementStage(null);
+          setPresentation({ status: "none" });
+          setStatus(null);
+          setUploadFailure("initial");
+          onChanged(null);
+        } else if (replacing) {
           setReplacementStage(null);
           setStatus(initialStatus);
         } else {
@@ -366,6 +480,8 @@ export default function LessonVideoUploader({
 
       let putStarted = false;
       try {
+        const isReplacement = result.replacement;
+        authoritativeReplacement = isReplacement;
         let parsedUploadUrl: URL;
         try {
           parsedUploadUrl = new URL(result.uploadUrl);
@@ -391,11 +507,13 @@ export default function LessonVideoUploader({
           uploadId: result.uploadId,
           attemptId: result.attemptId,
         });
-        if (replacing) {
-          setTrackedReplacementUploadId(result.uploadId);
-          setTrackedReplacementAttemptId(result.attemptId);
+        setTrackedUploadId(result.uploadId);
+        setTrackedAttemptId(result.attemptId);
+        setActiveUploadKind(isReplacement ? "replacement" : "initial");
+        if (isReplacement) {
           setReplacementStage("uploading");
         } else {
+          setReplacementStage(null);
           setStatus("uploading");
         }
 
@@ -414,7 +532,9 @@ export default function LessonVideoUploader({
         });
         setProgress(100);
         setUploadFailure(null);
-        if (replacing) {
+        uploadProcessingStartedAt.current = Date.now();
+        pollingAttempt.current = 0;
+        if (isReplacement) {
           setReplacementStage("processing");
           onChanged(null);
         } else {
@@ -423,8 +543,10 @@ export default function LessonVideoUploader({
         }
         setErrorMessage(null);
         setNotice(
-          replacing
-            ? "El nuevo video se está procesando. El anterior continúa disponible."
+          isReplacement
+            ? result.previousAssetAvailable
+              ? "El nuevo video se está procesando. El anterior continúa disponible."
+              : "El nuevo video se está procesando."
             : "El video se está procesando.",
         );
       } catch (error) {
@@ -455,6 +577,7 @@ export default function LessonVideoUploader({
           });
           cleanupSucceeded = cleanup.ok;
           if (cleanup.ok) {
+            authoritativeNoneRef.current = cleanup.video.status === "none";
             setPresentation(cleanup.video);
             setStatus(normalizeVideoStatus(cleanup.video));
           } else {
@@ -464,13 +587,17 @@ export default function LessonVideoUploader({
           cleanupMessage = "No se pudo cerrar de forma segura la subida fallida.";
         }
 
-        setUploadFailure(replacing ? "replacement" : "initial");
+        setUploadFailure(authoritativeReplacement ? "replacement" : "initial");
         setReplacementStage(null);
-        setTrackedReplacementUploadId(null);
-        setTrackedReplacementAttemptId(null);
-        replacementStartedAt.current = null;
+        setTrackedUploadId(null);
+        setTrackedAttemptId(null);
+        setActiveUploadKind(null);
+        uploadProcessingStartedAt.current = null;
+        pollingAttempt.current = 0;
         replacementDiscoveryAttempts.current = 0;
-        if (!cleanupSucceeded) setStatus(initialStatus);
+        if (!cleanupSucceeded) {
+          setStatus(authoritativeReplacement ? initialStatus : "errored");
+        }
         setShowRecovery(!cleanupSucceeded);
         setNotice(null);
         setErrorMessage(
@@ -484,12 +611,14 @@ export default function LessonVideoUploader({
         ...logContext,
         type: error instanceof Error ? error.name : "unknown",
       });
-      setUploadFailure(replacing ? "replacement" : "initial");
-      setTrackedReplacementUploadId(null);
-      setTrackedReplacementAttemptId(null);
-      replacementStartedAt.current = null;
+      setUploadFailure(authoritativeReplacement ? "replacement" : "initial");
+      setTrackedUploadId(null);
+      setTrackedAttemptId(null);
+      setActiveUploadKind(null);
+      uploadProcessingStartedAt.current = null;
+      pollingAttempt.current = 0;
       replacementDiscoveryAttempts.current = 0;
-      if (replacing) {
+      if (authoritativeReplacement) {
         setReplacementStage(null);
         setStatus(initialStatus);
       }
@@ -505,24 +634,51 @@ export default function LessonVideoUploader({
   }
 
   const statusLabel = status ? STATUS_LABELS[status] : null;
+  const validatingVideo =
+    !policySyncing &&
+    replacementStage === null &&
+    uploadFailure === null &&
+    !hasPresentation &&
+    (status === "ready" || status === "errored");
+  const longPendingState = policySyncing
+    ? {
+        title: "Actualizando el acceso del video…",
+        description: "Conservamos el acceso anterior hasta confirmar el cambio.",
+      }
+    : replacementStage === "processing"
+      ? {
+          title: "Procesando nuevo video…",
+          description: "El video anterior continúa disponible.",
+        }
+      : status === "preparing"
+        ? {
+            title: "Procesando video…",
+            description: "Esto puede tardar unos segundos.",
+          }
+        : validatingVideo
+          ? {
+              title: "Validando video…",
+              description: "Comprobando el estado actual antes de continuar.",
+            }
+          : null;
+  const shortPendingTitle =
+    replacementStage === "starting"
+      ? "Preparando el reemplazo…"
+      : status === "starting"
+        ? "Preparando subida…"
+        : null;
   const statusDescription =
     uploadFailure === "replacement"
       ? "No se completó el reemplazo. El video anterior continúa disponible."
       : uploadFailure === "initial"
         ? `No se pudo subir el video de ${quickGuide ? "este paso" : "esta lección"}.`
-    : policySyncing
-      ? "Actualizando el acceso del video…"
-      : replacementStage === "starting"
-      ? "Preparando el reemplazo…"
+    : longPendingState || shortPendingTitle
+      ? null
       : replacementStage === "uploading"
         ? `Subiendo nuevo video… ${progress}%`
-        : replacementStage === "processing"
-          ? "Procesando nuevo video… El anterior continúa disponible."
     : status === null
       ? `Añade el video de ${quickGuide ? "este paso" : "esta lección"}.`
-      : status === "preparing"
-        ? "Procesando video…"
-        : statusLabel
+      : statusLabel
           ? `Estado: ${statusLabel}${status === "uploading" ? ` ${progress}%` : ""}`
           : null;
 
@@ -539,9 +695,18 @@ export default function LessonVideoUploader({
           >
             {quickGuide ? "Video del paso" : "Video de la lección"}
           </p>
-          <p className="mt-1 text-sm text-white/40" aria-live="polite">
-            {statusDescription}
-          </p>
+          {statusDescription && (
+            <p
+              className="mt-1 text-sm text-white/40"
+              aria-live={
+                status === "uploading" || replacementStage === "uploading"
+                  ? "off"
+                  : "polite"
+              }
+            >
+              {statusDescription}
+            </p>
+          )}
         </div>
 
         {!busy && (canUpload ||
@@ -578,6 +743,17 @@ export default function LessonVideoUploader({
           </label>
         )}
       </div>
+      {shortPendingTitle && (
+        <SectionLoader title={shortPendingTitle} className="mt-4" />
+      )}
+      {longPendingState && (
+        <PendingState
+          compact
+          title={longPendingState.title}
+          description={longPendingState.description}
+          className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4"
+        />
+      )}
       {showRecovery &&
         (status === "preparing" ||
           status === "errored" ||
@@ -593,16 +769,20 @@ export default function LessonVideoUploader({
           setChecking(true);
           setErrorMessage(null);
           try {
+            const requestGeneration = ++asyncGenerationRef.current;
             const result = await reconcileLessonVideo(lessonId);
+            if (requestGeneration !== asyncGenerationRef.current) return;
             if (!result.ok) {
               if ("video" in result && result.video) {
                 setPresentation(result.video);
               }
               if ("replacementFailed" in result && result.replacementFailed) {
                 setReplacementStage(null);
-                setTrackedReplacementUploadId(null);
-                setTrackedReplacementAttemptId(null);
-                replacementStartedAt.current = null;
+                setTrackedUploadId(null);
+                setTrackedAttemptId(null);
+                setActiveUploadKind(null);
+                uploadProcessingStartedAt.current = null;
+                pollingAttempt.current = 0;
                 replacementDiscoveryAttempts.current = 0;
               }
               setShowRecovery(true);
@@ -611,6 +791,10 @@ export default function LessonVideoUploader({
             }
 
             const video = result.video;
+            if (video.status === "none") {
+              asyncGenerationRef.current += 1;
+            }
+            authoritativeNoneRef.current = video.status === "none";
             setPresentation(video);
             const nextStatus = normalizeVideoStatus(video);
             setStatus(nextStatus);
@@ -621,9 +805,11 @@ export default function LessonVideoUploader({
               "replacementPending" in result && result.replacementPending;
             setReplacementStage(replacementPending ? "processing" : null);
             if (!replacementPending) {
-              setTrackedReplacementUploadId(null);
-              setTrackedReplacementAttemptId(null);
-              replacementStartedAt.current = null;
+              setTrackedUploadId(null);
+              setTrackedAttemptId(null);
+              setActiveUploadKind(null);
+              uploadProcessingStartedAt.current = null;
+              pollingAttempt.current = 0;
               replacementDiscoveryAttempts.current = 0;
             }
             setShowRecovery(
@@ -659,7 +845,7 @@ export default function LessonVideoUploader({
         </div>
       )}
 
-      {notice && (
+      {notice && !longPendingState && (
         <p
           className="mt-4 text-xs leading-5 text-white/45"
           role="status"
@@ -681,6 +867,14 @@ function normalizeVideoStatus(video: VideoPresentation): VideoStatus {
   if (video.status === "none") return null;
   if (video.status === "unavailable") return "errored";
   return video.status;
+}
+
+function nextPollingDelay(attempt: number) {
+  // The first check runs immediately. These delays produce checks at roughly
+  // 0s, 2s, 4s, 6s, 8s, then progressively back off while processing continues.
+  if (attempt < 4) return 2000;
+  if (attempt < 7) return 5000;
+  return 8000;
 }
 
 function uploadFile(
