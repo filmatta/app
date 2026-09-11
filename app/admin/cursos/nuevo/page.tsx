@@ -81,14 +81,6 @@ export default async function NuevoCursoPage({
             />
           </Field>
 
-          <Field label="Slug">
-            <input
-              name="slug"
-              className={selectClass}
-              placeholder="Se genera automáticamente si lo dejas vacío"
-            />
-          </Field>
-
           <Field label="Descripción corta">
             <textarea
               name="short_description"
@@ -130,15 +122,6 @@ export default async function NuevoCursoPage({
           </div>
 
           <div className="grid gap-6 sm:grid-cols-2">
-            <Field label="Duración en minutos">
-              <input
-                name="duration_minutes"
-                type="number"
-                min="0"
-                className={selectClass}
-              />
-            </Field>
-
             <Field label="Orden">
               <input
                 name="sort_order"
@@ -186,7 +169,7 @@ export default async function NuevoCursoPage({
               type="submit"
               className="rounded-full bg-white px-8 py-4 font-semibold text-black transition hover:bg-white/85"
             >
-              Crear contenido
+              Crear y continuar
             </button>
           </div>
         </form>

@@ -3,14 +3,18 @@
 import {
   type FormEvent,
   useEffect,
+  useId,
   useRef,
   useState,
   useTransition,
 } from "react";
+import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import type { LearnContentType } from "@/lib/learn/content-type";
 import AdminToast from "./AdminToast";
 import DeleteContentButton from "./DeleteContentButton";
 import LessonVideoUploader from "./LessonVideoUploader";
+import VisibilitySwitch from "@/components/admin/VisibilitySwitch";
 import {
   createCourseLesson,
   createCourseModule,
@@ -42,17 +46,19 @@ type LessonVideo = {
   status: "preparing" | "ready" | "errored";
 };
 
+type VideoStatus = LessonVideo["status"] | null;
+
 type CourseContentProps = {
   courseId: string;
   modules: CourseModule[];
   lessons: CourseLesson[];
   videos: LessonVideo[];
   contentType: LearnContentType;
+  focusId?: string;
 };
 
 const inputClass =
   "w-full rounded-xl border border-white/10 bg-[#111111] px-4 py-3 text-white outline-none transition placeholder:text-white/20 focus:border-white/30";
-const selectClass = `${inputClass} appearance-none`;
 const primaryButtonClass =
   "rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
 
@@ -62,9 +68,17 @@ export default function CourseContent({
   lessons,
   videos,
   contentType,
+  focusId,
 }: CourseContentProps) {
+  const router = useRouter();
   const contentRef = useRef<HTMLElement>(null);
   const [dirty, setDirty] = useState(false);
+  const [courseFormDirty, setCourseFormDirty] = useState(false);
+  const courseDirty = useRef(false);
+  const allowCourseSubmit = useRef(false);
+  const saveRef = useRef<() => void>(() => {});
+  const changedRecords = useRef(new Set<string>());
+  const [videoChanged, setVideoChanged] = useState(false);
   const [feedback, setFeedback] = useState<{
     message: string;
     variant: "success" | "error";
@@ -72,9 +86,15 @@ export default function CourseContent({
   } | null>(null);
   const [pending, startTransition] = useTransition();
   const lessonsByModule = new Map<string, CourseLesson[]>();
-  const videoByLesson = new Map(
-    videos.map((video) => [video.lesson_id, video.status])
-  );
+  const [videoStatuses, setVideoStatuses] = useState<
+    Record<string, LessonVideo["status"]>
+  >(() => Object.fromEntries(videos.map((video) => [video.lesson_id, video.status])));
+  const [videoRefreshVersions, setVideoRefreshVersions] = useState<
+    Record<string, number>
+  >({});
+  const [videoPolicyFailureVersions, setVideoPolicyFailureVersions] = useState<
+    Record<string, number>
+  >({});
 
   for (const lesson of lessons) {
     const moduleLessons = lessonsByModule.get(lesson.module_id) ?? [];
@@ -83,41 +103,46 @@ export default function CourseContent({
   }
 
   const createModuleForCourse = createCourseModule.bind(null, courseId);
-  const actionsDisabled = dirty || pending;
+  const actionsDisabled = dirty || courseFormDirty || pending;
   const isQuickGuide = contentType === "quick_guide";
 
   useEffect(() => {
-    if (!dirty) {
-      return;
-    }
-
-    const courseForm = document.getElementById("course-form");
     const preventCourseSubmit = (event: Event) => {
+      if (!(event.target instanceof HTMLFormElement) || event.target.id !== "course-form") return;
+      if (allowCourseSubmit.current) return;
       event.preventDefault();
-      setFeedback({
-        message: "Guarda primero los cambios del contenido.",
-        variant: "error",
-        notice: crypto.randomUUID(),
-      });
+      saveRef.current();
+    };
+    const markCourseDirty = (event: Event) => {
+      if (!(event.target instanceof Element) || !event.target.closest("#course-form")) return;
+      courseDirty.current = true;
+      setCourseFormDirty(true);
     };
     const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (!dirty && !courseFormDirty) return;
       event.preventDefault();
       event.returnValue = "";
     };
 
-    courseForm?.addEventListener("submit", preventCourseSubmit);
+    document.addEventListener("submit", preventCourseSubmit, true);
+    document.addEventListener("input", markCourseDirty, true);
+    document.addEventListener("change", markCourseDirty, true);
     window.addEventListener("beforeunload", warnBeforeLeaving);
 
     return () => {
-      courseForm?.removeEventListener("submit", preventCourseSubmit);
+      document.removeEventListener("submit", preventCourseSubmit, true);
+      document.removeEventListener("input", markCourseDirty, true);
+      document.removeEventListener("change", markCourseDirty, true);
       window.removeEventListener("beforeunload", warnBeforeLeaving);
     };
-  }, [dirty]);
+  }, [courseFormDirty, dirty]);
 
   function markDirty(event: FormEvent<HTMLElement>) {
     const target = event.target as HTMLElement;
 
-    if (target.closest("form[data-content-record]")) {
+    const form = target.closest<HTMLFormElement>("form[data-content-record]");
+    if (form) {
+      changedRecords.current.add(form.dataset.recordId!);
       setDirty(true);
     }
   }
@@ -141,7 +166,7 @@ export default function CourseContent({
   }
 
   function saveAllChanges() {
-    if (!dirty || pending || !contentRef.current) {
+    if ((!dirty && !courseFormDirty) || pending || !contentRef.current) {
       return;
     }
 
@@ -154,6 +179,8 @@ export default function CourseContent({
     );
 
     for (const form of editorForms) {
+      if (!changedRecords.current.has(form.dataset.recordId!)) continue;
+      if (!form.reportValidity()) return;
       const values = Object.fromEntries(new FormData(form).entries());
       const record = {
         id: form.dataset.recordId ?? "",
@@ -182,7 +209,38 @@ export default function CourseContent({
         });
 
         if (result.ok) {
+          const shouldRefreshVideo = videoChanged;
+          const policyChangedLessonIds = result.policyChangedLessonIds;
+          if (policyChangedLessonIds.length > 0) {
+            setVideoRefreshVersions((current) => {
+              const next = { ...current };
+              for (const lessonId of policyChangedLessonIds) {
+                next[lessonId] = (next[lessonId] ?? 0) + 1;
+              }
+              return next;
+            });
+          }
+          changedRecords.current.clear();
+          setVideoChanged(false);
           setDirty(false);
+          setCourseFormDirty(false);
+          if (courseDirty.current) {
+            allowCourseSubmit.current = true;
+            (document.getElementById("course-form") as HTMLFormElement)?.requestSubmit();
+          } else if (
+            shouldRefreshVideo ||
+            policyChangedLessonIds.length > 0
+          ) {
+            router.refresh();
+          }
+        } else if (result.policyFailedLessonIds.length > 0) {
+          setVideoPolicyFailureVersions((current) => {
+            const next = { ...current };
+            for (const lessonId of result.policyFailedLessonIds) {
+              next[lessonId] = (next[lessonId] ?? 0) + 1;
+            }
+            return next;
+          });
         }
       } catch {
         setFeedback({
@@ -192,6 +250,16 @@ export default function CourseContent({
         });
       }
     });
+  }
+
+  useEffect(() => { saveRef.current = saveAllChanges; });
+
+  function onVideoChanged(lessonId: string, status: VideoStatus) {
+    if (status) {
+      setVideoStatuses((current) => ({ ...current, [lessonId]: status }));
+    }
+    setVideoChanged(true);
+    setDirty(true);
   }
 
   return (
@@ -217,20 +285,15 @@ export default function CourseContent({
         </h2>
         <p className="mt-4 leading-7 text-white/45">
           {isQuickGuide
-            ? "Añade una o pocas lecciones breves para resolver una necesidad concreta. La estructura técnica se gestiona automáticamente."
+            ? "Añade pasos breves para resolver una necesidad concreta."
             : "Organiza módulos y lecciones. El orden se controla manualmente con números; los valores menores aparecen primero."}
         </p>
       </div>
 
       {!isQuickGuide && (
-        <details className="group mt-10 max-w-3xl rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-        <summary className="cursor-pointer list-none font-semibold text-white/80 marker:hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
-          <span className="flex items-center justify-between gap-4">
-            + Crear módulo
-            <span className="text-white/30 transition group-open:rotate-45" aria-hidden="true">
-              +
-            </span>
-          </span>
+        <details className="group mt-10 max-w-3xl rounded-2xl border border-white/15 bg-white/[0.035] p-6 transition hover:border-white/25">
+        <summary className="cursor-pointer list-none font-semibold text-white/90 marker:hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
+          <CreateDisclosureLabel label="Crear módulo" />
         </summary>
 
         <form
@@ -247,9 +310,6 @@ export default function CourseContent({
           </Field>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Estado">
-              <StatusSelect name="status" defaultValue="draft" />
-            </Field>
             <Field label="Número de módulo">
               <input
                 name="sort_order"
@@ -260,6 +320,7 @@ export default function CourseContent({
                 className={inputClass}
               />
             </Field>
+            <VisibilitySwitch id="new-module-public" compact />
           </div>
 
           <button
@@ -268,8 +329,9 @@ export default function CourseContent({
             title={
               dirty ? "Guarda primero los cambios pendientes" : undefined
             }
-            className={`${primaryButtonClass} disabled:cursor-not-allowed disabled:opacity-40`}
+            className={`${primaryButtonClass} inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-40`}
           >
+            <span aria-hidden="true">+</span>
             Crear módulo
           </button>
         </form>
@@ -288,6 +350,7 @@ export default function CourseContent({
           return (
             <article
               key={courseModule.id}
+              id={`content-${courseModule.id}`}
               className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.015]"
             >
               {!isQuickGuide && (
@@ -337,12 +400,6 @@ export default function CourseContent({
                   </Field>
 
                   <div className="grid gap-5 sm:grid-cols-2">
-                    <Field label="Estado">
-                      <StatusSelect
-                        name="status"
-                        defaultValue={courseModule.status}
-                      />
-                    </Field>
                     <Field label="Número de módulo">
                       <input
                         name="sort_order"
@@ -353,6 +410,12 @@ export default function CourseContent({
                         className={inputClass}
                       />
                     </Field>
+                    <VisibilitySwitch
+                      id={`module-public-${courseModule.id}`}
+                      defaultPublic={courseModule.status === "published"}
+                      archived={courseModule.status === "archived"}
+                      compact
+                    />
                   </div>
 
                 </form>
@@ -386,33 +449,41 @@ export default function CourseContent({
                       actionsDisabled={actionsDisabled}
                       onSubmit={handleExistingRecordSubmit}
                       quickGuide={isQuickGuide}
-                      videoStatus={videoByLesson.get(lesson.id) ?? null}
+                      videoStatus={videoStatuses[lesson.id] ?? null}
+                      videoRefreshVersion={
+                        videoRefreshVersions[lesson.id] ?? 0
+                      }
+                      videoPolicyFailureVersion={
+                        videoPolicyFailureVersions[lesson.id] ?? 0
+                      }
+                      open={focusId === lesson.id}
+                      onVideoChanged={onVideoChanged}
                     />
                   ))}
 
                   {moduleLessons.length === 0 && (
                     <p className="py-6 text-sm text-white/35">
-                      Este módulo todavía no tiene lecciones.
+                      {isQuickGuide
+                        ? "Esta guía todavía no tiene pasos."
+                        : "Este módulo todavía no tiene lecciones."}
                     </p>
                   )}
                 </div>
 
-                <details className="group mt-6 rounded-xl border border-dashed border-white/15 p-5">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-white/65 marker:hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
-                    <span className="flex items-center justify-between gap-4">
-                      + Crear {isQuickGuide ? "paso" : "lección"}
-                      <span
-                        className="text-white/30 transition group-open:rotate-45"
-                        aria-hidden="true"
-                      >
-                        +
-                      </span>
-                    </span>
+                <details open={focusId === courseModule.id} className="group mt-6 rounded-xl border border-white/15 bg-white/[0.025] p-5 transition hover:border-white/25 hover:bg-white/[0.04]">
+                  <summary className="cursor-pointer list-none text-sm font-semibold text-white/85 marker:hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
+                    <CreateDisclosureLabel
+                      label={`Crear ${isQuickGuide ? "paso" : "lección"}`}
+                    />
                   </summary>
 
                   <LessonForm
                     action={createLesson}
-                    submitLabel={`Crear ${isQuickGuide ? "paso" : "lección"}`}
+                    submitLabel={
+                      isQuickGuide
+                        ? "Crear paso y continuar"
+                        : "Crear lección y continuar"
+                    }
                     className="mt-6 border-t border-white/10 pt-6"
                     actionsDisabled={actionsDisabled}
                     onSubmit={preventActionWhileDirty}
@@ -427,7 +498,7 @@ export default function CourseContent({
         {modules.length === 0 && (
           <div className="rounded-2xl border border-dashed border-white/10 p-10 text-center text-white/35">
             {isQuickGuide
-              ? "La guía todavía no tiene su contenedor técnico. Vuelve a crearla después de aplicar la migración o contacta al equipo técnico."
+              ? "La guía todavía no tiene pasos disponibles."
               : "Todavía no hay módulos. Crea el primero para empezar a estructurar el curso."}
           </div>
         )}
@@ -436,11 +507,11 @@ export default function CourseContent({
       <div className="sticky bottom-4 z-20 mt-10 flex flex-col justify-between gap-4 rounded-2xl border border-white/10 bg-[#111111]/95 p-5 shadow-2xl backdrop-blur-md sm:flex-row sm:items-center">
         <div>
           <p className="text-sm font-medium text-white/75">
-            {dirty ? "Tienes cambios sin guardar" : "Contenido actualizado"}
+            {dirty ? "Hay cambios en el editor" : "Contenido actualizado"}
           </p>
           <p className="mt-1 text-xs text-white/35">
-            {dirty
-              ? "Se guardarán juntos todos los módulos y lecciones editados."
+            {videoChanged ? "El video ya se guardó. Guarda para confirmar los demás cambios del editor." : dirty
+              ? `Se guardarán juntos todos los ${isQuickGuide ? "pasos" : "módulos y lecciones"} editados.`
               : "Edita cualquier campo para activar el guardado conjunto."}
           </p>
         </div>
@@ -467,6 +538,10 @@ function LessonEditor({
   onSubmit,
   quickGuide,
   videoStatus,
+  videoRefreshVersion,
+  videoPolicyFailureVersion,
+  open,
+  onVideoChanged,
 }: {
   courseId: string;
   moduleId: string;
@@ -475,10 +550,14 @@ function LessonEditor({
   actionsDisabled: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   quickGuide: boolean;
-  videoStatus: "preparing" | "ready" | "errored" | null;
+  videoStatus: VideoStatus;
+  videoRefreshVersion: number;
+  videoPolicyFailureVersion: number;
+  open: boolean;
+  onVideoChanged: (lessonId: string, status: VideoStatus) => void;
 }) {
   return (
-    <details className="group py-5">
+    <details id={`content-${lesson.id}`} open={open || undefined} className="group py-5">
       <summary className="cursor-pointer list-none marker:hidden focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
         <span className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <span className="min-w-0">
@@ -521,8 +600,10 @@ function LessonEditor({
         <LessonVideoUploader
           lessonId={lesson.id}
           initialStatus={videoStatus}
+          refreshVersion={videoRefreshVersion}
+          policyFailureVersion={videoPolicyFailureVersion}
           quickGuide={quickGuide}
-          disabled={actionsDisabled}
+          onChanged={(status) => onVideoChanged(lesson.id, status)}
         />
       </div>
     </details>
@@ -548,6 +629,7 @@ function LessonForm({
   onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
   quickGuide?: boolean;
 }) {
+  const visibilityId = useId();
   return (
     <form
       action={action}
@@ -566,20 +648,6 @@ function LessonForm({
         />
       </Field>
 
-      <Field label="Slug">
-        <input
-          name="slug"
-          pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-          maxLength={160}
-          defaultValue={lesson?.slug ?? ""}
-          placeholder="Se genera desde el título si lo dejas vacío"
-          className={inputClass}
-        />
-        <span className="mt-2 block text-xs text-white/30">
-          Sólo minúsculas, números y guiones.
-        </span>
-      </Field>
-
       <Field label="Descripción">
         <textarea
           name="description"
@@ -589,17 +657,8 @@ function LessonForm({
         />
       </Field>
 
-      <div className="grid gap-5 sm:grid-cols-3">
-        <Field label="Duración en minutos">
-          <input
-            name="duration_minutes"
-            type="number"
-            min="0"
-            step="1"
-            defaultValue={lesson?.duration_minutes ?? ""}
-            className={inputClass}
-          />
-        </Field>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <p className="text-sm text-white/40 sm:col-span-2">Duración del video: {lesson?.duration_minutes == null ? "desconocida" : `${lesson.duration_minutes} min (aprox.)`}</p>
 
         <Field label={quickGuide ? "Número de paso" : "Número de lección"}>
           <input
@@ -612,53 +671,84 @@ function LessonForm({
           />
         </Field>
 
-        <Field label="Estado">
-          <StatusSelect
-            name="status"
-            defaultValue={lesson?.status ?? "draft"}
-          />
-        </Field>
+        <VisibilitySwitch
+          id={visibilityId}
+          defaultPublic={lesson?.status === "published"}
+          archived={lesson?.status === "archived"}
+          compact
+        />
       </div>
 
-      <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/60">
+      {!quickGuide && <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/60">
         <input
           name="is_preview"
           type="checkbox"
           defaultChecked={lesson?.is_preview ?? false}
           className="size-4 accent-white"
         />
-        Permitir preview público
-      </label>
+        Lección gratuita (requiere cuenta e inscripción)
+      </label>}
+      {quickGuide && lesson?.is_preview && <input type="hidden" name="is_preview" value="on" />}
 
       {action && submitLabel && (
-        <button
-          type="submit"
+        <CreateContentSubmitButton
+          label={submitLabel}
           disabled={actionsDisabled}
-          title={
-            actionsDisabled ? "Guarda primero los cambios pendientes" : undefined
-          }
-          className={`${primaryButtonClass} disabled:cursor-not-allowed disabled:opacity-40`}
-        >
-          {submitLabel}
-        </button>
+        />
       )}
     </form>
   );
 }
 
-function StatusSelect({
-  name,
-  defaultValue,
+function CreateContentSubmitButton({
+  label,
+  disabled,
 }: {
-  name: string;
-  defaultValue: string;
+  label: string;
+  disabled: boolean;
 }) {
+  const { pending } = useFormStatus();
+
   return (
-    <select name={name} defaultValue={defaultValue} className={selectClass}>
-      <option value="draft">Borrador</option>
-      <option value="published">Publicado</option>
-      <option value="archived">Archivado</option>
-    </select>
+    <button
+      type="submit"
+      disabled={disabled || pending}
+      title={
+        disabled ? "Guarda primero los cambios pendientes" : undefined
+      }
+      className={`${primaryButtonClass} disabled:cursor-not-allowed disabled:opacity-40`}
+    >
+      {pending ? (
+        "Creando…"
+      ) : (
+        <span className="inline-flex items-center gap-2">
+          <span aria-hidden="true">+</span>
+          {label}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function CreateDisclosureLabel({ label }: { label: string }) {
+  return (
+    <span className="flex items-center justify-between gap-4">
+      <span className="flex items-center gap-3">
+        <span
+          aria-hidden="true"
+          className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white text-base font-medium text-black"
+        >
+          +
+        </span>
+        {label}
+      </span>
+      <span
+        className="text-white/35 transition group-open:rotate-180"
+        aria-hidden="true"
+      >
+        ↓
+      </span>
+    </span>
   );
 }
 

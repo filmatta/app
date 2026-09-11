@@ -15,9 +15,11 @@ import {
 } from "@/lib/learn/content-type";
 import AdminToast from "../AdminToast";
 import CourseContent from "../CourseContent";
+import CourseFormActions from "../CourseFormActions";
 import { updateCourse } from "../actions";
 
 const SUCCESS_MESSAGES: Record<string, string> = {
+  "course-created": "Contenido creado. Continúa añadiendo contenido aquí.",
   "course-saved": "Contenido guardado.",
   "module-created": "Módulo creado.",
   "module-updated": "Módulo actualizado.",
@@ -25,6 +27,12 @@ const SUCCESS_MESSAGES: Record<string, string> = {
   "lesson-created": "Lección creada.",
   "lesson-updated": "Lección actualizada.",
   "lesson-deleted": "Lección eliminada.",
+};
+
+const QUICK_GUIDE_SUCCESS_MESSAGES: Record<string, string> = {
+  "lesson-created": "Paso creado.",
+  "lesson-updated": "Paso actualizado.",
+  "lesson-deleted": "Paso eliminado.",
 };
 
 export default async function EditarCursoPage({
@@ -37,6 +45,7 @@ export default async function EditarCursoPage({
     content_error?: string;
     success?: string;
     notice?: string;
+    focus?: string;
   }>;
 }) {
   const { id } = await params;
@@ -99,7 +108,9 @@ export default async function EditarCursoPage({
       : undefined;
   const errorMessage = contentLoadError ?? query.content_error ?? query.error;
   const successMessage = query.success
-    ? SUCCESS_MESSAGES[query.success]
+    ? isQuickGuide && QUICK_GUIDE_SUCCESS_MESSAGES[query.success]
+      ? QUICK_GUIDE_SUCCESS_MESSAGES[query.success]
+      : SUCCESS_MESSAGES[query.success]
     : undefined;
 
   const updateCourseWithId = updateCourse.bind(null, id);
@@ -131,7 +142,7 @@ export default async function EditarCursoPage({
           ← Contenido de Aprender
         </Link>
 
-        <div className="mt-10 flex flex-col justify-between gap-7 sm:flex-row sm:items-end">
+        <div className="mt-10">
           <div>
             <p className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
               Editar {isQuickGuide ? "guía rápida" : "curso"}
@@ -152,13 +163,6 @@ export default async function EditarCursoPage({
             </h1>
           </div>
 
-          <button
-            type="submit"
-            form="course-form"
-            className="w-fit rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-          >
-            Guardar cambios
-          </button>
         </div>
 
         <form
@@ -166,6 +170,8 @@ export default async function EditarCursoPage({
           action={updateCourseWithId}
           className="mt-12 max-w-3xl space-y-7"
         >
+          <CourseFormActions />
+
           <Field label="Tipo de contenido">
             <select
               value={contentType}
@@ -194,13 +200,7 @@ export default async function EditarCursoPage({
             />
           </Field>
 
-          <Field label="Slug">
-            <input
-              name="slug"
-              defaultValue={course.slug ?? ""}
-              className={inputClass}
-            />
-          </Field>
+          <p className="text-sm text-white/40">URL permanente: /cursos/{course.slug}</p>
 
           <Field label="Descripción corta">
             <textarea
@@ -261,15 +261,7 @@ export default async function EditarCursoPage({
           </div>
 
           <div className="grid gap-6 sm:grid-cols-2">
-            <Field label="Duración en minutos">
-              <input
-                name="duration_minutes"
-                type="number"
-                min="0"
-                defaultValue={course.duration_minutes ?? ""}
-                className={inputClass}
-              />
-            </Field>
+            <p className="text-sm text-white/40">La duración se calcula a partir de los videos de cada lección/paso.</p>
 
             <Field label="Orden">
               <input
@@ -328,17 +320,10 @@ export default async function EditarCursoPage({
             Destacar este contenido
           </label>
 
-          <div className="flex flex-col gap-4 border-t border-white/10 pt-8 sm:flex-row">
-            <button
-              type="submit"
-              className="rounded-full bg-white px-8 py-4 font-semibold text-black transition hover:bg-white/85"
-            >
-              Guardar cambios
-            </button>
-
+          <div className="flex border-t border-white/10 pt-8">
             <Link
               href="/admin/cursos"
-              className="rounded-full border border-white/15 px-8 py-4 text-center font-medium text-white/60 transition hover:bg-white/5 hover:text-white"
+              className="rounded-full border border-white/15 px-6 py-3 text-center text-sm font-medium text-white/60 transition hover:bg-white/5 hover:text-white"
             >
               Cancelar
             </Link>
@@ -351,6 +336,7 @@ export default async function EditarCursoPage({
           lessons={lessonsResult.data ?? []}
           videos={videosResult.data ?? []}
           contentType={contentType}
+          focusId={query.focus}
         />
       </section>
     </main>

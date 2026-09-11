@@ -8,7 +8,7 @@ import {
   getLearnContentType,
   isLearnContentType,
 } from "@/lib/learn/content-type";
-import { slugify } from "@/lib/slugify";
+import { insertWithUniqueSlug } from "@/lib/learn/unique-slug";
 import { getContentTypeSupport } from "./content-type-support";
 
 function getText(formData: FormData, key: string) {
@@ -102,15 +102,10 @@ export async function createCourse(formData: FormData) {
   const { supabase } = await requireAdmin();
 
   const title = getText(formData, "title");
-  let slug = getText(formData, "slug");
   const requestedContentType = getText(formData, "content_type");
 
   if (!title) {
     redirect("/admin/cursos/nuevo?error=Falta el título");
-  }
-
-  if (!slug) {
-    slug = slugify(title);
   }
 
   if (requestedContentType && !isLearnContentType(requestedContentType)) {
@@ -135,11 +130,10 @@ export async function createCourse(formData: FormData) {
     }
   }
 
-  const durationValue = getText(
-    formData,
-    "duration_minutes"
-  );
   const courseStatus = getText(formData, "status") || "draft";
+  if (!["draft", "published"].includes(courseStatus)) {
+    redirect("/admin/cursos/nuevo?error=Visibilidad inválida");
+  }
 
   const category = getText(formData, "category");
   const level = getText(formData, "level");
@@ -186,7 +180,6 @@ export async function createCourse(formData: FormData) {
 
   const courseValues: Record<string, unknown> = {
       title,
-      slug,
 
       short_description:
         getText(
@@ -205,9 +198,7 @@ export async function createCourse(formData: FormData) {
 
       level: level || null,
 
-      duration_minutes: durationValue
-        ? Number(durationValue)
-        : null,
+      duration_minutes: null,
 
       instructor:
         getText(formData, "instructor") ||
@@ -227,13 +218,14 @@ export async function createCourse(formData: FormData) {
     courseValues.content_type = requestedContentType;
   }
 
-  const { data: createdCourse, error } = await supabase
+  const { data: createdCourse, error, slug } = await insertWithUniqueSlug<{ id: string }>(title, "contenido", (slug) => supabase
     .from("courses")
-    .insert(courseValues)
+    .insert({ ...courseValues, slug })
     .select("id")
-    .single();
+    .single());
 
-  if (error) {
+  if (error || !createdCourse) {
+    console.error("Error creando contenido:", error);
     // Si la imagen se subió pero falló la creación
     // del curso, eliminamos el archivo huérfano.
     if (cover?.path) {
@@ -244,7 +236,7 @@ export async function createCourse(formData: FormData) {
 
     redirect(
       `/admin/cursos/nuevo?error=${encodeURIComponent(
-        error.message
+        "No se pudo crear el contenido. Revisa los datos e inténtalo de nuevo."
       )}`
     );
   }
@@ -280,7 +272,7 @@ export async function createCourse(formData: FormData) {
   revalidatePath(`/cursos/${slug}`);
   revalidatePath("/admin/cursos");
 
-  redirect("/admin/cursos");
+  redirect(`/admin/cursos/${createdCourse.id}?success=course-created#contenido`);
 }
 
 export async function updateCourse(
@@ -290,20 +282,11 @@ export async function updateCourse(
   const { supabase } = await requireAdmin();
 
   const title = getText(formData, "title");
-  let slug = getText(formData, "slug");
 
   if (!title) {
     redirect(getCourseEditFeedbackUrl(courseId, "error", "Falta el título"));
   }
 
-  if (!slug) {
-    slug = slugify(title);
-  }
-
-  const durationValue = getText(
-    formData,
-    "duration_minutes"
-  );
   const courseStatus = getText(formData, "status") || "draft";
 
   const category = getText(formData, "category");
@@ -337,6 +320,14 @@ export async function updateCourse(
         "No se pudo preparar el curso para guardar los cambios."
       )
     );
+  }
+
+  const slug = existingCourse.slug;
+  if (!["draft", "published", "archived"].includes(courseStatus)) {
+    redirect(getCourseEditFeedbackUrl(courseId, "error", "Visibilidad inválida."));
+  }
+  if (existingCourse.status === "archived" && courseStatus !== "archived") {
+    redirect(getCourseEditFeedbackUrl(courseId, "error", "La restauración de contenido archivado requiere una acción separada."));
   }
 
   if (
@@ -408,10 +399,6 @@ export async function updateCourse(
 
       level: level || null,
 
-      duration_minutes: durationValue
-        ? Number(durationValue)
-        : null,
-
       instructor:
         getText(formData, "instructor") ||
         null,
@@ -454,7 +441,8 @@ export async function updateCourse(
     const { error: moduleStatusError } = await supabase
       .from("course_modules")
       .update({ status: courseStatus })
-      .eq("course_id", courseId);
+      .eq("course_id", courseId)
+      .neq("status", "archived");
 
     if (moduleStatusError) {
       console.error(
@@ -528,7 +516,7 @@ export async function deleteCourse(
   if (error) {
     redirect(
       `/admin/cursos?error=${encodeURIComponent(
-        error.message
+        "No se pudo eliminar el contenido. Inténtalo de nuevo."
       )}`
     );
   }

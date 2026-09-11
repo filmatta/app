@@ -20,12 +20,12 @@ export function createMuxClient() {
   });
 }
 
-export function getLessonVideoPassthrough(lessonId: string) {
-  if (!UUID_PATTERN.test(lessonId)) {
+export function getLessonVideoPassthrough(lessonId: string, videoId?: string) {
+  if (!UUID_PATTERN.test(lessonId) || (videoId && !UUID_PATTERN.test(videoId))) {
     throw new Error("Identificador de lección inválido.");
   }
 
-  return `${LESSON_VIDEO_PREFIX}${lessonId}`;
+  return `${LESSON_VIDEO_PREFIX}${lessonId}${videoId ? `:${videoId}` : ""}`;
 }
 
 export function getLessonIdFromPassthrough(value?: string) {
@@ -33,6 +33,13 @@ export function getLessonIdFromPassthrough(value?: string) {
     return null;
   }
 
-  const lessonId = value.slice(LESSON_VIDEO_PREFIX.length);
-  return UUID_PATTERN.test(lessonId) ? lessonId : null;
+  const parts = value.slice(LESSON_VIDEO_PREFIX.length).split(":");
+  if (parts.length > 2 || (parts.length === 2 && !UUID_PATTERN.test(parts[1]))) return null;
+  return UUID_PATTERN.test(parts[0]) ? parts[0] : null;
+}
+
+export function getVideoAttemptId(value?: string) {
+  if (!getLessonIdFromPassthrough(value)) return null;
+  const id = value?.slice(LESSON_VIDEO_PREFIX.length).split(":")[1];
+  return id && UUID_PATTERN.test(id) ? id : null;
 }

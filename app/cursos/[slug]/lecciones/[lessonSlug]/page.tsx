@@ -8,6 +8,9 @@ import { getViewer } from "@/lib/auth/get-viewer";
 import { getLearnContentType } from "@/lib/learn/content-type";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { presentVideo, presentVideoPoster } from "@/lib/mux/playback";
+import LessonVideoPlayer, { type VideoPresentation } from "@/components/LessonVideoPlayer";
 
 type LessonPageProps = {
   params: Promise<{
@@ -150,6 +153,36 @@ export default async function LessonPage({
       ? await getProgress(supabase, viewer.id, course.id, lesson.id)
       : null;
 
+  let videoPresentation: VideoPresentation = { status: "none" };
+  let lockedPosterUrl: string | null = null;
+  if (canOpenLesson) {
+    try {
+      // Authorization above checks this exact lesson, its parents and enrollment.
+      const videoClient = isAdmin ? supabase : createAdminClient();
+      const { data: video, error } = await videoClient.from("lesson_videos")
+        .select("status, playback_policy, mux_playback_id").eq("lesson_id", lesson.id).maybeSingle();
+      if (error) throw error;
+      videoPresentation = await presentVideo(video);
+    } catch {
+      console.error("Lesson video could not be loaded", { lessonId: lesson.id });
+      videoPresentation = { status: "unavailable" };
+    }
+  } else if (viewer && isPublished && !requiresEnrollment) {
+    try {
+      // A blocked viewer receives only a short-lived thumbnail URL. This query
+      // never calls presentVideo, so no playback or storyboard token is minted.
+      const { data: video, error } = await createAdminClient()
+        .from("lesson_videos")
+        .select("status, playback_policy, mux_playback_id")
+        .eq("lesson_id", lesson.id)
+        .maybeSingle();
+      if (error) throw error;
+      lockedPosterUrl = await presentVideoPoster(video);
+    } catch {
+      console.error("Lesson poster could not be loaded", { lessonId: lesson.id });
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#080808] text-white">
       <SiteHeader
@@ -218,22 +251,7 @@ export default async function LessonPage({
             {canOpenLesson ? (
               <>
                 <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
-                  <div className="flex aspect-video items-center justify-center bg-black/40 px-8 text-center">
-                    <div>
-                      <span className="mx-auto flex size-14 items-center justify-center rounded-full border border-white/15 bg-white/[0.04] text-white/60">
-                        <svg
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                          className="ml-1 size-5 fill-current"
-                        >
-                          <path d="M8 5.5v13l10-6.5L8 5.5Z" />
-                        </svg>
-                      </span>
-                      <p className="mt-5 text-sm text-white/45">
-                        El reproductor se conectará en la siguiente etapa.
-                      </p>
-                    </div>
-                  </div>
+                  <LessonVideoPlayer video={videoPresentation} />
 
                   <div className="p-6 sm:p-8">
                     <h2 className="text-xl font-semibold">
@@ -298,7 +316,28 @@ export default async function LessonPage({
                 )}
               </>
             ) : (
-              <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-8 sm:p-12">
+              <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]">
+                {!requiresEnrollment && (
+                  <LockedVideoPoster
+                    posterUrl={lockedPosterUrl}
+                    title={lesson.title}
+                  />
+                )}
+
+                <div className="p-8 sm:p-12">
+                {!requiresEnrollment && (
+                  <div className="mb-10 border-b border-white/10 pb-9">
+                    <h2 className="text-xl font-semibold">
+                      {isQuickGuide ? "Sobre este paso" : "Sobre esta lección"}
+                    </h2>
+                    <p className="mt-4 whitespace-pre-line leading-7 text-white/50">
+                      {lesson.description ||
+                        (isQuickGuide
+                          ? "El contenido de este paso estará disponible aquí."
+                          : "El contenido de esta lección estará disponible aquí.")}
+                    </p>
+                  </div>
+                )}
                 <span className="flex size-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-white/35">
                   <svg
                     viewBox="0 0 24 24"
@@ -360,6 +399,7 @@ export default async function LessonPage({
                     No pudimos completar la inscripción. Inténtalo de nuevo.
                   </p>
                 )}
+                </div>
               </section>
             )}
           </div>
@@ -398,6 +438,54 @@ export default async function LessonPage({
         </div>
       </article>
     </main>
+  );
+}
+
+function LockedVideoPoster({
+  posterUrl,
+  title,
+}: {
+  posterUrl: string | null;
+  title: string;
+}) {
+  return (
+    <div
+      role="img"
+      aria-label={
+        posterUrl
+          ? `Vista previa del video de ${title}`
+          : `Video premium de ${title}`
+      }
+      className="relative flex aspect-video items-center justify-center overflow-hidden bg-[#101010] bg-cover bg-center"
+      style={posterUrl ? { backgroundImage: `url("${posterUrl}")` } : undefined}
+    >
+      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-black/20" />
+      {!posterUrl && (
+        <span className="relative flex size-16 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white/45 backdrop-blur-sm">
+          <LockIcon className="size-6" />
+        </span>
+      )}
+      <span className="absolute bottom-5 left-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/55 px-3 py-1.5 text-xs font-medium text-white/75 backdrop-blur-sm">
+        <LockIcon className="size-3.5" />
+        Contenido premium
+      </span>
+    </div>
+  );
+}
+
+function LockIcon({ className }: { className: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={`${className} fill-none stroke-current`}
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="5" y="10" width="14" height="10" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    </svg>
   );
 }
 

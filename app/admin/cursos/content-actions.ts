@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { slugify } from "@/lib/slugify";
+import { insertWithUniqueSlug } from "@/lib/learn/unique-slug";
+import { getLearnContentType } from "@/lib/learn/content-type";
+import { changeLessonPlaybackPolicy } from "@/lib/mux/change-playback-policy";
 
 const CONTENT_STATUSES = ["draft", "published", "archived"] as const;
-const LESSON_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_INTEGER = 2_147_483_647;
 
 type ContentSuccess =
@@ -47,7 +48,7 @@ function validateTitle(title: string) {
 }
 
 function getStatus(formData: FormData) {
-  return validateStatus(getText(formData, "status"));
+  return validateStatus(getText(formData, "status") || "draft");
 }
 
 function validateStatus(status: string) {
@@ -65,22 +66,6 @@ function getNonNegativeInteger(
   options: { optional?: boolean } = {}
 ) {
   return validateNonNegativeInteger(getText(formData, key), label, options);
-}
-
-function getLessonSlug(formData: FormData, title: string) {
-  return validateLessonSlug(getText(formData, "slug"), title);
-}
-
-function validateLessonSlug(typedSlug: string, title: string) {
-  const slug = typedSlug || slugify(title);
-
-  if (!slug || slug.length > 160 || !LESSON_SLUG_PATTERN.test(slug)) {
-    throw new ContentActionError(
-      "El slug debe usar minúsculas, números y guiones, sin espacios."
-    );
-  }
-
-  return slug;
 }
 
 function validateNonNegativeInteger(
@@ -156,7 +141,7 @@ async function getCourse(
 ) {
   const { data: course, error } = await supabase
     .from("courses")
-    .select("id, slug")
+    .select("id, slug, content_type")
     .eq("id", courseId)
     .maybeSingle();
 
@@ -237,12 +222,13 @@ function contentError(courseId: string, message: string): never {
 function finishContentMutation(
   courseId: string,
   courseSlug: string,
-  success: ContentSuccess
+  success: ContentSuccess,
+  focusId?: string
 ): never {
   revalidateCourseContent(courseId, courseSlug);
 
   redirect(
-    `/admin/cursos/${courseId}?success=${success}&notice=${crypto.randomUUID()}#contenido`
+    `/admin/cursos/${courseId}?success=${success}&notice=${crypto.randomUUID()}${focusId ? `&focus=${focusId}` : ""}#${focusId ? `content-${focusId}` : "contenido"}`
   );
 }
 
@@ -268,23 +254,25 @@ export async function saveAllCourseContent(
   formData: FormData
 ) {
   const { supabase } = await requireAdmin();
+  let failedPolicyLessonId: string | null = null;
 
   try {
     const course = await getCourse(supabase, courseId);
     const payload = parseBulkContentPayload(formData);
 
-    const [modulesResult, lessonsResult] = await Promise.all([
+    const [modulesResult, lessonsResult, videosResult] = await Promise.all([
       supabase
         .from("course_modules")
-        .select("id, course_id")
+        .select("id, course_id, status")
         .eq("course_id", courseId),
       supabase
         .from("course_lessons")
-        .select("id, course_id, module_id")
+        .select("id, course_id, module_id, slug, duration_minutes, is_preview, status")
         .eq("course_id", courseId),
+      supabase.from("lesson_videos").select("lesson_id, playback_policy"),
     ]);
 
-    if (modulesResult.error || lessonsResult.error) {
+    if (modulesResult.error || lessonsResult.error || videosResult.error) {
       console.error("Error verificando el contenido para guardado masivo:", {
         modulesError: modulesResult.error,
         lessonsError: lessonsResult.error,
@@ -304,6 +292,15 @@ export async function saveAllCourseContent(
     const existingLessons = new Map(
       (lessonsResult.data ?? []).map((lesson) => [lesson.id, lesson])
     );
+    const videosByLesson = new Map(
+      (videosResult.data ?? []).map((video) => [video.lesson_id, video])
+    );
+    const policyTransitions: Array<{
+      lessonId: string;
+      title: string;
+      preview: boolean;
+    }> = [];
+    const isQuickGuide = getLearnContentType(course) === "quick_guide";
     const seenModuleIds = new Set<string>();
     const seenLessonIds = new Set<string>();
 
@@ -328,7 +325,7 @@ export async function saveAllCourseContent(
           record.sort_order,
           "El número de módulo"
         ),
-        status: validateStatus(getRecordText(record, "status")),
+        status: existingModule.status === "archived" ? "archived" : validateStatus(getRecordText(record, "status") || "draft"),
       };
     });
 
@@ -345,32 +342,44 @@ export async function saveAllCourseContent(
       seenLessonIds.add(id);
 
       const title = validateTitle(getRecordText(record, "title"));
+      const video = videosByLesson.get(id);
+      const preview = isQuickGuide ? false : record.is_preview === true;
+      if (video && preview !== existingLesson.is_preview) {
+        policyTransitions.push({ lessonId: id, title, preview });
+      }
 
       return {
         id,
         course_id: existingLesson.course_id,
         module_id: existingLesson.module_id,
         title,
-        slug: validateLessonSlug(getRecordText(record, "slug"), title),
+        slug: existingLesson.slug,
         description: getRecordText(record, "description") || null,
-        duration_minutes: validateNonNegativeInteger(
-          record.duration_minutes,
-          "La duración",
-          { optional: true }
-        ),
         sort_order: validateNonNegativeInteger(
           record.sort_order,
           "El número de lección"
         ),
-        is_preview: record.is_preview === true,
-        status: validateStatus(getRecordText(record, "status")),
+        is_preview: preview,
+        status: existingLesson.status === "archived" ? "archived" : validateStatus(getRecordText(record, "status") || "draft"),
       };
     });
 
-    if (lessonRows.length > 0) {
-      const { error } = await supabase
-        .from("course_lessons")
-        .upsert(lessonRows, { onConflict: "id" });
+    for (const transition of policyTransitions) {
+      const result = await changeLessonPlaybackPolicy(
+        supabase,
+        transition.lessonId,
+        transition.preview,
+      );
+
+      if (!result.ok) {
+        failedPolicyLessonId = transition.lessonId;
+        throw new ContentActionError(`«${transition.title}»: ${result.message}`);
+      }
+    }
+
+    for (const { id, ...values } of lessonRows) {
+      const { error } = await supabase.from("course_lessons")
+        .update(values).eq("id", id).eq("course_id", courseId);
 
       if (error) {
         console.error("Error guardando las lecciones en bloque:", error);
@@ -383,10 +392,9 @@ export async function saveAllCourseContent(
       }
     }
 
-    if (moduleRows.length > 0) {
-      const { error } = await supabase
-        .from("course_modules")
-        .upsert(moduleRows, { onConflict: "id" });
+    for (const { id, ...values } of moduleRows) {
+      const { error } = await supabase.from("course_modules")
+        .update(values).eq("id", id).eq("course_id", courseId);
 
       if (error) {
         console.error("Error guardando los módulos en bloque:", error);
@@ -400,6 +408,9 @@ export async function saveAllCourseContent(
       ok: true as const,
       message: "Todos los cambios fueron guardados.",
       notice: crypto.randomUUID(),
+      policyChangedLessonIds: policyTransitions.map(
+        (transition) => transition.lessonId,
+      ),
     };
   } catch (error) {
     if (error instanceof ContentActionError) {
@@ -407,6 +418,9 @@ export async function saveAllCourseContent(
         ok: false as const,
         message: error.message,
         notice: crypto.randomUUID(),
+        policyFailedLessonIds: failedPolicyLessonId
+          ? [failedPolicyLessonId]
+          : [],
       };
     }
 
@@ -416,6 +430,9 @@ export async function saveAllCourseContent(
       ok: false as const,
       message: "No se pudieron guardar todos los cambios.",
       notice: crypto.randomUUID(),
+      policyFailedLessonIds: failedPolicyLessonId
+        ? [failedPolicyLessonId]
+        : [],
     };
   }
 }
@@ -436,13 +453,13 @@ export async function createCourseModule(
       "El número de módulo"
     );
 
-    const { error } = await supabase.from("course_modules").insert({
+    const { data: created, error } = await supabase.from("course_modules").insert({
       course_id: courseId,
       title,
       description: getText(formData, "description") || null,
       sort_order: sortOrder,
       status,
-    });
+    }).select("id").single();
 
     if (error) {
       mutationError(
@@ -453,7 +470,7 @@ export async function createCourseModule(
       );
     }
 
-    finishContentMutation(courseId, course.slug, "module-created");
+    finishContentMutation(courseId, course.slug, "module-created", created?.id);
   } catch (error) {
     unstable_rethrow(error);
 
@@ -516,31 +533,24 @@ export async function createCourseLesson(
     await requireModule(supabase, courseId, moduleId);
 
     const title = getTitle(formData);
-    const slug = getLessonSlug(formData, title);
     const status = getStatus(formData);
-    const durationMinutes = getNonNegativeInteger(
-      formData,
-      "duration_minutes",
-      "La duración",
-      { optional: true }
-    );
     const sortOrder = getNonNegativeInteger(
       formData,
       "sort_order",
       "El número de lección"
     );
 
-    const { error } = await supabase.from("course_lessons").insert({
+    const { data: created, error } = await insertWithUniqueSlug<{ id: string }>(title, "leccion", (slug) => supabase.from("course_lessons").insert({
       module_id: moduleId,
       course_id: courseId,
       title,
       slug,
       description: getText(formData, "description") || null,
-      duration_minutes: durationMinutes,
+      duration_minutes: null,
       sort_order: sortOrder,
       is_preview: formData.get("is_preview") === "on",
       status,
-    });
+    }).select("id").single());
 
     if (error) {
       const message =
@@ -551,7 +561,7 @@ export async function createCourseLesson(
       mutationError(courseId, "Error creando la lección:", error, message);
     }
 
-    finishContentMutation(courseId, course.slug, "lesson-created");
+    finishContentMutation(courseId, course.slug, "lesson-created", created?.id);
   } catch (error) {
     unstable_rethrow(error);
 

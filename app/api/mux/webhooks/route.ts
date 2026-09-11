@@ -1,115 +1,66 @@
-import { createMuxClient, getLessonIdFromPassthrough } from "@/lib/mux/server";
+import { createMuxClient } from "@/lib/mux/server";
+import { syncMuxAsset, syncMuxUpload } from "@/lib/mux/sync-asset";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
-
 export async function POST(request: Request) {
-  const webhookSecret = process.env.MUX_WEBHOOK_SECRET;
-
-  if (!webhookSecret) {
-    console.error("MUX_WEBHOOK_SECRET no está configurado.");
-    return Response.json({ error: "Webhook no configurado." }, { status: 503 });
-  }
-
-  const body = await request.text();
+  const secret = process.env.MUX_WEBHOOK_SECRET;
+  if (!secret) return Response.json({ error: "Webhook no configurado." }, { status: 503 });
   let event;
-
   try {
-    event = await createMuxClient().webhooks.unwrap(
-      body,
-      request.headers,
-      webhookSecret
-    );
-  } catch (error) {
-    console.error("Webhook de Mux rechazado:", error);
+    event = await createMuxClient().webhooks.unwrap(await request.text(), request.headers, secret);
+  } catch {
+    console.warn("Mux webhook rejected", { reason: "invalid-signature" });
     return Response.json({ error: "Firma inválida." }, { status: 400 });
   }
-
+  console.info("Mux webhook received", { type: event.type, eventId: event.id });
   if (
+    event.type !== "video.upload.asset_created" &&
     event.type !== "video.asset.created" &&
     event.type !== "video.asset.ready" &&
     event.type !== "video.asset.errored"
   ) {
+    console.info("Mux webhook skipped", { reason: "unsupported-event", type: event.type });
     return Response.json({ received: true });
   }
-
-  const lessonId = getLessonIdFromPassthrough(event.data.passthrough);
-
-  if (
-    !lessonId ||
-    (event.data.meta?.external_id && event.data.meta.external_id !== lessonId)
-  ) {
-    console.error("Asset de Mux sin asociación FILMATTA válida:", event.id);
-    return Response.json({ received: true });
-  }
-
-  let supabase;
-
   try {
-    supabase = createAdminClient();
-  } catch (error) {
-    console.error("No se pudo inicializar Supabase para el webhook:", error);
-    return Response.json({ error: "Webhook no configurado." }, { status: 503 });
-  }
+    const mux = createMuxClient();
+    const supabase = createAdminClient();
 
-  const { data: video, error: videoError } = await supabase
-    .from("lesson_videos")
-    .select("lesson_id, mux_asset_id, playback_policy")
-    .eq("lesson_id", lessonId)
-    .maybeSingle();
+    if (event.type === "video.upload.asset_created") {
+      const upload = await mux.video.uploads.retrieve(event.data.id);
+      const result = await syncMuxUpload(supabase, mux, upload);
+      console.info("Mux upload webhook handled", {
+        eventId: event.id,
+        uploadId: upload.id,
+        assetId: upload.asset_id ?? null,
+        outcome: result.outcome,
+        reason: "reason" in result ? result.reason : null,
+      });
+      return Response.json({ received: true });
+    }
 
-  if (videoError) {
-    console.error("Error buscando el video asociado al webhook:", videoError);
-    return Response.json({ error: "No se pudo procesar." }, { status: 500 });
-  }
-
-  if (!video || (video.mux_asset_id && video.mux_asset_id !== event.data.id)) {
+    // Retrieve current Mux state so late/duplicate created events cannot regress ready.
+    const asset = await mux.video.assets.retrieve(event.data.id);
+    const result = asset.upload_id
+      ? await syncMuxUpload(
+          supabase,
+          mux,
+          await mux.video.uploads.retrieve(asset.upload_id),
+          asset,
+        )
+      : await syncMuxAsset(supabase, asset);
+    console.info("Mux asset webhook handled", {
+      eventId: event.id,
+      assetId: asset.id,
+      uploadId: asset.upload_id ?? null,
+      outcome: result.outcome,
+      reason: "reason" in result ? result.reason : null,
+    });
     return Response.json({ received: true });
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? error.code : "sync-failed";
+    console.error("Mux webhook update failed", { eventId: event.id, code });
+    return Response.json({ error: "No se pudo sincronizar el video." }, { status: 500 });
   }
-
-  const playbackId = event.data.playback_ids?.find(
-    (item) => item.policy === video.playback_policy
-  )?.id;
-  const update =
-    event.type === "video.asset.ready"
-      ? playbackId
-        ? {
-            mux_asset_id: event.data.id,
-            mux_playback_id: playbackId,
-            status: "ready",
-          }
-        : {
-            mux_asset_id: event.data.id,
-            mux_playback_id: null,
-            status: "errored",
-          }
-      : event.type === "video.asset.errored"
-        ? {
-            mux_asset_id: event.data.id,
-            mux_playback_id: null,
-            status: "errored",
-          }
-        : {
-            mux_asset_id: event.data.id,
-            mux_playback_id: playbackId ?? null,
-            status: "preparing",
-          };
-
-  let updateQuery = supabase
-    .from("lesson_videos")
-    .update(update)
-    .eq("lesson_id", lessonId);
-
-  updateQuery = video.mux_asset_id
-    ? updateQuery.eq("mux_asset_id", video.mux_asset_id)
-    : updateQuery.is("mux_asset_id", null);
-
-  const { error: updateError } = await updateQuery;
-
-  if (updateError) {
-    console.error("Error actualizando el estado del video Mux:", updateError);
-    return Response.json({ error: "No se pudo procesar." }, { status: 500 });
-  }
-
-  return Response.json({ received: true });
 }
