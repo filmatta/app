@@ -12,6 +12,25 @@ import LessonVideoPlayer, { type VideoPresentation } from "@/components/LessonVi
 type VideoStatus = "preparing" | "ready" | "errored" | null;
 type LocalStatus = VideoStatus | "starting" | "uploading";
 type ReplacementStage = "starting" | "uploading" | "processing" | null;
+type UploadFailure = "initial" | "replacement" | null;
+
+class DirectUploadError extends Error {
+  constructor(
+    message: string,
+    readonly kind: "setup" | "http" | "network" | "abort",
+    readonly status: number | null = null,
+  ) {
+    super(message);
+    this.name = "DirectUploadError";
+  }
+}
+
+function logUploadStage(
+  stage: string,
+  details: Record<string, unknown>,
+) {
+  console.info("Mux Direct Upload client", { stage, ...details });
+}
 
 const STATUS_LABELS: Record<Exclude<LocalStatus, null>, string> = {
   starting: "Preparando subida…",
@@ -48,10 +67,12 @@ export default function LessonVideoUploader({
     useState<ReplacementStage>(null);
   const [trackedReplacementUploadId, setTrackedReplacementUploadId] =
     useState<string | null>(null);
+  const [trackedReplacementAttemptId, setTrackedReplacementAttemptId] =
+    useState<string | null>(null);
+  const [uploadFailure, setUploadFailure] = useState<UploadFailure>(null);
   const [policySyncing, setPolicySyncing] = useState(false);
   const [policyFailed, setPolicyFailed] = useState(false);
   const inFlight = useRef(false);
-  const previousPlaybackId = useRef<string | null>(null);
   const replacementStartedAt = useRef<number | null>(null);
   const replacementDiscoveryAttempts = useRef(0);
   const lastRefreshVersion = useRef(refreshVersion);
@@ -144,8 +165,9 @@ export default function LessonVideoUploader({
     async function check() {
       try {
         const shouldDiscoverReplacement =
-          replacementStage === "processing" &&
           !trackedReplacementUploadId &&
+          (replacementStage === "processing" ||
+            (status === "ready" && !hasPresentation)) &&
           replacementDiscoveryAttempts.current < 3;
         if (shouldDiscoverReplacement) {
           replacementDiscoveryAttempts.current += 1;
@@ -153,6 +175,7 @@ export default function LessonVideoUploader({
         const video = await getLessonVideoState(
           lessonId,
           trackedReplacementUploadId ?? undefined,
+          trackedReplacementAttemptId ?? undefined,
           shouldDiscoverReplacement,
         );
         if (stopped) return;
@@ -163,14 +186,21 @@ export default function LessonVideoUploader({
         ) {
           setTrackedReplacementUploadId(video.trackedUploadId);
         }
-        setErrorMessage(null);
+        if (
+          video.trackedAttemptId &&
+          video.trackedAttemptId !== trackedReplacementAttemptId
+        ) {
+          setTrackedReplacementAttemptId(video.trackedAttemptId);
+        }
         setPresentation(video);
         setShowRecovery(false);
         if (video.replacementFailed) {
           setReplacementStage(null);
           setTrackedReplacementUploadId(null);
+          setTrackedReplacementAttemptId(null);
           replacementStartedAt.current = null;
           replacementDiscoveryAttempts.current = 0;
+          setUploadFailure("replacement");
           setShowRecovery(true);
           setErrorMessage(
             "El reemplazo no pudo procesarse. El video anterior continúa disponible.",
@@ -182,19 +212,40 @@ export default function LessonVideoUploader({
           replacementStage !== "processing" &&
           video.status === "ready"
         ) {
-          previousPlaybackId.current = video.playbackId ?? null;
-          setReplacementStage("processing");
-          setNotice("El nuevo video todavía se está procesando. El anterior continúa disponible.");
+          if (
+            video.trackedUploadId &&
+            video.trackedAttemptId &&
+            video.trackedUploadStatus === "asset_created"
+          ) {
+            setUploadFailure(null);
+            setErrorMessage(null);
+            setReplacementStage("processing");
+            setNotice("El nuevo video todavía se está procesando. El anterior continúa disponible.");
+          } else {
+            setUploadFailure("replacement");
+            setShowRecovery(true);
+            setNotice(null);
+            setErrorMessage(
+              video.trackedUploadStatus === "waiting"
+                ? "Mux tiene una sesión pendiente, pero no recibió el archivo. Vuelve a intentar la subida."
+                : "No se encontró una subida válida para el reemplazo pendiente.",
+            );
+          }
+          return;
         }
+        setErrorMessage(null);
+        setUploadFailure(null);
         if (
           replacementStage === "processing" &&
-          video.status === "ready" &&
-          video.replacementPending === false &&
-          (!previousPlaybackId.current ||
-            video.playbackId !== previousPlaybackId.current)
+          video.replacementResolved === true &&
+          Boolean(video.trackedUploadId) &&
+          video.trackedUploadId === trackedReplacementUploadId &&
+          Boolean(video.trackedAttemptId) &&
+          video.trackedAttemptId === trackedReplacementAttemptId
         ) {
           setReplacementStage(null);
           setTrackedReplacementUploadId(null);
+          setTrackedReplacementAttemptId(null);
           replacementStartedAt.current = null;
           replacementDiscoveryAttempts.current = 0;
           setShowRecovery(false);
@@ -237,6 +288,7 @@ export default function LessonVideoUploader({
     policySyncing,
     replacementStage,
     status,
+    trackedReplacementAttemptId,
     trackedReplacementUploadId,
   ]);
   const busy =
@@ -256,23 +308,33 @@ export default function LessonVideoUploader({
       return;
     }
 
+    const logContext = { lessonId, replacement: replacing };
+    logUploadStage("file-selected", {
+      ...logContext,
+      bytes: file.size,
+      contentType: file.type || "unknown",
+    });
+
     if (file.size === 0) {
+      setUploadFailure(replacing ? "replacement" : "initial");
       setErrorMessage("Selecciona un archivo de video con contenido.");
       return;
     }
 
     if (file.type && !file.type.startsWith("video/")) {
+      setUploadFailure(replacing ? "replacement" : "initial");
       setErrorMessage("El archivo seleccionado no parece ser un video.");
       return;
     }
 
     setErrorMessage(null);
+    setUploadFailure(null);
     setNotice(null);
     setShowRecovery(false);
     setProgress(0);
     if (replacing) {
-      previousPlaybackId.current = presentation?.playbackId ?? null;
       setTrackedReplacementUploadId(null);
+      setTrackedReplacementAttemptId(null);
       replacementStartedAt.current = null;
       replacementDiscoveryAttempts.current = 0;
       setReplacementStage("starting");
@@ -281,75 +343,174 @@ export default function LessonVideoUploader({
     }
     inFlight.current = true;
     try {
-    const result = await createLessonVideoUpload(lessonId, replacing);
+      logUploadStage("create-upload-started", logContext);
+      const result = await createLessonVideoUpload(lessonId, replacing);
 
-    if (!result.ok) {
-      if (replacing) {
-        const replacementReserved = "reserved" in result && result.reserved;
-        setReplacementStage(replacementReserved ? "processing" : null);
-        setShowRecovery(true);
-      } else {
-        const nextStatus = "reserved" in result && result.reserved ? "preparing" : initialStatus;
-        setStatus(nextStatus);
-        setShowRecovery(nextStatus === "preparing" || nextStatus === "errored");
+      if (!result.ok) {
+        logUploadStage("create-upload-failed", logContext);
+        setUploadFailure(replacing ? "replacement" : "initial");
+        setTrackedReplacementUploadId(null);
+        setTrackedReplacementAttemptId(null);
+        replacementStartedAt.current = null;
+        replacementDiscoveryAttempts.current = 0;
+        setShowRecovery(false);
+        if (replacing) {
+          setReplacementStage(null);
+          setStatus(initialStatus);
+        } else {
+          setStatus(initialStatus);
+        }
+        setErrorMessage(result.message);
+        return;
       }
-      setErrorMessage(result.message);
-      resetInput();
-      return;
-    }
 
-    if (replacing) {
-      setTrackedReplacementUploadId(result.uploadId);
-      setReplacementStage("uploading");
-      onChanged("ready");
-    } else {
-      setStatus("uploading");
-    }
+      let putStarted = false;
+      try {
+        let parsedUploadUrl: URL;
+        try {
+          parsedUploadUrl = new URL(result.uploadUrl);
+        } catch {
+          throw new DirectUploadError(
+            "Mux devolvió una URL de subida inválida.",
+            "setup",
+          );
+        }
+        if (
+          parsedUploadUrl.protocol !== "https:" ||
+          !result.uploadId ||
+          !result.attemptId
+        ) {
+          throw new DirectUploadError(
+            "Mux devolvió una sesión de subida incompleta.",
+            "setup",
+          );
+        }
 
-    try {
-      await uploadFile(result.uploadUrl, file, setProgress);
-      setProgress(100);
-      if (replacing) {
-        setReplacementStage("processing");
+        logUploadStage("upload-created", {
+          ...logContext,
+          uploadId: result.uploadId,
+          attemptId: result.attemptId,
+        });
+        if (replacing) {
+          setTrackedReplacementUploadId(result.uploadId);
+          setTrackedReplacementAttemptId(result.attemptId);
+          setReplacementStage("uploading");
+        } else {
+          setStatus("uploading");
+        }
+
+        putStarted = true;
+        logUploadStage("put-started", {
+          ...logContext,
+          uploadId: result.uploadId,
+          attemptId: result.attemptId,
+        });
+        const httpStatus = await uploadFile(result.uploadUrl, file, setProgress);
+        logUploadStage("put-completed", {
+          ...logContext,
+          uploadId: result.uploadId,
+          attemptId: result.attemptId,
+          httpStatus,
+        });
+        setProgress(100);
+        setUploadFailure(null);
+        if (replacing) {
+          setReplacementStage("processing");
+          onChanged(null);
+        } else {
+          setStatus("preparing");
+          onChanged("preparing");
+        }
+        setErrorMessage(null);
+        setNotice(
+          replacing
+            ? "El nuevo video se está procesando. El anterior continúa disponible."
+            : "El video se está procesando.",
+        );
+      } catch (error) {
+        const uploadError =
+          error instanceof DirectUploadError
+            ? error
+            : new DirectUploadError(
+                error instanceof Error
+                  ? error.message
+                  : "No se pudo completar la subida.",
+                "network",
+              );
+        logUploadStage(putStarted ? "put-failed" : "upload-session-invalid", {
+          ...logContext,
+          uploadId: result.uploadId,
+          attemptId: result.attemptId,
+          kind: uploadError.kind,
+          httpStatus: uploadError.status,
+        });
+
+        let cleanupMessage: string | null = null;
+        let cleanupSucceeded = false;
+        try {
+          const cleanup = await markLessonVideoUploadFailed({
+            lessonId,
+            uploadId: result.uploadId,
+            attemptId: result.attemptId,
+          });
+          cleanupSucceeded = cleanup.ok;
+          if (cleanup.ok) {
+            setPresentation(cleanup.video);
+            setStatus(normalizeVideoStatus(cleanup.video));
+          } else {
+            cleanupMessage = cleanup.message;
+          }
+        } catch {
+          cleanupMessage = "No se pudo cerrar de forma segura la subida fallida.";
+        }
+
+        setUploadFailure(replacing ? "replacement" : "initial");
+        setReplacementStage(null);
+        setTrackedReplacementUploadId(null);
+        setTrackedReplacementAttemptId(null);
+        replacementStartedAt.current = null;
+        replacementDiscoveryAttempts.current = 0;
+        if (!cleanupSucceeded) setStatus(initialStatus);
+        setShowRecovery(!cleanupSucceeded);
+        setNotice(null);
+        setErrorMessage(
+          cleanupMessage
+            ? `${uploadError.message} ${cleanupMessage}`
+            : uploadError.message,
+        );
       }
-      else setStatus("preparing");
-      setErrorMessage(null);
-      setNotice(
-        replacing
-          ? "El nuevo video se está procesando. El anterior continúa disponible."
-          : "El video se está procesando.",
+    } catch (error) {
+      logUploadStage("create-upload-exception", {
+        ...logContext,
+        type: error instanceof Error ? error.name : "unknown",
+      });
+      setUploadFailure(replacing ? "replacement" : "initial");
+      setTrackedReplacementUploadId(null);
+      setTrackedReplacementAttemptId(null);
+      replacementStartedAt.current = null;
+      replacementDiscoveryAttempts.current = 0;
+      if (replacing) {
+        setReplacementStage(null);
+        setStatus(initialStatus);
+      }
+      else setStatus(initialStatus);
+      setShowRecovery(true);
+      setNotice(null);
+      setErrorMessage(
+        "No se pudo iniciar la subida. Revisa la conexión e inténtalo de nuevo.",
       );
-      if (!replacing) onChanged("preparing");
-    } catch {
-      await markLessonVideoUploadFailed(lessonId);
-      if (replacing) {
-        setReplacementStage("processing");
-      }
-      else setStatus("preparing");
-      setShowRecovery(true);
-      setErrorMessage("La conexión se interrumpió. Comprueba el estado antes de reintentar.");
     } finally {
-      resetInput();
-    }
-    } catch {
-      if (replacing) {
-        setReplacementStage("processing");
-      }
-      else setStatus("preparing");
-      setShowRecovery(true);
-      setErrorMessage("No se pudo confirmar la operación. Comprueba el estado antes de volver a subir.");
-    } finally { inFlight.current = false; }
-  }
-
-  function resetInput() {
-    if (inputRef.current) {
-      inputRef.current.value = "";
+      inFlight.current = false;
     }
   }
 
   const statusLabel = status ? STATUS_LABELS[status] : null;
   const statusDescription =
-    policySyncing
+    uploadFailure === "replacement"
+      ? "No se completó el reemplazo. El video anterior continúa disponible."
+      : uploadFailure === "initial"
+        ? `No se pudo subir el video de ${quickGuide ? "este paso" : "esta lección"}.`
+    : policySyncing
       ? "Actualizando el acceso del video…"
       : replacementStage === "starting"
       ? "Preparando el reemplazo…"
@@ -405,9 +566,14 @@ export default function LessonVideoUploader({
               accept="video/*"
               disabled={busy}
               className="sr-only"
-              onChange={(event) =>
-                void handleFile(event.target.files?.[0], status === "ready")
-              }
+              onClick={() => {
+                if (inputRef.current) inputRef.current.value = "";
+              }}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                void handleFile(file, status === "ready");
+              }}
             />
           </label>
         )}
@@ -417,7 +583,8 @@ export default function LessonVideoUploader({
           status === "errored" ||
           replacementStage === "processing" ||
           policySyncing ||
-          policyFailed) && (
+          policyFailed ||
+          uploadFailure !== null) && (
         <details className="mt-4 w-fit text-xs text-white/40">
           <summary className="cursor-pointer list-none transition hover:text-white/65 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
             Problemas con el procesamiento
@@ -434,6 +601,7 @@ export default function LessonVideoUploader({
               if ("replacementFailed" in result && result.replacementFailed) {
                 setReplacementStage(null);
                 setTrackedReplacementUploadId(null);
+                setTrackedReplacementAttemptId(null);
                 replacementStartedAt.current = null;
                 replacementDiscoveryAttempts.current = 0;
               }
@@ -454,6 +622,7 @@ export default function LessonVideoUploader({
             setReplacementStage(replacementPending ? "processing" : null);
             if (!replacementPending) {
               setTrackedReplacementUploadId(null);
+              setTrackedReplacementAttemptId(null);
               replacementStartedAt.current = null;
               replacementDiscoveryAttempts.current = 0;
             }
@@ -464,6 +633,7 @@ export default function LessonVideoUploader({
                 policyFailed,
             );
             setErrorMessage(null);
+            setUploadFailure(null);
             setNotice(result.message);
             onChanged(nextStatus);
           } catch { setErrorMessage("No se pudo consultar el estado del procesamiento."); }
@@ -518,7 +688,7 @@ function uploadFile(
   file: File,
   onProgress: (percentage: number) => void
 ) {
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<number>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("PUT", uploadUrl);
     request.setRequestHeader(
@@ -533,13 +703,28 @@ function uploadFile(
     });
     request.addEventListener("load", () => {
       if (request.status >= 200 && request.status < 300) {
-        resolve();
+        resolve(request.status);
       } else {
-        reject(new Error("Mux rechazó la subida."));
+        reject(
+          new DirectUploadError(
+            `Mux rechazó la subida (HTTP ${request.status}).`,
+            "http",
+            request.status,
+          ),
+        );
       }
     });
-    request.addEventListener("error", () => reject(new Error("Error de red.")));
-    request.addEventListener("abort", () => reject(new Error("Subida cancelada.")));
+    request.addEventListener("error", () =>
+      reject(
+        new DirectUploadError(
+          "No se pudo conectar con Mux. Revisa la conexión o la configuración CORS.",
+          "network",
+        ),
+      ),
+    );
+    request.addEventListener("abort", () =>
+      reject(new DirectUploadError("La subida fue cancelada.", "abort")),
+    );
     request.send(file);
   });
 }
