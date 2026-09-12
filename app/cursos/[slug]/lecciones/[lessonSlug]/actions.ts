@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getBillingAccess } from "@/lib/billing/access";
 
 type ProgressActionResult = {
   ok: boolean;
@@ -15,7 +16,7 @@ export async function startLesson(
   lessonSlug: string
 ): Promise<ProgressActionResult> {
   return writeProgress(
-    "start_preview_lesson",
+    "start_entitled_lesson",
     courseId,
     lessonId,
     courseSlug,
@@ -30,7 +31,7 @@ export async function completeLesson(
   lessonSlug: string
 ): Promise<ProgressActionResult> {
   return writeProgress(
-    "complete_preview_lesson",
+    "complete_entitled_lesson",
     courseId,
     lessonId,
     courseSlug,
@@ -39,7 +40,7 @@ export async function completeLesson(
 }
 
 async function writeProgress(
-  functionName: "start_preview_lesson" | "complete_preview_lesson",
+  functionName: "start_entitled_lesson" | "complete_entitled_lesson",
   courseId: string,
   lessonId: string,
   courseSlug: string,
@@ -58,7 +59,7 @@ async function writeProgress(
   const [courseResult, lessonResult] = await Promise.all([
     supabase
       .from("courses")
-      .select("id")
+      .select("*")
       .eq("id", courseId)
       .eq("slug", courseSlug)
       .eq("status", "published")
@@ -70,7 +71,6 @@ async function writeProgress(
       .eq("course_id", courseId)
       .eq("slug", lessonSlug)
       .eq("status", "published")
-      .eq("is_preview", true)
       .maybeSingle(),
   ]);
 
@@ -105,6 +105,12 @@ async function writeProgress(
       ok: false,
       error: "Esta lección no está disponible para guardar progreso.",
     };
+  }
+
+  const billing = await getBillingAccess();
+  const entitled = billing.regularAccess && courseResult.data.billing_access === "regular";
+  if (courseResult.data.content_type === "quick_guide" || (!lessonResult.data.is_preview && !entitled)) {
+    return { ok: false, error: "Esta lección requiere acceso vigente." };
   }
 
   const { error } = await supabase.rpc(functionName, {

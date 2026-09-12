@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getBillingAccess } from "@/lib/billing/access";
 
 type ResumeCourse = {
   id: string;
@@ -48,6 +49,12 @@ export async function getResumeActions(
 
   const supabase = await createClient();
   const courseIds = courses.map((course) => course.id);
+  const billing = await getBillingAccess();
+  const regularCourses = new Set<string>();
+  if (billing.regularAccess) {
+    const { data, error } = await supabase.from("courses").select("id").in("id", courseIds).eq("billing_access", "regular");
+    if (!error) data?.forEach((course) => regularCourses.add(course.id));
+  }
   const [modulesResult, lessonsResult, progressResult] = await Promise.all([
     supabase
       .from("course_modules")
@@ -114,7 +121,7 @@ export async function getResumeActions(
 
         return moduleDifference || compareOrder(first, second);
       });
-    const accessibleLessons = courseLessons.filter((lesson) => lesson.is_preview);
+    const accessibleLessons = courseLessons.filter((lesson) => lesson.is_preview || regularCourses.has(course.id));
     const courseProgress = progress.filter((item) => item.course_id === course.id);
     const progressByLesson = new Map(
       courseProgress.map((item) => [item.lesson_id, item])

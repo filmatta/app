@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { billingEnabled } from "@/lib/billing/config";
 import SiteHeader from "@/components/SiteHeader";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
 
@@ -184,6 +185,8 @@ export default function PlanesPage() {
                 >
                   Explorar cursos
                 </Link>
+              ) : billingEnabled() && (plan.id === "plus" || plan.id === "pro") ? (
+                <Link href="/cuenta/suscripcion" className="mt-8 inline-flex justify-center rounded-full border border-white/15 px-5 py-3 text-sm font-semibold">Probar suscripción · Sin cobros reales</Link>
               ) : (
                 <span className="mt-8 inline-flex justify-center rounded-full border border-white/10 px-5 py-3 text-sm font-semibold text-white/35">
                   Próximamente

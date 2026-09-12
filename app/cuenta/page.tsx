@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { getBillingAccess } from "@/lib/billing/access";
+import { billingEnabled } from "@/lib/billing/config";
 import { redirect } from "next/navigation";
 import {
   logout,
@@ -60,6 +62,7 @@ export default async function CuentaPage({
   }
 
   const feedback = await searchParams;
+  const billing = await getBillingAccess();
 
   const supabase = await createClient();
   const { data: enrollmentData, error: enrollmentError } = await supabase
@@ -321,7 +324,8 @@ export default async function CuentaPage({
             <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
               <div>
                 <p className="text-sm text-white/35">Plan actual</p>
-                <p className="mt-2 text-xl font-semibold">FILMATTA Free</p>
+                <p className="mt-2 text-xl font-semibold">FILMATTA {billing.plan === "pro" ? "Pro" : billing.plan === "plus" ? "Plus" : "Free"}</p>
+                {billingEnabled() && <Link href="/cuenta/suscripcion" className="mt-3 inline-block text-sm text-white/70 underline">Administrar suscripción de prueba</Link>}
               </div>
               <Link
                 href="/planes#plus"

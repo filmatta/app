@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getBillingAccess } from "@/lib/billing/access";
+import { canReadLesson } from "@/lib/billing/policy";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import EnrollButton from "@/app/cursos/[slug]/EnrollButton";
@@ -139,7 +141,10 @@ const getEnrollment = cache(async (userId: string, courseId: string) => {
     return null;
   }
 
-  return data;
+  return data ? {
+    ...data,
+    accessExpired: Boolean(data.access_expires_at && Date.parse(data.access_expires_at) <= Date.now()),
+  } : null;
 });
 
 async function getCourseProgress(userId: string, courseId: string) {
@@ -203,6 +208,8 @@ export default async function CursoPage({
 
   const viewer = await getViewer();
   const isQuickGuide = getLearnContentType(course) === "quick_guide";
+  const billing = await getBillingAccess();
+  const regularAccess = billing.regularAccess && course.billing_access === "regular";
   const [curriculum, enrollment, feedback] = await Promise.all([
     getPublishedCurriculum(course.id),
     viewer && !isQuickGuide
@@ -211,9 +218,11 @@ export default async function CursoPage({
     searchParams ?? Promise.resolve<CourseFeedback>({}),
   ]);
   const isEnrolled =
-    enrollment?.status === "active" || enrollment?.status === "completed";
+    (enrollment?.status === "active" || enrollment?.status === "completed") &&
+    !enrollment.accessExpired;
   const enrollmentNeedsReview =
-    enrollment?.status === "cancelled" || enrollment?.status === "expired";
+    enrollment?.status === "cancelled" || enrollment?.status === "expired" ||
+    Boolean(enrollment?.accessExpired);
   const [resumeActions, lessonProgress] =
     viewer && isEnrolled
       ? await Promise.all([
@@ -236,11 +245,11 @@ export default async function CursoPage({
     : `/cursos/${course.slug}`;
   const quickGuideAction = {
     href: viewer
-      ? viewer.role === "admin"
+      ? viewer.role === "admin" || regularAccess
         ? firstLessonPath
         : "/planes#plus"
       : `/acceso?next=${encodeURIComponent(firstLessonPath)}`,
-    label: viewer && viewer.role !== "admin" ? "Ver FILMATTA Plus" : "Abrir guía",
+    label: viewer && viewer.role !== "admin" && !regularAccess ? "Ver FILMATTA Plus" : "Abrir guía",
   };
   const progressByLesson = new Map(
     lessonProgress.map((progress) => [progress.lesson_id, progress])
@@ -285,6 +294,7 @@ export default async function CursoPage({
     isAdmin: viewer?.role === "admin",
     isQuickGuide,
     isEnrolled,
+    regularAccess,
   });
   const courseNavigation = viewer ? (
     <StudentNavigationSidebar
@@ -645,8 +655,8 @@ export default async function CursoPage({
                                     <AccessIcon
                                       preview={
                                         isQuickGuide
-                                          ? viewer?.role === "admin"
-                                          : lesson.is_preview
+                                          ? viewer?.role === "admin" || regularAccess
+                                          : lesson.is_preview || (isEnrolled && regularAccess)
                                       }
                                     />
                                   </Link>
@@ -812,6 +822,7 @@ function buildCourseNavigationModules({
   isAdmin,
   isQuickGuide,
   isEnrolled,
+  regularAccess,
 }: {
   modules: CurriculumModule[];
   progressByLesson: Map<string, LessonProgressSummary>;
@@ -819,6 +830,7 @@ function buildCourseNavigationModules({
   isAdmin: boolean;
   isQuickGuide: boolean;
   isEnrolled: boolean;
+  regularAccess: boolean;
 }): StudentNavigationModule[] {
   return modules.map((courseModule) => {
     const completedLessons = courseModule.lessons.filter((lesson) =>
@@ -845,6 +857,7 @@ function buildCourseNavigationModules({
           isAdmin,
           isQuickGuide,
           isEnrolled,
+          regularAccess,
         }),
       })),
     };
@@ -857,14 +870,17 @@ function getCourseNavigationLessonState({
   isAdmin,
   isQuickGuide,
   isEnrolled,
+  regularAccess,
 }: {
   lesson: CurriculumLesson;
   progress?: LessonProgressSummary;
   isAdmin: boolean;
   isQuickGuide: boolean;
   isEnrolled: boolean;
+  regularAccess: boolean;
 }): StudentLessonState {
-  if (!isAdmin && (isQuickGuide || !isEnrolled || !lesson.is_preview)) {
+  if (!canReadLesson({ authenticated: true, admin: isAdmin, published: true,
+    quickGuide: isQuickGuide, enrolled: isEnrolled, preview: lesson.is_preview, regularAccess })) {
     return "locked";
   }
   if (progress?.completed_at) return "completed";
