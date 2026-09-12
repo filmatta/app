@@ -1,0 +1,311 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import Stripe from 'stripe';
+import load from './load.mjs';
+const policy = load('lib/billing/policy.ts');
+const entitledProgressSql = fs.readFileSync('supabase/migrations/20260912020000_entitled_lesson_progress.sql', 'utf8');
+const lessonProgressActions = fs.readFileSync('app/cursos/[slug]/lecciones/[lessonSlug]/actions.ts', 'utf8');
+
+function hasRegularAccess(plan, billingAccess) {
+  return (plan === 'plus' || plan === 'pro') && billingAccess === 'regular';
+}
+
+function canTrackLesson({ plan = null, billingAccess = 'regular', enrolled = true,
+  courseStatus = 'published', moduleStatus = 'published', lessonStatus = 'published', preview = false }) {
+  return policy.canReadLesson({
+    authenticated: true,
+    admin: false,
+    published: courseStatus === 'published' && moduleStatus === 'published' && lessonStatus === 'published',
+    quickGuide: false,
+    enrolled,
+    preview,
+    regularAccess: hasRegularAccess(plan, billingAccess),
+  });
+}
+
+function courseCompletes({ plan = null, billingAccess = 'regular', lessons }) {
+  const regularAccess = hasRegularAccess(plan, billingAccess);
+  const publishedLessons = lessons.filter((lesson) =>
+    lesson.lessonStatus === 'published' && lesson.moduleStatus === 'published');
+  return publishedLessons.length > 0 &&
+    publishedLessons.every((lesson) => lesson.preview || regularAccess) &&
+    publishedLessons.every((lesson) => lesson.completed);
+}
+
+test('free access, enrollment, premium, unpublished and admin boundaries', () => {
+  const base = { authenticated: true, admin: false, published: true, quickGuide: false, enrolled: true, preview: true, regularAccess: false };
+  assert.equal(policy.canReadLesson(base), true);
+  for (const change of [{ authenticated: false }, { published: false }, { enrolled: false }, { preview: false }, { quickGuide: true }]) {
+    assert.equal(policy.canReadLesson({ ...base, ...change }), false);
+  }
+  assert.equal(policy.canReadLesson({ ...base, preview: false, regularAccess: true }), true);
+  assert.equal(policy.canReadLesson({ ...base, regularAccess: true, enrolled: false }), false);
+  assert.equal(policy.canReadLesson({ ...base, regularAccess: true, quickGuide: true, enrolled: false }), true);
+  assert.equal(policy.canReadLesson({ ...base, admin: true, published: false, enrolled: false }), true);
+  assert.equal(policy.canReadLesson({ ...base, admin: true, authenticated: false }), false);
+});
+
+test('lesson progress access matrix covers plans, separate courses, enrollment and publication', () => {
+  assert.equal(canTrackLesson({ preview: true }), true, 'Free + preview');
+  assert.equal(canTrackLesson({}), false, 'Free + premium regular');
+  assert.equal(canTrackLesson({ plan: 'plus' }), true, 'Plus + premium regular');
+  assert.equal(canTrackLesson({ plan: 'pro' }), true, 'Pro + premium regular');
+  assert.equal(canTrackLesson({ plan: 'plus', billingAccess: 'separate' }), false, 'Plus + premium separate');
+  assert.equal(canTrackLesson({ plan: 'pro', billingAccess: 'separate' }), false, 'Pro + premium separate');
+  assert.equal(canTrackLesson({ plan: 'plus', enrolled: false }), false, 'No enrollment');
+  assert.equal(canTrackLesson({ plan: 'plus', courseStatus: 'draft' }), false, 'Draft course');
+  assert.equal(canTrackLesson({ plan: 'plus', moduleStatus: 'draft' }), false, 'Draft module');
+  assert.equal(canTrackLesson({ plan: 'plus', lessonStatus: 'draft' }), false, 'Draft lesson');
+});
+
+test('course completion requires access to and completion of every published lesson', () => {
+  const previewsCompletePremiumPending = [
+    { preview: true, completed: true, lessonStatus: 'published', moduleStatus: 'published' },
+    { preview: false, completed: false, lessonStatus: 'published', moduleStatus: 'published' },
+  ];
+  const allComplete = previewsCompletePremiumPending.map((lesson) => ({ ...lesson, completed: true }));
+  assert.equal(courseCompletes({ lessons: previewsCompletePremiumPending }), false,
+    'Free previews cannot complete a regular course with premium pending');
+  assert.equal(courseCompletes({ plan: 'plus', lessons: allComplete }), true, 'Plus can complete a regular course');
+  assert.equal(courseCompletes({ plan: 'pro', lessons: allComplete }), true, 'Pro can complete a regular course');
+  assert.equal(courseCompletes({ plan: 'plus', billingAccess: 'separate', lessons: allComplete }), false,
+    'Plus cannot complete a separate course through its entitlement');
+  assert.equal(courseCompletes({ plan: 'pro', billingAccess: 'separate', lessons: allComplete }), false,
+    'Pro cannot complete a separate course through its entitlement');
+});
+
+test('entitled progress SQL keeps one access decision and all server-side gates', () => {
+  const startSql = entitledProgressSql.slice(
+    entitledProgressSql.indexOf('create function public.start_entitled_lesson'),
+    entitledProgressSql.indexOf('create function public.complete_entitled_lesson'));
+  const completeSql = entitledProgressSql.slice(
+    entitledProgressSql.indexOf('create function public.complete_entitled_lesson'),
+    entitledProgressSql.indexOf('-- Compatibility aliases'));
+
+  for (const sql of [startSql, completeSql]) {
+    assert.equal((sql.match(/private\.has_regular_course_access\(p_course_id\)/g) ?? []).length, 1);
+    assert.match(sql, /current_user_id uuid := \(select auth\.uid\(\)\)/);
+    assert.match(sql, /if current_user_id is null then/);
+    assert.match(sql, /enrollment\.user_id = current_user_id/);
+    assert.match(sql, /enrollment\.status in \('active', 'completed'\)/);
+    assert.match(sql, /enrollment\.access_expires_at is null/);
+    assert.match(sql, /enrollment\.access_expires_at > now\(\)/);
+    assert.match(sql, /lesson\.status = 'published'/);
+    assert.match(sql, /module\.status = 'published'/);
+    assert.match(sql, /course\.status = 'published'/);
+    assert.match(sql, /course\.content_type = 'course'/);
+    assert.match(sql, /security definer\s+set search_path = ''/);
+    assert.doesNotMatch(sql, /p_user_id/);
+    assert.doesNotMatch(sql, /lesson\.is_preview or private\.has_regular_course_access/);
+  }
+  assert.match(entitledProgressSql,
+    /create function private\.has_regular_course_access[\s\S]*?security definer set search_path = ''/);
+  assert.match(entitledProgressSql,
+    /revoke all on function private\.has_regular_course_access\(uuid\) from public,anon,authenticated/);
+  assert.match(entitledProgressSql, /billing_access='regular'/);
+  assert.match(completeSql, /and not \(lesson\.is_preview or has_regular_access\)/);
+  assert.match(completeSql, /and progress\.completed_at is null/);
+});
+
+test('application progress callers use entitled RPCs and legacy RPCs delegate to them', () => {
+  assert.match(lessonProgressActions, /"start_entitled_lesson"/);
+  assert.match(lessonProgressActions, /"complete_entitled_lesson"/);
+  assert.doesNotMatch(lessonProgressActions, /"start_preview_lesson"|"complete_preview_lesson"/);
+  assert.match(entitledProgressSql,
+    /select public\.start_entitled_lesson\(p_course_id, p_lesson_id\)/);
+  assert.match(entitledProgressSql,
+    /select public\.complete_entitled_lesson\(p_course_id, p_lesson_id\)/);
+});
+
+test('entitlements expire and cannot survive failure, foreign billing or reversal', () => {
+  const paid = { status: 'active', paused: false, knownPrice: true, country: 'MX', invoicePaid: true, reversed: false, periodEnd: 2000, paidPeriodEnd: 1800 };
+  assert.equal(policy.paidAccessUntil(paid, 1000), new Date(1800000).toISOString());
+  for (const status of ['past_due', 'unpaid', 'incomplete', 'incomplete_expired', 'canceled', 'paused', 'trialing']) {
+    assert.equal(policy.paidAccessUntil({ ...paid, status }, 1000), null);
+  }
+  for (const change of [{ paused: true }, { knownPrice: false }, { country: 'US' }, { country: null }, { invoicePaid: false }, { reversed: true }, { periodEnd: 1000 }, { paidPeriodEnd: NaN }]) {
+    assert.equal(policy.paidAccessUntil({ ...paid, ...change }, 1000), null);
+  }
+});
+
+test('configuration rejects live keys, production and the wrong Supabase project', () => {
+  const env = { BILLING_ENABLED: 'true', BILLING_MODE: 'test', STRIPE_SECRET_KEY: 'sk_test_unit_fixture', BILLING_APP_URL: 'http://localhost:3000', BILLING_TEST_SUPABASE_PROJECT_REF: 'test-ref', NEXT_PUBLIC_SUPABASE_URL: 'https://test-ref.supabase.co', STRIPE_PLUS_PRICE_ID: 'price_plus', STRIPE_PRO_PRICE_ID: 'price_pro' };
+  assert.equal(load('lib/billing/config.ts', {}, env).billingConfig().origin, 'http://localhost:3000');
+  for (const change of [{ STRIPE_SECRET_KEY: 'sk_live_unit_fixture' }, { BILLING_MODE: 'live' }, { VERCEL_ENV: 'production' }, { BILLING_ENABLED: 'false' }, { NEXT_PUBLIC_SUPABASE_URL: 'https://another.supabase.co' }, { BILLING_APP_URL: 'https://site.test/path' }, { STRIPE_PRO_PRICE_ID: 'price_plus' }]) {
+    assert.throws(() => load('lib/billing/config.ts', {}, { ...env, ...change }).billingConfig());
+  }
+});
+
+test('webhook verifies raw signatures, rejects live/Connect and retries failures', async () => {
+  const stripe = new Stripe('sk_test_unit_fixture');
+  const secret = 'whsec_unit_fixture';
+  let calls = 0;
+  let fail = false;
+  let enabled = true;
+  const { POST } = load('app/api/stripe/webhooks/route.ts', {
+    '@/lib/billing/config': { billingEnabled: () => enabled, billingConfig: () => ({ webhookSecret: secret }), stripeClient: () => stripe },
+    '@/lib/billing/sync': { reconcileBillingEvent: async () => { calls++; if (fail) throw new Error('Temporary DB failure'); } },
+  });
+  function request(event, valid = true) {
+    const payload = JSON.stringify(event);
+    const signature = stripe.webhooks.generateTestHeaderString({ payload, secret });
+    return new Request('https://test.local/api/stripe/webhooks', { method: 'POST', headers: { 'stripe-signature': signature }, body: valid ? payload : payload + ' ' });
+  }
+  const event = { id: 'evt_test', type: 'invoice.paid', livemode: false, data: { object: {} } };
+  assert.equal((await POST(request(event, false))).status, 400);
+  assert.equal((await POST(request({ ...event, livemode: true }))).status, 400);
+  assert.equal((await POST(request({ ...event, account: 'acct_connected' }))).status, 400);
+  assert.equal(calls, 0);
+  fail = true;
+  assert.equal((await POST(request(event))).status, 500);
+  fail = false;
+  assert.equal((await POST(request(event))).status, 200);
+  enabled = false;
+  assert.equal((await POST(request(event))).status, 503);
+});
+
+function syncHarness() {
+  const state = { status: 'active', refunded: false, country: 'MX', deleted: false, fail: false, locked: false, owner: true, commits: 0, events: new Set(), grants: [], invoicePaid: true };
+  const end = Math.floor(Date.now() / 1000) + 3600;
+  const db = {
+    from(table) {
+      let value;
+      const q = { select() { return q; }, eq(_name, v) { value = v; return q; }, limit() { return q; }, async maybeSingle() {
+        return { error: null, data: table === 'billing_customers' ? state.owner ? { user_id: 'trusted-user' } : null : table === 'billing_events' && state.events.has(value) ? { stripe_event_id: value } : null };
+      } };
+      return q;
+    },
+    async rpc(name, args) {
+      if (name === 'apply_billing_snapshot') {
+        if (state.fail) return { error: new Error('rollback') };
+        state.events.add(args.p_event); state.grants = args.p_entitlements; state.commits++;
+      }
+      return { error: null };
+    },
+  };
+  const stripe = {
+    customers: { retrieve: async () => state.deleted ? { deleted: true } : { livemode: false, address: { country: state.country } } },
+    subscriptions: { list: async () => ({ has_more: false, data: [{ id: 'sub_test', livemode: false, status: state.status, pause_collection: null, latest_invoice: 'in_test', cancel_at_period_end: true,
+      items: { has_more: false, data: [{ quantity: 1, current_period_end: end, price: { id: 'price_plus', livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } }] } }] }) },
+    invoices: { retrieve: async () => ({ id: 'in_test', livemode: false, customer: 'cus_test', currency: 'mxn', status: state.invoicePaid ? 'paid' : 'open', amount_paid: state.invoicePaid ? 29900 : 0,
+      customer_address: { country: 'MX' }, lines: { has_more: false, data: [{ parent: { type: 'subscription_item_details', subscription_item_details: { proration: false } }, period: { end } }] }, parent: { subscription_details: { subscription: 'sub_test' } }, total_taxes: [] }) },
+    invoicePayments: { list: async () => ({ has_more: false, data: [{ id: 'inpay_test', livemode: false, status: 'paid', amount_paid: 29900, currency: 'mxn', payment: { payment_intent: { id: 'pi_test', latest_charge: { id: 'ch_test', livemode: false, paid: true, refunded: state.refunded, disputed: false, amount_refunded: state.refunded ? 29900 : 0, payment_method_details: { type: 'card' }, billing_details: { address: { country: 'MX' } } } } } }] }) },
+  };
+  const sync = load('lib/billing/sync.ts', {
+    '@/lib/supabase/admin': { createAdminClient: () => db },
+    './config': { stripeClient: () => stripe, billingConfig: () => ({ prices: { plus: 'price_plus', pro: 'price_pro' } }) },
+    './lock': { withBillingLock: async (_customer, callback) => { if (state.locked) throw new Error('busy'); return callback('token'); } },
+  }).reconcileBillingEvent;
+  const send = (id, type = 'invoice.paid') => sync({ id, type, livemode: false, data: { object: { object: 'invoice', id: 'in_test', customer: 'cus_test', metadata: { user_id: 'attacker' } } } });
+  return { state, send };
+}
+
+test('real reconciler: duplicate delivery, reordered cancellation, payment failure and refund', async () => {
+  const { state, send } = syncHarness();
+  await send('evt_1'); assert.equal(state.grants.length, 1);
+  await send('evt_1'); assert.equal(state.commits, 1);
+  state.status = 'canceled';
+  await send('evt_2', 'customer.subscription.deleted'); assert.equal(state.grants.length, 0);
+  // Old event still contains a paid invoice; canonical canceled state must win.
+  await send('evt_old'); assert.equal(state.grants.length, 0);
+  state.status = 'active'; state.invoicePaid = false;
+  await send('evt_failed', 'invoice.payment_failed'); assert.equal(state.grants.length, 0);
+  state.invoicePaid = true;
+  await send('evt_recovered'); assert.equal(state.grants.length, 1);
+  state.refunded = true;
+  await send('evt_refunded'); assert.equal(state.grants.length, 0);
+  state.refunded = false; state.country = 'US';
+  await send('evt_foreign'); assert.equal(state.grants.length, 0);
+  state.deleted = true;
+  await send('evt_deleted', 'customer.deleted'); assert.equal(state.grants.length, 0);
+});
+
+test('real reconciler: busy/failed transactions remain retryable and unmapped users never gain access', async () => {
+  const { state, send } = syncHarness();
+  state.locked = true;
+  await assert.rejects(send('evt_busy')); assert.equal(state.events.size, 0);
+  state.locked = false; state.fail = true;
+  await assert.rejects(send('evt_retry')); assert.equal(state.events.size, 0);
+  state.fail = false;
+  await send('evt_retry'); assert.equal(state.grants.length, 1);
+  state.owner = false;
+  await send('evt_unknown'); assert.equal(state.events.has('evt_unknown'), false);
+});
+
+test('checkout authenticates and rejects forged plan/country before contacting Stripe', async () => {
+  let viewer = null;
+  let calls = 0;
+  const actions = load('app/cuenta/suscripcion/actions.ts', {
+    'next/navigation': { redirect: (url) => { throw new Error(`redirect:${url}`); } },
+    '@/lib/auth/get-viewer': { getViewer: async () => viewer },
+    '@/lib/billing/policy': policy,
+    '@/lib/billing/checkout': { createTestCheckout: async (user) => { calls++; assert.equal(user.id, 'trusted'); return 'https://checkout.stripe.com/test'; } },
+  });
+  const form = new FormData(); form.set('plan', 'plus'); form.set('country', 'MX');
+  await assert.rejects(actions.startCheckout(form), /acceso/);
+  viewer = { id: 'trusted', email: null };
+  form.set('plan', 'business'); await assert.rejects(actions.startCheckout(form), /country/);
+  form.set('plan', 'plus'); form.set('country', 'US'); await assert.rejects(actions.startCheckout(form), /country/);
+  assert.equal(calls, 0);
+  form.set('country', 'MX'); form.set('user_id', 'attacker'); form.set('customer', 'cus_attacker');
+  await assert.rejects(actions.startCheckout(form), /checkout.stripe.com/);
+  assert.equal(calls, 1);
+});
+
+test('checkout rejects a missing manual Mexico tax rate before contacting Stripe', async () => {
+  let stripeClients = 0;
+  const checkout = load('lib/billing/checkout.ts', {
+    '@/lib/supabase/admin': { createAdminClient: () => { throw new Error('DB must not be contacted'); } },
+    '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
+    './config': {
+      stripeClient: () => { stripeClients++; return {}; },
+      billingConfig: () => ({ account: 'acct_test', origin: 'https://test.local', prices: { plus: 'price_plus', pro: 'price_pro' }, taxRate: '' }),
+    },
+    './lock': { withBillingLock: async (_id, fn) => fn('token') },
+  }, { BILLING_MX_CHECKOUT_VERIFIED: 'true' }).createTestCheckout;
+  await assert.rejects(checkout({ id: 'trusted', email: null }, 'plus'), /STRIPE_MX_TAX_RATE_ID/);
+  assert.equal(stripeClients, 0);
+});
+
+test('checkout requires a billing address, accepts unspecified price tax behavior and applies the manual tax rate', async () => {
+  const state = { existingSubscription: true, live: false, country: 'MX', creates: 0 };
+  const env = { BILLING_MX_CHECKOUT_VERIFIED: 'true' };
+  const q = { select() { return q; }, eq() { return q; }, maybeSingle: async () => ({ data: { stripe_customer_id: 'cus_trusted' }, error: null }) };
+  const stripe = {
+    accounts: { retrieve: async () => ({ id: 'acct_test', country: state.country }) },
+    prices: { retrieve: async () => ({ livemode: state.live, active: true, currency: 'mxn', unit_amount: 29900, recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' }, tax_behavior: 'unspecified', product: { active: true } }) },
+    taxRates: { retrieve: async () => ({ livemode: false, active: true, inclusive: true, percentage: 16, country: 'MX' }) },
+    customers: { retrieve: async () => ({ livemode: false }) },
+    subscriptions: { list: async () => ({ has_more: false, data: state.existingSubscription ? [{ status: 'past_due' }] : [] }) },
+    checkout: { sessions: { list: async () => ({ data: [], has_more: false }), create: async (params) => {
+      state.creates++; assert.equal(params.customer, 'cus_trusted'); assert.equal(params.adaptive_pricing.enabled, false);
+      assert.equal(params.payment_method_types.join(','), 'card'); assert.equal(params.billing_address_collection, 'required');
+      assert.equal(params.automatic_tax.enabled, false);
+      assert.equal(params.subscription_data.default_tax_rates.length, 1);
+      assert.equal(params.subscription_data.default_tax_rates[0], 'txr_test');
+      assert.equal(params.line_items.length, 1);
+      assert.equal(params.line_items[0].price, 'price_plus');
+      assert.equal(params.line_items[0].quantity, 1);
+      return { livemode: false, url: 'https://checkout.stripe.com/test' };
+    } } },
+  };
+  const checkout = load('lib/billing/checkout.ts', {
+    '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
+    '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
+    './config': { stripeClient: () => stripe, billingConfig: () => ({ account: 'acct_test', origin: 'https://test.local', prices: { plus: 'price_plus', pro: 'price_pro' }, taxRate: 'txr_test' }) },
+    './lock': { withBillingLock: async (_id, fn) => fn('token') },
+  }, env).createTestCheckout;
+  const user = { id: 'trusted', email: null };
+  await assert.rejects(checkout(user, 'plus'), /existing subscription/);
+  state.existingSubscription = false; state.live = true;
+  await assert.rejects(checkout(user, 'plus'), /Unexpected subscription price/);
+  state.live = false; state.country = 'US';
+  await assert.rejects(checkout(user, 'plus'), /Incorrect Stripe/);
+  state.country = 'MX'; env.BILLING_MX_CHECKOUT_VERIFIED = 'false';
+  await assert.rejects(checkout(user, 'plus'), /Mexico checkout/);
+  assert.equal(state.creates, 0);
+  env.BILLING_MX_CHECKOUT_VERIFIED = 'true';
+  assert.equal(await checkout(user, 'plus'), 'https://checkout.stripe.com/test');
+  assert.equal(state.creates, 1);
+});

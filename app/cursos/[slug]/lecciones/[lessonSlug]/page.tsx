@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { getBillingAccess } from "@/lib/billing/access";
+import { canReadLesson } from "@/lib/billing/policy";
 import { notFound, redirect } from "next/navigation";
 import EnrollButton from "@/app/cursos/[slug]/EnrollButton";
 import { enrollInCourse } from "@/app/cursos/[slug]/actions";
@@ -147,29 +149,31 @@ export default async function LessonPage({
     redirect(`/acceso?next=${encodeURIComponent(lessonPath)}`);
   }
 
+  const billing = await getBillingAccess();
+  const regularAccess = billing.regularAccess && course.billing_access === "regular";
   const [navigation, enrollment] = await Promise.all([
-    getPublishedNavigation(supabase, course.id, lesson.id),
+    getPublishedNavigation(supabase, course.id, lesson.id, regularAccess),
     viewer && !isQuickGuide
       ? getEnrollment(supabase, viewer.id, course.id)
       : Promise.resolve(null),
   ]);
   const isEnrolled = !isQuickGuide && enrollment !== null;
-  const canOpenLesson =
-    isAdmin ||
-    (!isQuickGuide && isPublished && lesson.is_preview && isEnrolled);
+  const canOpenLesson = canReadLesson({ authenticated: Boolean(viewer), admin: isAdmin,
+    published: isPublished, quickGuide: isQuickGuide, enrolled: isEnrolled,
+    preview: lesson.is_preview, regularAccess });
   const requiresEnrollment =
     Boolean(viewer) &&
     !isAdmin &&
     !isQuickGuide &&
     isPublished &&
-    lesson.is_preview &&
+    (lesson.is_preview || regularAccess) &&
     !isEnrolled;
   const canTrackProgress =
     Boolean(viewer) &&
     !isQuickGuide &&
     isEnrolled &&
     isPublished &&
-    lesson.is_preview;
+    (lesson.is_preview || regularAccess);
   const lessonProgress =
     viewer && !isQuickGuide && isEnrolled
       ? await getCourseProgress(supabase, viewer.id, course.id)
@@ -252,6 +256,7 @@ export default async function LessonPage({
     isAdmin,
     isQuickGuide,
     isEnrolled,
+    regularAccess,
   });
   const nextAction = getContextNextAction({
     coursePath,
@@ -375,7 +380,7 @@ export default async function LessonPage({
                   </div>
                 )}
 
-                {canTrackProgress && (
+                {canTrackProgress && !regularAccess && (
                   <section
                     aria-labelledby="plus-heading"
                     className="order-4 mt-8 rounded-2xl border border-red-400/20 bg-red-500/[0.035] p-6 sm:p-8 lg:order-none"
@@ -597,7 +602,8 @@ function LockIcon({ className }: { className: string }) {
 async function getPublishedNavigation(
   supabase: Awaited<ReturnType<typeof createClient>>,
   courseId: string,
-  currentLessonId: string
+  currentLessonId: string,
+  regularAccess: boolean
 ) {
   const [modulesResult, lessonsResult] = await Promise.all([
     supabase
@@ -657,7 +663,7 @@ async function getPublishedNavigation(
     previous: syllabus[currentIndex - 1] ?? null,
     next: syllabus[currentIndex + 1] ?? null,
     nextAccessible:
-      syllabus.slice(currentIndex + 1).find((item) => item.is_preview) ?? null,
+      syllabus.slice(currentIndex + 1).find((item) => item.is_preview || regularAccess) ?? null,
   };
 }
 
@@ -712,6 +718,7 @@ function buildStudentNavigationModules({
   isAdmin,
   isQuickGuide,
   isEnrolled,
+  regularAccess,
 }: {
   modules: SyllabusModule[];
   lessons: SyllabusLesson[];
@@ -720,6 +727,7 @@ function buildStudentNavigationModules({
   isAdmin: boolean;
   isQuickGuide: boolean;
   isEnrolled: boolean;
+  regularAccess: boolean;
 }): StudentNavigationModule[] {
   return modules.map((courseModule) => {
     const moduleLessons = lessons.filter(
@@ -749,6 +757,7 @@ function buildStudentNavigationModules({
           isAdmin,
           isQuickGuide,
           isEnrolled,
+          regularAccess,
         }),
       })),
     };
@@ -761,14 +770,17 @@ function getStudentLessonState({
   isAdmin,
   isQuickGuide,
   isEnrolled,
+  regularAccess,
 }: {
   lesson: SyllabusLesson;
   progress?: LessonProgress;
   isAdmin: boolean;
   isQuickGuide: boolean;
   isEnrolled: boolean;
+  regularAccess: boolean;
 }): StudentLessonState {
-  if (!isAdmin && (isQuickGuide || !isEnrolled || !lesson.is_preview)) {
+  if (!canReadLesson({ authenticated: true, admin: isAdmin, published: true,
+    quickGuide: isQuickGuide, enrolled: isEnrolled, preview: lesson.is_preview, regularAccess })) {
     return "locked";
   }
   if (progress?.completed_at) return "completed";
@@ -838,6 +850,10 @@ function getContextNextAction({
       href: `${coursePath}/lecciones/${nextAccessibleLesson.slug}`,
       label: "Continuar",
     };
+  }
+
+  if (canOpenLesson && isQuickGuide) {
+    return { title: "Revisa la guía", description: "Vuelve al contenido de la guía.", href: syllabusHref, label: "Ver guía" };
   }
 
   if (canOpenLesson && !currentLessonCompleted) {
