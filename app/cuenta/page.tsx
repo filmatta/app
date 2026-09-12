@@ -6,7 +6,9 @@ import {
   updateAccountPassword,
   updatePersonalProfile,
 } from "@/app/cuenta/actions";
-import SiteHeader from "@/components/SiteHeader";
+import AuthenticatedHeader from "@/components/student/AuthenticatedHeader";
+import AccountNavigationSidebar from "@/components/student/AccountNavigationSidebar";
+import AuthenticatedWorkspaceLayout from "@/components/student/AuthenticatedWorkspaceLayout";
 import LoadingButton from "@/components/ui/LoadingButton";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getLearnContentType } from "@/lib/learn/content-type";
@@ -104,10 +106,14 @@ export default async function CuentaPage({
   const loadingError = enrollmentError || coursesResult.error;
 
   return (
-    <main className="min-h-screen bg-[#080808] text-white">
-      <SiteHeader contextLink={{ href: "/cursos", label: "Explorar cursos" }} />
+    <div className="min-h-screen bg-[#080808] text-white">
+      <AuthenticatedHeader viewer={viewer} breadcrumbs={[{ label: "Cuenta" }]} />
 
-      <section className="mx-auto max-w-7xl px-6 py-16 lg:px-8 lg:py-24">
+      <AuthenticatedWorkspaceLayout
+        navigation={<AccountNavigationSidebar />}
+        drawerLabel="Navegación de la cuenta"
+      >
+      <section className="mx-auto max-w-7xl py-10 lg:py-16">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
           FILMATTA Learn
         </p>
@@ -128,16 +134,6 @@ export default async function CuentaPage({
           </Link>
         </div>
 
-        <nav
-          aria-label="Secciones de la cuenta"
-          className="mt-10 flex flex-wrap gap-2 border-y border-white/10 py-4"
-        >
-          <AccountLink href="#mis-cursos">Mis cursos</AccountLink>
-          <AccountLink href="#actividad">Tu actividad</AccountLink>
-          <AccountLink href="#perfil">Datos personales</AccountLink>
-          <AccountLink href="#seguridad">Seguridad</AccountLink>
-        </nav>
-
         {loadingError && (
           <p className="mt-10 rounded-xl border border-red-500/20 bg-red-500/[0.05] p-4 text-sm text-red-200">
             No pudimos cargar tus cursos en este momento.
@@ -147,7 +143,7 @@ export default async function CuentaPage({
         <section
           id="mis-cursos"
           aria-labelledby="my-courses-heading"
-          className="scroll-mt-8 pt-16"
+          className="scroll-mt-32 pt-16 sm:scroll-mt-24"
         >
           <div className="flex items-end justify-between gap-6 border-b border-white/10 pb-5">
             <div>
@@ -202,7 +198,7 @@ export default async function CuentaPage({
         <section
           id="actividad"
           aria-labelledby="activity-heading"
-          className="mt-20 scroll-mt-8 border-t border-white/10 pt-12"
+          className="mt-20 scroll-mt-32 border-t border-white/10 pt-12 sm:scroll-mt-24"
         >
           <p className="text-xs uppercase tracking-[0.24em] text-white/30">
             Aprendizaje
@@ -233,7 +229,7 @@ export default async function CuentaPage({
         <section
           id="perfil"
           aria-labelledby="profile-heading"
-          className="mt-20 scroll-mt-8 border-t border-white/10 pt-12"
+          className="mt-20 scroll-mt-32 border-t border-white/10 pt-12 sm:scroll-mt-24"
         >
           <div className="grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-20">
             <div>
@@ -277,8 +273,8 @@ export default async function CuentaPage({
 
               <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
                 <p className="text-xs leading-5 text-white/30">
-                  Nombre profesional, ciudad, bio y avatar estarán disponibles
-                  cuando exista su estructura de perfil.
+                  La información profesional ampliada estará disponible cuando
+                  exista su estructura de perfil.
                 </p>
                 <LoadingButton
                   type="submit"
@@ -292,22 +288,91 @@ export default async function CuentaPage({
           </div>
         </section>
 
+        <PlaceholderAccountSection
+          id="avatar"
+          eyebrow="Identidad"
+          title="Avatar"
+          description="Tu imagen identificará tu cuenta y tu futuro perfil profesional."
+        >
+          <div className="flex flex-col gap-5 rounded-2xl border border-white/10 bg-white/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
+            <span className="flex size-16 shrink-0 items-center justify-center rounded-full bg-white text-xl font-semibold text-black">
+              {viewer.displayName.trim().charAt(0).toUpperCase() || "F"}
+            </span>
+            <div>
+              <p className="font-medium">Avatar de cuenta</p>
+              <p className="mt-2 text-sm leading-6 text-white/35">
+                Cambiar avatar se habilitará cuando el perfil profesional tenga
+                almacenamiento propio.
+              </p>
+              <span className="mt-4 inline-flex cursor-not-allowed rounded-full border border-white/10 px-4 py-2 text-sm text-white/25">
+                Cambiar avatar · Próximamente
+              </span>
+            </div>
+          </div>
+        </PlaceholderAccountSection>
+
+        <PlaceholderAccountSection
+          id="pagos"
+          eyebrow="Plan"
+          title="Pagos"
+          description="Consulta el estado comercial de tu cuenta. No hay cobros activos todavía."
+        >
+          <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-6 sm:p-8">
+            <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+              <div>
+                <p className="text-sm text-white/35">Plan actual</p>
+                <p className="mt-2 text-xl font-semibold">FILMATTA Free</p>
+              </div>
+              <Link
+                href="/planes#plus"
+                className="w-fit rounded-full border border-white/15 px-5 py-3 text-sm font-medium text-white/70 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                Ver FILMATTA Plus
+              </Link>
+            </div>
+          </div>
+        </PlaceholderAccountSection>
+
+        <PlaceholderAccountSection
+          id="metodos-pago"
+          eyebrow="Pagos"
+          title="Métodos de pago"
+          description="Aquí podrás administrar tus métodos de pago cuando se active la facturación."
+        >
+          <div className="divide-y divide-white/10 rounded-2xl border border-white/10 bg-white/[0.025] px-6 sm:px-8">
+            <PlaceholderRow title="Añadir método de pago" />
+            <PlaceholderRow title="Quitar método de pago" />
+          </div>
+        </PlaceholderAccountSection>
+
+        <PlaceholderAccountSection
+          id="facturacion"
+          eyebrow="Pagos"
+          title="Datos de facturación"
+          description="Los datos fiscales se solicitarán únicamente cuando exista un flujo de facturación seguro."
+        >
+          <dl className="grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-3">
+            <PlaceholderDetail label="RFC" />
+            <PlaceholderDetail label="Nombre o razón social" />
+            <PlaceholderDetail label="Código postal fiscal" />
+          </dl>
+        </PlaceholderAccountSection>
+
         <section
-          id="seguridad"
-          aria-labelledby="security-heading"
-          className="mt-20 scroll-mt-8 border-t border-white/10 pb-12 pt-12"
+          id="configuracion"
+          aria-labelledby="configuration-heading"
+          className="mt-20 scroll-mt-32 border-t border-white/10 pt-12 sm:scroll-mt-24"
         >
           <div className="grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-20">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-white/30">
                 Cuenta
               </p>
-              <h2 id="security-heading" className="mt-2 text-3xl font-semibold">
-                Seguridad de cuenta
+              <h2 id="configuration-heading" className="mt-2 text-3xl font-semibold">
+                Configuración
               </h2>
               <p className="mt-4 max-w-md leading-7 text-white/40">
-                Administra el correo de acceso, actualiza tu contraseña o cierra
-                la sesión actual.
+                Administra el correo de acceso y actualiza tu contraseña.
               </p>
             </div>
 
@@ -389,49 +454,142 @@ export default async function CuentaPage({
                   </LoadingButton>
                 </div>
               </form>
-
-              <div className="flex flex-col justify-between gap-4 py-7 sm:flex-row sm:items-center">
-                <div>
-                  <h3 className="font-medium">Sesión</h3>
-                  <p className="mt-2 text-sm text-white/35">
-                    Cierra tu sesión en este navegador.
-                  </p>
-                  {feedback.session_error && (
-                    <Feedback variant="error">{feedback.session_error}.</Feedback>
-                  )}
-                </div>
-                <form action={logout}>
-                  <LoadingButton
-                    type="submit"
-                    loadingText="Saliendo…"
-                    className="rounded-full border border-red-500/20 px-5 py-3 text-sm font-medium text-red-200 transition hover:bg-red-500/10"
-                  >
-                    Cerrar sesión
-                  </LoadingButton>
-                </form>
-              </div>
             </div>
           </div>
         </section>
+
+        <PlaceholderAccountSection
+          id="seguridad"
+          eyebrow="Cuenta"
+          title="Seguridad"
+          description="Administra las capas adicionales de protección de tu cuenta."
+        >
+          <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-6 sm:p-8">
+            <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-start">
+              <div>
+                <h3 className="font-medium text-white/85">
+                  Autenticación en dos pasos
+                </h3>
+                <p className="mt-2 max-w-lg text-sm leading-6 text-white/40">
+                  Añade una capa adicional de seguridad a tu cuenta.
+                </p>
+                <p className="mt-4 text-xs text-white/30">
+                  Esta opción estará disponible próximamente.
+                </p>
+              </div>
+              <span className="w-fit rounded-full border border-white/10 bg-white/[0.025] px-3 py-1.5 text-xs font-medium text-white/35">
+                No configurada
+              </span>
+            </div>
+            <button
+              type="button"
+              disabled
+              aria-describedby="two-factor-unavailable"
+              className="mt-6 cursor-not-allowed rounded-full border border-white/10 px-5 py-3 text-sm font-medium text-white/25"
+            >
+              Configurar 2FA
+            </button>
+            <p id="two-factor-unavailable" className="sr-only">
+              Esta opción estará disponible próximamente.
+            </p>
+          </div>
+        </PlaceholderAccountSection>
+
+        <section
+          id="cerrar-sesion"
+          aria-labelledby="logout-heading"
+          className="mt-20 scroll-mt-32 border-t border-white/10 pb-12 pt-12 sm:scroll-mt-24"
+        >
+          <div className="flex flex-col justify-between gap-6 rounded-2xl border border-white/10 bg-white/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-white/30">
+                Cuenta
+              </p>
+              <h2 id="logout-heading" className="mt-2 text-xl font-semibold">
+                Cerrar sesión
+              </h2>
+              <p className="mt-2 text-sm text-white/35">
+                Cierra tu sesión en este navegador.
+              </p>
+              {feedback.session_error && (
+                <Feedback variant="error">{feedback.session_error}.</Feedback>
+              )}
+            </div>
+            <form action={logout}>
+              <LoadingButton
+                type="submit"
+                loadingText="Saliendo…"
+                className="rounded-full border border-red-500/20 px-5 py-3 text-sm font-medium text-red-200 transition hover:bg-red-500/10"
+              >
+                Cerrar sesión
+              </LoadingButton>
+            </form>
+          </div>
+        </section>
       </section>
-    </main>
+      </AuthenticatedWorkspaceLayout>
+    </div>
   );
 }
 
-function AccountLink({
-  href,
+function PlaceholderAccountSection({
+  id,
+  eyebrow,
+  title,
+  description,
   children,
 }: {
-  href: string;
+  id: string;
+  eyebrow: string;
+  title: string;
+  description: string;
   children: React.ReactNode;
 }) {
+  const headingId = `${id}-heading`;
+
   return (
-    <Link
-      href={href}
-      className="rounded-full px-4 py-2 text-sm text-white/50 transition hover:bg-white/[0.05] hover:text-white"
+    <section
+      id={id}
+      aria-labelledby={headingId}
+      className="mt-20 scroll-mt-32 border-t border-white/10 pt-12 sm:scroll-mt-24"
     >
-      {children}
-    </Link>
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-20">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-white/30">
+            {eyebrow}
+          </p>
+          <h2 id={headingId} className="mt-2 text-3xl font-semibold">
+            {title}
+          </h2>
+          <p className="mt-4 max-w-md leading-7 text-white/40">
+            {description}
+          </p>
+        </div>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function PlaceholderRow({ title }: { title: string }) {
+  return (
+    <div className="flex flex-col justify-between gap-3 py-6 sm:flex-row sm:items-center">
+      <p className="font-medium text-white/75">{title}</p>
+      <span className="text-sm text-white/30">
+        Se habilitará al activar pagos
+      </span>
+    </div>
+  );
+}
+
+function PlaceholderDetail({ label }: { label: string }) {
+  return (
+    <div className="bg-[#0b0b0b] p-6">
+      <dt className="text-xs uppercase tracking-[0.18em] text-white/30">
+        {label}
+      </dt>
+      <dd className="mt-3 text-sm text-white/45">Sin configurar</dd>
+    </div>
   );
 }
 

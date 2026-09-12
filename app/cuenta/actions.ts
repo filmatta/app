@@ -43,10 +43,10 @@ export async function requestEmailChange(formData: FormData) {
   const origin = (await headers()).get("origin");
 
   if (!isValidEmail(email)) {
-    redirect(accountFeedback("email_error", "Escribe un correo válido", "seguridad"));
+    redirect(accountFeedback("email_error", "Escribe un correo válido", "configuracion"));
   }
 
-  const confirmedPath = "/cuenta?email=confirmed#seguridad";
+  const confirmedPath = "/cuenta?email=confirmed#configuracion";
   const { error } = await supabase.auth.updateUser(
     { email },
     origin
@@ -62,12 +62,12 @@ export async function requestEmailChange(formData: FormData) {
       accountFeedback(
         "email_error",
         "No pudimos iniciar el cambio de correo",
-        "seguridad"
+        "configuracion"
       )
     );
   }
 
-  redirect(accountFeedback("email", "confirmation", "seguridad"));
+  redirect(accountFeedback("email", "confirmation", "configuracion"));
 }
 
 export async function logout() {
@@ -76,7 +76,7 @@ export async function logout() {
 
   if (error) {
     console.error("Error cerrando la sesión:", error);
-    redirect(accountFeedback("session_error", "No pudimos cerrar la sesión", "seguridad"));
+    redirect(accountFeedback("session_error", "No pudimos cerrar la sesión", "cerrar-sesion"));
   }
 
   revalidatePath("/", "layout");
@@ -115,7 +115,7 @@ export async function updateAccountPassword(formData: FormData) {
   const validationError = validateNewPassword(password, confirmation);
 
   if (validationError) {
-    redirect(accountFeedback("password_error", validationError, "seguridad"));
+    redirect(accountFeedback("password_error", validationError, "configuracion"));
   }
 
   const { error } = await supabase.auth.updateUser({ password });
@@ -126,13 +126,13 @@ export async function updateAccountPassword(formData: FormData) {
       accountFeedback(
         "password_error",
         "No pudimos actualizar la contraseña",
-        "seguridad"
+        "configuracion"
       )
     );
   }
 
   revalidatePath("/", "layout");
-  redirect(accountFeedback("password", "updated", "seguridad"));
+  redirect(accountFeedback("password", "updated", "configuracion"));
 }
 
 export async function updateRecoveredPassword(formData: FormData) {
@@ -157,7 +157,7 @@ export async function updateRecoveredPassword(formData: FormData) {
   revalidatePath("/", "layout");
 
   if (nextPath === "/cuenta") {
-    redirect(accountFeedback("password", "updated", "seguridad"));
+    redirect(accountFeedback("password", "updated", "configuracion"));
   }
 
   redirect(nextPath);

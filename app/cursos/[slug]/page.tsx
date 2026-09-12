@@ -5,6 +5,12 @@ import { cache } from "react";
 import EnrollButton from "@/app/cursos/[slug]/EnrollButton";
 import { enrollInCourse } from "@/app/cursos/[slug]/actions";
 import SiteHeader from "@/components/SiteHeader";
+import AuthenticatedHeader from "@/components/student/AuthenticatedHeader";
+import AuthenticatedWorkspaceLayout from "@/components/student/AuthenticatedWorkspaceLayout";
+import StudentNavigationSidebar, {
+  type StudentLessonState,
+  type StudentNavigationModule,
+} from "@/components/student/StudentNavigationSidebar";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getLearnContentType } from "@/lib/learn/content-type";
 import { getResumeActions, type ResumeAction } from "@/lib/learn/resume";
@@ -44,6 +50,7 @@ type CurriculumModule = {
 
 type LessonProgressSummary = {
   lesson_id: string;
+  started_at: string | null;
   completed_at: string | null;
 };
 
@@ -139,7 +146,7 @@ async function getCourseProgress(userId: string, courseId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("lesson_progress")
-    .select("lesson_id, completed_at")
+    .select("lesson_id, started_at, completed_at")
     .eq("user_id", userId)
     .eq("course_id", courseId);
 
@@ -270,16 +277,51 @@ export default async function CursoPage({
   ].filter((detail): detail is { label: string; value: string } =>
     Boolean(detail)
   );
+  const coursePath = `/cursos/${course.slug}`;
+  const courseNavigationModules = buildCourseNavigationModules({
+    modules: curriculum.modules,
+    progressByLesson,
+    coursePath,
+    isAdmin: viewer?.role === "admin",
+    isQuickGuide,
+    isEnrolled,
+  });
+  const courseNavigation = viewer ? (
+    <StudentNavigationSidebar
+      courseTitle={course.title}
+      courseHref={coursePath}
+      syllabusHref={`${coursePath}#contenido`}
+      continueHref={
+        resumeAction.kind === "lesson"
+          ? resumeAction.href
+          : viewer.role === "admin" && publishedLessons[0]
+            ? `${coursePath}/lecciones/${publishedLessons[0].slug}`
+            : null
+      }
+      modules={courseNavigationModules}
+      currentLessonId={null}
+      isQuickGuide={isQuickGuide}
+    />
+  ) : null;
 
   return (
-    <main className="min-h-screen bg-[#080808] text-white">
-      <SiteHeader
-        contextLink={{
-          href: "/cursos",
-          label: isQuickGuide ? "← Aprender" : "← Todos los cursos",
-        }}
-      />
+    <div className="min-h-screen bg-[#080808] text-white">
+      {viewer ? (
+        <AuthenticatedHeader
+          viewer={viewer}
+          breadcrumbs={[
+            { label: "Aprender", href: "/cursos" },
+            { label: course.title },
+          ]}
+        />
+      ) : (
+        <SiteHeader contextLink={{ href: "/cursos", label: "← Aprender" }} />
+      )}
 
+      <AuthenticatedWorkspaceLayout
+        navigation={courseNavigation}
+        drawerLabel={isQuickGuide ? "Navegación de la guía" : "Navegación del curso"}
+      >
       <article>
         <div className="mx-auto max-w-7xl px-6 pb-20 pt-12 lg:px-8 lg:pb-28 lg:pt-16">
           <div className="relative aspect-video overflow-hidden rounded-2xl bg-white/[0.04]">
@@ -534,6 +576,7 @@ export default async function CursoPage({
                   return (
                     <article
                       key={courseModule.id}
+                      id={`modulo-${courseModule.id}`}
                       className="grid gap-8 py-10 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-14 lg:py-14"
                     >
                       <div>
@@ -757,8 +800,76 @@ export default async function CursoPage({
           </section>
         </div>
       </article>
-    </main>
+      </AuthenticatedWorkspaceLayout>
+    </div>
   );
+}
+
+function buildCourseNavigationModules({
+  modules,
+  progressByLesson,
+  coursePath,
+  isAdmin,
+  isQuickGuide,
+  isEnrolled,
+}: {
+  modules: CurriculumModule[];
+  progressByLesson: Map<string, LessonProgressSummary>;
+  coursePath: string;
+  isAdmin: boolean;
+  isQuickGuide: boolean;
+  isEnrolled: boolean;
+}): StudentNavigationModule[] {
+  return modules.map((courseModule) => {
+    const completedLessons = courseModule.lessons.filter((lesson) =>
+      Boolean(progressByLesson.get(lesson.id)?.completed_at)
+    ).length;
+
+    return {
+      id: courseModule.id,
+      title: courseModule.title,
+      href: `${coursePath}#modulo-${courseModule.id}`,
+      completedLessons,
+      totalLessons: courseModule.lessons.length,
+      progressPercentage: getProgressPercentage(
+        completedLessons,
+        courseModule.lessons.length
+      ),
+      lessons: courseModule.lessons.map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title,
+        href: `${coursePath}/lecciones/${lesson.slug}`,
+        state: getCourseNavigationLessonState({
+          lesson,
+          progress: progressByLesson.get(lesson.id),
+          isAdmin,
+          isQuickGuide,
+          isEnrolled,
+        }),
+      })),
+    };
+  });
+}
+
+function getCourseNavigationLessonState({
+  lesson,
+  progress,
+  isAdmin,
+  isQuickGuide,
+  isEnrolled,
+}: {
+  lesson: CurriculumLesson;
+  progress?: LessonProgressSummary;
+  isAdmin: boolean;
+  isQuickGuide: boolean;
+  isEnrolled: boolean;
+}): StudentLessonState {
+  if (!isAdmin && (isQuickGuide || !isEnrolled || !lesson.is_preview)) {
+    return "locked";
+  }
+  if (progress?.completed_at) return "completed";
+  if (progress?.started_at) return "in-progress";
+  return "not-started";
 }
 
 function getLessonHref(

@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import EnrollButton from "@/app/cursos/[slug]/EnrollButton";
 import { enrollInCourse } from "@/app/cursos/[slug]/actions";
 import LessonProgressControls from "@/app/cursos/[slug]/lecciones/[lessonSlug]/LessonProgressControls";
-import SiteHeader from "@/components/SiteHeader";
+import AuthenticatedHeader from "@/components/student/AuthenticatedHeader";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getLearnContentType } from "@/lib/learn/content-type";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
@@ -11,6 +11,17 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { presentVideo, presentVideoPoster } from "@/lib/mux/playback";
 import LessonVideoPlayer, { type VideoPresentation } from "@/components/LessonVideoPlayer";
+import ContextSidebar, {
+  type ContextNextAction,
+} from "@/components/student/ContextSidebar";
+import StudentNavigationSidebar, {
+  type StudentLessonState,
+  type StudentNavigationModule,
+} from "@/components/student/StudentNavigationSidebar";
+import AuthenticatedWorkspaceLayout from "@/components/student/AuthenticatedWorkspaceLayout";
+import { getContextualMessage } from "@/lib/contextual-assistance/get-contextual-message";
+import { getLearnContextState } from "@/lib/contextual-assistance/rules";
+import { getResumeActions, type ResumeAction } from "@/lib/learn/resume";
 
 type LessonPageProps = {
   params: Promise<{
@@ -36,6 +47,13 @@ type SyllabusLesson = {
   slug: string;
   sort_order: number;
   is_preview: boolean;
+};
+
+type LessonProgress = {
+  lesson_id: string;
+  started_at: string;
+  completed_at: string | null;
+  last_activity_at: string;
 };
 
 export default async function LessonPage({
@@ -125,6 +143,10 @@ export default async function LessonPage({
     redirect(`/acceso?next=${encodeURIComponent(lessonPath)}`);
   }
 
+  if (!viewer) {
+    redirect(`/acceso?next=${encodeURIComponent(lessonPath)}`);
+  }
+
   const [navigation, enrollment] = await Promise.all([
     getPublishedNavigation(supabase, course.id, lesson.id),
     viewer && !isQuickGuide
@@ -148,10 +170,14 @@ export default async function LessonPage({
     isEnrolled &&
     isPublished &&
     lesson.is_preview;
-  const progress =
-    viewer && canTrackProgress
-      ? await getProgress(supabase, viewer.id, course.id, lesson.id)
-      : null;
+  const lessonProgress =
+    viewer && !isQuickGuide && isEnrolled
+      ? await getCourseProgress(supabase, viewer.id, course.id)
+      : [];
+  const progressByLesson = new Map(
+    lessonProgress.map((item) => [item.lesson_id, item])
+  );
+  const progress = progressByLesson.get(lesson.id) ?? null;
 
   let videoPresentation: VideoPresentation = { status: "none" };
   let lockedPosterUrl: string | null = null;
@@ -183,91 +209,152 @@ export default async function LessonPage({
     }
   }
 
+  const publishedLessons = navigation.syllabus;
+  const completedLessons = publishedLessons.filter(
+    (item) => Boolean(progressByLesson.get(item.id)?.completed_at)
+  ).length;
+  const totalLessons = publishedLessons.length;
+  const progressPercentage = getProgressPercentage(completedLessons, totalLessons);
+  const previewLessons = publishedLessons.filter((item) => item.is_preview);
+  const completedPreviewLessons = previewLessons.filter(
+    (item) => Boolean(progressByLesson.get(item.id)?.completed_at)
+  ).length;
+  const premiumLessons = publishedLessons.length - previewLessons.length;
+  const latestActivityAt = lessonProgress
+    .map((item) => item.last_activity_at)
+    .sort((first, second) => Date.parse(second) - Date.parse(first))[0] ?? null;
+  const contextualState = getLearnContextState({
+    progressPercentage,
+    completedPreviewLessons,
+    previewLessons: previewLessons.length,
+    premiumLessons,
+    currentLessonLocked: !canOpenLesson && !requiresEnrollment,
+    latestActivityAt,
+    currentLessonStarted: Boolean(progress),
+  });
+  const dailySeed = new Date().toISOString().slice(0, 10);
+  const contextualTip = getContextualMessage({
+    vertical: "learn",
+    state: contextualState,
+    seed: `${viewer?.id ?? "visitor"}:${course.id}:${lesson.id}:${dailySeed}`,
+  });
+  const resumeActions =
+    viewer && isEnrolled && !isQuickGuide
+      ? await getResumeActions(viewer.id, [{ id: course.id, slug: course.slug }])
+      : new Map<string, ResumeAction>();
+  const resumeAction = resumeActions.get(course.id) ?? null;
+  const syllabusHref = `${coursePath}#contenido`;
+  const studentModules = buildStudentNavigationModules({
+    modules: navigation.modules,
+    lessons: navigation.syllabus,
+    progressByLesson,
+    coursePath,
+    isAdmin,
+    isQuickGuide,
+    isEnrolled,
+  });
+  const nextAction = getContextNextAction({
+    coursePath,
+    syllabusHref,
+    isAdmin,
+    isQuickGuide,
+    canOpenLesson,
+    requiresEnrollment,
+    nextLesson: navigation.next,
+    nextAccessibleLesson: navigation.nextAccessible,
+    resumeAction,
+    currentLessonPath: lessonPath,
+    currentLessonCompleted: Boolean(progress?.completed_at),
+  });
+  const studentNavigation = (
+    <StudentNavigationSidebar
+      courseTitle={course.title}
+      courseHref={coursePath}
+      syllabusHref={syllabusHref}
+      continueHref={
+        isAdmin && navigation.next
+          ? `${coursePath}/lecciones/${navigation.next.slug}`
+          : navigation.nextAccessible
+          ? `${coursePath}/lecciones/${navigation.nextAccessible.slug}`
+          : resumeAction?.kind === "lesson" && resumeAction.href !== lessonPath
+            ? resumeAction.href
+            : null
+      }
+      modules={studentModules}
+      currentLessonId={lesson.id}
+      isQuickGuide={isQuickGuide}
+    />
+  );
+
   return (
-    <main className="min-h-screen bg-[#080808] text-white">
-      <SiteHeader
-        contextLink={{
-          href: coursePath,
-          label: isQuickGuide ? "← Volver a la guía" : "← Volver al curso",
-        }}
+    <div className="min-h-screen bg-[#080808] text-white">
+      <AuthenticatedHeader
+        viewer={viewer}
+        breadcrumbs={[
+          { label: "Aprender", href: "/cursos" },
+          { label: course.title, href: coursePath },
+          {
+            label: isQuickGuide ? "Pasos" : courseModule.title,
+          },
+        ]}
       />
 
-      <article className="mx-auto max-w-6xl px-6 pb-20 pt-10 lg:px-8 lg:pb-28 lg:pt-14">
-        <nav aria-label="Ruta de la lección" className="text-sm text-white/35">
-          <Link href={coursePath} className="transition hover:text-white">
-            {course.title}
-          </Link>
-          <span className="px-2 text-white/20">/</span>
-          <span>{isQuickGuide ? "Contenido de la guía" : courseModule.title}</span>
-        </nav>
-
-        <div className="mt-10 grid lg:grid-cols-[minmax(0,1fr)_17rem] lg:gap-20">
-          <div>
+      <AuthenticatedWorkspaceLayout
+        navigation={studentNavigation}
+        drawerLabel={isQuickGuide ? "Navegación de la guía" : "Navegación del curso"}
+        intro={
+          <div className="pb-1">
             <div className="flex flex-wrap items-center gap-3">
-              <span
-                className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                  isQuickGuide
-                    ? "bg-white/5 text-white/40"
-                    : lesson.is_preview
-                    ? "bg-red-500/10 text-red-200"
-                    : "bg-white/5 text-white/40"
-                }`}
-              >
-                {isQuickGuide
-                  ? "Guía rápida"
-                  : lesson.is_preview
-                    ? "Lección gratuita"
-                    : "Lección premium"}
-              </span>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/35">
+                {isQuickGuide ? "Paso" : "Lección"}
+              </p>
               {isAdmin && !isPublished && (
                 <span className="rounded-full border border-amber-400/20 bg-amber-400/[0.06] px-3 py-1.5 text-xs text-amber-200">
                   Vista de administrador · no publicada
                 </span>
               )}
             </div>
-
-            <p className="mt-8 text-xs font-semibold uppercase tracking-[0.25em] text-white/30">
-              {isQuickGuide ? "Contenido de la guía" : courseModule.title}
-            </p>
-            <h1 className="mt-4 text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">
+            <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
               {lesson.title}
             </h1>
-            {lesson.duration_minutes !== null && (
-              <p className="mt-5 text-sm text-white/35">
-                {formatDuration(lesson.duration_minutes)}
-              </p>
-            )}
-
             {!isQuickGuide && feedback.enrolled === "1" && (
-              <p className="mt-6 w-fit rounded-xl border border-green-500/20 bg-green-500/[0.06] px-4 py-3 text-sm text-green-200">
+              <p className="mt-4 w-fit rounded-lg border border-green-500/20 bg-green-500/[0.06] px-4 py-2.5 text-sm text-green-200">
                 Curso añadido a tu cuenta. Ya puedes comenzar la lección.
               </p>
             )}
           </div>
-        </div>
-
-        <div className="mt-12 grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_17rem] lg:gap-x-20">
-          <div className="contents lg:block">
+        }
+        context={
+          <ContextSidebar
+            percentage={progressPercentage}
+            completedLessons={completedLessons}
+            totalLessons={totalLessons}
+            nextAction={nextAction}
+            tip={contextualTip.text}
+            pose={contextualTip.mattiPose ?? "neutral"}
+            syllabusHref={syllabusHref}
+            unitLabel={isQuickGuide ? "pasos" : "lecciones"}
+            showMobileProgress={!canTrackProgress}
+          />
+        }
+      >
+        <article>
+          <div>
             {canOpenLesson ? (
               <>
                 <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
                   <LessonVideoPlayer video={videoPresentation} />
-
-                  <div className="p-6 sm:p-8">
-                    <h2 className="text-xl font-semibold">
-                      {isQuickGuide ? "Sobre este paso" : "Sobre esta lección"}
-                    </h2>
-                    <p className="mt-4 whitespace-pre-line leading-7 text-white/50">
-                      {lesson.description ||
-                        (isQuickGuide
-                          ? "El contenido de este paso estará disponible aquí."
-                          : "El contenido de esta lección estará disponible aquí.")}
-                    </p>
-                  </div>
+                  <LessonAbout
+                    description={lesson.description}
+                    durationMinutes={lesson.duration_minutes}
+                    isQuickGuide={isQuickGuide}
+                    isPreview={lesson.is_preview}
+                    moduleTitle={courseModule.title}
+                  />
                 </section>
 
                 {canTrackProgress && (
-                  <div className="order-3 mt-8 rounded-2xl border border-white/10 bg-white/[0.02] p-6 sm:p-8 lg:order-none">
+                  <div id="progreso-leccion" className="order-3 mt-8 rounded-2xl border border-white/10 bg-white/[0.02] p-6 sm:p-8 lg:order-none">
                     <LessonProgressControls
                       courseId={course.id}
                       lessonId={lesson.id}
@@ -316,137 +403,97 @@ export default async function LessonPage({
                 )}
               </>
             ) : (
-              <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]">
-                {!requiresEnrollment && (
-                  <LockedVideoPoster
-                    posterUrl={lockedPosterUrl}
-                    title={lesson.title}
-                  />
-                )}
+              <section
+                id="acceso-leccion"
+                className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]"
+              >
+                <LockedVideoPoster
+                  posterUrl={requiresEnrollment ? null : lockedPosterUrl}
+                  title={lesson.title}
+                  label={
+                    requiresEnrollment
+                      ? "Acceso con inscripción"
+                      : "Contenido premium"
+                  }
+                />
+                <LessonAbout
+                  description={lesson.description}
+                  durationMinutes={lesson.duration_minutes}
+                  isQuickGuide={isQuickGuide}
+                  isPreview={lesson.is_preview}
+                  moduleTitle={courseModule.title}
+                />
 
-                <div className="p-8 sm:p-12">
-                {!requiresEnrollment && (
-                  <div className="mb-10 border-b border-white/10 pb-9">
-                    <h2 className="text-xl font-semibold">
-                      {isQuickGuide ? "Sobre este paso" : "Sobre esta lección"}
-                    </h2>
-                    <p className="mt-4 whitespace-pre-line leading-7 text-white/50">
-                      {lesson.description ||
-                        (isQuickGuide
-                          ? "El contenido de este paso estará disponible aquí."
-                          : "El contenido de esta lección estará disponible aquí.")}
-                    </p>
-                  </div>
-                )}
-                <span className="flex size-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-white/35">
-                  <svg
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                    className="size-5 fill-none stroke-current"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="5" y="10" width="14" height="10" rx="2" />
-                    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-                  </svg>
-                </span>
-                <h2 className="mt-6 text-2xl font-semibold">
-                  {isQuickGuide
-                    ? "Guía bloqueada"
-                    : requiresEnrollment
-                      ? "Inscríbete al curso"
-                      : "Lección bloqueada"}
-                </h2>
-                <p className="mt-3 max-w-xl leading-7 text-white/45">
-                  {isQuickGuide
-                    ? "Las guías rápidas regulares estarán disponibles con FILMATTA Plus. La inscripción a un curso no concede acceso a esta guía."
-                    : requiresEnrollment
-                      ? "Inscríbete al curso para ver esta lección gratuita y guardar tu progreso."
-                      : "Esta es una lección premium. La inscripción guarda el curso en tu cuenta, pero no concede acceso de pago. Podrás abrirla cuando FILMATTA active los accesos y pagos."}
-                </p>
-                <div className="mt-7 flex flex-wrap gap-3">
-                  {requiresEnrollment ? (
-                    <form
-                      action={enrollInCourse.bind(
-                        null,
-                        course.id,
-                        course.slug,
-                        lessonPath
-                      )}
-                      className="w-full sm:w-auto"
-                    >
-                      <EnrollButton label="Inscribirme al curso" />
-                    </form>
-                  ) : null}
-                  {!requiresEnrollment && (
-                    <Link
-                      href="/planes#plus"
-                      className="rounded-full border border-white/15 px-5 py-3 text-sm font-medium text-white/75 transition hover:bg-white/[0.06] hover:text-white"
-                    >
-                      Ver FILMATTA Plus
-                    </Link>
-                  )}
-                  <Link
-                    href={`${coursePath}#contenido`}
-                    className="px-2 py-3 text-sm font-medium text-white/45 transition hover:text-white"
-                  >
-                    {isQuickGuide ? "Volver a la guía" : "Volver al temario"}
-                  </Link>
-                </div>
-                {requiresEnrollment && feedback.enrollment_error && (
-                  <p className="mt-5 rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-200">
-                    No pudimos completar la inscripción. Inténtalo de nuevo.
+                <div className="border-t border-white/10 p-6 sm:p-8">
+                  <span className="flex size-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-white/35">
+                    <LockIcon className="size-5" />
+                  </span>
+                  <h2 className="mt-5 text-2xl font-semibold">
+                    {isQuickGuide
+                      ? "Guía bloqueada"
+                      : requiresEnrollment
+                        ? "Inscríbete al curso"
+                        : "Lección bloqueada"}
+                  </h2>
+                  <p className="mt-3 max-w-2xl leading-7 text-white/45">
+                    {isQuickGuide
+                      ? "Las guías rápidas regulares estarán disponibles con FILMATTA Plus. La inscripción a un curso no concede acceso a esta guía."
+                      : requiresEnrollment
+                        ? "Inscríbete al curso para ver esta lección gratuita y guardar tu progreso."
+                        : "Esta es una lección premium. La inscripción guarda el curso en tu cuenta, pero no concede acceso de pago. Podrás abrirla cuando FILMATTA active los accesos y pagos."}
                   </p>
-                )}
+                  <div className="mt-7 flex flex-wrap gap-3">
+                    {requiresEnrollment ? (
+                      <form
+                        action={enrollInCourse.bind(
+                          null,
+                          course.id,
+                          course.slug,
+                          lessonPath
+                        )}
+                        className="w-full sm:w-auto"
+                      >
+                        <EnrollButton label="Inscribirme al curso" />
+                      </form>
+                    ) : null}
+                    {!requiresEnrollment && (
+                      <Link
+                        href="/planes#plus"
+                        className="rounded-full border border-white/15 px-5 py-3 text-sm font-medium text-white/75 transition hover:bg-white/[0.06] hover:text-white"
+                      >
+                        Ver FILMATTA Plus
+                      </Link>
+                    )}
+                    <Link
+                      href={`${coursePath}#contenido`}
+                      className="px-2 py-3 text-sm font-medium text-white/45 transition hover:text-white"
+                    >
+                      {isQuickGuide ? "Volver a la guía" : "Volver al temario"}
+                    </Link>
+                  </div>
+                  {requiresEnrollment && feedback.enrollment_error && (
+                    <p className="mt-5 rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-200">
+                      No pudimos completar la inscripción. Inténtalo de nuevo.
+                    </p>
+                  )}
                 </div>
               </section>
             )}
           </div>
-
-          <aside className="order-2 h-fit border-t border-white/10 pt-6 lg:sticky lg:top-8 lg:order-none">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/30">
-              Navegación
-            </p>
-            <div className="mt-5 space-y-3">
-              {navigation.previous ? (
-                <LessonNavigationLink
-                  courseSlug={course.slug}
-                  lesson={navigation.previous}
-                  direction="Anterior"
-                  isQuickGuide={isQuickGuide}
-                />
-              ) : (
-                <NavigationBoundary
-                  label={isQuickGuide ? "Primer paso" : "Primera lección"}
-                />
-              )}
-              {navigation.next ? (
-                <LessonNavigationLink
-                  courseSlug={course.slug}
-                  lesson={navigation.next}
-                  direction="Siguiente"
-                  isQuickGuide={isQuickGuide}
-                />
-              ) : (
-                <NavigationBoundary
-                  label={isQuickGuide ? "Último paso" : "Última lección"}
-                />
-              )}
-            </div>
-          </aside>
-        </div>
-      </article>
-    </main>
+        </article>
+      </AuthenticatedWorkspaceLayout>
+    </div>
   );
 }
 
 function LockedVideoPoster({
   posterUrl,
   title,
+  label,
 }: {
   posterUrl: string | null;
   title: string;
+  label: string;
 }) {
   return (
     <div
@@ -467,8 +514,66 @@ function LockedVideoPoster({
       )}
       <span className="absolute bottom-5 left-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/55 px-3 py-1.5 text-xs font-medium text-white/75 backdrop-blur-sm">
         <LockIcon className="size-3.5" />
-        Contenido premium
+        {label}
       </span>
+    </div>
+  );
+}
+
+function LessonAbout({
+  description,
+  durationMinutes,
+  isQuickGuide,
+  isPreview,
+  moduleTitle,
+}: {
+  description: string | null;
+  durationMinutes: number | null;
+  isQuickGuide: boolean;
+  isPreview: boolean;
+  moduleTitle: string;
+}) {
+  return (
+    <div className="grid gap-8 border-t border-white/10 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_13rem]">
+      <div>
+        <h2 className="text-xl font-semibold">
+          {isQuickGuide ? "Sobre este paso" : "Sobre esta lección"}
+        </h2>
+        <p className="mt-4 whitespace-pre-line leading-7 text-white/50">
+          {description ||
+            (isQuickGuide
+              ? "El contenido de este paso estará disponible aquí."
+              : "El contenido de esta lección estará disponible aquí.")}
+        </p>
+      </div>
+      <dl className="grid grid-cols-2 gap-x-5 gap-y-5 border-t border-white/10 pt-6 text-sm sm:grid-cols-3 lg:grid-cols-1 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-0">
+        <LessonMetadata label="Duración">
+          {durationMinutes === null ? "Por definir" : formatDuration(durationMinutes)}
+        </LessonMetadata>
+        <LessonMetadata label="Tipo">
+          {isQuickGuide ? "Guía rápida" : isPreview ? "Gratuita" : "Premium"}
+        </LessonMetadata>
+        {!isQuickGuide && (
+          <LessonMetadata label="Módulo">{moduleTitle}</LessonMetadata>
+        )}
+      </dl>
+    </div>
+  );
+}
+
+function LessonMetadata({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <dt className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/25">
+        {label}
+      </dt>
+      <dd className="mt-1.5 leading-5 text-white/60">{children}</dd>
     </div>
   );
 }
@@ -512,7 +617,13 @@ async function getPublishedNavigation(
       modulesError: modulesResult.error,
       lessonsError: lessonsResult.error,
     });
-    return { previous: null, next: null, nextAccessible: null };
+    return {
+      modules: [] as SyllabusModule[],
+      syllabus: [] as SyllabusLesson[],
+      previous: null,
+      next: null,
+      nextAccessible: null,
+    };
   }
 
   const modules = (modulesResult.data ?? []) as SyllabusModule[];
@@ -531,10 +642,18 @@ async function getPublishedNavigation(
   const currentIndex = syllabus.findIndex((item) => item.id === currentLessonId);
 
   if (currentIndex < 0) {
-    return { previous: null, next: null, nextAccessible: null };
+    return {
+      modules,
+      syllabus,
+      previous: null,
+      next: null,
+      nextAccessible: null,
+    };
   }
 
   return {
+    modules,
+    syllabus,
     previous: syllabus[currentIndex - 1] ?? null,
     next: syllabus[currentIndex + 1] ?? null,
     nextAccessible:
@@ -566,67 +685,213 @@ async function getEnrollment(
   return data;
 }
 
-async function getProgress(
+async function getCourseProgress(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
-  courseId: string,
-  lessonId: string
+  courseId: string
 ) {
   const { data, error } = await supabase
     .from("lesson_progress")
-    .select("started_at, completed_at, last_activity_at")
+    .select("lesson_id, started_at, completed_at, last_activity_at")
     .eq("user_id", userId)
-    .eq("course_id", courseId)
-    .eq("lesson_id", lessonId)
-    .maybeSingle();
+    .eq("course_id", courseId);
 
   if (error) {
-    console.error("Error cargando el progreso de la lección:", error);
-    return null;
+    console.error("Error cargando el progreso del curso:", error);
+    return [] as LessonProgress[];
   }
 
-  return data;
+  return (data ?? []) as LessonProgress[];
 }
 
-function LessonNavigationLink({
-  courseSlug,
-  lesson,
-  direction,
+function buildStudentNavigationModules({
+  modules,
+  lessons,
+  progressByLesson,
+  coursePath,
+  isAdmin,
   isQuickGuide,
+  isEnrolled,
 }: {
-  courseSlug: string;
-  lesson: SyllabusLesson;
-  direction: "Anterior" | "Siguiente";
+  modules: SyllabusModule[];
+  lessons: SyllabusLesson[];
+  progressByLesson: Map<string, LessonProgress>;
+  coursePath: string;
+  isAdmin: boolean;
   isQuickGuide: boolean;
-}) {
-  return (
-    <Link
-      href={`/cursos/${courseSlug}/lecciones/${lesson.slug}`}
-      className="block rounded-xl border border-white/10 p-4 transition hover:border-white/20 hover:bg-white/[0.03]"
-    >
-      <span className="text-[11px] uppercase tracking-[0.18em] text-white/25">
-        {direction}
-      </span>
-      <span className="mt-2 block text-sm font-medium leading-5 text-white/70">
-        {lesson.title}
-      </span>
-      <span className="mt-2 block text-xs text-white/30">
-        {isQuickGuide
-          ? "Paso de la guía"
-          : lesson.is_preview
-            ? "Lección gratuita"
-            : "Lección premium · bloqueada"}
-      </span>
-    </Link>
-  );
+  isEnrolled: boolean;
+}): StudentNavigationModule[] {
+  return modules.map((courseModule) => {
+    const moduleLessons = lessons.filter(
+      (lesson) => lesson.module_id === courseModule.id
+    );
+    const completedLessons = moduleLessons.filter((lesson) =>
+      Boolean(progressByLesson.get(lesson.id)?.completed_at)
+    ).length;
+
+    return {
+      id: courseModule.id,
+      title: courseModule.title,
+      href: `${coursePath}#modulo-${courseModule.id}`,
+      completedLessons,
+      totalLessons: moduleLessons.length,
+      progressPercentage: getProgressPercentage(
+        completedLessons,
+        moduleLessons.length
+      ),
+      lessons: moduleLessons.map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title,
+        href: `${coursePath}/lecciones/${lesson.slug}`,
+        state: getStudentLessonState({
+          lesson,
+          progress: progressByLesson.get(lesson.id),
+          isAdmin,
+          isQuickGuide,
+          isEnrolled,
+        }),
+      })),
+    };
+  });
 }
 
-function NavigationBoundary({ label }: { label: string }) {
-  return (
-    <div className="rounded-xl border border-white/[0.06] p-4 text-sm text-white/20">
-      {label}
-    </div>
-  );
+function getStudentLessonState({
+  lesson,
+  progress,
+  isAdmin,
+  isQuickGuide,
+  isEnrolled,
+}: {
+  lesson: SyllabusLesson;
+  progress?: LessonProgress;
+  isAdmin: boolean;
+  isQuickGuide: boolean;
+  isEnrolled: boolean;
+}): StudentLessonState {
+  if (!isAdmin && (isQuickGuide || !isEnrolled || !lesson.is_preview)) {
+    return "locked";
+  }
+  if (progress?.completed_at) return "completed";
+  if (progress) return "in-progress";
+  return "not-started";
+}
+
+function getContextNextAction({
+  coursePath,
+  syllabusHref,
+  isAdmin,
+  isQuickGuide,
+  canOpenLesson,
+  requiresEnrollment,
+  nextLesson,
+  nextAccessibleLesson,
+  resumeAction,
+  currentLessonPath,
+  currentLessonCompleted,
+}: {
+  coursePath: string;
+  syllabusHref: string;
+  isAdmin: boolean;
+  isQuickGuide: boolean;
+  canOpenLesson: boolean;
+  requiresEnrollment: boolean;
+  nextLesson: SyllabusLesson | null;
+  nextAccessibleLesson: SyllabusLesson | null;
+  resumeAction: ResumeAction | null;
+  currentLessonPath: string;
+  currentLessonCompleted: boolean;
+}): ContextNextAction {
+  if (requiresEnrollment) {
+    return {
+      title: "Inscríbete para comenzar",
+      description: "La inscripción gratuita habilita esta lección y su progreso.",
+      href: "#acceso-leccion",
+      label: "Ver acceso",
+    };
+  }
+
+  if (!canOpenLesson && !isAdmin) {
+    return {
+      title: isQuickGuide ? "Continúa con Plus" : "Contenido premium",
+      description: isQuickGuide
+        ? "Las guías rápidas regulares forman parte de FILMATTA Plus."
+        : "La reproducción de esta lección forma parte de FILMATTA Plus.",
+      href: "/planes#plus",
+      label: "Ver FILMATTA Plus",
+      commercial: true,
+    };
+  }
+
+  if (isAdmin && nextLesson) {
+    return {
+      title: nextLesson.title,
+      description: isQuickGuide ? "Siguiente paso de la guía." : "Siguiente lección del curso.",
+      href: `${coursePath}/lecciones/${nextLesson.slug}`,
+      label: "Continuar",
+    };
+  }
+
+  if (canOpenLesson && nextAccessibleLesson) {
+    return {
+      title: nextAccessibleLesson.title,
+      description: "Siguiente lección accesible del curso.",
+      href: `${coursePath}/lecciones/${nextAccessibleLesson.slug}`,
+      label: "Continuar",
+    };
+  }
+
+  if (canOpenLesson && !currentLessonCompleted) {
+    return {
+      title: "Termina esta lección",
+      description: "Marca la lección como completada cuando termines el contenido.",
+      href: "#progreso-leccion",
+      label: "Ir al progreso",
+    };
+  }
+
+  if (
+    resumeAction?.kind === "lesson" &&
+    resumeAction.href !== currentLessonPath
+  ) {
+    return {
+      title: "Continúa donde lo dejaste",
+      description: "La siguiente lección accesible está lista.",
+      href: resumeAction.href,
+      label: "Continuar",
+    };
+  }
+
+  if (resumeAction?.kind === "plus") {
+    return {
+      title: "Ya terminaste las lecciones gratuitas",
+      description: "Continúa el curso completo con FILMATTA Plus.",
+      href: resumeAction.href,
+      label: resumeAction.label,
+      commercial: true,
+    };
+  }
+
+  if (resumeAction?.kind === "completed") {
+    return {
+      title: "Curso completado",
+      description: "Puedes volver al temario y repasar cualquier lección.",
+      href: resumeAction.href,
+      label: resumeAction.label,
+    };
+  }
+
+  return {
+    title: "Revisa el curso",
+    description: "Consulta el temario y el contexto de cada lección.",
+    href: syllabusHref,
+    label: "Ver temario",
+  };
+}
+
+function getProgressPercentage(completedLessons: number, totalLessons: number) {
+  return totalLessons > 0
+    ? Math.round((completedLessons / totalLessons) * 100)
+    : 0;
 }
 
 function compareOrder(

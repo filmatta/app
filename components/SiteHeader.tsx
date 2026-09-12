@@ -4,9 +4,11 @@ import { getViewer } from "@/lib/auth/get-viewer";
 export default async function SiteHeader({
   showPrimaryNavigation = false,
   contextLink,
+  hideAccountLink = false,
 }: {
   showPrimaryNavigation?: boolean;
   contextLink?: { href: string; label: string };
+  hideAccountLink?: boolean;
 }) {
   const viewer = await getViewer();
 
@@ -46,12 +48,14 @@ export default async function SiteHeader({
 
           {viewer ? (
             <>
-              <Link
-                href="/cuenta"
-                className="px-3 py-2 text-sm text-white/70 transition hover:text-white"
-              >
-                Mi cuenta
-              </Link>
+              {!hideAccountLink && (
+                <Link
+                  href="/cuenta"
+                  className="px-3 py-2 text-sm text-white/70 transition hover:text-white"
+                >
+                  Mi cuenta
+                </Link>
+              )}
               {viewer.role === "admin" && (
                 <Link
                   href="/admin"

@@ -33,6 +33,12 @@ html {
   scroll-margin-top: 6rem;
 }
 
+@media (max-width: 639px) {
+  :where(section, article, details)[id] {
+    scroll-margin-top: 8rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
