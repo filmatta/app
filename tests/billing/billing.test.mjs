@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import Stripe from 'stripe';
 import load from './load.mjs';
 const policy = load('lib/billing/policy.ts');
+const planPresentation = load('lib/billing/plan-presentation.ts');
 const entitledProgressSql = fs.readFileSync('supabase/migrations/20260912020000_entitled_lesson_progress.sql', 'utf8');
 const lessonProgressActions = fs.readFileSync('app/cursos/[slug]/lecciones/[lessonSlug]/actions.ts', 'utf8');
 const subscriptionPage = fs.readFileSync('app/cuenta/suscripcion/page.tsx', 'utf8');
@@ -56,6 +57,36 @@ test('header badge is limited to authenticated Plus and Pro access', async () =>
 
   const failed = loadHeaderPlan(async () => { throw new Error('Billing unavailable'); });
   assert.equal(await failed(true), null);
+});
+
+test('plans page presents Checkout, current plan and Portal actions safely', () => {
+  const action = (planId, currentPlan, authenticated = true, billingAvailable = true) =>
+    JSON.parse(JSON.stringify(
+      planPresentation.getPlanCardAction({ planId, currentPlan, authenticated, billingAvailable })
+    ));
+
+  assert.deepEqual(action('free', null), { kind: 'link', label: 'Explorar cursos', href: '/cursos' });
+  assert.deepEqual(action('plus', null), { kind: 'checkout', label: 'Obtén Plus', plan: 'plus' });
+  assert.deepEqual(action('pro', null), { kind: 'checkout', label: 'Obtén Pro', plan: 'pro' });
+
+  assert.deepEqual(action('free', 'plus'), { kind: 'status', label: 'Plan base incluido' });
+  assert.deepEqual(action('plus', 'plus'), { kind: 'status', label: 'Tu plan actual' });
+  assert.deepEqual(action('pro', 'plus'), { kind: 'portal', label: 'Mejora tu plan a Pro' });
+
+  assert.deepEqual(action('free', 'pro'), { kind: 'status', label: 'Plan base incluido' });
+  assert.deepEqual(action('plus', 'pro'), { kind: 'portal', label: 'Administrar plan' });
+  assert.deepEqual(action('pro', 'pro'), { kind: 'status', label: 'Tu plan actual' });
+
+  for (const currentPlan of [null, 'plus', 'pro']) {
+    assert.deepEqual(action('business', currentPlan), { kind: 'coming-soon', label: 'Próximamente' });
+  }
+
+  assert.deepEqual(action('plus', 'plus', false), {
+    kind: 'checkout', label: 'Obtén Plus', plan: 'plus',
+  }, 'Unauthenticated presentation cannot inherit a paid plan');
+  assert.deepEqual(action('pro', null, true, false), {
+    kind: 'coming-soon', label: 'Próximamente',
+  });
 });
 
 test('free access, enrollment, premium, unpublished and admin boundaries', () => {
