@@ -5,9 +5,15 @@ import Stripe from 'stripe';
 import load from './load.mjs';
 const policy = load('lib/billing/policy.ts');
 const planPresentation = load('lib/billing/plan-presentation.ts');
+const returnPresentation = load('lib/billing/return-presentation.ts');
+const planVisuals = load('lib/plan-visuals.ts');
 const entitledProgressSql = fs.readFileSync('supabase/migrations/20260912020000_entitled_lesson_progress.sql', 'utf8');
 const lessonProgressActions = fs.readFileSync('app/cursos/[slug]/lecciones/[lessonSlug]/actions.ts', 'utf8');
 const subscriptionPage = fs.readFileSync('app/cuenta/suscripcion/page.tsx', 'utf8');
+const billingReturnPage = fs.readFileSync('app/billing/return/page.tsx', 'utf8');
+const billingReturnClient = fs.readFileSync('app/billing/return/BillingReturnClient.tsx', 'utf8');
+const billingStatusRoute = fs.readFileSync('app/api/billing/status/route.ts', 'utf8');
+const billingPlanBadge = fs.readFileSync('components/BillingPlanBadge.tsx', 'utf8');
 
 function loadHeaderPlan(getBillingAccess) {
   return load('lib/billing/header-plan.ts', {
@@ -57,6 +63,71 @@ test('header badge is limited to authenticated Plus and Pro access', async () =>
 
   const failed = loadHeaderPlan(async () => { throw new Error('Billing unavailable'); });
   assert.equal(await failed(true), null);
+});
+
+test('plan visuals keep Plus, Pro and future Business badges consistent', () => {
+  const plus = planVisuals.getPlanVisual('plus');
+  const pro = planVisuals.getPlanVisual('pro');
+  const business = planVisuals.getPlanVisual('business');
+
+  assert.match(plus.badgeClassName, /emerald/);
+  assert.match(pro.badgeClassName, /amber/);
+  assert.match(business.badgeClassName, /blue/);
+  assert.notEqual(plus.badgeClassName, pro.badgeClassName);
+  assert.notEqual(pro.badgeClassName, business.badgeClassName);
+  assert.match(billingPlanBadge, /getPlanVisual/);
+  assert.match(billingPlanBadge, /"BUSINESS"/);
+  assert.match(billingPlanBadge, /if \(!plan\) return null/,
+    'Free and unauthenticated viewers render no badge');
+});
+
+test('billing return confirms only the server plan expected for its Stripe flow', () => {
+  const view = (source, plan, timedOut = false) =>
+    returnPresentation.getBillingReturnView({ source, plan, timedOut });
+
+  assert.equal(view('upgrade', 'plus').status, 'waiting');
+  assert.equal(view('upgrade', 'pro').status, 'confirmed');
+  assert.equal(view('upgrade', 'pro').plan, 'pro');
+  assert.match(view('upgrade', 'pro').title, /FILMATTA Pro/);
+
+  assert.equal(view('checkout', 'plus').plan, 'plus');
+  assert.match(view('checkout', 'plus').title, /FILMATTA Plus/);
+  assert.equal(view('checkout', 'pro').plan, 'pro');
+  assert.equal(view('checkout', null).status, 'waiting');
+  assert.equal(view('checkout', null, true).status, 'timeout');
+
+  assert.equal(returnPresentation.parseBillingReturnSource('plan=pro'), 'unknown');
+  assert.equal(view('unknown', 'pro').status, 'waiting',
+    'A manipulated visual source cannot claim a plan');
+  assert.equal(view('upgrade', null, true).status, 'timeout',
+    'Timeout never invents paid access');
+});
+
+test('billing return is authenticated, bounded, read-only and refreshes plans with a full navigation', () => {
+  assert.equal(returnPresentation.BILLING_RETURN_POLL_INTERVAL_MS, 1_500);
+  assert.equal(returnPresentation.BILLING_RETURN_TIMEOUT_MS, 15_000);
+  assert.ok(
+    returnPresentation.BILLING_RETURN_TIMEOUT_MS /
+      returnPresentation.BILLING_RETURN_POLL_INTERVAL_MS <= 10,
+    'Polling is limited to at most ten retries'
+  );
+  assert.match(billingReturnPage, /if \(!viewer\) redirect\("\/acceso\?next=%2Fbilling%2Freturn"\)/);
+  assert.match(billingReturnPage, /getBillingAccess\(\)/);
+  assert.match(billingStatusRoute, /if \(!viewer\)/);
+  assert.match(billingStatusRoute, /getBillingAccess\(\)/);
+  assert.match(billingStatusRoute, /private, no-store/);
+  assert.match(billingReturnClient, /fetch\("\/api\/billing\/status"/);
+  assert.match(billingReturnClient, /cache: "no-store"/);
+  assert.match(billingReturnClient, /BILLING_RETURN_POLL_INTERVAL_MS/);
+  assert.match(billingReturnClient, /BILLING_RETURN_TIMEOUT_MS/);
+  assert.match(billingReturnClient, /\/brand\/matti\/matti-plan-success\.png/);
+  assert.match(billingReturnClient, /window\.location\.replace\("\/planes"\)/,
+    'Full navigation avoids reusing the pre-upgrade Router Cache');
+  assert.doesNotMatch(
+    `${billingReturnPage}\n${billingStatusRoute}\n${billingReturnClient}`,
+    /subscriptions\.create|entitlements.*(?:insert|upsert)|invoices.*(?:insert|upsert)|payments.*(?:insert|upsert)/,
+    'The return flow never creates Billing records'
+  );
 });
 
 test('plans page presents Checkout, current plan and Portal actions safely', () => {
@@ -590,7 +661,7 @@ test('Plus upgrade deep link resolves the active subscription server-side and ta
             },
             after_completion: {
               type: 'redirect',
-              redirect: { return_url: 'https://preview.test/planes' },
+              redirect: { return_url: 'https://preview.test/billing/return?source=upgrade' },
             },
           },
         });
@@ -672,6 +743,7 @@ test('checkout requires a billing address, accepts unspecified price tax behavio
       assert.equal(params.line_items.length, 1);
       assert.equal(params.line_items[0].price, 'price_plus');
       assert.equal(params.line_items[0].quantity, 1);
+      assert.equal(params.success_url, 'https://test.local/billing/return?source=checkout');
       return { livemode: false, url: 'https://checkout.stripe.com/test' };
     } } },
   };
