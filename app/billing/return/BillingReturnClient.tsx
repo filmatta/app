@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { getPlanVisual } from "@/lib/plan-visuals";
 import {
   BILLING_RETURN_POLL_INTERVAL_MS,
-  BILLING_RETURN_REDIRECT_DELAY_MS,
   BILLING_RETURN_TIMEOUT_MS,
   getBillingReturnView,
   type BillingReturnSource,
@@ -76,38 +75,28 @@ export default function BillingReturnClient({
     };
   }, [source, timedOut, view.status]);
 
-  useEffect(() => {
-    if (view.status !== "confirmed") return;
-    const timer = setTimeout(() => {
-      window.location.replace("/planes");
-    }, BILLING_RETURN_REDIRECT_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [view.status]);
-
   const visual =
     view.status === "confirmed"
       ? getPlanVisual(view.plan)
       : getPlanVisual("pro");
 
   return (
-    <section className="mx-auto flex min-h-[calc(100vh-4.5rem)] max-w-5xl items-center px-5 py-12 sm:px-8 lg:py-16">
+    <section className="mx-auto flex min-h-[calc(100vh-4.5rem)] max-w-3xl items-center px-5 py-10 sm:px-8 sm:py-12">
       <div
-        className={`grid w-full overflow-hidden rounded-3xl border ${visual.panelClassName} shadow-2xl shadow-black/30 md:grid-cols-[15rem_1fr]`}
+        className={`flex w-full flex-col items-center rounded-3xl border px-6 py-10 text-center ${visual.panelClassName} shadow-2xl shadow-black/30 sm:px-10 sm:py-12`}
       >
-        <div className="flex min-h-48 items-end justify-center bg-black/15 px-8 pt-8 md:min-h-[23rem] md:px-6">
-          <Image
-            src="/brand/matti/matti-plan-success.png"
-            alt="Matti, la mascota de FILMATTA"
-            width={360}
-            height={360}
-            priority
-            className="h-auto max-h-48 w-auto max-w-full object-contain object-bottom md:max-h-72"
-          />
-        </div>
+        <Image
+          src="/brand/matti/matti-plan-success.png"
+          alt="Matti, la mascota de FILMATTA"
+          width={240}
+          height={240}
+          priority
+          className="h-auto w-36 object-contain sm:w-44 lg:w-48"
+        />
 
         <div
           aria-live="polite"
-          className="flex flex-col justify-center px-6 py-9 text-center sm:px-10 md:py-12 md:text-left"
+          className="mt-7 flex w-full flex-col items-center"
         >
           <p
             className={`text-xs font-semibold uppercase tracking-[0.26em] ${visual.accentClassName}`}
@@ -124,7 +113,7 @@ export default function BillingReturnClient({
                 {view.message}
               </p>
               <p className="mt-4 text-sm text-white/35">
-                Te llevaremos a tus planes en un momento.
+                Tu plan ya está listo. Continúa cuando quieras.
               </p>
             </>
           ) : view.status === "timeout" ? (
@@ -150,12 +139,13 @@ export default function BillingReturnClient({
           )}
 
           <div className="mt-8">
-            <a
-              href="/planes"
+            <button
+              type="button"
+              onClick={() => window.location.replace("/planes")}
               className="inline-flex rounded-full border border-white/15 bg-black/15 px-5 py-3 text-sm font-semibold text-white/80 transition hover:border-white/25 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
             >
               {view.status === "confirmed" ? "Ver mi plan" : "Volver a mis planes"}
-            </a>
+            </button>
           </div>
         </div>
       </div>

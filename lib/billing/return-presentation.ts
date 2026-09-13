@@ -2,7 +2,6 @@ import type { BillingPlan } from "./policy";
 
 export const BILLING_RETURN_POLL_INTERVAL_MS = 1_500;
 export const BILLING_RETURN_TIMEOUT_MS = 15_000;
-export const BILLING_RETURN_REDIRECT_DELAY_MS = 2_200;
 
 export type BillingReturnSource = "checkout" | "upgrade" | "unknown";
 
