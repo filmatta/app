@@ -39,7 +39,7 @@ export function getPlanCardAction({
   if (!effectivePlan) {
     return {
       kind: "checkout",
-      label: planId === "plus" ? "Obtén Plus" : "Obtén Pro",
+      label: planId === "plus" ? "Obtener Plus" : "Obtener Pro",
       plan: planId,
     };
   }
@@ -52,7 +52,7 @@ export function getPlanCardAction({
     kind: "portal",
     label:
       effectivePlan === "plus"
-        ? "Mejora tu plan a Pro"
+        ? "Actualizar a Pro"
         : "Administrar plan",
   };
 }

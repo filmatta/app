@@ -66,12 +66,12 @@ test('plans page presents Checkout, current plan and Portal actions safely', () 
     ));
 
   assert.deepEqual(action('free', null), { kind: 'link', label: 'Explorar cursos', href: '/cursos' });
-  assert.deepEqual(action('plus', null), { kind: 'checkout', label: 'Obtén Plus', plan: 'plus' });
-  assert.deepEqual(action('pro', null), { kind: 'checkout', label: 'Obtén Pro', plan: 'pro' });
+  assert.deepEqual(action('plus', null), { kind: 'checkout', label: 'Obtener Plus', plan: 'plus' });
+  assert.deepEqual(action('pro', null), { kind: 'checkout', label: 'Obtener Pro', plan: 'pro' });
 
   assert.deepEqual(action('free', 'plus'), { kind: 'status', label: 'Plan base incluido' });
   assert.deepEqual(action('plus', 'plus'), { kind: 'status', label: 'Tu plan actual' });
-  assert.deepEqual(action('pro', 'plus'), { kind: 'portal', label: 'Mejora tu plan a Pro' });
+  assert.deepEqual(action('pro', 'plus'), { kind: 'portal', label: 'Actualizar a Pro' });
 
   assert.deepEqual(action('free', 'pro'), { kind: 'status', label: 'Plan base incluido' });
   assert.deepEqual(action('plus', 'pro'), { kind: 'portal', label: 'Administrar plan' });
@@ -82,7 +82,7 @@ test('plans page presents Checkout, current plan and Portal actions safely', () 
   }
 
   assert.deepEqual(action('plus', 'plus', false), {
-    kind: 'checkout', label: 'Obtén Plus', plan: 'plus',
+    kind: 'checkout', label: 'Obtener Plus', plan: 'plus',
   }, 'Unauthenticated presentation cannot inherit a paid plan');
   assert.deepEqual(action('pro', null, true, false), {
     kind: 'coming-soon', label: 'Próximamente',
@@ -428,7 +428,7 @@ test('checkout authenticates and rejects forged plan/country before contacting S
 test('portal button depends on server configuration instead of the visual subscription list', () => {
   assert.match(subscriptionPage,
     /const portalConfigured = Boolean\(process\.env\.STRIPE_PORTAL_CONFIGURATION_ID\);/);
-  const button = subscriptionPage.match(/<LoadingButton[^>]*>Administrar suscripción de prueba<\/LoadingButton>/)?.[0] ?? '';
+  const button = subscriptionPage.match(/<LoadingButton[^>]*>Ver y cambiar mi plan<\/LoadingButton>/)?.[0] ?? '';
   assert.match(button, /disabled=\{!portalConfigured\}/);
   assert.doesNotMatch(button, /subscriptions\.length/);
   assert.equal(Boolean('bpc_test'), true, 'Configured Portal stays enabled with an empty visual list');
