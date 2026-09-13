@@ -23,6 +23,7 @@ export default async function SubscriptionPage({ searchParams }: {
   const subscriptions = result.data ?? [];
   const hasSubscription = subscriptions.some((s) => !["canceled", "incomplete_expired"].includes(s.status));
   const ready = enabled && !result.error && process.env.BILLING_MX_CHECKOUT_VERIFIED === "true";
+  const portalConfigured = Boolean(process.env.STRIPE_PORTAL_CONFIGURATION_ID);
   return <main className="min-h-screen bg-[#080808] px-6 py-12 text-white">
     <div className="mx-auto max-w-3xl">
       <Link href="/cuenta#pagos" className="text-sm text-white/60 hover:text-white">← Cuenta</Link>
@@ -49,7 +50,7 @@ export default async function SubscriptionPage({ searchParams }: {
           <LoadingButton type="submit" disabled={!ready} loadingText="Abriendo…" className="mt-5 rounded-full bg-white px-5 py-3 text-sm font-semibold text-black disabled:opacity-40">Comprar {plan === "plus" ? "Plus" : "Pro"} (TEST)</LoadingButton>
         </form>)}
       </div>}
-      {enabled && <form action={openBillingPortal} className="mt-8"><LoadingButton type="submit" loadingText="Abriendo…" disabled={!subscriptions.length || !process.env.STRIPE_PORTAL_CONFIGURATION_ID} className="rounded-full border border-white/20 px-5 py-3 disabled:opacity-40">Administrar suscripción de prueba</LoadingButton></form>}
+      {enabled && <form action={openBillingPortal} className="mt-8"><LoadingButton type="submit" loadingText="Abriendo…" disabled={!portalConfigured} className="rounded-full border border-white/20 px-5 py-3 disabled:opacity-40">Administrar suscripción de prueba</LoadingButton></form>}
       {enabled && !ready && <p className="mt-5 text-sm text-white/50">La configuración de las pruebas está pendiente.</p>}
       <p className="mt-10 text-sm text-white/45">El portal permitirá actualizar métodos de pago y cancelar. Los datos fiscales y la emisión de CFDI estarán disponibles en una etapa posterior.</p>
     </div>
