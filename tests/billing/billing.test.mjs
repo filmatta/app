@@ -8,6 +8,12 @@ const entitledProgressSql = fs.readFileSync('supabase/migrations/20260912020000_
 const lessonProgressActions = fs.readFileSync('app/cursos/[slug]/lecciones/[lessonSlug]/actions.ts', 'utf8');
 const subscriptionPage = fs.readFileSync('app/cuenta/suscripcion/page.tsx', 'utf8');
 
+function loadHeaderPlan(getBillingAccess) {
+  return load('lib/billing/header-plan.ts', {
+    '@/lib/billing/access': { getBillingAccess },
+  }).getHeaderBillingPlan;
+}
+
 function hasRegularAccess(plan, billingAccess) {
   return (plan === 'plus' || plan === 'pro') && billingAccess === 'regular';
 }
@@ -33,6 +39,24 @@ function courseCompletes({ plan = null, billingAccess = 'regular', lessons }) {
     publishedLessons.every((lesson) => lesson.preview || regularAccess) &&
     publishedLessons.every((lesson) => lesson.completed);
 }
+
+test('header badge is limited to authenticated Plus and Pro access', async () => {
+  let reads = 0;
+  const unauthenticated = loadHeaderPlan(async () => {
+    reads++;
+    return { regularAccess: true, plan: 'plus' };
+  });
+  assert.equal(await unauthenticated(false), null);
+  assert.equal(reads, 0, 'Unauthenticated headers do not query Billing');
+
+  for (const [plan, expected] of [[null, null], ['plus', 'PLUS'], ['pro', 'PRO']]) {
+    const resolve = loadHeaderPlan(async () => ({ regularAccess: plan !== null, plan }));
+    assert.equal(await resolve(true), expected);
+  }
+
+  const failed = loadHeaderPlan(async () => { throw new Error('Billing unavailable'); });
+  assert.equal(await failed(true), null);
+});
 
 test('free access, enrollment, premium, unpublished and admin boundaries', () => {
   const base = { authenticated: true, admin: false, published: true, quickGuide: false, enrolled: true, preview: true, regularAccess: false };
