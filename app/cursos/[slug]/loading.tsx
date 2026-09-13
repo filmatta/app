@@ -1,10 +1,13 @@
 import Skeleton from "@/components/ui/Skeleton";
+import { PAGE_CONTAINER_CLASS_NAME } from "@/lib/page-container";
 
 export default function CourseLoading() {
   return (
     <main className="min-h-screen bg-[#080808] text-white" aria-busy="true">
       <p className="sr-only" role="status">Cargando curso…</p>
-      <section className="mx-auto grid max-w-7xl gap-12 px-6 py-20 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] lg:px-8">
+      <section
+        className={`${PAGE_CONTAINER_CLASS_NAME} grid gap-12 py-20 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]`}
+      >
         <div>
           <Skeleton className="h-3 w-32" />
           <Skeleton className="mt-6 h-16 w-full max-w-2xl" />

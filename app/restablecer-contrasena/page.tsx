@@ -3,6 +3,7 @@ import { updateRecoveredPassword } from "@/app/cuenta/actions";
 import { getSafeNextPath } from "@/lib/auth/safe-next-path";
 import { createClient } from "@/lib/supabase/server";
 import LoadingButton from "@/components/ui/LoadingButton";
+import { WIDE_PAGE_CONTAINER_CLASS_NAME } from "@/lib/page-container";
 
 export default async function ResetPasswordPage({
   searchParams,
@@ -18,7 +19,9 @@ export default async function ResetPasswordPage({
   return (
     <main className="min-h-screen bg-[#080808] text-white">
       <header className="border-b border-white/10">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 lg:px-8">
+        <div
+          className={`${WIDE_PAGE_CONTAINER_CLASS_NAME} flex items-center justify-between py-5`}
+        >
           <Link href="/" className="text-xl font-black tracking-[0.25em]">
             FILMATTA
           </Link>

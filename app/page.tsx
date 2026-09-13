@@ -1,5 +1,9 @@
 import Link from "next/link";
 import SiteHeader from "@/components/SiteHeader";
+import {
+  PAGE_CONTAINER_CLASS_NAME,
+  WIDE_PAGE_CONTAINER_CLASS_NAME,
+} from "@/lib/page-container";
 
 const features = [
   {
@@ -42,7 +46,9 @@ export default function Home() {
       <SiteHeader showPrimaryNavigation />
 
       {/* HERO */}
-      <section className="mx-auto flex min-h-[78vh] max-w-7xl flex-col justify-center px-6 py-24 lg:px-8">
+      <section
+        className={`${PAGE_CONTAINER_CLASS_NAME} flex min-h-[78vh] flex-col justify-center py-24`}
+      >
         <div className="mb-8 flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.3em] text-white/40">
           <span className="h-px w-10 bg-white/30" />
           Plataforma audiovisual
@@ -75,8 +81,8 @@ export default function Home() {
 
       {/* FEATURES */}
       <section className="border-t border-white/10">
-        <div className="mx-auto max-w-7xl px-6 py-24 lg:px-8">
-          <div className="mb-16">
+        <div className={`${WIDE_PAGE_CONTAINER_CLASS_NAME} py-24`}>
+          <div className="mx-auto mb-16 max-w-7xl">
             <p className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-white/40">
               Todo en un mismo lugar
             </p>
@@ -86,7 +92,7 @@ export default function Home() {
             </h2>
           </div>
 
-          <div className="grid border-l border-t border-white/10 md:grid-cols-2">
+          <div className="grid border-l border-t border-white/10 md:grid-cols-2 xl:grid-cols-4">
             {features.map((feature) => (
               <article
                 key={feature.title}
@@ -120,7 +126,9 @@ export default function Home() {
 
       {/* MANIFESTO */}
       <section className="border-t border-white/10">
-        <div className="mx-auto grid max-w-7xl gap-16 px-6 py-28 lg:grid-cols-2 lg:px-8">
+        <div
+          className={`${PAGE_CONTAINER_CLASS_NAME} grid gap-16 py-28 lg:grid-cols-2`}
+        >
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/40">
               FILMATTA
@@ -142,7 +150,7 @@ export default function Home() {
 
       {/* CTA */}
       <section className="border-t border-white/10">
-        <div className="mx-auto max-w-7xl px-6 py-28 text-center lg:px-8">
+        <div className={`${PAGE_CONTAINER_CLASS_NAME} py-28 text-center`}>
           <p className="mb-6 text-xs font-semibold uppercase tracking-[0.3em] text-white/40">
             Tu siguiente proyecto puede empezar aquí
           </p>
@@ -164,7 +172,9 @@ export default function Home() {
 
       {/* FOOTER */}
       <footer className="border-t border-white/10">
-        <div className="mx-auto flex max-w-7xl flex-col justify-between gap-6 px-6 py-10 text-sm text-white/35 sm:flex-row lg:px-8">
+        <div
+          className={`${PAGE_CONTAINER_CLASS_NAME} flex flex-col justify-between gap-6 py-10 text-sm text-white/35 sm:flex-row`}
+        >
           <span className="font-bold tracking-[0.2em] text-white">
             FILMATTA
           </span>

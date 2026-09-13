@@ -5,6 +5,10 @@ import {
   type LearnContentType,
 } from "@/lib/learn/content-type";
 import { createClient } from "@/lib/supabase/server";
+import {
+  PAGE_CONTAINER_CLASS_NAME,
+  WIDE_PAGE_CONTAINER_CLASS_NAME,
+} from "@/lib/page-container";
 
 type CatalogContent = {
   id: string;
@@ -38,7 +42,9 @@ export default async function CursosPage() {
     <main className="min-h-screen bg-[#080808] text-white">
       <SiteHeader contextLink={{ href: "/", label: "← Volver" }} />
 
-      <section className="mx-auto max-w-7xl px-6 pb-20 pt-20 lg:px-8 lg:pb-28 lg:pt-24">
+      <section
+        className={`${PAGE_CONTAINER_CLASS_NAME} pb-20 pt-20 lg:pb-28 lg:pt-24`}
+      >
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
           FILMATTA Learn
         </p>
@@ -145,18 +151,20 @@ function CatalogSection({
       aria-labelledby={headingId}
       className="scroll-mt-8 border-t border-white/10"
     >
-      <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8 lg:py-24">
-        <div className="max-w-2xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/30">
-            {eyebrow}
-          </p>
-          <h2
-            id={headingId}
-            className="mt-4 text-4xl font-semibold tracking-[-0.035em] sm:text-5xl"
-          >
-            {title}
-          </h2>
-          <p className="mt-4 leading-7 text-white/45">{description}</p>
+      <div className={`${WIDE_PAGE_CONTAINER_CLASS_NAME} py-20 lg:py-24`}>
+        <div className="mx-auto max-w-7xl">
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/30">
+              {eyebrow}
+            </p>
+            <h2
+              id={headingId}
+              className="mt-4 text-4xl font-semibold tracking-[-0.035em] sm:text-5xl"
+            >
+              {title}
+            </h2>
+            <p className="mt-4 leading-7 text-white/45">{description}</p>
+          </div>
         </div>
         {children}
       </div>
@@ -165,7 +173,11 @@ function CatalogSection({
 }
 
 function ContentGrid({ children }: { children: React.ReactNode }) {
-  return <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">{children}</div>;
+  return (
+    <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+      {children}
+    </div>
+  );
 }
 
 function ContentCard({

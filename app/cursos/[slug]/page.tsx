@@ -18,6 +18,7 @@ import { getLearnContentType } from "@/lib/learn/content-type";
 import { getResumeActions, type ResumeAction } from "@/lib/learn/resume";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
 import { createClient } from "@/lib/supabase/server";
+import { PAGE_CONTAINER_CLASS_NAME } from "@/lib/page-container";
 
 type CoursePageProps = {
   params: Promise<{ slug: string }>;
@@ -333,7 +334,9 @@ export default async function CursoPage({
         drawerLabel={isQuickGuide ? "Navegación de la guía" : "Navegación del curso"}
       >
       <article>
-        <div className="mx-auto max-w-7xl px-6 pb-20 pt-12 lg:px-8 lg:pb-28 lg:pt-16">
+        <div
+          className={`${PAGE_CONTAINER_CLASS_NAME} pb-20 pt-12 lg:pb-28 lg:pt-16`}
+        >
           <div className="relative aspect-video overflow-hidden rounded-2xl bg-white/[0.04]">
             {course.cover_image_url ? (
               <img
