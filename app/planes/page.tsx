@@ -2,6 +2,17 @@ import Link from "next/link";
 import { billingEnabled } from "@/lib/billing/config";
 import SiteHeader from "@/components/SiteHeader";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
+import { getViewer } from "@/lib/auth/get-viewer";
+import { getBillingAccess } from "@/lib/billing/access";
+import {
+  getPlanCardAction,
+  type PlanCardAction,
+} from "@/lib/billing/plan-presentation";
+import {
+  openBillingPortal,
+  startCheckout,
+} from "@/app/cuenta/suscripcion/actions";
+import LoadingButton from "@/components/ui/LoadingButton";
 
 const plans = [
   {
@@ -83,7 +94,14 @@ const plans = [
   },
 ] as const;
 
-export default function PlanesPage() {
+export default async function PlanesPage() {
+  const viewer = await getViewer();
+  const billingAvailable = billingEnabled();
+  const billing = viewer
+    ? await getBillingAccess()
+    : { regularAccess: false, plan: null };
+  const currentPlan = viewer ? billing.plan : null;
+
   return (
     <main className="min-h-screen bg-[#080808] text-white">
       <SiteHeader contextLink={{ href: "/cursos", label: "← Aprender" }} />
@@ -100,6 +118,11 @@ export default function PlanesPage() {
             Empieza con lo esencial y avanza cuando necesites más aprendizaje,
             presencia profesional o herramientas para tu organización.
           </p>
+          {currentPlan && (
+            <p className="mt-6 inline-flex rounded-full border border-white/15 bg-white/[0.04] px-4 py-2 text-sm text-white/70">
+              Tu plan actual: FILMATTA {currentPlan === "plus" ? "Plus" : "Pro"}
+            </p>
+          )}
         </div>
 
         <nav
@@ -118,27 +141,42 @@ export default function PlanesPage() {
         </nav>
 
         <div className="-mx-6 mt-16 flex snap-x snap-mandatory gap-4 overflow-x-auto px-6 pb-5 lg:mx-0 lg:grid lg:grid-cols-4 lg:gap-5 lg:overflow-visible lg:px-0 lg:pb-0">
-          {plans.map((plan) => (
-            <article
-              key={plan.id}
-              id={plan.id}
-              className={`flex min-h-[39rem] w-[85vw] max-w-[22rem] shrink-0 snap-center scroll-mt-8 flex-col rounded-2xl border p-7 sm:w-[23rem] lg:w-auto lg:max-w-none ${
-                "recommended" in plan && plan.recommended
-                  ? "border-emerald-400/35 bg-emerald-400/[0.035]"
-                  : "border-white/10 bg-white/[0.02]"
-              }`}
-            >
+          {plans.map((plan) => {
+            const isCurrent = plan.id === currentPlan;
+            const action = getPlanCardAction({
+              planId: plan.id,
+              currentPlan,
+              authenticated: Boolean(viewer),
+              billingAvailable,
+            });
+
+            return (
+              <article
+                key={plan.id}
+                id={plan.id}
+                className={`flex min-h-[39rem] w-[85vw] max-w-[22rem] shrink-0 snap-center scroll-mt-8 flex-col rounded-2xl border p-7 sm:w-[23rem] lg:w-auto lg:max-w-none ${
+                  isCurrent
+                    ? "border-white/30 bg-white/[0.045]"
+                    : "recommended" in plan && plan.recommended
+                      ? "border-emerald-400/35 bg-emerald-400/[0.035]"
+                      : "border-white/10 bg-white/[0.02]"
+                }`}
+              >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <span
                   className={`rounded-full px-3 py-1.5 text-xs font-semibold ${plan.badgeClass}`}
                 >
                   {plan.name.replace("FILMATTA ", "")}
                 </span>
-                {"recommended" in plan && plan.recommended && (
+                {isCurrent ? (
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/65">
+                    Tu plan actual
+                  </span>
+                ) : "recommended" in plan && plan.recommended ? (
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200/70">
                     Recomendado
                   </span>
-                )}
+                ) : null}
               </div>
 
               <h2 className="mt-6 text-2xl font-semibold tracking-[-0.03em]">
@@ -178,22 +216,10 @@ export default function PlanesPage() {
                 ))}
               </ul>
 
-              {plan.id === "free" ? (
-                <Link
-                  href="/cursos"
-                  className="mt-8 inline-flex justify-center rounded-full border border-white/15 px-5 py-3 text-sm font-semibold text-white/75 transition hover:bg-white/[0.05] hover:text-white"
-                >
-                  Explorar cursos
-                </Link>
-              ) : billingEnabled() && (plan.id === "plus" || plan.id === "pro") ? (
-                <Link href="/cuenta/suscripcion" className="mt-8 inline-flex justify-center rounded-full border border-white/15 px-5 py-3 text-sm font-semibold">Probar suscripción · Sin cobros reales</Link>
-              ) : (
-                <span className="mt-8 inline-flex justify-center rounded-full border border-white/10 px-5 py-3 text-sm font-semibold text-white/35">
-                  Próximamente
-                </span>
-              )}
-            </article>
-          ))}
+              <PlanAction action={action} />
+              </article>
+            );
+          })}
         </div>
 
         <section className="mt-8 rounded-2xl border border-white/10 bg-white/[0.02] p-7 sm:p-9">
@@ -210,9 +236,63 @@ export default function PlanesPage() {
         </section>
 
         <p className="mt-8 text-center text-sm text-white/30">
-          Los planes premium estarán disponibles próximamente.
+          {billingAvailable
+            ? "Stripe Test Mode. Usa únicamente tarjetas de prueba."
+            : "Los planes premium estarán disponibles próximamente."}
         </p>
       </section>
     </main>
+  );
+}
+
+function PlanAction({ action }: { action: PlanCardAction }) {
+  const interactiveClass =
+    "mt-8 inline-flex w-full justify-center rounded-full border border-white/15 px-5 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/[0.05] hover:text-white";
+
+  if (action.kind === "link") {
+    return (
+      <Link href={action.href} className={interactiveClass}>
+        {action.label}
+      </Link>
+    );
+  }
+
+  if (action.kind === "checkout") {
+    return (
+      <form action={startCheckout} className="mt-8">
+        <input type="hidden" name="plan" value={action.plan} />
+        <input type="hidden" name="country" value="MX" />
+        <LoadingButton
+          type="submit"
+          loadingText="Abriendo…"
+          className={interactiveClass.replace("mt-8 ", "")}
+        >
+          {action.label}
+        </LoadingButton>
+      </form>
+    );
+  }
+
+  if (action.kind === "portal") {
+    return (
+      <form action={openBillingPortal} className="mt-8">
+        <LoadingButton
+          type="submit"
+          loadingText="Abriendo…"
+          className={interactiveClass.replace("mt-8 ", "")}
+        >
+          {action.label}
+        </LoadingButton>
+      </form>
+    );
+  }
+
+  return (
+    <span
+      aria-current={action.label === "Tu plan actual" ? "true" : undefined}
+      className="mt-8 inline-flex justify-center rounded-full border border-white/10 px-5 py-3 text-sm font-semibold text-white/35"
+    >
+      {action.label}
+    </span>
   );
 }
