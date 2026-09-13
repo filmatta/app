@@ -6,6 +6,7 @@ import load from './load.mjs';
 const policy = load('lib/billing/policy.ts');
 const entitledProgressSql = fs.readFileSync('supabase/migrations/20260912020000_entitled_lesson_progress.sql', 'utf8');
 const lessonProgressActions = fs.readFileSync('app/cursos/[slug]/lecciones/[lessonSlug]/actions.ts', 'utf8');
+const subscriptionPage = fs.readFileSync('app/cuenta/suscripcion/page.tsx', 'utf8');
 
 function hasRegularAccess(plan, billingAccess) {
   return (plan === 'plus' || plan === 'pro') && billingAccess === 'regular';
@@ -337,13 +338,19 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   let viewer = null;
   let calls = 0;
   let portalCalls = 0;
+  let portalCustomerExists = true;
   const actions = load('app/cuenta/suscripcion/actions.ts', {
     'next/navigation': { redirect: (url) => { throw new Error(`redirect:${url}`); } },
     '@/lib/auth/get-viewer': { getViewer: async () => viewer },
     '@/lib/billing/policy': policy,
     '@/lib/billing/checkout': {
       createTestCheckout: async (user) => { calls++; assert.equal(user.id, 'trusted'); return 'https://checkout.stripe.com/test'; },
-      createTestPortal: async (userId) => { portalCalls++; assert.equal(userId, 'trusted'); return 'https://billing.stripe.com/p/session/test'; },
+      createTestPortal: async (userId) => {
+        portalCalls++;
+        assert.equal(userId, 'trusted');
+        if (!portalCustomerExists) throw new Error('No billing customer');
+        return 'https://billing.stripe.com/p/session/test';
+      },
     },
   });
   const form = new FormData(); form.set('plan', 'plus'); form.set('country', 'MX');
@@ -358,6 +365,19 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   assert.equal(calls, 1);
   await assert.rejects(actions.openBillingPortal(), /billing.stripe.com/);
   assert.equal(portalCalls, 1);
+  portalCustomerExists = false;
+  await assert.rejects(actions.openBillingPortal(), /error=portal/);
+  assert.equal(portalCalls, 2);
+});
+
+test('portal button depends on server configuration instead of the visual subscription list', () => {
+  assert.match(subscriptionPage,
+    /const portalConfigured = Boolean\(process\.env\.STRIPE_PORTAL_CONFIGURATION_ID\);/);
+  const button = subscriptionPage.match(/<LoadingButton[^>]*>Administrar suscripción de prueba<\/LoadingButton>/)?.[0] ?? '';
+  assert.match(button, /disabled=\{!portalConfigured\}/);
+  assert.doesNotMatch(button, /subscriptions\.length/);
+  assert.equal(Boolean('bpc_test'), true, 'Configured Portal stays enabled with an empty visual list');
+  assert.equal(Boolean(undefined), false, 'Missing Portal configuration disables the button');
 });
 
 test('portal session is restricted to Plus and Pro with immediate upgrades and scheduled downgrades', async () => {
