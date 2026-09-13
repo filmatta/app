@@ -14,6 +14,7 @@ import {
   upgradeToPro,
 } from "@/app/cuenta/suscripcion/actions";
 import LoadingButton from "@/components/ui/LoadingButton";
+import { planVisuals } from "@/lib/plan-visuals";
 
 const plans = [
   {
@@ -23,7 +24,7 @@ const plans = [
     description:
       "Para crear tu cuenta, conocer la plataforma y probar FILMATTA Learn.",
     price: FILMATTA_PLAN_PRICES.free,
-    badgeClass: "bg-white/10 text-white/60",
+    badgeClass: planVisuals.free.badgeClassName,
     features: [
       "Cuenta y perfil básicos",
       "Acceso al temario de Learn",
@@ -39,7 +40,7 @@ const plans = [
     description:
       "Para aprender continuamente y presentar tu trabajo con una presencia profesional premium.",
     price: FILMATTA_PLAN_PRICES.plus,
-    badgeClass: "bg-emerald-400/15 text-emerald-200",
+    badgeClass: planVisuals.plus.badgeClassName,
     recommended: true,
     features: [
       "Todo lo incluido en FILMATTA Free",
@@ -59,7 +60,7 @@ const plans = [
     description:
       "Para profesionales que buscan más alcance, mejores herramientas y nuevas oportunidades.",
     price: FILMATTA_PLAN_PRICES.pro,
-    badgeClass: "bg-amber-400/15 text-amber-200",
+    badgeClass: planVisuals.pro.badgeClassName,
     features: [
       "Todo lo incluido en FILMATTA Plus",
       "Mayor capacidad de portfolio y reels",
@@ -79,7 +80,7 @@ const plans = [
     description:
       "Para organizaciones y equipos que necesitan buscar talento y coordinar su operación audiovisual.",
     price: FILMATTA_PLAN_PRICES.business,
-    badgeClass: "bg-blue-400/15 text-blue-200",
+    badgeClass: planVisuals.business.badgeClassName,
     features: [
       "Organización y workspace",
       "Seats para miembros del equipo",
@@ -165,7 +166,7 @@ export default async function PlanesPage() {
               >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <span
-                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${plan.badgeClass}`}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${plan.badgeClass}`}
                 >
                   {plan.name.replace("FILMATTA ", "")}
                 </span>

@@ -69,7 +69,7 @@ export async function createTestCheckout(user: { id: string; email: string | nul
       automatic_tax: { enabled: false }, subscription_data: { default_tax_rates: [config.taxRate] },
       allow_promotion_codes: false, locale: "es", expires_at: Math.floor(Date.now() / 1000) + 1800,
       metadata: { filmatta_plan: plan },
-      success_url: `${config.origin}/cuenta/suscripcion?checkout=returned`,
+      success_url: `${config.origin}/billing/return?source=checkout`,
       cancel_url: `${config.origin}/cuenta/suscripcion?checkout=canceled`,
       custom_text: { submit: { message: "Solo México. Suscripción de prueba; IVA incluido. Usa únicamente tarjetas de prueba." } },
     }, { idempotencyKey: `filmatta-test-checkout-${randomUUID()}` });
@@ -162,6 +162,7 @@ export async function createTestProUpgradePortal(userId: string) {
   }
 
   const returnUrl = `${config.origin}/planes`;
+  const completedReturnUrl = `${config.origin}/billing/return?source=upgrade`;
   const session = await stripe.billingPortal.sessions.create({
     customer: customer.id,
     configuration: config.portal,
@@ -174,7 +175,7 @@ export async function createTestProUpgradePortal(userId: string) {
       },
       after_completion: {
         type: "redirect",
-        redirect: { return_url: returnUrl },
+        redirect: { return_url: completedReturnUrl },
       },
     },
   });
