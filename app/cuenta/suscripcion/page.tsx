@@ -50,7 +50,7 @@ export default async function SubscriptionPage({ searchParams }: {
           <LoadingButton type="submit" disabled={!ready} loadingText="Abriendo…" className="mt-5 rounded-full bg-white px-5 py-3 text-sm font-semibold text-black disabled:opacity-40">Comprar {plan === "plus" ? "Plus" : "Pro"} (TEST)</LoadingButton>
         </form>)}
       </div>}
-      {enabled && <form action={openBillingPortal} className="mt-8"><LoadingButton type="submit" loadingText="Abriendo…" disabled={!portalConfigured} className="rounded-full border border-white/20 px-5 py-3 disabled:opacity-40">Administrar suscripción de prueba</LoadingButton></form>}
+      {enabled && <form action={openBillingPortal} className="mt-8"><LoadingButton type="submit" loadingText="Abriendo…" disabled={!portalConfigured} className="rounded-full border border-white/20 px-5 py-3 disabled:opacity-40">Ver y cambiar mi plan</LoadingButton></form>}
       {enabled && !ready && <p className="mt-5 text-sm text-white/50">La configuración de las pruebas está pendiente.</p>}
       <p className="mt-10 text-sm text-white/45">El portal permitirá actualizar métodos de pago y cancelar. Los datos fiscales y la emisión de CFDI estarán disponibles en una etapa posterior.</p>
     </div>

@@ -275,15 +275,22 @@ function PlanAction({ action }: { action: PlanCardAction }) {
 
   if (action.kind === "portal") {
     return (
-      <form action={openBillingPortal} className="mt-8">
-        <LoadingButton
-          type="submit"
-          loadingText="Abriendo…"
-          className={interactiveClass.replace("mt-8 ", "")}
-        >
-          {action.label}
-        </LoadingButton>
-      </form>
+      <div className="mt-8">
+        <form action={openBillingPortal}>
+          <LoadingButton
+            type="submit"
+            loadingText="Abriendo…"
+            className={interactiveClass.replace("mt-8 ", "")}
+          >
+            {action.label}
+          </LoadingButton>
+        </form>
+        {action.label === "Actualizar a Pro" && (
+          <p className="mt-3 text-center text-xs leading-5 text-white/35">
+            Se abrirá Stripe para confirmar el cambio y el prorrateo.
+          </p>
+        )}
+      </div>
     );
   }
 
