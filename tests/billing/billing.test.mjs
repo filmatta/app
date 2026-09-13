@@ -121,8 +121,10 @@ test('billing return is authenticated, bounded, read-only and refreshes plans wi
   assert.match(billingReturnClient, /BILLING_RETURN_POLL_INTERVAL_MS/);
   assert.match(billingReturnClient, /BILLING_RETURN_TIMEOUT_MS/);
   assert.match(billingReturnClient, /\/brand\/matti\/matti-plan-success\.png/);
-  assert.match(billingReturnClient, /window\.location\.replace\("\/planes"\)/,
-    'Full navigation avoids reusing the pre-upgrade Router Cache');
+  assert.match(billingReturnClient, /onClick=\{\(\) => window\.location\.replace\("\/planes"\)\}/,
+    'The explicit CTA uses a full navigation to avoid the pre-upgrade Router Cache');
+  assert.doesNotMatch(billingReturnClient, /BILLING_RETURN_REDIRECT_DELAY_MS/,
+    'Confirmed welcome remains visible until the user continues');
   assert.doesNotMatch(
     `${billingReturnPage}\n${billingStatusRoute}\n${billingReturnClient}`,
     /subscriptions\.create|entitlements.*(?:insert|upsert)|invoices.*(?:insert|upsert)|payments.*(?:insert|upsert)/,
