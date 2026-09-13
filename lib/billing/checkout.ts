@@ -1,5 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
+import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
 import { billingConfig, stripeClient } from "./config";
@@ -86,9 +87,48 @@ export async function createTestPortal(userId: string) {
   const stripe = stripeClient();
   const customer = await stripe.customers.retrieve(data.stripe_customer_id);
   if (customer.deleted || customer.livemode) throw new Error("Invalid customer");
-  const portal = await stripe.billingPortal.configurations.retrieve(config.portal);
-  if (portal.livemode || !portal.active || portal.features.subscription_update.enabled ||
-      portal.features.customer_update.enabled) throw new Error("Portal must disable plan and billing-address changes for V1");
-  return (await stripe.billingPortal.sessions.create({ customer: customer.id, configuration: config.portal,
-    return_url: `${config.origin}/cuenta/suscripcion` })).url;
+  const portal = await stripe.billingPortal.configurations.retrieve(config.portal, {
+    expand: ["features.subscription_update.products"],
+  });
+  assertPortalConfiguration(portal, config.prices);
+  const session = await stripe.billingPortal.sessions.create({ customer: customer.id, configuration: config.portal,
+    return_url: `${config.origin}/cuenta/suscripcion` });
+  const destination = new URL(session.url);
+  if (destination.protocol !== "https:" || destination.hostname !== "billing.stripe.com") {
+    throw new Error("Unexpected portal destination");
+  }
+  return session.url;
+}
+
+function assertPortalConfiguration(
+  portal: Stripe.BillingPortal.Configuration,
+  prices: Record<BillingPlan, string>
+) {
+  const update = portal.features.subscription_update;
+  const products = update.products ?? [];
+  const allowedUpdates = [...update.default_allowed_updates].sort();
+  const allowedPrices = products.flatMap((product) => product.prices).sort();
+  const expectedPrices = [prices.plus, prices.pro].sort();
+  const productIds = new Set(products.map((product) => product.product));
+  const scheduleConditions = update.schedule_at_period_end.conditions.map((condition) => condition.type);
+
+  if (
+    portal.livemode ||
+    !portal.active ||
+    !update.enabled ||
+    allowedUpdates.length !== 1 ||
+    allowedUpdates[0] !== "price" ||
+    products.length !== 2 ||
+    productIds.size !== 2 ||
+    products.some((product) => product.adjustable_quantity.enabled || product.prices.length !== 1) ||
+    allowedPrices.length !== expectedPrices.length ||
+    allowedPrices.some((price, index) => price !== expectedPrices[index]) ||
+    update.proration_behavior !== "always_invoice" ||
+    (update.billing_cycle_anchor !== null && update.billing_cycle_anchor !== "unchanged") ||
+    scheduleConditions.length !== 1 ||
+    scheduleConditions[0] !== "decreasing_item_amount" ||
+    portal.features.customer_update.enabled
+  ) {
+    throw new Error("Portal configuration is outside the FILMATTA Plus and Pro policy");
+  }
 }

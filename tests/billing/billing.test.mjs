@@ -166,8 +166,11 @@ test('webhook verifies raw signatures, rejects live/Connect and retries failures
 });
 
 function syncHarness() {
-  const state = { status: 'active', refunded: false, country: 'MX', deleted: false, fail: false, locked: false, owner: true, commits: 0, events: new Set(), grants: [], invoicePaid: true };
+  const state = { status: 'active', plan: 'plus', scheduledPlan: null, multipleItems: false,
+    refunded: false, country: 'MX', deleted: false, fail: false, locked: false,
+    owner: true, commits: 0, events: new Set(), grants: [], subscriptions: [], invoicePaid: true };
   const end = Math.floor(Date.now() / 1000) + 3600;
+  const priceId = () => state.plan === 'plus' ? 'price_plus' : state.plan === 'pro' ? 'price_pro' : 'price_unknown';
   const db = {
     from(table) {
       let value;
@@ -179,17 +182,26 @@ function syncHarness() {
     async rpc(name, args) {
       if (name === 'apply_billing_snapshot') {
         if (state.fail) return { error: new Error('rollback') };
-        state.events.add(args.p_event); state.grants = args.p_entitlements; state.commits++;
+        state.events.add(args.p_event); state.grants = args.p_entitlements;
+        state.subscriptions = args.p_subscriptions; state.commits++;
       }
       return { error: null };
     },
   };
   const stripe = {
     customers: { retrieve: async () => state.deleted ? { deleted: true } : { livemode: false, address: { country: state.country } } },
-    subscriptions: { list: async () => ({ has_more: false, data: [{ id: 'sub_test', livemode: false, status: state.status, pause_collection: null, latest_invoice: 'in_test', cancel_at_period_end: true,
-      items: { has_more: false, data: [{ quantity: 1, current_period_end: end, price: { id: 'price_plus', livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } }] } }] }) },
+    subscriptions: { list: async () => ({ has_more: false, data: [{ id: 'sub_test', livemode: false,
+      status: state.status, pause_collection: null, latest_invoice: 'in_test', cancel_at_period_end: true,
+      schedule: state.scheduledPlan ? { phases: [{ items: [{ price: `price_${state.scheduledPlan}` }] }] } : null,
+      items: { has_more: false, data: [
+        { quantity: 1, current_period_end: end, price: { id: priceId(), livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } },
+        ...(state.multipleItems ? [{ quantity: 1, current_period_end: end, price: { id: 'price_extra', livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } }] : []),
+      ] } }] }) },
     invoices: { retrieve: async () => ({ id: 'in_test', livemode: false, customer: 'cus_test', currency: 'mxn', status: state.invoicePaid ? 'paid' : 'open', amount_paid: state.invoicePaid ? 29900 : 0,
-      customer_address: { country: 'MX' }, lines: { has_more: false, data: [{ parent: { type: 'subscription_item_details', subscription_item_details: { proration: false } }, period: { end } }] }, parent: { subscription_details: { subscription: 'sub_test' } }, total_taxes: [] }) },
+      customer_address: { country: 'MX' }, lines: { has_more: false, data: [{ amount: 20000,
+        parent: { type: 'subscription_item_details', subscription_item_details: { proration: state.plan === 'pro' } },
+        pricing: { type: 'price_details', price_details: { price: priceId() } }, period: { end } }] },
+      parent: { subscription_details: { subscription: 'sub_test' } }, total_taxes: [] }) },
     invoicePayments: { list: async () => ({ has_more: false, data: [{ id: 'inpay_test', livemode: false, status: 'paid', amount_paid: 29900, currency: 'mxn', payment: { payment_intent: { id: 'pi_test', latest_charge: { id: 'ch_test', livemode: false, paid: true, refunded: state.refunded, disputed: false, amount_refunded: state.refunded ? 29900 : 0, payment_method_details: { type: 'card' }, billing_details: { address: { country: 'MX' } } } } } }] }) },
   };
   const sync = load('lib/billing/sync.ts', {
@@ -216,6 +228,54 @@ test('subscription and invoice events reconcile canonically in either order and 
     assert.equal(state.grants.length, 1);
     for (const [id, type] of order) await send(id, type);
     assert.equal(state.commits, 2);
+  }
+});
+
+test('plan changes keep one subscription and replace the entitlement only after paid Price evidence', async () => {
+  const { state, send } = syncHarness();
+  await send('evt_plus');
+  assert.equal(state.subscriptions[0].id, 'sub_test');
+  assert.equal(state.grants.length, 1);
+  assert.equal(state.grants[0].subscription, 'sub_test');
+  assert.equal(state.grants[0].plan, 'plus');
+
+  state.plan = 'pro'; state.invoicePaid = false;
+  await send('evt_upgrade_pending', 'customer.subscription.updated');
+  assert.equal(state.grants.length, 0, 'Unpaid upgrade does not grant Pro');
+
+  state.invoicePaid = true;
+  await send('evt_upgrade_paid', 'invoice.paid');
+  assert.equal(state.subscriptions.length, 1);
+  assert.equal(state.subscriptions[0].id, 'sub_test');
+  assert.equal(state.subscriptions[0].plan, 'pro');
+  assert.equal(state.grants.length, 1);
+  assert.equal(state.grants[0].subscription, 'sub_test');
+  assert.equal(state.grants[0].plan, 'pro');
+
+  state.scheduledPlan = 'plus';
+  await send('evt_downgrade_scheduled', 'customer.subscription.updated');
+  assert.equal(state.subscriptions[0].plan, 'pro', 'Scheduled downgrade preserves Pro until period end');
+  assert.equal(state.grants[0].plan, 'pro');
+
+  state.plan = 'plus'; state.scheduledPlan = null;
+  await send('evt_downgrade_effective', 'customer.subscription.updated');
+  assert.equal(state.subscriptions.length, 1);
+  assert.equal(state.subscriptions[0].id, 'sub_test');
+  assert.equal(state.subscriptions[0].plan, 'plus');
+  assert.equal(state.grants.length, 1);
+  assert.equal(state.grants[0].subscription, 'sub_test');
+  assert.equal(state.grants[0].plan, 'plus');
+
+  await send('evt_downgrade_effective', 'customer.subscription.updated');
+  assert.equal(state.commits, 5, 'Duplicate delivery does not write another snapshot');
+});
+
+test('unknown Prices and subscriptions with multiple items never grant access', async () => {
+  for (const change of [{ plan: 'unknown' }, { multipleItems: true }]) {
+    const { state, send } = syncHarness();
+    Object.assign(state, change);
+    await send(`evt_${change.plan ?? 'multiple'}`, 'customer.subscription.updated');
+    assert.equal(state.grants.length, 0);
   }
 });
 
@@ -276,14 +336,19 @@ test('real reconciler: busy/failed transactions remain retryable and unmapped us
 test('checkout authenticates and rejects forged plan/country before contacting Stripe', async () => {
   let viewer = null;
   let calls = 0;
+  let portalCalls = 0;
   const actions = load('app/cuenta/suscripcion/actions.ts', {
     'next/navigation': { redirect: (url) => { throw new Error(`redirect:${url}`); } },
     '@/lib/auth/get-viewer': { getViewer: async () => viewer },
     '@/lib/billing/policy': policy,
-    '@/lib/billing/checkout': { createTestCheckout: async (user) => { calls++; assert.equal(user.id, 'trusted'); return 'https://checkout.stripe.com/test'; } },
+    '@/lib/billing/checkout': {
+      createTestCheckout: async (user) => { calls++; assert.equal(user.id, 'trusted'); return 'https://checkout.stripe.com/test'; },
+      createTestPortal: async (userId) => { portalCalls++; assert.equal(userId, 'trusted'); return 'https://billing.stripe.com/p/session/test'; },
+    },
   });
   const form = new FormData(); form.set('plan', 'plus'); form.set('country', 'MX');
   await assert.rejects(actions.startCheckout(form), /acceso/);
+  await assert.rejects(actions.openBillingPortal(), /acceso/);
   viewer = { id: 'trusted', email: null };
   form.set('plan', 'business'); await assert.rejects(actions.startCheckout(form), /country/);
   form.set('plan', 'plus'); form.set('country', 'US'); await assert.rejects(actions.startCheckout(form), /country/);
@@ -291,6 +356,70 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   form.set('country', 'MX'); form.set('user_id', 'attacker'); form.set('customer', 'cus_attacker');
   await assert.rejects(actions.startCheckout(form), /checkout.stripe.com/);
   assert.equal(calls, 1);
+  await assert.rejects(actions.openBillingPortal(), /billing.stripe.com/);
+  assert.equal(portalCalls, 1);
+});
+
+test('portal session is restricted to Plus and Pro with immediate upgrades and scheduled downgrades', async () => {
+  let sessions = 0;
+  let mapped = true;
+  const validPortal = {
+    livemode: false,
+    active: true,
+    features: {
+      customer_update: { enabled: false },
+      subscription_update: {
+        enabled: true,
+        billing_cycle_anchor: 'unchanged',
+        default_allowed_updates: ['price'],
+        proration_behavior: 'always_invoice',
+        schedule_at_period_end: { conditions: [{ type: 'decreasing_item_amount' }] },
+        products: [
+          { product: 'prod_plus', prices: ['price_plus'], adjustable_quantity: { enabled: false } },
+          { product: 'prod_pro', prices: ['price_pro'], adjustable_quantity: { enabled: false } },
+        ],
+      },
+    },
+  };
+  const q = { select() { return q; }, eq() { return q; }, maybeSingle: async () => ({
+    data: mapped ? { stripe_customer_id: 'cus_trusted' } : null, error: null,
+  }) };
+  const stripe = {
+    customers: { retrieve: async () => ({ id: 'cus_trusted', livemode: false, deleted: false }) },
+    billingPortal: {
+      configurations: { retrieve: async (id, params) => {
+        assert.equal(id, 'bpc_test');
+        assert.equal(params.expand.length, 1);
+        assert.equal(params.expand[0], 'features.subscription_update.products');
+        return validPortal;
+      } },
+      sessions: { create: async (params) => {
+        sessions++;
+        assert.equal(params.customer, 'cus_trusted');
+        assert.equal(params.configuration, 'bpc_test');
+        assert.equal(params.return_url, 'https://preview.test/cuenta/suscripcion');
+        return { url: 'https://billing.stripe.com/p/session/test' };
+      } },
+    },
+  };
+  const portal = load('lib/billing/checkout.ts', {
+    '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
+    '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
+    './config': { stripeClient: () => stripe, billingConfig: () => ({ portal: 'bpc_test',
+      origin: 'https://preview.test', prices: { plus: 'price_plus', pro: 'price_pro' } }) },
+    './lock': { withBillingLock: async (_id, fn) => fn('token') },
+  }).createTestPortal;
+
+  assert.equal(await portal('trusted'), 'https://billing.stripe.com/p/session/test');
+  assert.equal(sessions, 1);
+
+  validPortal.features.subscription_update.products[1].prices = ['price_unknown'];
+  await assert.rejects(portal('trusted'), /outside the FILMATTA Plus and Pro policy/);
+  assert.equal(sessions, 1, 'Unknown Price is rejected before creating a session');
+
+  mapped = false;
+  await assert.rejects(portal('trusted'), /No billing customer/);
+  assert.equal(sessions, 1);
 });
 
 test('checkout rejects a missing manual Mexico tax rate before contacting Stripe', async () => {
