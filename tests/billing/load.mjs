@@ -13,7 +13,7 @@ export default function load(file, mocks = {}, env = {}) {
   }).outputText;
   const evaluatedModule = { exports: {} };
   vm.runInNewContext(output, {
-    module: evaluatedModule, exports: evaluatedModule.exports, Buffer, Request, Response, URL, Date,
+    module: evaluatedModule, exports: evaluatedModule.exports, Buffer, Request, Response, URL, Date, setTimeout,
     process: { env }, console: { error() {} },
     require(name) {
       if (Object.hasOwn(mocks, name)) return mocks[name];

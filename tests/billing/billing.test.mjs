@@ -197,9 +197,49 @@ function syncHarness() {
     './config': { stripeClient: () => stripe, billingConfig: () => ({ prices: { plus: 'price_plus', pro: 'price_pro' } }) },
     './lock': { withBillingLock: async (_customer, callback) => { if (state.locked) throw new Error('busy'); return callback('token'); } },
   }).reconcileBillingEvent;
-  const send = (id, type = 'invoice.paid') => sync({ id, type, livemode: false, data: { object: { object: 'invoice', id: 'in_test', customer: 'cus_test', metadata: { user_id: 'attacker' } } } });
+  const send = (id, type = 'invoice.paid') => sync({ id, type, livemode: false, data: { object:
+    type.startsWith('customer.subscription.')
+      ? { object: 'subscription', id: 'sub_test', customer: 'cus_test', metadata: { user_id: 'attacker' } }
+      : { object: 'invoice', id: 'in_test', customer: 'cus_test', metadata: { user_id: 'attacker' } } } });
   return { state, send };
 }
+
+test('subscription and invoice events reconcile canonically in either order and tolerate duplicates', async () => {
+  for (const order of [
+    [['evt_subscription', 'customer.subscription.created'], ['evt_invoice', 'invoice.paid']],
+    [['evt_invoice', 'invoice.paid'], ['evt_subscription', 'customer.subscription.created']],
+  ]) {
+    const { state, send } = syncHarness();
+    for (const [id, type] of order) await send(id, type);
+    assert.equal(state.commits, 2);
+    assert.equal(state.events.size, 2);
+    assert.equal(state.grants.length, 1);
+    for (const [id, type] of order) await send(id, type);
+    assert.equal(state.commits, 2);
+  }
+});
+
+test('billing lock waits for a concurrent canonical reconciliation and propagates database errors', async () => {
+  let claims = 0;
+  let releases = 0;
+  const db = { async rpc(name) {
+    if (name === 'claim_billing_customer') return { data: ++claims < 3 ? null : 'token', error: null };
+    releases++;
+    return { data: null, error: null };
+  } };
+  const { withBillingLock } = load('lib/billing/lock.ts', {
+    '@/lib/supabase/admin': { createAdminClient: () => db },
+  });
+  assert.equal(await withBillingLock('cus_test', async (token) => `worked:${token}`), 'worked:token');
+  assert.equal(claims, 3);
+  assert.equal(releases, 1);
+
+  const failure = new Error('Supabase unavailable');
+  const failingLock = load('lib/billing/lock.ts', {
+    '@/lib/supabase/admin': { createAdminClient: () => ({ rpc: async () => ({ data: null, error: failure }) }) },
+  }).withBillingLock;
+  await assert.rejects(failingLock('cus_test', async () => {}), /Supabase unavailable/);
+});
 
 test('real reconciler: duplicate delivery, reordered cancellation, payment failure and refund', async () => {
   const { state, send } = syncHarness();
