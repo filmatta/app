@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getViewer } from "@/lib/auth/get-viewer";
+import BillingPlanBadge from "@/components/BillingPlanBadge";
 
 export default async function SiteHeader({
   showPrimaryNavigation = false,
@@ -15,9 +16,12 @@ export default async function SiteHeader({
   return (
     <header className="border-b border-white/10">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-5 lg:px-8">
-        <Link href="/" className="shrink-0 text-xl font-black tracking-[0.25em]">
-          FILMATTA
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link href="/" className="shrink-0 text-xl font-black tracking-[0.25em]">
+            FILMATTA
+          </Link>
+          <BillingPlanBadge authenticated={Boolean(viewer)} />
+        </div>
 
         {showPrimaryNavigation && (
           <nav className="hidden items-center gap-8 text-sm text-white/70 md:flex">

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Viewer } from "@/lib/auth/get-viewer";
+import BillingPlanBadge from "@/components/BillingPlanBadge";
 import AccountDropdown from "./AccountDropdown";
 
 export type HeaderBreadcrumb = {
@@ -17,12 +18,15 @@ export default function AuthenticatedHeader({
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#080808]/90 text-white backdrop-blur-xl">
       <div className="grid h-16 w-full max-w-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 border-b border-white/10 px-4 sm:border-b-0 sm:px-6 min-[1024px]:max-[1099px]:px-8">
-        <Link
-          href="/"
-          className="shrink-0 text-lg font-black tracking-[0.22em] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
-        >
-          FILMATTA
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/"
+            className="shrink-0 text-lg font-black tracking-[0.22em] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+          >
+            FILMATTA
+          </Link>
+          <BillingPlanBadge authenticated />
+        </div>
 
         <nav
           aria-label="Breadcrumb"
