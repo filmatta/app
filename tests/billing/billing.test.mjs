@@ -71,7 +71,7 @@ test('plans page presents Checkout, current plan and Portal actions safely', () 
 
   assert.deepEqual(action('free', 'plus'), { kind: 'status', label: 'Plan base incluido' });
   assert.deepEqual(action('plus', 'plus'), { kind: 'status', label: 'Tu plan actual' });
-  assert.deepEqual(action('pro', 'plus'), { kind: 'portal', label: 'Actualizar a Pro' });
+  assert.deepEqual(action('pro', 'plus'), { kind: 'pro-upgrade', label: 'Actualizar a Pro' });
 
   assert.deepEqual(action('free', 'pro'), { kind: 'status', label: 'Plan base incluido' });
   assert.deepEqual(action('plus', 'pro'), { kind: 'portal', label: 'Administrar plan' });
@@ -394,6 +394,8 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   let calls = 0;
   let portalCalls = 0;
   let portalCustomerExists = true;
+  let upgradeCalls = 0;
+  let upgradeAllowed = true;
   const actions = load('app/cuenta/suscripcion/actions.ts', {
     'next/navigation': { redirect: (url) => { throw new Error(`redirect:${url}`); } },
     '@/lib/auth/get-viewer': { getViewer: async () => viewer },
@@ -406,11 +408,18 @@ test('checkout authenticates and rejects forged plan/country before contacting S
         if (!portalCustomerExists) throw new Error('No billing customer');
         return 'https://billing.stripe.com/p/session/test';
       },
+      createTestProUpgradePortal: async (userId) => {
+        upgradeCalls++;
+        assert.equal(userId, 'trusted');
+        if (!upgradeAllowed) throw new Error('Not Plus');
+        return 'https://billing.stripe.com/p/session/pro-upgrade';
+      },
     },
   });
   const form = new FormData(); form.set('plan', 'plus'); form.set('country', 'MX');
   await assert.rejects(actions.startCheckout(form), /acceso/);
   await assert.rejects(actions.openBillingPortal(), /acceso/);
+  await assert.rejects(actions.upgradeToPro(), /acceso/);
   viewer = { id: 'trusted', email: null };
   form.set('plan', 'business'); await assert.rejects(actions.startCheckout(form), /country/);
   form.set('plan', 'plus'); form.set('country', 'US'); await assert.rejects(actions.startCheckout(form), /country/);
@@ -423,6 +432,16 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   portalCustomerExists = false;
   await assert.rejects(actions.openBillingPortal(), /error=portal/);
   assert.equal(portalCalls, 2);
+  const forged = new FormData();
+  forged.set('customer', 'cus_attacker');
+  forged.set('subscription', 'sub_attacker');
+  forged.set('item', 'si_attacker');
+  forged.set('price', 'price_attacker');
+  await assert.rejects(actions.upgradeToPro(forged), /billing.stripe.com/);
+  assert.equal(upgradeCalls, 1, 'The action resolves the trusted user and accepts no billing identifiers');
+  upgradeAllowed = false;
+  await assert.rejects(actions.upgradeToPro(forged), /error=portal/);
+  assert.equal(upgradeCalls, 2);
 });
 
 test('portal button depends on server configuration instead of the visual subscription list', () => {
@@ -494,6 +513,128 @@ test('portal session is restricted to Plus and Pro with immediate upgrades and s
 
   mapped = false;
   await assert.rejects(portal('trusted'), /No billing customer/);
+  assert.equal(sessions, 1);
+});
+
+test('Plus upgrade deep link resolves the active subscription server-side and targets only Pro', async () => {
+  let mapped = true;
+  let sessions = 0;
+  const state = {
+    subscriptions: [{
+      id: 'sub_plus',
+      livemode: false,
+      status: 'active',
+      customer: 'cus_trusted',
+      items: {
+        has_more: false,
+        data: [{ id: 'si_plus', price: { id: 'price_plus' }, quantity: 1 }],
+      },
+    }],
+  };
+  const validPortal = {
+    livemode: false,
+    active: true,
+    features: {
+      customer_update: { enabled: false },
+      subscription_update: {
+        enabled: true,
+        billing_cycle_anchor: 'unchanged',
+        default_allowed_updates: ['price'],
+        proration_behavior: 'always_invoice',
+        schedule_at_period_end: { conditions: [{ type: 'decreasing_item_amount' }] },
+        products: [
+          { product: 'prod_plus', prices: ['price_plus'], adjustable_quantity: { enabled: false } },
+          { product: 'prod_pro', prices: ['price_pro'], adjustable_quantity: { enabled: false } },
+        ],
+      },
+    },
+  };
+  const q = { select() { return q; }, eq() { return q; }, maybeSingle: async () => ({
+    data: mapped ? { stripe_customer_id: 'cus_trusted' } : null, error: null,
+  }) };
+  const stripe = {
+    accounts: { retrieve: async (id) => {
+      assert.equal(id, 'acct_test');
+      return { id: 'acct_test', country: 'MX' };
+    } },
+    customers: { retrieve: async (id) => {
+      assert.equal(id, 'cus_trusted');
+      return { id, livemode: false, deleted: false };
+    } },
+    subscriptions: { list: async (params) => {
+      assert.deepEqual(JSON.parse(JSON.stringify(params)), {
+        customer: 'cus_trusted', status: 'active', limit: 2,
+        expand: ['data.items.data.price'],
+      });
+      return { has_more: false, data: state.subscriptions };
+    } },
+    billingPortal: {
+      configurations: { retrieve: async (id, params) => {
+        assert.equal(id, 'bpc_test');
+        assert.deepEqual(JSON.parse(JSON.stringify(params)), {
+          expand: ['features.subscription_update.products'],
+        });
+        return validPortal;
+      } },
+      sessions: { create: async (params) => {
+        sessions++;
+        assert.deepEqual(JSON.parse(JSON.stringify(params)), {
+          customer: 'cus_trusted',
+          configuration: 'bpc_test',
+          return_url: 'https://preview.test/planes',
+          flow_data: {
+            type: 'subscription_update_confirm',
+            subscription_update_confirm: {
+              subscription: 'sub_plus',
+              items: [{ id: 'si_plus', price: 'price_pro', quantity: 1 }],
+            },
+            after_completion: {
+              type: 'redirect',
+              redirect: { return_url: 'https://preview.test/planes' },
+            },
+          },
+        });
+        return { livemode: false, url: 'https://billing.stripe.com/p/session/pro-upgrade' };
+      } },
+    },
+  };
+  const upgrade = load('lib/billing/checkout.ts', {
+    '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
+    '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
+    './config': { stripeClient: () => stripe, billingConfig: () => ({
+      portal: 'bpc_test', account: 'acct_test', origin: 'https://preview.test',
+      prices: { plus: 'price_plus', pro: 'price_pro' },
+    }) },
+    './lock': { withBillingLock: async (_id, fn) => fn('token') },
+  }).createTestProUpgradePortal;
+
+  assert.equal(await upgrade('trusted'), 'https://billing.stripe.com/p/session/pro-upgrade');
+  assert.equal(sessions, 1);
+
+  state.subscriptions[0].items.data[0].price.id = 'price_pro';
+  await assert.rejects(upgrade('trusted'), /single FILMATTA Plus item/);
+  assert.equal(sessions, 1, 'A Pro user cannot invoke the Plus to Pro flow');
+
+  state.subscriptions = [];
+  await assert.rejects(upgrade('trusted'), /Exactly one active subscription/);
+  assert.equal(sessions, 1, 'A Free user cannot invoke the upgrade flow');
+
+  state.subscriptions = [{
+    id: 'sub_plus', livemode: false, status: 'active', customer: 'cus_trusted',
+    items: { has_more: false, data: [{ id: 'si_unexpected', price: { id: 'price_unknown' }, quantity: 1 }] },
+  }];
+  await assert.rejects(upgrade('trusted'), /single FILMATTA Plus item/);
+  assert.equal(sessions, 1, 'An unexpected Price is rejected before creating a session');
+
+  state.subscriptions[0].items.data = [
+    { id: 'si_plus', price: { id: 'price_plus' }, quantity: 1 },
+    { id: 'si_unexpected', price: { id: 'price_plus' }, quantity: 1 },
+  ];
+  await assert.rejects(upgrade('trusted'), /Unexpected active subscription/);
+  assert.equal(sessions, 1, 'An unexpected subscription item is rejected before creating a session');
+
+  mapped = false;
+  await assert.rejects(upgrade('trusted'), /No billing customer/);
   assert.equal(sessions, 1);
 });
 

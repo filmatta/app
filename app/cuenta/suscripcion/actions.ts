@@ -3,7 +3,11 @@
 import { redirect } from "next/navigation";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { isBillingPlan } from "@/lib/billing/policy";
-import { createTestCheckout, createTestPortal } from "@/lib/billing/checkout";
+import {
+  createTestCheckout,
+  createTestPortal,
+  createTestProUpgradePortal,
+} from "@/lib/billing/checkout";
 
 export async function startCheckout(form: FormData) {
   const viewer = await getViewer();
@@ -22,5 +26,14 @@ export async function openBillingPortal() {
   let url: string;
   try { url = await createTestPortal(viewer.id); }
   catch { console.error("Test portal unavailable"); redirect("/cuenta/suscripcion?error=portal"); }
+  redirect(url);
+}
+
+export async function upgradeToPro() {
+  const viewer = await getViewer();
+  if (!viewer) redirect("/acceso?next=%2Fplanes");
+  let url: string;
+  try { url = await createTestProUpgradePortal(viewer.id); }
+  catch { console.error("Test Pro upgrade unavailable"); redirect("/cuenta/suscripcion?error=portal"); }
   redirect(url);
 }
