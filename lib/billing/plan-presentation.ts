@@ -6,6 +6,7 @@ export type PlanCardAction =
   | { kind: "link"; label: string; href: string }
   | { kind: "checkout"; label: string; plan: BillingPlan }
   | { kind: "portal"; label: string }
+  | { kind: "pro-upgrade"; label: string }
   | { kind: "status"; label: string }
   | { kind: "coming-soon"; label: string };
 
@@ -49,7 +50,7 @@ export function getPlanCardAction({
   }
 
   return {
-    kind: "portal",
+    kind: effectivePlan === "plus" ? "pro-upgrade" : "portal",
     label:
       effectivePlan === "plus"
         ? "Actualizar a Pro"

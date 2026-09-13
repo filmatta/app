@@ -11,6 +11,7 @@ import {
 import {
   openBillingPortal,
   startCheckout,
+  upgradeToPro,
 } from "@/app/cuenta/suscripcion/actions";
 import LoadingButton from "@/components/ui/LoadingButton";
 
@@ -273,10 +274,10 @@ function PlanAction({ action }: { action: PlanCardAction }) {
     );
   }
 
-  if (action.kind === "portal") {
+  if (action.kind === "pro-upgrade") {
     return (
       <div className="mt-8">
-        <form action={openBillingPortal}>
+        <form action={upgradeToPro}>
           <LoadingButton
             type="submit"
             loadingText="Abriendo…"
@@ -285,12 +286,24 @@ function PlanAction({ action }: { action: PlanCardAction }) {
             {action.label}
           </LoadingButton>
         </form>
-        {action.label === "Actualizar a Pro" && (
-          <p className="mt-3 text-center text-xs leading-5 text-white/35">
-            Se abrirá Stripe para confirmar el cambio y el prorrateo.
-          </p>
-        )}
+        <p className="mt-3 text-center text-xs leading-5 text-white/35">
+          Se abrirá Stripe para confirmar el cambio y el prorrateo.
+        </p>
       </div>
+    );
+  }
+
+  if (action.kind === "portal") {
+    return (
+      <form action={openBillingPortal} className="mt-8">
+        <LoadingButton
+          type="submit"
+          loadingText="Abriendo…"
+          className={interactiveClass.replace("mt-8 ", "")}
+        >
+          {action.label}
+        </LoadingButton>
+      </form>
     );
   }
 
