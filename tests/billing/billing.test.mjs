@@ -16,6 +16,8 @@ const cancellation = load('lib/billing/cancellation.ts', {
 const entitledProgressSql = fs.readFileSync('supabase/migrations/20260912020000_entitled_lesson_progress.sql', 'utf8');
 const lessonProgressActions = fs.readFileSync('app/cursos/[slug]/lecciones/[lessonSlug]/actions.ts', 'utf8');
 const subscriptionPage = fs.readFileSync('app/cuenta/suscripcion/page.tsx', 'utf8');
+const plansPage = fs.readFileSync('app/planes/page.tsx', 'utf8');
+const loadingButton = fs.readFileSync('components/ui/LoadingButton.tsx', 'utf8');
 const billingReturnPage = fs.readFileSync('app/billing/return/page.tsx', 'utf8');
 const billingReturnClient = fs.readFileSync('app/billing/return/BillingReturnClient.tsx', 'utf8');
 const billingStatusRoute = fs.readFileSync('app/api/billing/status/route.ts', 'utf8');
@@ -189,10 +191,12 @@ test('billing return is authenticated, bounded, read-only and refreshes plans wi
 
 test('plans page presents Checkout, current plan and controlled plan actions safely', () => {
   const action = (planId, currentPlan, authenticated = true, billingAvailable = true,
-    scheduledDowngradeAt = null, downgradeUnavailable = false, cancellationEffectiveAt = null) =>
+    scheduledDowngradeAt = null, downgradeUnavailable = false, cancellationEffectiveAt = null,
+    keepSubscriptionFeedback = null) =>
     JSON.parse(JSON.stringify(
       planPresentation.getPlanCardAction({ planId, currentPlan, authenticated, billingAvailable,
-        scheduledDowngradeAt, downgradeUnavailable, cancellationEffectiveAt })
+        scheduledDowngradeAt, downgradeUnavailable, cancellationEffectiveAt,
+        keepSubscriptionFeedback })
     ));
 
   assert.deepEqual(action('free', null), { kind: 'link', label: 'Explorar cursos', href: '/cursos' });
@@ -215,9 +219,11 @@ test('plans page presents Checkout, current plan and controlled plan actions saf
   const cancellationAt = '2026-10-13T04:34:08.000Z';
   assert.deepEqual(action('plus', 'plus', true, true, null, false, cancellationAt), {
     kind: 'keep-subscription', label: 'Mantener mi suscripción', effectiveAt: cancellationAt,
+    error: null,
   }, 'Plus can keep the same subscription when cancellation is scheduled');
   assert.deepEqual(action('pro', 'pro', true, true, null, false, cancellationAt), {
     kind: 'keep-subscription', label: 'Mantener mi suscripción', effectiveAt: cancellationAt,
+    error: null,
   }, 'Pro can keep the same subscription when cancellation is scheduled');
   assert.deepEqual(action('plus', 'pro', true, true, null, false, cancellationAt), {
     kind: 'status', label: 'Cancelación programada',
@@ -227,6 +233,16 @@ test('plans page presents Checkout, current plan and controlled plan actions saf
   }, 'Scheduled cancellation suppresses a contradictory upgrade action');
   assert.notEqual(action('plus', 'plus').kind, 'keep-subscription',
     'The keep CTA is absent without a real scheduled cancellation');
+  assert.deepEqual(action('plus', 'plus', true, true, null, false, null, 'success'), {
+    kind: 'status', label: 'Tu plan actual', feedback: 'Tu suscripción continuará activa.',
+  }, 'Success feedback accompanies the normal current-plan state');
+  assert.deepEqual(action('pro', 'pro', true, true, null, false, cancellationAt, 'error'), {
+    kind: 'keep-subscription', label: 'Mantener mi suscripción', effectiveAt: cancellationAt,
+    error: 'No pudimos mantener tu suscripción. Intenta nuevamente.',
+  }, 'Failure preserves the scheduled cancellation and offers another attempt');
+  assert.match(plansPage, /loadingText="Manteniendo suscripción…"/);
+  assert.match(loadingButton, /disabled=\{disabled \|\| isLoading\}/,
+    'Pending Server Actions disable their submit button');
 
   for (const currentPlan of [null, 'plus', 'pro']) {
     assert.deepEqual(action('business', currentPlan), { kind: 'coming-soon', label: 'Próximamente' });

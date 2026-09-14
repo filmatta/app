@@ -103,7 +103,12 @@ const plans = [
   },
 ] as const;
 
-export default async function PlanesPage() {
+export default async function PlanesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ subscription?: string; error?: string }>;
+}) {
+  const query = await searchParams;
   const viewer = await getViewer();
   const billingAvailable = billingEnabled();
   const billing = viewer
@@ -190,6 +195,12 @@ export default async function PlanesPage() {
               scheduledDowngradeAt,
               downgradeUnavailable,
               cancellationEffectiveAt,
+              keepSubscriptionFeedback:
+                query.subscription === "kept"
+                  ? "success"
+                  : query.error === "keep-subscription"
+                    ? "error"
+                    : null,
             });
 
             return (
@@ -376,12 +387,20 @@ function PlanAction({ action }: { action: PlanCardAction }) {
         <form action={keepSubscription} className="mt-4">
           <LoadingButton
             type="submit"
-            loadingText="Manteniendo…"
+            loadingText="Manteniendo suscripción…"
             className={interactiveClass.replace("mt-8 ", "")}
           >
             {action.label}
           </LoadingButton>
         </form>
+        {action.error && (
+          <p
+            role="alert"
+            className="mt-3 text-center text-xs leading-5 text-red-200/80"
+          >
+            {action.error}
+          </p>
+        )}
       </div>
     );
   }
@@ -401,11 +420,21 @@ function PlanAction({ action }: { action: PlanCardAction }) {
   }
 
   return (
-    <span
-      aria-current={action.label === "Tu plan actual" ? "true" : undefined}
-      className="mt-8 inline-flex justify-center rounded-full border border-white/10 px-5 py-3 text-sm font-semibold text-white/35"
-    >
-      {action.label}
-    </span>
+    <div className="mt-8">
+      <span
+        aria-current={action.label === "Tu plan actual" ? "true" : undefined}
+        className="inline-flex w-full justify-center rounded-full border border-white/10 px-5 py-3 text-sm font-semibold text-white/35"
+      >
+        {action.label}
+      </span>
+      {action.kind === "status" && action.feedback && (
+        <p
+          role="status"
+          className="mt-3 text-center text-xs leading-5 text-emerald-200/80"
+        >
+          {action.feedback}
+        </p>
+      )}
+    </div>
   );
 }

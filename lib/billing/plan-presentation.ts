@@ -1,6 +1,7 @@
 import type { BillingPlan } from "./policy";
 
 export type PlanCardId = "free" | BillingPlan | "business";
+export type KeepSubscriptionFeedback = "success" | "error" | null;
 
 export type PlanCardAction =
   | { kind: "link"; label: string; href: string }
@@ -9,8 +10,13 @@ export type PlanCardAction =
   | { kind: "pro-upgrade"; label: string }
   | { kind: "downgrade"; label: string; href: string }
   | { kind: "scheduled-downgrade"; label: string; effectiveAt: string }
-  | { kind: "keep-subscription"; label: string; effectiveAt: string }
-  | { kind: "status"; label: string }
+  | {
+      kind: "keep-subscription";
+      label: string;
+      effectiveAt: string;
+      error: string | null;
+    }
+  | { kind: "status"; label: string; feedback?: string }
   | { kind: "coming-soon"; label: string };
 
 export function getPlanCardAction({
@@ -21,6 +27,7 @@ export function getPlanCardAction({
   scheduledDowngradeAt = null,
   downgradeUnavailable = false,
   cancellationEffectiveAt = null,
+  keepSubscriptionFeedback = null,
 }: {
   planId: PlanCardId;
   currentPlan: BillingPlan | null;
@@ -29,6 +36,7 @@ export function getPlanCardAction({
   scheduledDowngradeAt?: string | null;
   downgradeUnavailable?: boolean;
   cancellationEffectiveAt?: string | null;
+  keepSubscriptionFeedback?: KeepSubscriptionFeedback;
 }): PlanCardAction {
   const effectivePlan = authenticated ? currentPlan : null;
 
@@ -60,8 +68,18 @@ export function getPlanCardAction({
           kind: "keep-subscription",
           label: "Mantener mi suscripción",
           effectiveAt: cancellationEffectiveAt,
+          error:
+            keepSubscriptionFeedback === "error"
+              ? "No pudimos mantener tu suscripción. Intenta nuevamente."
+              : null,
         }
-      : { kind: "status", label: "Tu plan actual" };
+      : {
+          kind: "status",
+          label: "Tu plan actual",
+          ...(keepSubscriptionFeedback === "success"
+            ? { feedback: "Tu suscripción continuará activa." }
+            : {}),
+        };
   }
 
   if (cancellationEffectiveAt) {
