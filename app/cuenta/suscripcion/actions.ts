@@ -1,7 +1,9 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getViewer } from "@/lib/auth/get-viewer";
+import { keepScheduledSubscription } from "@/lib/billing/cancellation";
 import { isBillingPlan } from "@/lib/billing/policy";
 import {
   createTestCheckout,
@@ -64,4 +66,18 @@ export async function undoDowngradeToPlus() {
     redirect("/planes?error=downgrade");
   }
   redirect("/planes?downgrade=released");
+}
+
+export async function keepSubscription() {
+  const viewer = await getViewer();
+  if (!viewer) redirect("/acceso?next=%2Fplanes");
+  try {
+    await keepScheduledSubscription(viewer.id);
+  } catch (error) {
+    console.error("Test subscription cancellation removal unavailable", error);
+    redirect("/planes?error=keep-subscription");
+  }
+  revalidatePath("/planes");
+  revalidatePath("/cuenta/suscripcion");
+  redirect("/planes?subscription=kept");
 }

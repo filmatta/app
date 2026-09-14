@@ -9,6 +9,7 @@ import {
   type PlanCardAction,
 } from "@/lib/billing/plan-presentation";
 import {
+  keepSubscription,
   openBillingPortal,
   startCheckout,
   undoDowngradeToPlus,
@@ -188,7 +189,7 @@ export default async function PlanesPage() {
               billingAvailable,
               scheduledDowngradeAt,
               downgradeUnavailable,
-              cancellationScheduled: Boolean(cancellationEffectiveAt),
+              cancellationEffectiveAt,
             });
 
             return (
@@ -354,6 +355,28 @@ function PlanAction({ action }: { action: PlanCardAction }) {
           <LoadingButton
             type="submit"
             loadingText="Deshaciendo…"
+            className={interactiveClass.replace("mt-8 ", "")}
+          >
+            {action.label}
+          </LoadingButton>
+        </form>
+      </div>
+    );
+  }
+
+  if (action.kind === "keep-subscription") {
+    return (
+      <div className="mt-8">
+        <p className="text-center text-sm font-semibold text-amber-100/85">
+          Cancelación programada
+        </p>
+        <p className="mt-2 text-center text-xs leading-5 text-white/40">
+          Se cancelará el {formatBillingEffectiveDate(action.effectiveAt)}.
+        </p>
+        <form action={keepSubscription} className="mt-4">
+          <LoadingButton
+            type="submit"
+            loadingText="Manteniendo…"
             className={interactiveClass.replace("mt-8 ", "")}
           >
             {action.label}

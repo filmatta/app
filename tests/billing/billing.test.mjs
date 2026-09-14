@@ -11,6 +11,7 @@ const cancellation = load('lib/billing/cancellation.ts', {
   '@/lib/supabase/admin': {},
   '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
   './config': {},
+  './lock': {},
 });
 const entitledProgressSql = fs.readFileSync('supabase/migrations/20260912020000_entitled_lesson_progress.sql', 'utf8');
 const lessonProgressActions = fs.readFileSync('app/cursos/[slug]/lecciones/[lessonSlug]/actions.ts', 'utf8');
@@ -188,10 +189,10 @@ test('billing return is authenticated, bounded, read-only and refreshes plans wi
 
 test('plans page presents Checkout, current plan and controlled plan actions safely', () => {
   const action = (planId, currentPlan, authenticated = true, billingAvailable = true,
-    scheduledDowngradeAt = null, downgradeUnavailable = false, cancellationScheduled = false) =>
+    scheduledDowngradeAt = null, downgradeUnavailable = false, cancellationEffectiveAt = null) =>
     JSON.parse(JSON.stringify(
       planPresentation.getPlanCardAction({ planId, currentPlan, authenticated, billingAvailable,
-        scheduledDowngradeAt, downgradeUnavailable, cancellationScheduled })
+        scheduledDowngradeAt, downgradeUnavailable, cancellationEffectiveAt })
     ));
 
   assert.deepEqual(action('free', null), { kind: 'link', label: 'Explorar cursos', href: '/cursos' });
@@ -211,12 +212,21 @@ test('plans page presents Checkout, current plan and controlled plan actions saf
     kind: 'scheduled-downgrade', label: 'Deshacer cambio',
     effectiveAt: '2026-10-13T04:34:08.000Z',
   });
-  assert.deepEqual(action('plus', 'pro', true, true, null, false, true), {
+  const cancellationAt = '2026-10-13T04:34:08.000Z';
+  assert.deepEqual(action('plus', 'plus', true, true, null, false, cancellationAt), {
+    kind: 'keep-subscription', label: 'Mantener mi suscripción', effectiveAt: cancellationAt,
+  }, 'Plus can keep the same subscription when cancellation is scheduled');
+  assert.deepEqual(action('pro', 'pro', true, true, null, false, cancellationAt), {
+    kind: 'keep-subscription', label: 'Mantener mi suscripción', effectiveAt: cancellationAt,
+  }, 'Pro can keep the same subscription when cancellation is scheduled');
+  assert.deepEqual(action('plus', 'pro', true, true, null, false, cancellationAt), {
     kind: 'status', label: 'Cancelación programada',
   }, 'Scheduled cancellation suppresses a contradictory downgrade action');
-  assert.deepEqual(action('pro', 'plus', true, true, null, false, true), {
+  assert.deepEqual(action('pro', 'plus', true, true, null, false, cancellationAt), {
     kind: 'status', label: 'Cancelación programada',
   }, 'Scheduled cancellation suppresses a contradictory upgrade action');
+  assert.notEqual(action('plus', 'plus').kind, 'keep-subscription',
+    'The keep CTA is absent without a real scheduled cancellation');
 
   for (const currentPlan of [null, 'plus', 'pro']) {
     assert.deepEqual(action('business', currentPlan), { kind: 'coming-soon', label: 'Próximamente' });
@@ -565,9 +575,20 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   let upgradeAllowed = true;
   let downgradeCalls = 0;
   let releaseCalls = 0;
+  let keepCalls = 0;
+  let keepAllowed = true;
+  const revalidated = [];
   const actions = load('app/cuenta/suscripcion/actions.ts', {
+    'next/cache': { revalidatePath: (path) => revalidated.push(path) },
     'next/navigation': { redirect: (url) => { throw new Error(`redirect:${url}`); } },
     '@/lib/auth/get-viewer': { getViewer: async () => viewer },
+    '@/lib/billing/cancellation': {
+      keepScheduledSubscription: async (userId) => {
+        keepCalls++;
+        assert.equal(userId, 'trusted');
+        if (!keepAllowed) throw new Error('No scheduled cancellation');
+      },
+    },
     '@/lib/billing/policy': policy,
     '@/lib/billing/checkout': {
       createTestCheckout: async (user) => { calls++; assert.equal(user.id, 'trusted'); return 'https://checkout.stripe.com/test'; },
@@ -601,6 +622,7 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   await assert.rejects(actions.upgradeToPro(), /acceso/);
   await assert.rejects(actions.scheduleDowngradeToPlus(), /acceso/);
   await assert.rejects(actions.undoDowngradeToPlus(), /acceso/);
+  await assert.rejects(actions.keepSubscription(), /acceso/);
   viewer = { id: 'trusted', email: null };
   form.set('plan', 'business'); await assert.rejects(actions.startCheckout(form), /country/);
   form.set('plan', 'plus'); form.set('country', 'US'); await assert.rejects(actions.startCheckout(form), /country/);
@@ -627,6 +649,12 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   await assert.rejects(actions.undoDowngradeToPlus(forged), /downgrade=released/);
   assert.equal(downgradeCalls, 1, 'Downgrade action accepts no Stripe identifiers');
   assert.equal(releaseCalls, 1, 'Release action accepts no Stripe identifiers');
+  await assert.rejects(actions.keepSubscription(forged), /subscription=kept/);
+  assert.equal(keepCalls, 1, 'Keep action resolves the trusted user and accepts no Stripe identifiers');
+  assert.deepEqual(revalidated, ['/planes', '/cuenta/suscripcion']);
+  keepAllowed = false;
+  await assert.rejects(actions.keepSubscription(forged), /error=keep-subscription/);
+  assert.equal(keepCalls, 2);
 });
 
 test('portal button depends on server configuration instead of the visual subscription list', () => {
@@ -730,9 +758,13 @@ test('scheduled cancellation recognizes both Stripe mechanisms and ignores audit
   }, now).isCancellationScheduled, false, 'Past cancellation dates are not pending');
 });
 
-test('scheduled cancellation state is scoped to the authenticated billing customer', async () => {
+test('scheduled cancellation is scoped to the user and keeping it preserves the subscription', async () => {
   const periodEnd = Date.parse('2026-10-13T04:34:08Z') / 1000;
   let filteredUser = null;
+  let cancelAt = periodEnd;
+  let cancelAtPeriodEnd = false;
+  let canceledAt = Date.parse('2026-09-14T07:55:04Z') / 1000;
+  let updateCalls = 0;
   const q = {
     select() { return q; },
     eq(name, value) { assert.equal(name, 'user_id'); filteredUser = value; return q; },
@@ -744,35 +776,73 @@ test('scheduled cancellation state is scoped to the authenticated billing custom
       return { id, country: 'MX' };
     } },
     customers: { retrieve: async (id) => ({ id, livemode: false, deleted: false }) },
-    subscriptions: { list: async (params) => {
-      assert.equal(params.customer, 'cus_trusted');
-      return { has_more: false, data: [{
-        id: 'sub_pro', livemode: false, status: 'active', customer: 'cus_trusted',
-        cancel_at_period_end: false, cancel_at: periodEnd,
-        canceled_at: Date.parse('2026-09-14T07:55:04Z') / 1000,
-        pause_collection: null, pending_update: null, schedule: null,
-        items: { has_more: false, data: [{
-          quantity: 1, current_period_end: periodEnd,
-          price: { id: 'price_pro', livemode: false, active: true, currency: 'mxn',
-            unit_amount: 49900,
-            recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' } },
-        }] },
-      }] };
-    } },
+    subscriptions: {
+      list: async (params) => {
+        assert.equal(params.customer, 'cus_trusted');
+        return { has_more: false, data: [{
+          id: 'sub_pro', livemode: false, status: 'active', customer: 'cus_trusted',
+          cancel_at_period_end: cancelAtPeriodEnd, cancel_at: cancelAt,
+          canceled_at: canceledAt,
+          pause_collection: null, pending_update: null, schedule: null,
+          items: { has_more: false, data: [{
+            id: 'si_pro', quantity: 1, current_period_end: periodEnd,
+            price: { id: 'price_pro', livemode: false, active: true, currency: 'mxn',
+              unit_amount: 49900,
+              recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' } },
+          }] },
+        }] };
+      },
+      update: async (subscriptionId, params, options) => {
+        updateCalls++;
+        assert.equal(subscriptionId, 'sub_pro');
+        assert.deepEqual(JSON.parse(JSON.stringify(params)), {
+          cancel_at: '', cancel_at_period_end: false, proration_behavior: 'none',
+        });
+        assert.equal(options.idempotencyKey,
+          `filmatta-test-keep-sub_pro-${periodEnd}-${canceledAt}`);
+        cancelAt = null;
+        cancelAtPeriodEnd = false;
+        return { id: 'sub_pro' };
+      },
+    },
   };
-  const getState = load('lib/billing/cancellation.ts', {
+  const api = load('lib/billing/cancellation.ts', {
     '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
     '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
     './config': { stripeClient: () => stripe, billingConfig: () => ({
       account: 'acct_test', prices: { plus: 'price_plus', pro: 'price_pro' },
     }) },
-  }).getMyScheduledCancellation;
+    './lock': { withBillingLock: async (customerId, callback) => {
+      assert.equal(customerId, 'cus_trusted');
+      return callback('lease');
+    } },
+  });
 
-  const result = await getState('trusted-user');
+  const result = await api.getMyScheduledCancellation('trusted-user');
   assert.equal(filteredUser, 'trusted-user');
   assert.equal(result.plan, 'pro');
   assert.equal(result.isCancellationScheduled, true);
   assert.equal(result.cancellationEffectiveAt, '2026-10-13T04:34:08.000Z');
+
+  const kept = await api.keepScheduledSubscription('trusted-user');
+  assert.equal(updateCalls, 1, 'The existing subscription is updated exactly once');
+  assert.deepEqual(JSON.parse(JSON.stringify(kept)), {
+    plan: 'pro', isCancellationScheduled: false, cancellationEffectiveAt: null,
+  });
+  assert.equal(cancelAt, null);
+  assert.equal(cancelAtPeriodEnd, false);
+  assert.equal(stripe.subscriptions.create, undefined, 'No second subscription can be created');
+  assert.equal(stripe.invoices, undefined, 'The operation does not create an invoice');
+  assert.equal(stripe.charges, undefined, 'The operation does not create a charge');
+
+  cancelAtPeriodEnd = true;
+  canceledAt++;
+  await api.keepScheduledSubscription('trusted-user');
+  assert.equal(updateCalls, 2,
+    'A later period-end cancellation can be removed without reusing an old operation');
+  await assert.rejects(api.keepScheduledSubscription('trusted-user'),
+    /No scheduled cancellation/);
+  assert.equal(updateCalls, 2, 'No Stripe update runs without a scheduled cancellation');
 });
 
 test('Portal return verifies cancellation server-side and never trusts a redirect query', () => {
