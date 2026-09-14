@@ -25,6 +25,8 @@ const billingPlanBadge = fs.readFileSync('components/BillingPlanBadge.tsx', 'utf
 const billingPortalReturnPage = fs.readFileSync('app/billing/portal-return/page.tsx', 'utf8');
 const scheduledCancellationSql = fs.readFileSync(
   'supabase/migrations/20260914010000_persist_scheduled_cancellation.sql', 'utf8');
+const billingFoundationSql = fs.readFileSync(
+  'supabase/migrations/20260912010000_billing_test_foundation.sql', 'utf8');
 const downgradeConfirmationPage = fs.readFileSync(
   'app/cuenta/suscripcion/cambiar-a-plus/page.tsx', 'utf8');
 
@@ -341,7 +343,7 @@ test('application progress callers use entitled RPCs and legacy RPCs delegate to
     /select public\.complete_entitled_lesson\(p_course_id, p_lesson_id\)/);
 });
 
-test('entitlements expire and cannot survive failure, foreign billing or reversal', () => {
+test('new entitlements require current paid evidence and previously paid access only survives renewal collection', () => {
   const paid = { status: 'active', paused: false, knownPrice: true, country: 'MX', invoicePaid: true, reversed: false, periodEnd: 2000, paidPeriodEnd: 1800 };
   assert.equal(policy.paidAccessUntil(paid, 1000), new Date(1800000).toISOString());
   for (const status of ['past_due', 'unpaid', 'incomplete', 'incomplete_expired', 'canceled', 'paused', 'trialing']) {
@@ -350,6 +352,24 @@ test('entitlements expire and cannot survive failure, foreign billing or reversa
   for (const change of [{ paused: true }, { knownPrice: false }, { country: 'US' }, { country: null }, { invoicePaid: false }, { reversed: true }, { periodEnd: 1000 }, { paidPeriodEnd: NaN }]) {
     assert.equal(policy.paidAccessUntil({ ...paid, ...change }, 1000), null);
   }
+
+  const previous = {
+    status: 'past_due', paused: false, knownPrice: true, country: 'MX',
+    invoiceStatus: 'open', invoicePaid: false, reversed: false,
+    renewalPeriodEnd: 3000, previousValidUntil: new Date(2000000).toISOString(),
+  };
+  assert.equal(policy.previouslyPaidAccessUntil(previous, 1000),
+    new Date(2000000).toISOString());
+  for (const change of [
+    { status: 'canceled' }, { paused: true }, { knownPrice: false }, { country: 'US' },
+    { invoiceStatus: 'paid' }, { invoicePaid: true }, { reversed: true },
+    { renewalPeriodEnd: 2000 }, { previousValidUntil: new Date(1000000).toISOString() },
+  ]) {
+    assert.equal(policy.previouslyPaidAccessUntil({ ...previous, ...change }, 1000), null);
+  }
+  assert.match(billingFoundationSql,
+    /create function public\.get_my_billing_plan[\s\S]*?e\.valid_until > now\(\)/,
+    'Expired rows cannot produce an effective plan even before the next webhook snapshot');
 });
 
 test('configuration rejects live keys, production and the wrong Supabase project', () => {
@@ -394,12 +414,20 @@ function syncHarness() {
     owner: true, commits: 0, events: new Set(), grants: [], subscriptions: [], invoicePaid: true,
     cancelAtPeriodEnd: false, cancelAt: null, canceledAt: null };
   const end = Math.floor(Date.now() / 1000) + 3600;
+  state.periodEnd = end;
   const priceId = () => state.plan === 'plus' ? 'price_plus' : state.plan === 'pro' ? 'price_pro' : 'price_unknown';
   const db = {
     from(table) {
       let value;
       const q = { select() { return q; }, eq(_name, v) { value = v; return q; }, limit() { return q; }, async maybeSingle() {
-        return { error: null, data: table === 'billing_customers' ? state.owner ? { user_id: 'trusted-user' } : null : table === 'billing_events' && state.events.has(value) ? { stripe_event_id: value } : null };
+        return { error: null, data: table === 'billing_customers'
+          ? state.owner ? { user_id: 'trusted-user' } : null
+          : table === 'billing_events' && state.events.has(value)
+            ? { stripe_event_id: value }
+            : table === 'billing_entitlements' && state.grants.length === 1
+              ? { stripe_subscription_id: state.grants[0].subscription,
+                  plan: state.grants[0].plan, valid_until: state.grants[0].valid_until }
+              : null };
       } };
       return q;
     },
@@ -420,15 +448,15 @@ function syncHarness() {
       canceled_at: state.canceledAt,
       schedule: state.scheduledPlan ? { phases: [{ items: [{ price: `price_${state.scheduledPlan}` }] }] } : null,
       items: { has_more: false, data: [
-        { quantity: 1, current_period_end: end, price: { id: priceId(), livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } },
-        ...(state.multipleItems ? [{ quantity: 1, current_period_end: end, price: { id: 'price_extra', livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } }] : []),
+        { quantity: 1, current_period_end: state.periodEnd, price: { id: priceId(), livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } },
+        ...(state.multipleItems ? [{ quantity: 1, current_period_end: state.periodEnd, price: { id: 'price_extra', livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } }] : []),
       ] } }] }) },
     invoices: { retrieve: async () => ({ id: 'in_test', livemode: false, customer: 'cus_test', currency: 'mxn', status: state.invoicePaid ? 'paid' : 'open', amount_paid: state.invoicePaid ? 29900 : 0,
       customer_address: { country: 'MX' }, lines: { has_more: false, data: [{ amount: 20000,
         parent: { type: 'subscription_item_details', subscription_item_details: { proration: state.plan === 'pro' } },
-        pricing: { type: 'price_details', price_details: { price: priceId() } }, period: { end } }] },
+        pricing: { type: 'price_details', price_details: { price: priceId() } }, period: { end: state.periodEnd } }] },
       parent: { subscription_details: { subscription: 'sub_test' } }, total_taxes: [] }) },
-    invoicePayments: { list: async () => ({ has_more: false, data: [{ id: 'inpay_test', livemode: false, status: 'paid', amount_paid: 29900, currency: 'mxn', payment: { payment_intent: { id: 'pi_test', latest_charge: { id: 'ch_test', livemode: false, paid: true, refunded: state.refunded, disputed: false, amount_refunded: state.refunded ? 29900 : 0, payment_method_details: { type: 'card' }, billing_details: { address: { country: 'MX' } } } } } }] }) },
+    invoicePayments: { list: async () => ({ has_more: false, data: [{ id: 'inpay_test', livemode: false, status: state.invoicePaid ? 'paid' : 'open', amount_paid: state.invoicePaid ? 29900 : 0, currency: 'mxn', payment: { payment_intent: { id: 'pi_test', latest_charge: { id: 'ch_test', livemode: false, paid: state.invoicePaid, refunded: state.refunded, disputed: false, amount_refunded: state.refunded ? 29900 : 0, payment_method_details: { type: 'card' }, billing_details: { address: { country: 'MX' } } } } } }] }) },
   };
   const sync = load('lib/billing/sync.ts', {
     '@/lib/supabase/admin': { createAdminClient: () => db },
@@ -558,16 +586,83 @@ test('real reconciler: duplicate delivery, reordered cancellation, payment failu
   await send('evt_2', 'customer.subscription.deleted'); assert.equal(state.grants.length, 0);
   // Old event still contains a paid invoice; canonical canceled state must win.
   await send('evt_old'); assert.equal(state.grants.length, 0);
-  state.status = 'active'; state.invoicePaid = false;
-  await send('evt_failed', 'invoice.payment_failed'); assert.equal(state.grants.length, 0);
+  state.status = 'active'; state.invoicePaid = true;
+  await send('evt_reestablished', 'invoice.paid');
+  state.status = 'past_due'; state.invoicePaid = false; state.periodEnd += 30 * 24 * 3600;
+  const previousValidUntil = state.grants[0].valid_until;
+  await send('evt_failed', 'invoice.payment_failed');
+  assert.equal(state.grants[0].valid_until, previousValidUntil,
+    'A failed renewal preserves only the already-paid period');
   state.invoicePaid = true;
-  await send('evt_recovered'); assert.equal(state.grants.length, 1);
+  state.status = 'active';
+  await send('evt_recovered');
+  assert.equal(state.grants.length, 1);
+  assert.notEqual(state.grants[0].valid_until, previousValidUntil);
   state.refunded = true;
   await send('evt_refunded'); assert.equal(state.grants.length, 0);
   state.refunded = false; state.country = 'US';
   await send('evt_foreign'); assert.equal(state.grants.length, 0);
   state.deleted = true;
   await send('evt_deleted', 'customer.deleted'); assert.equal(state.grants.length, 0);
+});
+
+test('failed renewals converge across event order, retries, expiry and later payment', async () => {
+  for (const order of [
+    ['customer.subscription.updated', 'invoice.payment_failed'],
+    ['invoice.payment_failed', 'customer.subscription.updated'],
+  ]) {
+    const { state, send } = syncHarness();
+    await send(`evt_initial_${order[0]}`);
+    const previousValidUntil = state.grants[0].valid_until;
+    state.status = 'past_due';
+    state.invoicePaid = false;
+    state.periodEnd += 30 * 24 * 3600;
+
+    for (const [index, type] of order.entries()) {
+      await send(`evt_order_${index}_${type}`, type);
+      assert.equal(state.subscriptions[0].status, 'past_due');
+      assert.equal(state.grants.length, 1);
+      assert.equal(state.grants[0].valid_until, previousValidUntil);
+    }
+
+    const commitsBeforeDuplicate = state.commits;
+    await send(`evt_order_0_${order[0]}`, order[0]);
+    assert.equal(state.commits, commitsBeforeDuplicate,
+      'Duplicate delivery remains an idempotent no-op');
+    await send(`evt_failed_retry_${order[0]}`, 'invoice.payment_failed');
+    assert.equal(state.grants[0].valid_until, previousValidUntil,
+      'Repeated payment failures never extend the prior period');
+    await send(`evt_old_paid_${order[0]}`, 'invoice.paid');
+    assert.equal(state.grants[0].valid_until, previousValidUntil,
+      'An old paid event cannot override the current unpaid Stripe snapshot');
+
+    state.status = 'active';
+    state.invoicePaid = true;
+    await send(`evt_recovered_${order[0]}`, 'invoice.paid');
+    assert.equal(state.grants.length, 1);
+    assert.equal(state.grants[0].subscription, 'sub_test');
+    assert.equal(state.grants[0].plan, 'plus');
+    assert.equal(state.grants[0].valid_until,
+      new Date(state.periodEnd * 1000).toISOString());
+  }
+
+  const noPreviousPayment = syncHarness();
+  noPreviousPayment.state.status = 'past_due';
+  noPreviousPayment.state.invoicePaid = false;
+  noPreviousPayment.state.periodEnd += 30 * 24 * 3600;
+  await noPreviousPayment.send('evt_never_paid', 'invoice.payment_failed');
+  assert.equal(noPreviousPayment.state.grants.length, 0,
+    'past_due is never new paid evidence');
+
+  const expired = syncHarness();
+  await expired.send('evt_expiring_access');
+  expired.state.grants[0].valid_until = new Date(Date.now() - 1000).toISOString();
+  expired.state.status = 'past_due';
+  expired.state.invoicePaid = false;
+  expired.state.periodEnd += 30 * 24 * 3600;
+  await expired.send('evt_failed_after_expiry', 'invoice.payment_failed');
+  assert.equal(expired.state.grants.length, 0,
+    'Expired paid access is removed instead of being revived by a failed invoice');
 });
 
 test('real reconciler: busy/failed transactions remain retryable and unmapped users never gain access', async () => {
@@ -697,6 +792,18 @@ test('portal button depends on server configuration instead of the visual subscr
   assert.doesNotMatch(button, /subscriptions\.length/);
   assert.equal(Boolean('bpc_test'), true, 'Configured Portal stays enabled with an empty visual list');
   assert.equal(Boolean(undefined), false, 'Missing Portal configuration disables the button');
+});
+
+test('subscription account presents payment recovery through the secure Portal action', () => {
+  assert.match(subscriptionPage, /Hay un problema con tu pago\./);
+  assert.match(subscriptionPage, /para evitar perder el acceso/);
+  assert.match(subscriptionPage, /Tu acceso pagado está suspendido/);
+  assert.match(subscriptionPage, /Actualizar método de pago/);
+  assert.match(subscriptionPage, /action=\{openBillingPortal\}/,
+    'Payment recovery uses the authenticated server-side Portal action');
+  assert.doesNotMatch(subscriptionPage,
+    /name=["'](?:customer|subscription|invoice|price|valid_until)/,
+    'The recovery CTA sends no Billing identity or entitlement data');
 });
 
 test('portal session is restricted to Plus and Pro with immediate upgrades and scheduled downgrades', async () => {
