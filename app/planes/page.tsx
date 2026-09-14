@@ -11,10 +11,15 @@ import {
 import {
   openBillingPortal,
   startCheckout,
+  undoDowngradeToPlus,
   upgradeToPro,
 } from "@/app/cuenta/suscripcion/actions";
 import LoadingButton from "@/components/ui/LoadingButton";
 import { planVisuals } from "@/lib/plan-visuals";
+import { formatBillingEffectiveDate } from "@/lib/billing/return-presentation";
+import { getProToPlusDowngradeState } from "@/lib/billing/subscription-schedule";
+
+export const dynamic = "force-dynamic";
 
 const plans = [
   {
@@ -103,6 +108,17 @@ export default async function PlanesPage() {
     ? await getBillingAccess()
     : { regularAccess: false, plan: null };
   const currentPlan = viewer ? billing.plan : null;
+  let scheduledDowngradeAt: string | null = null;
+  let downgradeUnavailable = false;
+  if (viewer && currentPlan === "pro" && billingAvailable) {
+    try {
+      const downgrade = await getProToPlusDowngradeState(viewer.id);
+      scheduledDowngradeAt = downgrade.scheduled ? downgrade.effectiveAt : null;
+    } catch (error) {
+      console.error("Unable to read the Pro to Plus schedule", error);
+      downgradeUnavailable = true;
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[#080808] text-white">
@@ -150,6 +166,8 @@ export default async function PlanesPage() {
               currentPlan,
               authenticated: Boolean(viewer),
               billingAvailable,
+              scheduledDowngradeAt,
+              downgradeUnavailable,
             });
 
             return (
@@ -290,6 +308,36 @@ function PlanAction({ action }: { action: PlanCardAction }) {
         <p className="mt-3 text-center text-xs leading-5 text-white/35">
           Se abrirá Stripe para confirmar el cambio y el prorrateo.
         </p>
+      </div>
+    );
+  }
+
+  if (action.kind === "downgrade") {
+    return (
+      <Link href={action.href} className={interactiveClass}>
+        {action.label}
+      </Link>
+    );
+  }
+
+  if (action.kind === "scheduled-downgrade") {
+    return (
+      <div className="mt-8">
+        <p className="text-center text-sm font-semibold text-emerald-200/85">
+          Cambio a Plus programado
+        </p>
+        <p className="mt-2 text-center text-xs leading-5 text-white/40">
+          Cambiará el {formatBillingEffectiveDate(action.effectiveAt)}.
+        </p>
+        <form action={undoDowngradeToPlus} className="mt-4">
+          <LoadingButton
+            type="submit"
+            loadingText="Deshaciendo…"
+            className={interactiveClass.replace("mt-8 ", "")}
+          >
+            {action.label}
+          </LoadingButton>
+        </form>
       </div>
     );
   }

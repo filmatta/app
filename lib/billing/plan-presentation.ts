@@ -7,6 +7,8 @@ export type PlanCardAction =
   | { kind: "checkout"; label: string; plan: BillingPlan }
   | { kind: "portal"; label: string }
   | { kind: "pro-upgrade"; label: string }
+  | { kind: "downgrade"; label: string; href: string }
+  | { kind: "scheduled-downgrade"; label: string; effectiveAt: string }
   | { kind: "status"; label: string }
   | { kind: "coming-soon"; label: string };
 
@@ -15,11 +17,15 @@ export function getPlanCardAction({
   currentPlan,
   authenticated,
   billingAvailable,
+  scheduledDowngradeAt = null,
+  downgradeUnavailable = false,
 }: {
   planId: PlanCardId;
   currentPlan: BillingPlan | null;
   authenticated: boolean;
   billingAvailable: boolean;
+  scheduledDowngradeAt?: string | null;
+  downgradeUnavailable?: boolean;
 }): PlanCardAction {
   const effectivePlan = authenticated ? currentPlan : null;
 
@@ -49,11 +55,25 @@ export function getPlanCardAction({
     return { kind: "status", label: "Tu plan actual" };
   }
 
+  if (effectivePlan === "pro" && planId === "plus") {
+    if (downgradeUnavailable) {
+      return { kind: "status", label: "Cambio no disponible" };
+    }
+    return scheduledDowngradeAt
+      ? {
+          kind: "scheduled-downgrade",
+          label: "Deshacer cambio",
+          effectiveAt: scheduledDowngradeAt,
+        }
+      : {
+          kind: "downgrade",
+          label: "Cambiar a Plus",
+          href: "/cuenta/suscripcion/cambiar-a-plus",
+        };
+  }
+
   return {
-    kind: effectivePlan === "plus" ? "pro-upgrade" : "portal",
-    label:
-      effectivePlan === "plus"
-        ? "Actualizar a Pro"
-        : "Administrar plan",
+    kind: "pro-upgrade",
+    label: "Actualizar a Pro",
   };
 }
