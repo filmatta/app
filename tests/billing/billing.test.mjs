@@ -781,6 +781,7 @@ test('scheduled cancellation is scoped to the user and keeping it preserves the 
   let cancelAtPeriodEnd = false;
   let canceledAt = Date.parse('2026-09-14T07:55:04Z') / 1000;
   let updateCalls = 0;
+  const updateParams = [];
   const q = {
     select() { return q; },
     eq(name, value) { assert.equal(name, 'user_id'); filteredUser = value; return q; },
@@ -811,9 +812,17 @@ test('scheduled cancellation is scoped to the user and keeping it preserves the 
       update: async (subscriptionId, params, options) => {
         updateCalls++;
         assert.equal(subscriptionId, 'sub_pro');
-        assert.deepEqual(JSON.parse(JSON.stringify(params)), {
-          cancel_at: '', cancel_at_period_end: false, proration_behavior: 'none',
-        });
+        const serialized = JSON.parse(JSON.stringify(params));
+        updateParams.push(serialized);
+        assert.equal(
+          Object.hasOwn(serialized, 'cancel_at') +
+            Object.hasOwn(serialized, 'cancel_at_period_end'),
+          1,
+          'Stripe receives exactly one cancellation parameter'
+        );
+        assert.deepEqual(serialized, cancelAtPeriodEnd
+          ? { cancel_at_period_end: false, proration_behavior: 'none' }
+          : { cancel_at: '', proration_behavior: 'none' });
         assert.equal(options.idempotencyKey,
           `filmatta-test-keep-sub_pro-${periodEnd}-${canceledAt}`);
         cancelAt = null;
@@ -856,6 +865,10 @@ test('scheduled cancellation is scoped to the user and keeping it preserves the 
   await api.keepScheduledSubscription('trusted-user');
   assert.equal(updateCalls, 2,
     'A later period-end cancellation can be removed without reusing an old operation');
+  assert.deepEqual(updateParams, [
+    { cancel_at: '', proration_behavior: 'none' },
+    { cancel_at_period_end: false, proration_behavior: 'none' },
+  ], 'Custom-date and period-end cancellations use distinct Stripe requests');
   await assert.rejects(api.keepScheduledSubscription('trusted-user'),
     /No scheduled cancellation/);
   assert.equal(updateCalls, 2, 'No Stripe update runs without a scheduled cancellation');
