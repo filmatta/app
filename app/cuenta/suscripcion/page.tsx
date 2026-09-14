@@ -5,7 +5,11 @@ import { getBillingAccess } from "@/lib/billing/access";
 import { billingEnabled } from "@/lib/billing/config";
 import { createClient } from "@/lib/supabase/server";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
-import { startCheckout, openBillingPortal } from "./actions";
+import {
+  cancelSubscriptionViaPortal,
+  openBillingPortal,
+  startCheckout,
+} from "./actions";
 import LoadingButton from "@/components/ui/LoadingButton";
 import { getMyScheduledCancellation } from "@/lib/billing/cancellation";
 import { formatBillingEffectiveDate } from "@/lib/billing/return-presentation";
@@ -65,6 +69,7 @@ export default async function SubscriptionPage({ searchParams }: {
         </form>)}
       </div>}
       {enabled && <form action={openBillingPortal} className="mt-8"><LoadingButton type="submit" loadingText="Abriendo…" disabled={!portalConfigured} className="rounded-full border border-white/20 px-5 py-3 disabled:opacity-40">Ver y cambiar mi plan</LoadingButton></form>}
+      {enabled && access.plan && !cancellationEffectiveAt && <form action={cancelSubscriptionViaPortal} className="mt-4"><LoadingButton type="submit" loadingText="Abriendo cancelación…" disabled={!portalConfigured} className="rounded-full border border-red-200/20 px-5 py-3 text-sm font-semibold text-red-100/80 transition hover:border-red-200/35 hover:text-red-100 disabled:opacity-40">Cancelar suscripción</LoadingButton></form>}
       {enabled && !ready && <p className="mt-5 text-sm text-white/50">La configuración de las pruebas está pendiente.</p>}
       <p className="mt-10 text-sm text-white/45">El portal permitirá actualizar métodos de pago y cancelar. Los datos fiscales y la emisión de CFDI estarán disponibles en una etapa posterior.</p>
     </div>

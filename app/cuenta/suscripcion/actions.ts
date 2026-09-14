@@ -6,6 +6,7 @@ import { getViewer } from "@/lib/auth/get-viewer";
 import { keepScheduledSubscription } from "@/lib/billing/cancellation";
 import { isBillingPlan } from "@/lib/billing/policy";
 import {
+  createTestCancellationPortal,
   createTestCheckout,
   createTestPortal,
   createTestProUpgradePortal,
@@ -32,6 +33,19 @@ export async function openBillingPortal() {
   let url: string;
   try { url = await createTestPortal(viewer.id); }
   catch { console.error("Test portal unavailable"); redirect("/cuenta/suscripcion?error=portal"); }
+  redirect(url);
+}
+
+export async function cancelSubscriptionViaPortal() {
+  const viewer = await getViewer();
+  if (!viewer) redirect("/acceso?next=%2Fcuenta%2Fsuscripcion");
+  let url: string;
+  try {
+    url = await createTestCancellationPortal(viewer.id);
+  } catch (error) {
+    console.error("Test subscription cancellation portal unavailable", error);
+    redirect("/cuenta/suscripcion?error=cancel");
+  }
   redirect(url);
 }
 

@@ -100,6 +100,118 @@ export async function createTestPortal(userId: string) {
   return session.url;
 }
 
+export async function createTestCancellationPortal(userId: string) {
+  const config = billingConfig();
+  if (!config.portal.startsWith("bpc_")) throw new Error("Portal not configured");
+
+  const { data, error } = await createAdminClient().from("billing_customers")
+    .select("stripe_customer_id").eq("user_id", userId).maybeSingle();
+  if (error || !data) throw new Error("No billing customer");
+
+  return withBillingLock(data.stripe_customer_id, async () => {
+    const stripe = stripeClient();
+    const [account, customer, portal, subscriptions] = await Promise.all([
+      stripe.accounts.retrieve(config.account),
+      stripe.customers.retrieve(data.stripe_customer_id),
+      stripe.billingPortal.configurations.retrieve(config.portal, {
+        expand: ["features.subscription_update.products"],
+      }),
+      stripe.subscriptions.list({
+        customer: data.stripe_customer_id,
+        status: "active",
+        limit: 2,
+        expand: ["data.items.data.price"],
+      }),
+    ]);
+
+    if (!config.account || account.id !== config.account || account.country !== "MX") {
+      throw new Error("Incorrect Stripe test account");
+    }
+    if (
+      customer.deleted ||
+      customer.livemode ||
+      customer.id !== data.stripe_customer_id
+    ) {
+      throw new Error("Invalid customer");
+    }
+    assertPortalConfiguration(portal, config.prices);
+    assertPortalCancellationConfiguration(portal);
+
+    if (subscriptions.has_more || subscriptions.data.length !== 1) {
+      throw new Error("Exactly one active subscription is required");
+    }
+    const subscription = subscriptions.data[0];
+    const subscriptionCustomer =
+      typeof subscription.customer === "string"
+        ? subscription.customer
+        : subscription.customer.id;
+    if (
+      subscription.livemode ||
+      subscription.status !== "active" ||
+      subscriptionCustomer !== customer.id ||
+      subscription.cancel_at_period_end ||
+      subscription.cancel_at !== null ||
+      subscription.pause_collection ||
+      subscription.pending_update ||
+      subscription.schedule ||
+      subscription.items.has_more ||
+      subscription.items.data.length !== 1
+    ) {
+      throw new Error("Unexpected active subscription");
+    }
+
+    const item = subscription.items.data[0];
+    const price = item.price;
+    if (typeof price === "string") {
+      throw new Error("Subscription price was not expanded");
+    }
+    const plan =
+      price.id === config.prices.plus
+        ? "plus"
+        : price.id === config.prices.pro
+          ? "pro"
+          : null;
+    if (
+      !plan ||
+      item.quantity !== 1 ||
+      price.livemode ||
+      !price.active ||
+      price.currency !== "mxn" ||
+      price.unit_amount !== FILMATTA_PLAN_PRICES[plan] * 100 ||
+      price.recurring?.interval !== "month" ||
+      price.recurring.interval_count !== 1 ||
+      price.recurring.usage_type !== "licensed"
+    ) {
+      throw new Error("Unexpected subscription price");
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customer.id,
+      configuration: config.portal,
+      return_url: `${config.origin}/cuenta/suscripcion`,
+      flow_data: {
+        type: "subscription_cancel",
+        subscription_cancel: { subscription: subscription.id },
+        after_completion: {
+          type: "redirect",
+          redirect: {
+            return_url: `${config.origin}/billing/return?source=cancel`,
+          },
+        },
+      },
+    });
+    const destination = new URL(session.url);
+    if (
+      session.livemode ||
+      destination.protocol !== "https:" ||
+      destination.hostname !== "billing.stripe.com"
+    ) {
+      throw new Error("Unexpected portal destination");
+    }
+    return session.url;
+  });
+}
+
 export async function createTestProUpgradePortal(userId: string) {
   const config = billingConfig();
   if (!config.portal.startsWith("bpc_")) throw new Error("Portal not configured");
@@ -220,5 +332,20 @@ function assertPortalConfiguration(
     portal.features.customer_update.enabled
   ) {
     throw new Error("Portal configuration is outside the FILMATTA Plus and Pro policy");
+  }
+}
+
+function assertPortalCancellationConfiguration(
+  portal: Stripe.BillingPortal.Configuration
+) {
+  const cancellation = portal.features.subscription_cancel;
+  if (
+    portal.livemode ||
+    !portal.active ||
+    !cancellation.enabled ||
+    cancellation.mode !== "at_period_end" ||
+    cancellation.proration_behavior !== "none"
+  ) {
+    throw new Error("Portal cancellation configuration is outside FILMATTA policy");
   }
 }
