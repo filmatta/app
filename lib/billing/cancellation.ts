@@ -82,13 +82,20 @@ export async function keepScheduledSubscription(
       throw new Error("No scheduled cancellation");
     }
 
+    const cancellationUpdate: Stripe.SubscriptionUpdateParams =
+      context.subscription.cancel_at_period_end
+        ? {
+            cancel_at_period_end: false,
+            proration_behavior: "none",
+          }
+        : {
+            cancel_at: "",
+            proration_behavior: "none",
+          };
+
     await stripe.subscriptions.update(
       context.subscription.id,
-      {
-        cancel_at: "",
-        cancel_at_period_end: false,
-        proration_behavior: "none",
-      },
+      cancellationUpdate,
       {
         idempotencyKey: [
           "filmatta-test-keep",
