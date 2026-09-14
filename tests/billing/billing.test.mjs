@@ -360,6 +360,9 @@ test('new entitlements require current paid evidence and previously paid access 
   };
   assert.equal(policy.previouslyPaidAccessUntil(previous, 1000),
     new Date(2000000).toISOString());
+  assert.equal(policy.previouslyPaidAccessUntil({ ...previous, invoiceStatus: 'draft' }, 1000),
+    new Date(2000000).toISOString(),
+    'A draft renewal preserves exactly the already-paid access window');
   for (const change of [
     { status: 'canceled' }, { paused: true }, { knownPrice: false }, { country: 'US' },
     { invoiceStatus: 'paid' }, { invoicePaid: true }, { reversed: true },
@@ -412,6 +415,7 @@ function syncHarness() {
   const state = { status: 'active', plan: 'plus', scheduledPlan: null, multipleItems: false,
     refunded: false, country: 'MX', deleted: false, fail: false, locked: false,
     owner: true, commits: 0, events: new Set(), grants: [], subscriptions: [], invoicePaid: true,
+    invoiceStatus: null,
     cancelAtPeriodEnd: false, cancelAt: null, canceledAt: null };
   const end = Math.floor(Date.now() / 1000) + 3600;
   state.periodEnd = end;
@@ -451,7 +455,7 @@ function syncHarness() {
         { quantity: 1, current_period_end: state.periodEnd, price: { id: priceId(), livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } },
         ...(state.multipleItems ? [{ quantity: 1, current_period_end: state.periodEnd, price: { id: 'price_extra', livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } }] : []),
       ] } }] }) },
-    invoices: { retrieve: async () => ({ id: 'in_test', livemode: false, customer: 'cus_test', currency: 'mxn', status: state.invoicePaid ? 'paid' : 'open', amount_paid: state.invoicePaid ? 29900 : 0,
+    invoices: { retrieve: async () => ({ id: 'in_test', livemode: false, customer: 'cus_test', currency: 'mxn', status: state.invoiceStatus ?? (state.invoicePaid ? 'paid' : 'open'), amount_paid: state.invoicePaid ? 29900 : 0,
       customer_address: { country: 'MX' }, lines: { has_more: false, data: [{ amount: 20000,
         parent: { type: 'subscription_item_details', subscription_item_details: { proration: state.plan === 'pro' } },
         pricing: { type: 'price_details', price_details: { price: priceId() } }, period: { end: state.periodEnd } }] },
@@ -663,6 +667,52 @@ test('failed renewals converge across event order, retries, expiry and later pay
   await expired.send('evt_failed_after_expiry', 'invoice.payment_failed');
   assert.equal(expired.state.grants.length, 0,
     'Expired paid access is removed instead of being revived by a failed invoice');
+});
+
+test('draft renewal updates preserve only existing paid access until collection resolves', async () => {
+  const { state, send } = syncHarness();
+  await send('evt_initial_paid');
+  const previousValidUntil = state.grants[0].valid_until;
+
+  state.invoicePaid = false;
+  state.invoiceStatus = 'draft';
+  state.periodEnd += 30 * 24 * 3600;
+  await send('evt_renewal_draft_update', 'customer.subscription.updated');
+  assert.equal(state.grants.length, 1);
+  assert.equal(state.grants[0].valid_until, previousValidUntil,
+    'A draft renewal must preserve exactly the prior paid boundary');
+  assert.notEqual(state.grants[0].valid_until,
+    new Date(state.periodEnd * 1000).toISOString(),
+    'A draft invoice is not evidence for the new billing period');
+
+  state.status = 'past_due';
+  state.invoiceStatus = 'open';
+  await send('evt_renewal_payment_failed', 'invoice.payment_failed');
+  assert.equal(state.grants[0].valid_until, previousValidUntil,
+    'A later failed payment must not extend or erase unexpired paid access');
+
+  state.status = 'active';
+  state.invoicePaid = true;
+  state.invoiceStatus = 'paid';
+  await send('evt_renewal_recovered', 'invoice.paid');
+  assert.equal(state.grants[0].valid_until,
+    new Date(state.periodEnd * 1000).toISOString(),
+    'A later paid invoice extends access to the newly paid period');
+
+  state.status = 'canceled';
+  await send('evt_canceled_after_recovery', 'customer.subscription.deleted');
+  assert.equal(state.grants.length, 0,
+    'Cancellation still removes the entitlement under the existing policy');
+
+  for (const invoiceStatus of ['draft', 'open']) {
+    const neverPaid = syncHarness();
+    neverPaid.state.invoicePaid = false;
+    neverPaid.state.invoiceStatus = invoiceStatus;
+    neverPaid.state.periodEnd += 30 * 24 * 3600;
+    await neverPaid.send(`evt_never_paid_${invoiceStatus}`, 'customer.subscription.updated');
+    assert.equal(neverPaid.state.grants.length, 0,
+      `${invoiceStatus} renewal state cannot create access without a previous entitlement`);
+  }
 });
 
 test('real reconciler: busy/failed transactions remain retryable and unmapped users never gain access', async () => {
