@@ -63,7 +63,8 @@ export async function scheduleDowngradeToPlus(
       return toPublicState(context, attached.id);
     }
 
-    const createKey = downgradeIdempotencyKey("create", context);
+    const generation = await resolveDowngradeGeneration(context);
+    const createKey = downgradeIdempotencyKey("create", context, generation);
     let schedule: Stripe.SubscriptionSchedule;
 
     if (attached) {
@@ -122,7 +123,13 @@ export async function scheduleDowngradeToPlus(
           },
         ],
       },
-      { idempotencyKey: downgradeIdempotencyKey("update", context) }
+      {
+        idempotencyKey: downgradeIdempotencyKey(
+          "update",
+          context,
+          generation
+        ),
+      }
     );
 
     const verified = await stripe.subscriptionSchedules.retrieve(schedule.id);
@@ -151,7 +158,13 @@ export async function releaseScheduledDowngrade(
     const released = await stripe.subscriptionSchedules.release(
       schedule.id,
       { preserve_cancel_date: false },
-      { idempotencyKey: downgradeIdempotencyKey("release", context) }
+      {
+        idempotencyKey: downgradeIdempotencyKey(
+          "release",
+          context,
+          schedule.id
+        ),
+      }
     );
     if (
       released.livemode ||
@@ -311,6 +324,61 @@ async function retrieveAttachedSchedule(context: DowngradeContext) {
     : null;
 }
 
+async function resolveDowngradeGeneration(context: DowngradeContext) {
+  const schedules = await context.stripe.subscriptionSchedules.list({
+    customer: context.customerId,
+    released_at: { gte: context.currentPeriodStart },
+    limit: 100,
+  });
+  if (schedules.has_more) {
+    throw new Error("Subscription schedule history limit exceeded");
+  }
+
+  const released = schedules.data
+    .filter((schedule) => isReleasedDowngradeSchedule(schedule, context))
+    .sort((left, right) => {
+      const timestamp = (left.released_at ?? 0) - (right.released_at ?? 0);
+      return timestamp || left.id.localeCompare(right.id);
+    });
+
+  return released.at(-1)?.id ?? "initial";
+}
+
+function isReleasedDowngradeSchedule(
+  schedule: Stripe.SubscriptionSchedule,
+  context: DowngradeContext
+) {
+  if (
+    schedule.livemode ||
+    schedule.status !== "released" ||
+    expandableId(schedule.customer) !== context.customerId ||
+    schedule.released_subscription !== context.subscription.id ||
+    schedule.end_behavior !== "release" ||
+    schedule.metadata?.filmatta_change !== DOWNGRADE_OPERATION ||
+    schedule.metadata?.filmatta_subscription_id !== context.subscription.id ||
+    schedule.metadata?.filmatta_effective_at !== String(context.currentPeriodEnd) ||
+    schedule.phases.length !== 2
+  ) {
+    return false;
+  }
+
+  const [current, future] = schedule.phases;
+  return (
+    isPhase(current, {
+      price: context.config.prices.pro,
+      start: context.currentPeriodStart,
+      end: context.currentPeriodEnd,
+      taxRate: context.config.taxRate,
+    }) &&
+    isPhase(future, {
+      price: context.config.prices.plus,
+      start: context.currentPeriodEnd,
+      end: addBillingMonth(context.currentPeriodEnd),
+      taxRate: context.config.taxRate,
+    })
+  );
+}
+
 function isRecoverableMirrorSchedule(
   schedule: Stripe.SubscriptionSchedule,
   context: DowngradeContext
@@ -447,9 +515,10 @@ function addBillingMonth(timestamp: number) {
 
 function downgradeIdempotencyKey(
   operation: "create" | "update" | "release",
-  context: DowngradeContext
+  context: DowngradeContext,
+  generation: string
 ) {
-  return `filmatta-test-${DOWNGRADE_OPERATION}-${operation}-${context.subscription.id}-${context.currentPeriodEnd}`;
+  return `filmatta-test-${DOWNGRADE_OPERATION}-${operation}-${context.subscription.id}-${context.currentPeriodEnd}-${generation}`;
 }
 
 function toPublicState(

@@ -1235,7 +1235,13 @@ function downgradeHarness() {
     pauseCollection: null,
     trialEnd: null,
     schedule: null,
-    createKey: null,
+    releasedSchedules: [],
+    createKeys: [],
+    updateKeys: [],
+    releaseKeys: [],
+    createResponses: new Map(),
+    updateResponses: new Map(),
+    releaseResponses: new Map(),
     createInvocations: 0,
     schedulesCreated: 0,
     updateCalls: 0,
@@ -1292,8 +1298,9 @@ function downgradeHarness() {
           }],
     },
   });
-  const expectedSchedule = () => ({
-    id: 'sub_sched_test',
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+  const expectedSchedule = (id = 'sub_sched_test_1') => ({
+    id,
     livemode: false,
     status: 'active',
     customer: 'cus_trusted',
@@ -1310,8 +1317,8 @@ function downgradeHarness() {
       phase({ priceId: 'price_plus', start: periodEnd, end: nextPeriodEnd }),
     ],
   });
-  const mirrorSchedule = () => ({
-    id: 'sub_sched_test',
+  const mirrorSchedule = (id = 'sub_sched_test_1') => ({
+    id,
     livemode: false,
     status: 'active',
     customer: 'cus_trusted',
@@ -1341,21 +1348,29 @@ function downgradeHarness() {
       data: state.subscriptions ? [subscription()] : [],
     }) },
     subscriptionSchedules: {
+      list: async (params) => {
+        assert.equal(params.customer, 'cus_trusted');
+        assert.equal(params.released_at.gte, periodStart);
+        assert.equal(params.limit, 100);
+        return { has_more: false, data: state.releasedSchedules.map(clone) };
+      },
       create: async (params, options) => {
         state.createInvocations++;
         assert.equal(params.from_subscription, 'sub_pro');
-        if (state.schedule) {
-          if (options.idempotencyKey !== state.createKey) throw new Error('Schedule already attached');
-          return state.schedule;
+        state.createKeys.push(options.idempotencyKey);
+        if (state.createResponses.has(options.idempotencyKey)) {
+          return clone(state.createResponses.get(options.idempotencyKey));
         }
-        state.createKey = options.idempotencyKey;
+        if (state.schedule?.status === 'active') throw new Error('Schedule already attached');
         state.schedulesCreated++;
-        state.schedule = mirrorSchedule();
-        return state.schedule;
+        const id = `sub_sched_test_${state.schedulesCreated}`;
+        state.schedule = mirrorSchedule(id);
+        state.createResponses.set(options.idempotencyKey, clone(state.schedule));
+        return clone(state.schedule);
       },
       update: async (id, params, options) => {
         state.updateCalls++;
-        assert.equal(id, 'sub_sched_test');
+        state.updateKeys.push(options.idempotencyKey);
         assert.match(options.idempotencyKey, /pro_to_plus-update-sub_pro/);
         assert.equal(params.end_behavior, 'release');
         assert.equal(params.proration_behavior, 'none');
@@ -1377,25 +1392,40 @@ function downgradeHarness() {
           discounts: [],
           proration_behavior: 'none',
         });
+        if (state.updateResponses.has(options.idempotencyKey)) {
+          return clone(state.updateResponses.get(options.idempotencyKey));
+        }
         if (state.failUpdateOnce) {
           state.failUpdateOnce = false;
           throw new Error('Temporary Stripe failure');
         }
-        state.schedule = expectedSchedule();
-        return state.schedule;
+        assert.equal(id, state.schedule.id);
+        state.schedule = expectedSchedule(id);
+        state.updateResponses.set(options.idempotencyKey, clone(state.schedule));
+        return clone(state.schedule);
       },
       retrieve: async (id) => {
-        assert.equal(id, state.schedule.id);
-        return state.schedule;
+        const schedule = state.schedule?.id === id
+          ? state.schedule
+          : state.releasedSchedules.find((candidate) => candidate.id === id);
+        if (!schedule) throw new Error('No such subscription schedule');
+        return clone(schedule);
       },
       release: async (id, params, options) => {
         state.releaseCalls++;
-        assert.equal(id, 'sub_sched_test');
+        state.releaseKeys.push(options.idempotencyKey);
         assert.equal(params.preserve_cancel_date, false);
         assert.match(options.idempotencyKey, /pro_to_plus-release-sub_pro/);
-        state.schedule = { ...state.schedule, status: 'released',
+        if (state.releaseResponses.has(options.idempotencyKey)) {
+          return clone(state.releaseResponses.get(options.idempotencyKey));
+        }
+        assert.equal(id, state.schedule.id);
+        const released = { ...state.schedule, status: 'released', released_at: periodStart + state.releaseCalls,
           released_subscription: 'sub_pro', subscription: null };
-        return state.schedule;
+        state.releasedSchedules.push(released);
+        state.schedule = null;
+        state.releaseResponses.set(options.idempotencyKey, clone(released));
+        return clone(released);
       },
       cancel: async () => { state.cancelCalls++; throw new Error('must not cancel'); },
     },
@@ -1484,7 +1514,45 @@ test('scheduled downgrade state is verified on demand and release preserves Pro'
   assert.equal(state.releaseCalls, 1);
   assert.equal(state.cancelCalls, 0, 'Reverting never calls schedule.cancel()');
   assert.equal(state.plan, 'pro');
-  assert.equal(state.schedule.status, 'released');
+  assert.equal(state.schedule, null);
+  assert.equal(state.releasedSchedules[0].status, 'released');
+});
+
+test('released Pro downgrade advances idempotency generation before reprogramming', async () => {
+  const { api, state } = downgradeHarness();
+  const first = await api.scheduleDowngradeToPlus('trusted');
+  const firstCreateKey = state.createKeys.at(-1);
+  const firstUpdateKey = state.updateKeys.at(-1);
+
+  await api.releaseScheduledDowngrade('trusted');
+  assert.match(state.releaseKeys[0], new RegExp(`${first.scheduleId}$`));
+
+  state.failUpdateOnce = true;
+  await assert.rejects(
+    api.scheduleDowngradeToPlus('trusted'),
+    /Temporary Stripe failure/
+  );
+  const secondScheduleId = state.schedule.id;
+  const secondCreateKey = state.createKeys.at(-1);
+  const secondUpdateKey = state.updateKeys.at(-1);
+  assert.notEqual(secondScheduleId, first.scheduleId);
+  assert.notEqual(secondCreateKey, firstCreateKey);
+  assert.notEqual(secondUpdateKey, firstUpdateKey);
+  assert.match(secondCreateKey, new RegExp(`${first.scheduleId}$`));
+  assert.match(secondUpdateKey, new RegExp(`${first.scheduleId}$`));
+
+  const recovered = await api.scheduleDowngradeToPlus('trusted');
+  const retried = await api.scheduleDowngradeToPlus('trusted');
+  assert.equal(recovered.scheduleId, secondScheduleId);
+  assert.equal(retried.scheduleId, secondScheduleId);
+  assert.equal(state.createKeys.at(-1), secondCreateKey);
+  assert.equal(state.updateKeys.at(-1), secondUpdateKey);
+  assert.equal(state.schedulesCreated, 2, 'Retries do not create a third schedule');
+  assert.equal(state.schedule.status, 'active');
+  assert.equal(state.schedule.customer, 'cus_trusted');
+  assert.equal(state.schedule.subscription, 'sub_pro');
+  assert.equal(state.schedule.phases[0].items[0].price, 'price_pro');
+  assert.equal(state.schedule.phases[1].items[0].price, 'price_plus');
 });
 
 test('checkout rejects a missing manual Mexico tax rate before contacting Stripe', async () => {
