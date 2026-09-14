@@ -587,6 +587,8 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   let calls = 0;
   let portalCalls = 0;
   let portalCustomerExists = true;
+  let cancellationPortalCalls = 0;
+  let cancellationPortalAllowed = true;
   let upgradeCalls = 0;
   let upgradeAllowed = true;
   let downgradeCalls = 0;
@@ -614,6 +616,12 @@ test('checkout authenticates and rejects forged plan/country before contacting S
         if (!portalCustomerExists) throw new Error('No billing customer');
         return 'https://billing.stripe.com/p/session/test';
       },
+      createTestCancellationPortal: async (userId) => {
+        cancellationPortalCalls++;
+        assert.equal(userId, 'trusted');
+        if (!cancellationPortalAllowed) throw new Error('No active subscription');
+        return 'https://billing.stripe.com/p/session/cancel';
+      },
       createTestProUpgradePortal: async (userId) => {
         upgradeCalls++;
         assert.equal(userId, 'trusted');
@@ -635,6 +643,7 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   const form = new FormData(); form.set('plan', 'plus'); form.set('country', 'MX');
   await assert.rejects(actions.startCheckout(form), /acceso/);
   await assert.rejects(actions.openBillingPortal(), /acceso/);
+  await assert.rejects(actions.cancelSubscriptionViaPortal(), /acceso/);
   await assert.rejects(actions.upgradeToPro(), /acceso/);
   await assert.rejects(actions.scheduleDowngradeToPlus(), /acceso/);
   await assert.rejects(actions.undoDowngradeToPlus(), /acceso/);
@@ -656,6 +665,13 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   forged.set('subscription', 'sub_attacker');
   forged.set('item', 'si_attacker');
   forged.set('price', 'price_attacker');
+  await assert.rejects(actions.cancelSubscriptionViaPortal(forged),
+    /billing\.stripe\.com\/p\/session\/cancel/);
+  assert.equal(cancellationPortalCalls, 1,
+    'The cancellation action resolves the trusted user and accepts no Stripe identifiers');
+  cancellationPortalAllowed = false;
+  await assert.rejects(actions.cancelSubscriptionViaPortal(forged), /error=cancel/);
+  assert.equal(cancellationPortalCalls, 2);
   await assert.rejects(actions.upgradeToPro(forged), /billing.stripe.com/);
   assert.equal(upgradeCalls, 1, 'The action resolves the trusted user and accepts no billing identifiers');
   upgradeAllowed = false;
@@ -743,6 +759,194 @@ test('portal session is restricted to Plus and Pro with immediate upgrades and s
   mapped = false;
   await assert.rejects(portal('trusted'), /No billing customer/);
   assert.equal(sessions, 1);
+});
+
+test('dedicated cancellation portal resolves the subscription server-side and returns to Matti only after completion', async () => {
+  let filteredUser = null;
+  let lockedCustomer = null;
+  let sessionParams = null;
+  const validPortal = {
+    livemode: false,
+    active: true,
+    features: {
+      customer_update: { enabled: false },
+      subscription_cancel: {
+        enabled: true,
+        mode: 'at_period_end',
+        proration_behavior: 'none',
+      },
+      subscription_update: {
+        enabled: true,
+        billing_cycle_anchor: 'unchanged',
+        default_allowed_updates: ['price'],
+        proration_behavior: 'always_invoice',
+        schedule_at_period_end: { conditions: [{ type: 'decreasing_item_amount' }] },
+        products: [
+          { product: 'prod_plus', prices: ['price_plus'], adjustable_quantity: { enabled: false } },
+          { product: 'prod_pro', prices: ['price_pro'], adjustable_quantity: { enabled: false } },
+        ],
+      },
+    },
+  };
+  const state = {
+    subscriptions: [{
+      id: 'sub_plus',
+      livemode: false,
+      status: 'active',
+      customer: 'cus_trusted',
+      cancel_at_period_end: false,
+      cancel_at: null,
+      pause_collection: null,
+      pending_update: null,
+      schedule: null,
+      items: {
+        has_more: false,
+        data: [{
+          id: 'si_plus',
+          quantity: 1,
+          price: {
+            id: 'price_plus',
+            livemode: false,
+            active: true,
+            currency: 'mxn',
+            unit_amount: 29900,
+            recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' },
+          },
+        }],
+      },
+    }],
+  };
+  const validSubscription = state.subscriptions[0];
+  const q = {
+    select() { return q; },
+    eq(name, value) {
+      assert.equal(name, 'user_id');
+      filteredUser = value;
+      return q;
+    },
+    maybeSingle: async () => ({
+      data: { stripe_customer_id: 'cus_trusted' },
+      error: null,
+    }),
+  };
+  const stripe = {
+    accounts: { retrieve: async (id) => ({ id, country: 'MX' }) },
+    customers: {
+      retrieve: async (id) => ({ id, livemode: false, deleted: false }),
+    },
+    subscriptions: {
+      list: async (params) => {
+        assert.deepEqual(JSON.parse(JSON.stringify(params)), {
+          customer: 'cus_trusted',
+          status: 'active',
+          limit: 2,
+          expand: ['data.items.data.price'],
+        });
+        return { has_more: false, data: state.subscriptions };
+      },
+    },
+    billingPortal: {
+      configurations: {
+        retrieve: async (id, params) => {
+          assert.equal(id, 'bpc_test');
+          assert.deepEqual(JSON.parse(JSON.stringify(params)), {
+            expand: ['features.subscription_update.products'],
+          });
+          return validPortal;
+        },
+      },
+      sessions: {
+        create: async (params) => {
+          sessionParams = JSON.parse(JSON.stringify(params));
+          return {
+            id: 'bps_cancel',
+            livemode: false,
+            url: 'https://billing.stripe.com/p/session/cancel',
+          };
+        },
+      },
+    },
+  };
+  const cancelPortal = load('lib/billing/checkout.ts', {
+    '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
+    '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
+    './config': {
+      stripeClient: () => stripe,
+      billingConfig: () => ({
+        account: 'acct_test',
+        portal: 'bpc_test',
+        origin: 'https://preview.test',
+        prices: { plus: 'price_plus', pro: 'price_pro' },
+      }),
+    },
+    './lock': {
+      withBillingLock: async (customerId, callback) => {
+        lockedCustomer = customerId;
+        return callback('lease');
+      },
+    },
+  }).createTestCancellationPortal;
+
+  assert.equal(await cancelPortal('trusted-user'),
+    'https://billing.stripe.com/p/session/cancel');
+  assert.equal(filteredUser, 'trusted-user');
+  assert.equal(lockedCustomer, 'cus_trusted');
+  assert.deepEqual(sessionParams, {
+    customer: 'cus_trusted',
+    configuration: 'bpc_test',
+    return_url: 'https://preview.test/cuenta/suscripcion',
+    flow_data: {
+      type: 'subscription_cancel',
+      subscription_cancel: { subscription: 'sub_plus' },
+      after_completion: {
+        type: 'redirect',
+        redirect: {
+          return_url: 'https://preview.test/billing/return?source=cancel',
+        },
+      },
+    },
+  });
+  assert.equal(returnPresentation.getBillingReturnView({
+    source: 'cancel',
+    plan: 'plus',
+    timedOut: false,
+    cancellationEffectiveAt: null,
+  }).status, 'waiting', 'Abandoning to the top-level return URL cannot show Matti success');
+
+  state.subscriptions = [];
+  await assert.rejects(cancelPortal('trusted-user'), /Exactly one active subscription/);
+
+  state.subscriptions = [{ ...validSubscription, customer: 'cus_other' }];
+  await assert.rejects(cancelPortal('trusted-user'), /Unexpected active subscription/,
+    'A subscription outside the mapped customer cannot enter the cancellation flow');
+
+  state.subscriptions = [{
+    ...validSubscription,
+    cancel_at: Date.parse('2026-10-13T04:34:08Z') / 1000,
+  }];
+  await assert.rejects(cancelPortal('trusted-user'), /Unexpected active subscription/,
+    'An already scheduled cancellation cannot create another cancellation flow');
+
+  state.subscriptions = [{
+    ...validSubscription,
+    items: {
+      ...validSubscription.items,
+      data: [{
+        ...validSubscription.items.data[0],
+        price: {
+          ...validSubscription.items.data[0].price,
+          id: 'price_unknown',
+        },
+      }],
+    },
+  }];
+  await assert.rejects(cancelPortal('trusted-user'), /Unexpected subscription price/,
+    'Only FILMATTA Plus or Pro can enter the cancellation flow');
+
+  state.subscriptions = [validSubscription];
+  validPortal.features.subscription_cancel.enabled = false;
+  await assert.rejects(cancelPortal('trusted-user'), /outside FILMATTA policy/,
+    'The dedicated flow requires the approved period-end cancellation policy');
 });
 
 test('scheduled cancellation recognizes both Stripe mechanisms and ignores audit timestamps', () => {
