@@ -2,7 +2,11 @@ import "server-only";
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { billingConfig, stripeClient } from "./config";
-import { paidAccessUntil, type BillingPlan } from "./policy";
+import {
+  paidAccessUntil,
+  previouslyPaidAccessUntil,
+  type BillingPlan,
+} from "./policy";
 import { withBillingLock } from "./lock";
 
 function id(value: string | { id: string } | null | undefined) {
@@ -56,6 +60,12 @@ export async function reconcileBillingEvent(event: Stripe.Event) {
       .select("stripe_event_id").eq("stripe_event_id", event.id).maybeSingle();
     if (eventError) throw eventError;
     if (processed) return;
+    const { data: previousEntitlement, error: entitlementError } = await db
+      .from("billing_entitlements")
+      .select("stripe_subscription_id, plan, valid_until")
+      .eq("stripe_customer_id", customerId)
+      .maybeSingle();
+    if (entitlementError) throw entitlementError;
     const currentCustomer = await stripe.customers.retrieve(customerId);
     if (currentCustomer.deleted) {
       const { error: deletionError } = await db.rpc("apply_billing_snapshot", {
@@ -84,8 +94,10 @@ export async function reconcileBillingEvent(event: Stripe.Event) {
       paid: boolean;
       reversed: boolean;
       country: string | null;
+      status: string | null;
       paidPeriods: Map<string, number>;
     }>();
+    const reversedSubscriptions = new Set<string>();
     for (const invoiceId of invoiceIds) {
       const invoice = await stripe.invoices.retrieve(invoiceId);
       assertTest(invoice);
@@ -117,6 +129,7 @@ export async function reconcileBillingEvent(event: Stripe.Event) {
           amount_refunded: charge?.amount_refunded ?? 0, disputed, currency: payment.currency });
       }
       const subscription = id(invoice.parent?.subscription_details?.subscription);
+      if (subscription && reversed) reversedSubscriptions.add(subscription);
       // A positive recurring line establishes paid service for its exact Price.
       // This includes an upgrade proration after Stripe has collected it.
       const paidPeriods = new Map<string, number>();
@@ -131,7 +144,7 @@ export async function reconcileBillingEvent(event: Stripe.Event) {
         paidPeriods.set(priceId, Math.max(paidPeriods.get(priceId) ?? 0, line.period.end));
       }
       evidence.set(invoice.id, { paid: invoice.status === "paid" && invoice.amount_paid > 0 && paidByCard,
-        reversed, country: invoice.customer_address?.country ?? null,
+        reversed, country: invoice.customer_address?.country ?? null, status: invoice.status,
         paidPeriods });
       invoices.push({ id: invoice.id, subscription, status: invoice.status, currency: invoice.currency,
         amount_due: invoice.amount_due, amount_paid: invoice.amount_paid, subtotal: invoice.subtotal,
@@ -148,11 +161,35 @@ export async function reconcileBillingEvent(event: Stripe.Event) {
         price.recurring?.interval === "month" && price.recurring.interval_count === 1 &&
         item.quantity === 1 && subscription.items.data.length === 1 && !subscription.items.has_more);
       const invoice = evidence.get(id(subscription.latest_invoice) ?? "");
-      const validUntil = paidAccessUntil({ status: subscription.status, paused: Boolean(subscription.pause_collection),
+      const paidUntil = paidAccessUntil({ status: subscription.status, paused: Boolean(subscription.pause_collection),
         knownPrice, country: currentCustomer.address?.country === "MX" ? invoice?.country ?? null : null,
         invoicePaid: invoice?.paid ?? false, reversed: invoice?.reversed ?? false,
         periodEnd: item?.current_period_end ?? 0,
         paidPeriodEnd: price ? invoice?.paidPeriods.get(price.id) ?? 0 : 0 });
+      const previousUntil =
+        plan &&
+        previousEntitlement?.stripe_subscription_id === subscription.id &&
+        previousEntitlement.plan === plan
+          ? previouslyPaidAccessUntil({
+              status: subscription.status,
+              paused: Boolean(subscription.pause_collection),
+              knownPrice,
+              country:
+                currentCustomer.address?.country === "MX"
+                  ? invoice?.country ?? null
+                  : null,
+              invoiceStatus: invoice?.status ?? null,
+              invoicePaid: invoice?.paid ?? false,
+              reversed:
+                (invoice?.reversed ?? false) ||
+                reversedSubscriptions.has(subscription.id),
+              renewalPeriodEnd: price
+                ? invoice?.paidPeriods.get(price.id) ?? 0
+                : 0,
+              previousValidUntil: previousEntitlement.valid_until,
+            })
+          : null;
+      const validUntil = paidUntil ?? previousUntil;
       if (plan && validUntil) entitlements.push({ subscription: subscription.id, plan, valid_until: validUntil });
       return { id: subscription.id, plan, price: price?.id ?? null, status: subscription.status,
         period_end: item ? new Date(item.current_period_end * 1000).toISOString() : null,

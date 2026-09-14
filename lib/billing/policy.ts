@@ -32,3 +32,34 @@ export function paidAccessUntil(input: {
       !Number.isFinite(end) || end <= now) return null;
   return new Date(end * 1000).toISOString();
 }
+
+export function previouslyPaidAccessUntil(input: {
+  status: string;
+  paused: boolean;
+  knownPrice: boolean;
+  country: string | null;
+  invoiceStatus: string | null;
+  invoicePaid: boolean;
+  reversed: boolean;
+  renewalPeriodEnd: number;
+  previousValidUntil: string;
+}, now = Date.now() / 1000): string | null {
+  const previousEnd = Date.parse(input.previousValidUntil) / 1000;
+  if (
+    !["active", "past_due", "unpaid"].includes(input.status) ||
+    input.paused ||
+    !input.knownPrice ||
+    input.country !== "MX" ||
+    input.invoiceStatus !== "open" ||
+    input.invoicePaid ||
+    input.reversed ||
+    !Number.isFinite(previousEnd) ||
+    previousEnd <= now ||
+    !Number.isFinite(input.renewalPeriodEnd) ||
+    input.renewalPeriodEnd <= previousEnd
+  ) {
+    return null;
+  }
+
+  return new Date(previousEnd * 1000).toISOString();
+}

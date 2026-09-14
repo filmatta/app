@@ -34,13 +34,28 @@ export default async function SubscriptionPage({ searchParams }: {
     }
   }
   const db = await createClient();
-  const result = enabled ? await db.from("billing_subscriptions")
-    .select("plan, status, current_period_end, cancel_at_period_end, updated_at")
-    .order("updated_at", { ascending: false }) : { data: [], error: null };
+  const [result, invoiceResult] = enabled
+    ? await Promise.all([
+        db
+          .from("billing_subscriptions")
+          .select("plan, status, current_period_end, cancel_at_period_end, updated_at")
+          .order("updated_at", { ascending: false }),
+        db
+          .from("billing_invoices")
+          .select("status, updated_at")
+          .eq("status", "open")
+          .limit(1)
+          .maybeSingle(),
+      ])
+    : [{ data: [], error: null }, { data: null, error: null }];
   const subscriptions = result.data ?? [];
   const hasSubscription = subscriptions.some((s) => !["canceled", "incomplete_expired"].includes(s.status));
   const ready = enabled && !result.error && process.env.BILLING_MX_CHECKOUT_VERIFIED === "true";
   const portalConfigured = Boolean(process.env.STRIPE_PORTAL_CONFIGURATION_ID);
+  const hasPaymentIssue =
+    subscriptions.some((subscription) =>
+      ["past_due", "unpaid", "incomplete"].includes(subscription.status)
+    ) || invoiceResult.data?.status === "open";
   return <main className="min-h-screen bg-[#080808] px-6 py-12 text-white">
     <div className="mx-auto max-w-3xl">
       <Link href="/cuenta#pagos" className="text-sm text-white/60 hover:text-white">← Cuenta</Link>
@@ -50,10 +65,23 @@ export default async function SubscriptionPage({ searchParams }: {
         <p className="mt-1 text-sm text-amber-100/75">Checkout de prueba. Usa únicamente tarjetas de prueba de Stripe.</p>
       </div> : <p className="mt-4 text-white/60">Las suscripciones estarán disponibles próximamente.</p>}
       <p className="mt-6">Acceso actual: FILMATTA {access.plan === "pro" ? "Pro" : access.plan === "plus" ? "Plus" : "Free"}</p>
+      {hasPaymentIssue && <div role="alert" className="mt-5 rounded-xl border border-red-200/25 bg-red-200/[0.06] px-4 py-4 text-red-100">
+        <p className="font-semibold">Hay un problema con tu pago.</p>
+        <p className="mt-2 text-sm leading-6 text-red-100/75">
+          {access.plan
+            ? "No pudimos procesar la renovación de tu suscripción. Actualiza tu método de pago para evitar perder el acceso."
+            : "No pudimos procesar la renovación de tu suscripción. Tu acceso pagado está suspendido. Actualiza tu método de pago para recuperarlo."}
+        </p>
+        <form action={openBillingPortal} className="mt-4">
+          <LoadingButton type="submit" loadingText="Abriendo…" disabled={!portalConfigured} className="rounded-full border border-red-100/25 px-5 py-2.5 text-sm font-semibold text-red-50 disabled:opacity-40">
+            Actualizar método de pago
+          </LoadingButton>
+        </form>
+      </div>}
       {access.plan && cancellationEffectiveAt && <p role="status" className="mt-5 rounded-xl border border-amber-300/25 bg-amber-300/[0.06] px-4 py-3 text-sm leading-6 text-amber-100/80">Tu suscripción se cancelará el {formatBillingEffectiveDate(cancellationEffectiveAt)}. Seguirás teniendo acceso a FILMATTA {access.plan === "plus" ? "Plus" : "Pro"} hasta esa fecha.</p>}
       {feedback.checkout === "returned" && <p role="status" className="mt-5 text-amber-200">Recibimos tu regreso de Checkout. El acceso se actualizará cuando Stripe confirme el pago. <Link href="/cuenta/suscripcion" className="underline">Consultar estado</Link></p>}
       {feedback.checkout === "canceled" && <p role="status" className="mt-5 text-white/60">Saliste de Checkout. No se activó una suscripción desde esta página.</p>}
-      {(feedback.error || result.error) && <p role="alert" className="mt-5 text-red-200">No pudimos completar la operación. Revisa tu suscripción existente o intenta más tarde. Las pruebas están limitadas a México.</p>}
+      {(feedback.error || result.error || invoiceResult.error) && <p role="alert" className="mt-5 text-red-200">No pudimos completar la operación. Revisa tu suscripción existente o intenta más tarde. Las pruebas están limitadas a México.</p>}
       {subscriptions.map((s, index) => <div key={`${s.plan}:${s.updated_at}:${index}`} className="mt-5 rounded-xl border border-white/10 p-5">
         <p>FILMATTA {s.plan === "pro" ? "Pro" : s.plan === "plus" ? "Plus" : "Plan sin reconocer"} · {subscriptionLabel(s.status)}</p>
         {s.current_period_end && <p className="mt-2 text-sm text-white/50">{s.cancel_at_period_end || (s.plan === access.plan && cancellationEffectiveAt) ? "Cancelación programada" : "Fin del periodo"}: {new Date(s.plan === access.plan && cancellationEffectiveAt ? cancellationEffectiveAt : s.current_period_end).toLocaleDateString("es-MX", { timeZone: "America/Mexico_City" })}</p>}
