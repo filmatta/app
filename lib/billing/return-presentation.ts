@@ -102,3 +102,9 @@ export function formatBillingEffectiveDate(value: string) {
     timeZone: "America/Mexico_City",
   }).format(new Date(value));
 }
+
+export function getBillingReturnPlanLabel(plan: BillingPlan | null) {
+  if (plan === "plus") return "FILMATTA PLUS";
+  if (plan === "pro") return "FILMATTA PRO";
+  return "FILMATTA";
+}

@@ -7,6 +7,7 @@ import {
   BILLING_RETURN_POLL_INTERVAL_MS,
   BILLING_RETURN_TIMEOUT_MS,
   getBillingReturnView,
+  getBillingReturnPlanLabel,
   formatBillingEffectiveDate,
   type BillingReturnSource,
 } from "@/lib/billing/return-presentation";
@@ -94,6 +95,9 @@ export default function BillingReturnClient({
     view.status === "confirmed"
       ? getPlanVisual(view.plan)
       : getPlanVisual("pro");
+  const planLabel = getBillingReturnPlanLabel(
+    view.status === "confirmed" ? view.plan : plan
+  );
 
   return (
     <section className="mx-auto flex min-h-[calc(100vh-4.5rem)] max-w-3xl items-center px-5 py-10 sm:px-8 sm:py-12">
@@ -116,7 +120,7 @@ export default function BillingReturnClient({
           <p
             className={`text-xs font-semibold uppercase tracking-[0.26em] ${visual.accentClassName}`}
           >
-            FILMATTA Learn
+            {planLabel}
           </p>
 
           {view.status === "confirmed" ? (

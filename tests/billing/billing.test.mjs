@@ -127,6 +127,9 @@ test('billing return confirms only the server plan expected for its Stripe flow'
   assert.equal(view('cancel', 'plus', false, null,
     '2026-10-13T04:34:08.000Z').plan, 'plus');
   assert.equal(returnPresentation.parseBillingReturnSource('cancel'), 'cancel');
+  assert.equal(returnPresentation.getBillingReturnPlanLabel('plus'), 'FILMATTA PLUS');
+  assert.equal(returnPresentation.getBillingReturnPlanLabel('pro'), 'FILMATTA PRO');
+  assert.equal(returnPresentation.getBillingReturnPlanLabel(null), 'FILMATTA');
 
   assert.equal(returnPresentation.parseBillingReturnSource('plan=pro'), 'unknown');
   assert.equal(view('unknown', 'pro').status, 'waiting',
@@ -161,7 +164,12 @@ test('billing return is authenticated, bounded, read-only and refreshes plans wi
   assert.match(billingReturnPage, /\/brand\/matti\/matti-plan-success\.png/);
   assert.match(billingReturnPage, /\/brand\/matti\/matti-plan-cancel\.png/,
     'The dedicated cancellation Matti path is ready with a server-side fallback');
+  assert.equal(fs.existsSync('public/brand/matti/matti-plan-cancel.png'), true);
+  assert.match(billingReturnPage, /parsedSource === "cancel" &&\s*cancellationEffectiveAt/,
+    'The sad Matti requires a verified cancellation, not only a query parameter');
   assert.match(billingReturnClient, /Seguir usando FILMATTA/);
+  assert.match(billingReturnClient, /getBillingReturnPlanLabel/);
+  assert.doesNotMatch(billingReturnClient, /FILMATTA Learn/);
   assert.match(billingReturnClient, /onClick=\{\(\) => window\.location\.replace\("\/planes"\)\}/,
     'The explicit CTA uses a full navigation to avoid the pre-upgrade Router Cache');
   assert.doesNotMatch(billingReturnClient, /BILLING_RETURN_REDIRECT_DELAY_MS/,
@@ -774,6 +782,8 @@ test('Portal return verifies cancellation server-side and never trusts a redirec
   assert.doesNotMatch(billingPortalReturnPage, /searchParams|customer_id|subscription_id/);
   assert.match(subscriptionPage, /getMyScheduledCancellation\(viewer\.id\)/);
   assert.match(subscriptionPage, /Tu suscripción se cancelará el/);
+  assert.doesNotMatch(subscriptionPage, /source=portal|portal-return/,
+    'A normal account visit never re-enters the Portal return detector');
 });
 
 test('scheduled cancellation migration is additive and keeps write authority on service role', () => {
