@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
 import { startCheckout, openBillingPortal } from "./actions";
 import LoadingButton from "@/components/ui/LoadingButton";
+import { getMyScheduledCancellation } from "@/lib/billing/cancellation";
+import { formatBillingEffectiveDate } from "@/lib/billing/return-presentation";
 
 export default async function SubscriptionPage({ searchParams }: {
   searchParams: Promise<{ checkout?: string; error?: string }>;
@@ -16,6 +18,17 @@ export default async function SubscriptionPage({ searchParams }: {
   const feedback = await searchParams;
   const enabled = billingEnabled();
   const access = await getBillingAccess();
+  let cancellationEffectiveAt: string | null = null;
+  if (enabled && access.plan) {
+    try {
+      const cancellation = await getMyScheduledCancellation(viewer.id);
+      if (cancellation.plan === access.plan && cancellation.isCancellationScheduled) {
+        cancellationEffectiveAt = cancellation.cancellationEffectiveAt;
+      }
+    } catch (error) {
+      console.error("Unable to read the scheduled cancellation", error);
+    }
+  }
   const db = await createClient();
   const result = enabled ? await db.from("billing_subscriptions")
     .select("plan, status, current_period_end, cancel_at_period_end, updated_at")
@@ -33,12 +46,13 @@ export default async function SubscriptionPage({ searchParams }: {
         <p className="mt-1 text-sm text-amber-100/75">Checkout de prueba. Usa únicamente tarjetas de prueba de Stripe.</p>
       </div> : <p className="mt-4 text-white/60">Las suscripciones estarán disponibles próximamente.</p>}
       <p className="mt-6">Acceso actual: FILMATTA {access.plan === "pro" ? "Pro" : access.plan === "plus" ? "Plus" : "Free"}</p>
+      {access.plan && cancellationEffectiveAt && <p role="status" className="mt-5 rounded-xl border border-amber-300/25 bg-amber-300/[0.06] px-4 py-3 text-sm leading-6 text-amber-100/80">Tu suscripción se cancelará el {formatBillingEffectiveDate(cancellationEffectiveAt)}. Seguirás teniendo acceso a FILMATTA {access.plan === "plus" ? "Plus" : "Pro"} hasta esa fecha.</p>}
       {feedback.checkout === "returned" && <p role="status" className="mt-5 text-amber-200">Recibimos tu regreso de Checkout. El acceso se actualizará cuando Stripe confirme el pago. <Link href="/cuenta/suscripcion" className="underline">Consultar estado</Link></p>}
       {feedback.checkout === "canceled" && <p role="status" className="mt-5 text-white/60">Saliste de Checkout. No se activó una suscripción desde esta página.</p>}
       {(feedback.error || result.error) && <p role="alert" className="mt-5 text-red-200">No pudimos completar la operación. Revisa tu suscripción existente o intenta más tarde. Las pruebas están limitadas a México.</p>}
       {subscriptions.map((s, index) => <div key={`${s.plan}:${s.updated_at}:${index}`} className="mt-5 rounded-xl border border-white/10 p-5">
         <p>FILMATTA {s.plan === "pro" ? "Pro" : s.plan === "plus" ? "Plus" : "Plan sin reconocer"} · {subscriptionLabel(s.status)}</p>
-        {s.current_period_end && <p className="mt-2 text-sm text-white/50">{s.cancel_at_period_end ? "Cancelación programada" : "Fin del periodo"}: {new Date(s.current_period_end).toLocaleDateString("es-MX", { timeZone: "America/Mexico_City" })}</p>}
+        {s.current_period_end && <p className="mt-2 text-sm text-white/50">{s.cancel_at_period_end || (s.plan === access.plan && cancellationEffectiveAt) ? "Cancelación programada" : "Fin del periodo"}: {new Date(s.plan === access.plan && cancellationEffectiveAt ? cancellationEffectiveAt : s.current_period_end).toLocaleDateString("es-MX", { timeZone: "America/Mexico_City" })}</p>}
       </div>)}
       {enabled && !hasSubscription && <div className="mt-8 grid gap-5 sm:grid-cols-2">
         {(["plus", "pro"] as const).map((plan) => <form action={startCheckout} key={plan} className="rounded-2xl border border-white/15 p-6">

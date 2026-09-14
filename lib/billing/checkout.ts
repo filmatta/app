@@ -92,7 +92,7 @@ export async function createTestPortal(userId: string) {
   });
   assertPortalConfiguration(portal, config.prices);
   const session = await stripe.billingPortal.sessions.create({ customer: customer.id, configuration: config.portal,
-    return_url: `${config.origin}/cuenta/suscripcion` });
+    return_url: `${config.origin}/billing/portal-return` });
   const destination = new URL(session.url);
   if (destination.protocol !== "https:" || destination.hostname !== "billing.stripe.com") {
     throw new Error("Unexpected portal destination");

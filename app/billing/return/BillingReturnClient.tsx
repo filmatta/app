@@ -18,10 +18,14 @@ export default function BillingReturnClient({
   initialPlan,
   source,
   downgradeEffectiveAt,
+  cancellationEffectiveAt,
+  mattiSrc,
 }: {
   initialPlan: BillingPlan | null;
   source: BillingReturnSource;
   downgradeEffectiveAt: string | null;
+  cancellationEffectiveAt: string | null;
+  mattiSrc: string;
 }) {
   const [plan, setPlan] = useState<BillingPlan | null>(initialPlan);
   const [timedOut, setTimedOut] = useState(false);
@@ -30,6 +34,7 @@ export default function BillingReturnClient({
     plan,
     timedOut,
     downgradeEffectiveAt,
+    cancellationEffectiveAt,
   });
 
   useEffect(() => {
@@ -61,6 +66,7 @@ export default function BillingReturnClient({
               plan: data.plan,
               timedOut: false,
               downgradeEffectiveAt,
+              cancellationEffectiveAt,
             });
             if (nextView.status === "confirmed") {
               clearTimeout(timeoutTimer);
@@ -82,7 +88,7 @@ export default function BillingReturnClient({
       clearTimeout(timeoutTimer);
       if (timer) clearTimeout(timer);
     };
-  }, [downgradeEffectiveAt, source, timedOut, view.status]);
+  }, [cancellationEffectiveAt, downgradeEffectiveAt, source, timedOut, view.status]);
 
   const visual =
     view.status === "confirmed"
@@ -95,7 +101,7 @@ export default function BillingReturnClient({
         className={`flex w-full flex-col items-center rounded-3xl border px-6 py-10 text-center ${visual.panelClassName} shadow-2xl shadow-black/30 sm:px-10 sm:py-12`}
       >
         <Image
-          src="/brand/matti/matti-plan-success.png"
+          src={mattiSrc}
           alt="Matti, la mascota de FILMATTA"
           width={240}
           height={240}
@@ -121,13 +127,15 @@ export default function BillingReturnClient({
               <p className="mt-4 max-w-xl leading-7 text-white/60">
                 {view.message}
               </p>
-              {view.effectiveAt && (
+              {view.effectiveAt && view.kind === "downgrade" && (
                 <p className="mt-4 text-sm font-medium text-white/65">
                   Tu plan cambiará el {formatBillingEffectiveDate(view.effectiveAt)}.
                 </p>
               )}
               <p className="mt-4 text-sm text-white/35">
-                Tu plan ya está listo. Continúa cuando quieras.
+                {view.kind === "cancel"
+                  ? "Tu acceso actual permanece activo hasta esa fecha."
+                  : "Tu plan ya está listo. Continúa cuando quieras."}
               </p>
             </>
           ) : view.status === "timeout" ? (
@@ -152,7 +160,16 @@ export default function BillingReturnClient({
             </>
           )}
 
-          <div className="mt-8">
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            {view.status === "confirmed" && view.kind === "cancel" && (
+              <button
+                type="button"
+                onClick={() => window.location.replace("/")}
+                className="inline-flex rounded-full bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              >
+                Seguir usando FILMATTA
+              </button>
+            )}
             <button
               type="button"
               onClick={() => window.location.replace("/planes")}

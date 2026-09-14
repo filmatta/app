@@ -156,7 +156,13 @@ export async function reconcileBillingEvent(event: Stripe.Event) {
       if (plan && validUntil) entitlements.push({ subscription: subscription.id, plan, valid_until: validUntil });
       return { id: subscription.id, plan, price: price?.id ?? null, status: subscription.status,
         period_end: item ? new Date(item.current_period_end * 1000).toISOString() : null,
-        cancel_at_period_end: subscription.cancel_at_period_end };
+        cancel_at_period_end: subscription.cancel_at_period_end,
+        cancel_at: subscription.cancel_at
+          ? new Date(subscription.cancel_at * 1000).toISOString()
+          : null,
+        canceled_at: subscription.canceled_at
+          ? new Date(subscription.canceled_at * 1000).toISOString()
+          : null };
     });
     const { error: syncError } = await db.rpc("apply_billing_snapshot", {
       p_customer: customerId, p_token: token, p_event: event.id, p_event_type: event.type,

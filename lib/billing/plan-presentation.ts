@@ -19,6 +19,7 @@ export function getPlanCardAction({
   billingAvailable,
   scheduledDowngradeAt = null,
   downgradeUnavailable = false,
+  cancellationScheduled = false,
 }: {
   planId: PlanCardId;
   currentPlan: BillingPlan | null;
@@ -26,6 +27,7 @@ export function getPlanCardAction({
   billingAvailable: boolean;
   scheduledDowngradeAt?: string | null;
   downgradeUnavailable?: boolean;
+  cancellationScheduled?: boolean;
 }): PlanCardAction {
   const effectivePlan = authenticated ? currentPlan : null;
 
@@ -53,6 +55,10 @@ export function getPlanCardAction({
 
   if (effectivePlan === planId) {
     return { kind: "status", label: "Tu plan actual" };
+  }
+
+  if (cancellationScheduled) {
+    return { kind: "status", label: "Cancelación programada" };
   }
 
   if (effectivePlan === "pro" && planId === "plus") {
