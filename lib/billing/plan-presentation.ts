@@ -9,6 +9,7 @@ export type PlanCardAction =
   | { kind: "pro-upgrade"; label: string }
   | { kind: "downgrade"; label: string; href: string }
   | { kind: "scheduled-downgrade"; label: string; effectiveAt: string }
+  | { kind: "keep-subscription"; label: string; effectiveAt: string }
   | { kind: "status"; label: string }
   | { kind: "coming-soon"; label: string };
 
@@ -19,7 +20,7 @@ export function getPlanCardAction({
   billingAvailable,
   scheduledDowngradeAt = null,
   downgradeUnavailable = false,
-  cancellationScheduled = false,
+  cancellationEffectiveAt = null,
 }: {
   planId: PlanCardId;
   currentPlan: BillingPlan | null;
@@ -27,7 +28,7 @@ export function getPlanCardAction({
   billingAvailable: boolean;
   scheduledDowngradeAt?: string | null;
   downgradeUnavailable?: boolean;
-  cancellationScheduled?: boolean;
+  cancellationEffectiveAt?: string | null;
 }): PlanCardAction {
   const effectivePlan = authenticated ? currentPlan : null;
 
@@ -54,10 +55,16 @@ export function getPlanCardAction({
   }
 
   if (effectivePlan === planId) {
-    return { kind: "status", label: "Tu plan actual" };
+    return cancellationEffectiveAt
+      ? {
+          kind: "keep-subscription",
+          label: "Mantener mi suscripción",
+          effectiveAt: cancellationEffectiveAt,
+        }
+      : { kind: "status", label: "Tu plan actual" };
   }
 
-  if (cancellationScheduled) {
+  if (cancellationEffectiveAt) {
     return { kind: "status", label: "Cancelación programada" };
   }
 

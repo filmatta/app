@@ -1,7 +1,9 @@
 import "server-only";
+import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
 import { billingConfig, stripeClient } from "./config";
+import { withBillingLock } from "./lock";
 import type { BillingPlan } from "./policy";
 
 const TERMINAL_SUBSCRIPTION_STATUSES = new Set([
@@ -16,6 +18,14 @@ export type ScheduledCancellation = {
 
 export type MyScheduledCancellation = ScheduledCancellation & {
   plan: BillingPlan | null;
+};
+
+type BillingConfig = ReturnType<typeof billingConfig>;
+
+type CancellationContext = MyScheduledCancellation & {
+  customerId: string;
+  subscription: Stripe.Subscription;
+  item: Stripe.SubscriptionItem;
 };
 
 export function resolveScheduledCancellation(
@@ -46,6 +56,72 @@ export async function getMyScheduledCancellation(
   userId: string
 ): Promise<MyScheduledCancellation> {
   const config = billingConfig();
+  const customerId = await getBillingCustomerId(userId);
+  if (!customerId) return emptyCancellation();
+
+  const context = await resolveCancellationContext(
+    config,
+    stripeClient(),
+    customerId
+  );
+  return context ? toPublicCancellation(context) : emptyCancellation();
+}
+
+export async function keepScheduledSubscription(
+  userId: string
+): Promise<MyScheduledCancellation> {
+  const config = billingConfig();
+  const customerId = await getBillingCustomerId(userId);
+  if (!customerId) throw new Error("No billing customer");
+
+  return withBillingLock(customerId, async () => {
+    const stripe = stripeClient();
+    const context = await resolveCancellationContext(config, stripe, customerId);
+    if (!context) throw new Error("No current subscription");
+    if (!context.isCancellationScheduled || !context.cancellationEffectiveAt) {
+      throw new Error("No scheduled cancellation");
+    }
+
+    await stripe.subscriptions.update(
+      context.subscription.id,
+      {
+        cancel_at: "",
+        cancel_at_period_end: false,
+        proration_behavior: "none",
+      },
+      {
+        idempotencyKey: [
+          "filmatta-test-keep",
+          context.subscription.id,
+          Math.floor(Date.parse(context.cancellationEffectiveAt) / 1000),
+          context.subscription.canceled_at ?? 0,
+        ].join("-"),
+      }
+    );
+
+    const verified = await resolveCancellationContext(config, stripe, customerId);
+    if (!verified) {
+      throw new Error("Stripe did not preserve the current subscription");
+    }
+    if (
+      verified.subscription.id !== context.subscription.id ||
+      verified.customerId !== context.customerId ||
+      verified.item.id !== context.item.id ||
+      verified.item.price.id !== context.item.price.id ||
+      verified.item.quantity !== context.item.quantity ||
+      verified.plan !== context.plan ||
+      verified.isCancellationScheduled ||
+      verified.subscription.cancel_at !== null ||
+      verified.subscription.cancel_at_period_end
+    ) {
+      throw new Error("Stripe did not remove the scheduled cancellation safely");
+    }
+
+    return toPublicCancellation(verified);
+  });
+}
+
+async function getBillingCustomerId(userId: string) {
   const { data, error } = await createAdminClient()
     .from("billing_customers")
     .select("stripe_customer_id")
@@ -53,20 +129,19 @@ export async function getMyScheduledCancellation(
     .maybeSingle();
 
   if (error) throw error;
-  if (!data) {
-    return {
-      plan: null,
-      isCancellationScheduled: false,
-      cancellationEffectiveAt: null,
-    };
-  }
+  return (data?.stripe_customer_id as string | undefined) ?? null;
+}
 
-  const stripe = stripeClient();
+async function resolveCancellationContext(
+  config: BillingConfig,
+  stripe: Stripe,
+  customerId: string
+): Promise<CancellationContext | null> {
   const [account, customer, subscriptions] = await Promise.all([
     stripe.accounts.retrieve(config.account),
-    stripe.customers.retrieve(data.stripe_customer_id),
+    stripe.customers.retrieve(customerId),
     stripe.subscriptions.list({
-      customer: data.stripe_customer_id,
+      customer: customerId,
       status: "all",
       limit: 100,
       expand: ["data.items.data.price"],
@@ -79,7 +154,7 @@ export async function getMyScheduledCancellation(
   if (
     customer.deleted ||
     customer.livemode ||
-    customer.id !== data.stripe_customer_id
+    customer.id !== customerId
   ) {
     throw new Error("Invalid Stripe test customer");
   }
@@ -91,21 +166,17 @@ export async function getMyScheduledCancellation(
     (subscription) => !TERMINAL_SUBSCRIPTION_STATUSES.has(subscription.status)
   );
   if (current.length === 0) {
-    return {
-      plan: null,
-      isCancellationScheduled: false,
-      cancellationEffectiveAt: null,
-    };
+    return null;
   }
   if (current.length !== 1) {
     throw new Error("Exactly one current subscription is required");
   }
 
   const subscription = current[0];
-  const customerId = expandableId(subscription.customer);
+  const subscriptionCustomerId = expandableId(subscription.customer);
   if (
     subscription.livemode ||
-    customerId !== customer.id ||
+    subscriptionCustomerId !== customer.id ||
     subscription.status !== "active" ||
     subscription.pause_collection ||
     subscription.pending_update ||
@@ -133,15 +204,36 @@ export async function getMyScheduledCancellation(
     throw new Error("Unexpected subscription price");
   }
 
+  const cancellation = resolveScheduledCancellation({
+    status: subscription.status,
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    cancelAt: toIso(subscription.cancel_at),
+    currentPeriodEnd: toIso(item.current_period_end),
+    canceledAt: toIso(subscription.canceled_at),
+  });
+
   return {
+    customerId,
+    subscription,
+    item,
     plan,
-    ...resolveScheduledCancellation({
-      status: subscription.status,
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
-      cancelAt: toIso(subscription.cancel_at),
-      currentPeriodEnd: toIso(item.current_period_end),
-      canceledAt: toIso(subscription.canceled_at),
-    }),
+    ...cancellation,
+  };
+}
+
+function toPublicCancellation({
+  plan,
+  isCancellationScheduled,
+  cancellationEffectiveAt,
+}: CancellationContext): MyScheduledCancellation {
+  return { plan, isCancellationScheduled, cancellationEffectiveAt };
+}
+
+function emptyCancellation(): MyScheduledCancellation {
+  return {
+    plan: null,
+    isCancellationScheduled: false,
+    cancellationEffectiveAt: null,
   };
 }
 
