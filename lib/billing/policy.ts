@@ -45,12 +45,14 @@ export function previouslyPaidAccessUntil(input: {
   previousValidUntil: string;
 }, now = Date.now() / 1000): string | null {
   const previousEnd = Date.parse(input.previousValidUntil) / 1000;
+  const renewalCollectionPending =
+    input.invoiceStatus === "draft" || input.invoiceStatus === "open";
   if (
     !["active", "past_due", "unpaid"].includes(input.status) ||
     input.paused ||
     !input.knownPrice ||
     input.country !== "MX" ||
-    input.invoiceStatus !== "open" ||
+    !renewalCollectionPending ||
     input.invoicePaid ||
     input.reversed ||
     !Number.isFinite(previousEnd) ||
