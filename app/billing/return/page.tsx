@@ -48,6 +48,7 @@ export default async function BillingReturnPage({
   const cancellationMatti = "/brand/matti/matti-plan-cancel.png";
   const mattiSrc =
     parsedSource === "cancel" &&
+    cancellationEffectiveAt &&
     existsSync(join(process.cwd(), "public", cancellationMatti))
       ? cancellationMatti
       : "/brand/matti/matti-plan-success.png";
