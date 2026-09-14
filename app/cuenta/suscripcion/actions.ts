@@ -8,6 +8,10 @@ import {
   createTestPortal,
   createTestProUpgradePortal,
 } from "@/lib/billing/checkout";
+import {
+  releaseScheduledDowngrade,
+  scheduleDowngradeToPlus as scheduleDowngradeToPlusForUser,
+} from "@/lib/billing/subscription-schedule";
 
 export async function startCheckout(form: FormData) {
   const viewer = await getViewer();
@@ -36,4 +40,28 @@ export async function upgradeToPro() {
   try { url = await createTestProUpgradePortal(viewer.id); }
   catch { console.error("Test Pro upgrade unavailable"); redirect("/cuenta/suscripcion?error=portal"); }
   redirect(url);
+}
+
+export async function scheduleDowngradeToPlus() {
+  const viewer = await getViewer();
+  if (!viewer) redirect("/acceso?next=%2Fcuenta%2Fsuscripcion%2Fcambiar-a-plus");
+  try {
+    await scheduleDowngradeToPlusForUser(viewer.id);
+  } catch (error) {
+    console.error("Test Plus downgrade unavailable", error);
+    redirect("/cuenta/suscripcion/cambiar-a-plus?error=schedule");
+  }
+  redirect("/billing/return?source=downgrade");
+}
+
+export async function undoDowngradeToPlus() {
+  const viewer = await getViewer();
+  if (!viewer) redirect("/acceso?next=%2Fplanes");
+  try {
+    await releaseScheduledDowngrade(viewer.id);
+  } catch (error) {
+    console.error("Test Plus downgrade release unavailable", error);
+    redirect("/planes?error=downgrade");
+  }
+  redirect("/planes?downgrade=released");
 }

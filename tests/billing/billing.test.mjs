@@ -14,6 +14,8 @@ const billingReturnPage = fs.readFileSync('app/billing/return/page.tsx', 'utf8')
 const billingReturnClient = fs.readFileSync('app/billing/return/BillingReturnClient.tsx', 'utf8');
 const billingStatusRoute = fs.readFileSync('app/api/billing/status/route.ts', 'utf8');
 const billingPlanBadge = fs.readFileSync('components/BillingPlanBadge.tsx', 'utf8');
+const downgradeConfirmationPage = fs.readFileSync(
+  'app/cuenta/suscripcion/cambiar-a-plus/page.tsx', 'utf8');
 
 function loadHeaderPlan(getBillingAccess) {
   return load('lib/billing/header-plan.ts', {
@@ -82,8 +84,8 @@ test('plan visuals keep Plus, Pro and future Business badges consistent', () => 
 });
 
 test('billing return confirms only the server plan expected for its Stripe flow', () => {
-  const view = (source, plan, timedOut = false) =>
-    returnPresentation.getBillingReturnView({ source, plan, timedOut });
+  const view = (source, plan, timedOut = false, downgradeEffectiveAt = null) =>
+    returnPresentation.getBillingReturnView({ source, plan, timedOut, downgradeEffectiveAt });
 
   assert.equal(view('upgrade', 'plus').status, 'waiting');
   assert.equal(view('upgrade', 'pro').status, 'confirmed');
@@ -96,9 +98,19 @@ test('billing return confirms only the server plan expected for its Stripe flow'
   assert.equal(view('checkout', null).status, 'waiting');
   assert.equal(view('checkout', null, true).status, 'timeout');
 
+  assert.equal(view('downgrade', 'pro').status, 'waiting',
+    'A Pro entitlement alone cannot confirm a scheduled downgrade');
+  const downgrade = view('downgrade', 'pro', false, '2026-10-13T04:34:08.000Z');
+  assert.equal(downgrade.status, 'confirmed');
+  assert.equal(downgrade.plan, 'pro', 'Pro remains the effective plan');
+  assert.match(downgrade.title, /cambio a Plus quedó programado/);
+  assert.equal(returnPresentation.parseBillingReturnSource('downgrade'), 'downgrade');
+
   assert.equal(returnPresentation.parseBillingReturnSource('plan=pro'), 'unknown');
   assert.equal(view('unknown', 'pro').status, 'waiting',
     'A manipulated visual source cannot claim a plan');
+  assert.equal(view('downgrade', 'plus', false, '2026-10-13T04:34:08.000Z').status, 'waiting',
+    'A manipulated source never presents Plus as effective');
   assert.equal(view('upgrade', null, true).status, 'timeout',
     'Timeout never invents paid access');
 });
@@ -113,6 +125,7 @@ test('billing return is authenticated, bounded, read-only and refreshes plans wi
   );
   assert.match(billingReturnPage, /if \(!viewer\) redirect\("\/acceso\?next=%2Fbilling%2Freturn"\)/);
   assert.match(billingReturnPage, /getBillingAccess\(\)/);
+  assert.match(billingReturnPage, /getProToPlusDowngradeState\(viewer\.id\)/);
   assert.match(billingStatusRoute, /if \(!viewer\)/);
   assert.match(billingStatusRoute, /getBillingAccess\(\)/);
   assert.match(billingStatusRoute, /private, no-store/);
@@ -130,12 +143,19 @@ test('billing return is authenticated, bounded, read-only and refreshes plans wi
     /subscriptions\.create|entitlements.*(?:insert|upsert)|invoices.*(?:insert|upsert)|payments.*(?:insert|upsert)/,
     'The return flow never creates Billing records'
   );
+  assert.match(downgradeConfirmationPage, /getProToPlusDowngradeState\(viewer\.id\)/);
+  assert.match(downgradeConfirmationPage, /Programar cambio a Plus/);
+  assert.doesNotMatch(downgradeConfirmationPage,
+    /name=["'](?:customer|subscription|item|price|date)/,
+    'The downgrade form sends no Billing identifiers');
 });
 
-test('plans page presents Checkout, current plan and Portal actions safely', () => {
-  const action = (planId, currentPlan, authenticated = true, billingAvailable = true) =>
+test('plans page presents Checkout, current plan and controlled plan actions safely', () => {
+  const action = (planId, currentPlan, authenticated = true, billingAvailable = true,
+    scheduledDowngradeAt = null, downgradeUnavailable = false) =>
     JSON.parse(JSON.stringify(
-      planPresentation.getPlanCardAction({ planId, currentPlan, authenticated, billingAvailable })
+      planPresentation.getPlanCardAction({ planId, currentPlan, authenticated, billingAvailable,
+        scheduledDowngradeAt, downgradeUnavailable })
     ));
 
   assert.deepEqual(action('free', null), { kind: 'link', label: 'Explorar cursos', href: '/cursos' });
@@ -147,8 +167,14 @@ test('plans page presents Checkout, current plan and Portal actions safely', () 
   assert.deepEqual(action('pro', 'plus'), { kind: 'pro-upgrade', label: 'Actualizar a Pro' });
 
   assert.deepEqual(action('free', 'pro'), { kind: 'status', label: 'Plan base incluido' });
-  assert.deepEqual(action('plus', 'pro'), { kind: 'portal', label: 'Administrar plan' });
+  assert.deepEqual(action('plus', 'pro'), {
+    kind: 'downgrade', label: 'Cambiar a Plus', href: '/cuenta/suscripcion/cambiar-a-plus',
+  });
   assert.deepEqual(action('pro', 'pro'), { kind: 'status', label: 'Tu plan actual' });
+  assert.deepEqual(action('plus', 'pro', true, true, '2026-10-13T04:34:08.000Z'), {
+    kind: 'scheduled-downgrade', label: 'Deshacer cambio',
+    effectiveAt: '2026-10-13T04:34:08.000Z',
+  });
 
   for (const currentPlan of [null, 'plus', 'pro']) {
     assert.deepEqual(action('business', currentPlan), { kind: 'coming-soon', label: 'Próximamente' });
@@ -386,8 +412,17 @@ test('plan changes keep one subscription and replace the entitlement only after 
   assert.equal(state.subscriptions[0].plan, 'pro', 'Scheduled downgrade preserves Pro until period end');
   assert.equal(state.grants[0].plan, 'pro');
 
-  state.plan = 'plus'; state.scheduledPlan = null;
+  state.plan = 'plus'; state.scheduledPlan = null; state.invoicePaid = false;
   await send('evt_downgrade_effective', 'customer.subscription.updated');
+  assert.equal(state.subscriptions[0].plan, 'plus');
+  assert.equal(state.grants.length, 0,
+    'The phase transition does not grant Plus before its invoice is paid');
+
+  await send('evt_downgrade_payment_failed', 'invoice.payment_failed');
+  assert.equal(state.grants.length, 0, 'A failed Plus renewal grants no premium access');
+
+  state.invoicePaid = true;
+  await send('evt_downgrade_paid', 'invoice.paid');
   assert.equal(state.subscriptions.length, 1);
   assert.equal(state.subscriptions[0].id, 'sub_test');
   assert.equal(state.subscriptions[0].plan, 'plus');
@@ -396,7 +431,7 @@ test('plan changes keep one subscription and replace the entitlement only after 
   assert.equal(state.grants[0].plan, 'plus');
 
   await send('evt_downgrade_effective', 'customer.subscription.updated');
-  assert.equal(state.commits, 5, 'Duplicate delivery does not write another snapshot');
+  assert.equal(state.commits, 7, 'Duplicate delivery does not write another snapshot');
 });
 
 test('unknown Prices and subscriptions with multiple items never grant access', async () => {
@@ -469,6 +504,8 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   let portalCustomerExists = true;
   let upgradeCalls = 0;
   let upgradeAllowed = true;
+  let downgradeCalls = 0;
+  let releaseCalls = 0;
   const actions = load('app/cuenta/suscripcion/actions.ts', {
     'next/navigation': { redirect: (url) => { throw new Error(`redirect:${url}`); } },
     '@/lib/auth/get-viewer': { getViewer: async () => viewer },
@@ -488,11 +525,23 @@ test('checkout authenticates and rejects forged plan/country before contacting S
         return 'https://billing.stripe.com/p/session/pro-upgrade';
       },
     },
+    '@/lib/billing/subscription-schedule': {
+      scheduleDowngradeToPlus: async (userId) => {
+        downgradeCalls++;
+        assert.equal(userId, 'trusted');
+      },
+      releaseScheduledDowngrade: async (userId) => {
+        releaseCalls++;
+        assert.equal(userId, 'trusted');
+      },
+    },
   });
   const form = new FormData(); form.set('plan', 'plus'); form.set('country', 'MX');
   await assert.rejects(actions.startCheckout(form), /acceso/);
   await assert.rejects(actions.openBillingPortal(), /acceso/);
   await assert.rejects(actions.upgradeToPro(), /acceso/);
+  await assert.rejects(actions.scheduleDowngradeToPlus(), /acceso/);
+  await assert.rejects(actions.undoDowngradeToPlus(), /acceso/);
   viewer = { id: 'trusted', email: null };
   form.set('plan', 'business'); await assert.rejects(actions.startCheckout(form), /country/);
   form.set('plan', 'plus'); form.set('country', 'US'); await assert.rejects(actions.startCheckout(form), /country/);
@@ -515,6 +564,10 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   upgradeAllowed = false;
   await assert.rejects(actions.upgradeToPro(forged), /error=portal/);
   assert.equal(upgradeCalls, 2);
+  await assert.rejects(actions.scheduleDowngradeToPlus(forged), /source=downgrade/);
+  await assert.rejects(actions.undoDowngradeToPlus(forged), /downgrade=released/);
+  assert.equal(downgradeCalls, 1, 'Downgrade action accepts no Stripe identifiers');
+  assert.equal(releaseCalls, 1, 'Release action accepts no Stripe identifiers');
 });
 
 test('portal button depends on server configuration instead of the visual subscription list', () => {
@@ -709,6 +762,273 @@ test('Plus upgrade deep link resolves the active subscription server-side and ta
   mapped = false;
   await assert.rejects(upgrade('trusted'), /No billing customer/);
   assert.equal(sessions, 1);
+});
+
+function downgradeHarness() {
+  const periodStart = Date.parse('2026-09-13T04:34:08Z') / 1000;
+  const periodEnd = Date.parse('2026-10-13T04:34:08Z') / 1000;
+  const nextPeriodEnd = Date.parse('2026-11-13T04:34:08Z') / 1000;
+  const state = {
+    subscriptions: true,
+    status: 'active',
+    plan: 'pro',
+    quantity: 1,
+    multipleItems: false,
+    cancelAtPeriodEnd: false,
+    pendingUpdate: null,
+    pauseCollection: null,
+    trialEnd: null,
+    schedule: null,
+    createKey: null,
+    createInvocations: 0,
+    schedulesCreated: 0,
+    updateCalls: 0,
+    releaseCalls: 0,
+    cancelCalls: 0,
+    failUpdateOnce: false,
+  };
+
+  const price = (id) => ({
+    id,
+    livemode: false,
+    active: true,
+    currency: 'mxn',
+    unit_amount: id === 'price_plus' ? 29900 : 49900,
+    recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' },
+    product: { id: id === 'price_plus' ? 'prod_plus' : 'prod_pro', active: true },
+  });
+  const phase = ({ priceId, start, end, proration = 'none' }) => ({
+    start_date: start,
+    end_date: end,
+    proration_behavior: proration,
+    automatic_tax: { enabled: false },
+    default_tax_rates: [{ id: 'txr_test' }],
+    discounts: [],
+    items: [{ price: priceId, quantity: 1 }],
+  });
+  const subscription = () => ({
+    id: 'sub_pro',
+    livemode: false,
+    status: state.status,
+    customer: 'cus_trusted',
+    cancel_at_period_end: state.cancelAtPeriodEnd,
+    cancel_at: null,
+    pending_update: state.pendingUpdate,
+    pause_collection: state.pauseCollection,
+    trial_end: state.trialEnd,
+    discounts: [],
+    schedule: state.schedule?.status === 'active' ? state.schedule.id : null,
+    items: {
+      has_more: false,
+      data: state.multipleItems
+        ? [
+            { id: 'si_pro', price: price('price_pro'), quantity: 1,
+              current_period_start: periodStart, current_period_end: periodEnd },
+            { id: 'si_extra', price: price('price_pro'), quantity: 1,
+              current_period_start: periodStart, current_period_end: periodEnd },
+          ]
+        : [{
+            id: 'si_pro',
+            price: price(state.plan === 'pro' ? 'price_pro' : state.plan === 'plus' ? 'price_plus' : 'price_unknown'),
+            quantity: state.quantity,
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+          }],
+    },
+  });
+  const expectedSchedule = () => ({
+    id: 'sub_sched_test',
+    livemode: false,
+    status: 'active',
+    customer: 'cus_trusted',
+    subscription: 'sub_pro',
+    end_behavior: 'release',
+    current_phase: { start_date: periodStart, end_date: periodEnd },
+    metadata: {
+      filmatta_change: 'pro_to_plus',
+      filmatta_subscription_id: 'sub_pro',
+      filmatta_effective_at: String(periodEnd),
+    },
+    phases: [
+      phase({ priceId: 'price_pro', start: periodStart, end: periodEnd }),
+      phase({ priceId: 'price_plus', start: periodEnd, end: nextPeriodEnd }),
+    ],
+  });
+  const mirrorSchedule = () => ({
+    id: 'sub_sched_test',
+    livemode: false,
+    status: 'active',
+    customer: 'cus_trusted',
+    subscription: 'sub_pro',
+    end_behavior: 'release',
+    current_phase: { start_date: periodStart, end_date: periodEnd },
+    metadata: {},
+    phases: [phase({ priceId: 'price_pro', start: periodStart, end: periodEnd,
+      proration: 'create_prorations' })],
+  });
+
+  const q = { select() { return q; }, eq() { return q; }, maybeSingle: async () => ({
+    data: { stripe_customer_id: 'cus_trusted' }, error: null,
+  }) };
+  const stripe = {
+    accounts: { retrieve: async () => ({ id: 'acct_test', country: 'MX' }) },
+    customers: { retrieve: async () => ({
+      id: 'cus_trusted', livemode: false, deleted: false, address: { country: 'MX' },
+    }) },
+    prices: { retrieve: async (id) => price(id) },
+    taxRates: { retrieve: async () => ({
+      id: 'txr_test', livemode: false, active: true, inclusive: true,
+      percentage: 16, country: 'MX',
+    }) },
+    subscriptions: { list: async () => ({
+      has_more: false,
+      data: state.subscriptions ? [subscription()] : [],
+    }) },
+    subscriptionSchedules: {
+      create: async (params, options) => {
+        state.createInvocations++;
+        assert.equal(params.from_subscription, 'sub_pro');
+        if (state.schedule) {
+          if (options.idempotencyKey !== state.createKey) throw new Error('Schedule already attached');
+          return state.schedule;
+        }
+        state.createKey = options.idempotencyKey;
+        state.schedulesCreated++;
+        state.schedule = mirrorSchedule();
+        return state.schedule;
+      },
+      update: async (id, params, options) => {
+        state.updateCalls++;
+        assert.equal(id, 'sub_sched_test');
+        assert.match(options.idempotencyKey, /pro_to_plus-update-sub_pro/);
+        assert.equal(params.end_behavior, 'release');
+        assert.equal(params.proration_behavior, 'none');
+        assert.equal(params.phases.length, 2);
+        assert.deepEqual(JSON.parse(JSON.stringify(params.phases[0])), {
+          start_date: periodStart,
+          end_date: periodEnd,
+          items: [{ price: 'price_pro', quantity: 1 }],
+          automatic_tax: { enabled: false },
+          default_tax_rates: ['txr_test'],
+          discounts: [],
+          proration_behavior: 'none',
+        });
+        assert.deepEqual(JSON.parse(JSON.stringify(params.phases[1])), {
+          duration: { interval: 'month', interval_count: 1 },
+          items: [{ price: 'price_plus', quantity: 1 }],
+          automatic_tax: { enabled: false },
+          default_tax_rates: ['txr_test'],
+          discounts: [],
+          proration_behavior: 'none',
+        });
+        if (state.failUpdateOnce) {
+          state.failUpdateOnce = false;
+          throw new Error('Temporary Stripe failure');
+        }
+        state.schedule = expectedSchedule();
+        return state.schedule;
+      },
+      retrieve: async (id) => {
+        assert.equal(id, state.schedule.id);
+        return state.schedule;
+      },
+      release: async (id, params, options) => {
+        state.releaseCalls++;
+        assert.equal(id, 'sub_sched_test');
+        assert.equal(params.preserve_cancel_date, false);
+        assert.match(options.idempotencyKey, /pro_to_plus-release-sub_pro/);
+        state.schedule = { ...state.schedule, status: 'released',
+          released_subscription: 'sub_pro', subscription: null };
+        return state.schedule;
+      },
+      cancel: async () => { state.cancelCalls++; throw new Error('must not cancel'); },
+    },
+  };
+  const api = load('lib/billing/subscription-schedule.ts', {
+    '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
+    '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
+    './config': {
+      stripeClient: () => stripe,
+      billingConfig: () => ({
+        account: 'acct_test', prices: { plus: 'price_plus', pro: 'price_pro' },
+        taxRate: 'txr_test',
+      }),
+    },
+    './lock': { withBillingLock: async (_customer, callback) => callback('lease') },
+  });
+  return { api, state, periodStart, periodEnd, nextPeriodEnd, expectedSchedule };
+}
+
+test('Pro downgrade creates one schedule with current Pro and future Plus phases', async () => {
+  const { api, state, periodEnd } = downgradeHarness();
+  const result = await api.scheduleDowngradeToPlus('trusted');
+  assert.equal(result.subscriptionId, 'sub_pro');
+  assert.equal(result.scheduled, true);
+  assert.equal(result.effectiveAt, new Date(periodEnd * 1000).toISOString());
+  assert.equal(state.schedulesCreated, 1);
+  assert.equal(state.updateCalls, 1);
+  assert.equal(state.schedule.phases[0].items[0].price, 'price_pro');
+  assert.equal(state.schedule.phases[1].items[0].price, 'price_plus');
+  assert.equal(state.schedule.phases[0].default_tax_rates[0].id, 'txr_test');
+  assert.equal(state.schedule.phases[1].default_tax_rates[0].id, 'txr_test');
+});
+
+test('Pro downgrade is idempotent and recovers a create-success/update-failure split', async () => {
+  const first = downgradeHarness();
+  await first.api.scheduleDowngradeToPlus('trusted');
+  await first.api.scheduleDowngradeToPlus('trusted');
+  assert.equal(first.state.schedulesCreated, 1);
+  assert.equal(first.state.createInvocations, 1);
+  assert.equal(first.state.updateCalls, 1);
+
+  const interrupted = downgradeHarness();
+  interrupted.state.failUpdateOnce = true;
+  await assert.rejects(interrupted.api.scheduleDowngradeToPlus('trusted'), /Temporary Stripe failure/);
+  assert.equal(interrupted.state.schedulesCreated, 1);
+  assert.equal(interrupted.state.schedule.phases.length, 1, 'Partial mirror remains visible');
+  const recovered = await interrupted.api.scheduleDowngradeToPlus('trusted');
+  assert.equal(recovered.scheduled, true);
+  assert.equal(interrupted.state.schedulesCreated, 1, 'Recovery never creates a second schedule');
+  assert.equal(interrupted.state.createInvocations, 2, 'Stable create request proves ownership');
+  assert.equal(interrupted.state.updateCalls, 2);
+});
+
+test('Pro downgrade rejects unknown schedules and invalid subscription shapes', async () => {
+  const unknown = downgradeHarness();
+  unknown.state.schedule = unknown.expectedSchedule();
+  unknown.state.schedule.metadata.filmatta_change = 'external_change';
+  await assert.rejects(unknown.api.scheduleDowngradeToPlus('trusted'), /Unknown subscription schedule/);
+  assert.equal(unknown.state.updateCalls, 0);
+
+  for (const change of [
+    { subscriptions: false },
+    { plan: 'plus' },
+    { plan: 'unknown' },
+    { multipleItems: true },
+    { quantity: 2 },
+    { cancelAtPeriodEnd: true },
+    { pendingUpdate: { expires_at: 1 } },
+    { pauseCollection: { behavior: 'void' } },
+    { trialEnd: 9999999999 },
+  ]) {
+    const invalid = downgradeHarness();
+    Object.assign(invalid.state, change);
+    await assert.rejects(invalid.api.scheduleDowngradeToPlus('trusted'));
+    assert.equal(invalid.state.schedulesCreated, 0, `Rejected ${JSON.stringify(change)}`);
+  }
+});
+
+test('scheduled downgrade state is verified on demand and release preserves Pro', async () => {
+  const { api, state } = downgradeHarness();
+  assert.equal((await api.getProToPlusDowngradeState('trusted')).scheduled, false);
+  await api.scheduleDowngradeToPlus('trusted');
+  const scheduled = await api.getProToPlusDowngradeState('trusted');
+  assert.equal(scheduled.scheduled, true);
+  await api.releaseScheduledDowngrade('trusted');
+  assert.equal(state.releaseCalls, 1);
+  assert.equal(state.cancelCalls, 0, 'Reverting never calls schedule.cancel()');
+  assert.equal(state.plan, 'pro');
+  assert.equal(state.schedule.status, 'released');
 });
 
 test('checkout rejects a missing manual Mexico tax rate before contacting Stripe', async () => {

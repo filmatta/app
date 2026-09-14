@@ -7,6 +7,7 @@ import {
   BILLING_RETURN_POLL_INTERVAL_MS,
   BILLING_RETURN_TIMEOUT_MS,
   getBillingReturnView,
+  formatBillingEffectiveDate,
   type BillingReturnSource,
 } from "@/lib/billing/return-presentation";
 import type { BillingPlan } from "@/lib/billing/policy";
@@ -16,13 +17,20 @@ type StatusResponse = { plan?: unknown };
 export default function BillingReturnClient({
   initialPlan,
   source,
+  downgradeEffectiveAt,
 }: {
   initialPlan: BillingPlan | null;
   source: BillingReturnSource;
+  downgradeEffectiveAt: string | null;
 }) {
   const [plan, setPlan] = useState<BillingPlan | null>(initialPlan);
   const [timedOut, setTimedOut] = useState(false);
-  const view = getBillingReturnView({ source, plan, timedOut });
+  const view = getBillingReturnView({
+    source,
+    plan,
+    timedOut,
+    downgradeEffectiveAt,
+  });
 
   useEffect(() => {
     if (view.status === "confirmed" || timedOut) return;
@@ -52,6 +60,7 @@ export default function BillingReturnClient({
               source,
               plan: data.plan,
               timedOut: false,
+              downgradeEffectiveAt,
             });
             if (nextView.status === "confirmed") {
               clearTimeout(timeoutTimer);
@@ -73,7 +82,7 @@ export default function BillingReturnClient({
       clearTimeout(timeoutTimer);
       if (timer) clearTimeout(timer);
     };
-  }, [source, timedOut, view.status]);
+  }, [downgradeEffectiveAt, source, timedOut, view.status]);
 
   const visual =
     view.status === "confirmed"
@@ -112,6 +121,11 @@ export default function BillingReturnClient({
               <p className="mt-4 max-w-xl leading-7 text-white/60">
                 {view.message}
               </p>
+              {view.effectiveAt && (
+                <p className="mt-4 text-sm font-medium text-white/65">
+                  Tu plan cambiará el {formatBillingEffectiveDate(view.effectiveAt)}.
+                </p>
+              )}
               <p className="mt-4 text-sm text-white/35">
                 Tu plan ya está listo. Continúa cuando quieras.
               </p>
