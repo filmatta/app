@@ -7,6 +7,11 @@ const policy = load('lib/billing/policy.ts');
 const planPresentation = load('lib/billing/plan-presentation.ts');
 const returnPresentation = load('lib/billing/return-presentation.ts');
 const planVisuals = load('lib/plan-visuals.ts');
+const cancellation = load('lib/billing/cancellation.ts', {
+  '@/lib/supabase/admin': {},
+  '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
+  './config': {},
+});
 const entitledProgressSql = fs.readFileSync('supabase/migrations/20260912020000_entitled_lesson_progress.sql', 'utf8');
 const lessonProgressActions = fs.readFileSync('app/cursos/[slug]/lecciones/[lessonSlug]/actions.ts', 'utf8');
 const subscriptionPage = fs.readFileSync('app/cuenta/suscripcion/page.tsx', 'utf8');
@@ -14,6 +19,9 @@ const billingReturnPage = fs.readFileSync('app/billing/return/page.tsx', 'utf8')
 const billingReturnClient = fs.readFileSync('app/billing/return/BillingReturnClient.tsx', 'utf8');
 const billingStatusRoute = fs.readFileSync('app/api/billing/status/route.ts', 'utf8');
 const billingPlanBadge = fs.readFileSync('components/BillingPlanBadge.tsx', 'utf8');
+const billingPortalReturnPage = fs.readFileSync('app/billing/portal-return/page.tsx', 'utf8');
+const scheduledCancellationSql = fs.readFileSync(
+  'supabase/migrations/20260914010000_persist_scheduled_cancellation.sql', 'utf8');
 const downgradeConfirmationPage = fs.readFileSync(
   'app/cuenta/suscripcion/cambiar-a-plus/page.tsx', 'utf8');
 
@@ -84,8 +92,10 @@ test('plan visuals keep Plus, Pro and future Business badges consistent', () => 
 });
 
 test('billing return confirms only the server plan expected for its Stripe flow', () => {
-  const view = (source, plan, timedOut = false, downgradeEffectiveAt = null) =>
-    returnPresentation.getBillingReturnView({ source, plan, timedOut, downgradeEffectiveAt });
+  const view = (source, plan, timedOut = false, downgradeEffectiveAt = null,
+    cancellationEffectiveAt = null) =>
+    returnPresentation.getBillingReturnView({ source, plan, timedOut, downgradeEffectiveAt,
+      cancellationEffectiveAt });
 
   assert.equal(view('upgrade', 'plus').status, 'waiting');
   assert.equal(view('upgrade', 'pro').status, 'confirmed');
@@ -106,11 +116,25 @@ test('billing return confirms only the server plan expected for its Stripe flow'
   assert.match(downgrade.title, /cambio a Plus quedó programado/);
   assert.equal(returnPresentation.parseBillingReturnSource('downgrade'), 'downgrade');
 
+  assert.equal(view('cancel', 'pro').status, 'waiting',
+    'A paid plan alone cannot confirm cancellation');
+  const canceled = view('cancel', 'pro', false, null, '2026-10-13T04:34:08.000Z');
+  assert.equal(canceled.status, 'confirmed');
+  assert.equal(canceled.kind, 'cancel');
+  assert.equal(canceled.plan, 'pro', 'Cancellation does not revoke the paid plan early');
+  assert.match(canceled.title, /cancelará al final del periodo/);
+  assert.match(canceled.message, /FILMATTA Pro/);
+  assert.equal(view('cancel', 'plus', false, null,
+    '2026-10-13T04:34:08.000Z').plan, 'plus');
+  assert.equal(returnPresentation.parseBillingReturnSource('cancel'), 'cancel');
+
   assert.equal(returnPresentation.parseBillingReturnSource('plan=pro'), 'unknown');
   assert.equal(view('unknown', 'pro').status, 'waiting',
     'A manipulated visual source cannot claim a plan');
   assert.equal(view('downgrade', 'plus', false, '2026-10-13T04:34:08.000Z').status, 'waiting',
     'A manipulated source never presents Plus as effective');
+  assert.equal(view('cancel', null, false, null, '2026-10-13T04:34:08.000Z').status, 'waiting',
+    'A manipulated cancel source cannot invent an active plan');
   assert.equal(view('upgrade', null, true).status, 'timeout',
     'Timeout never invents paid access');
 });
@@ -126,6 +150,7 @@ test('billing return is authenticated, bounded, read-only and refreshes plans wi
   assert.match(billingReturnPage, /if \(!viewer\) redirect\("\/acceso\?next=%2Fbilling%2Freturn"\)/);
   assert.match(billingReturnPage, /getBillingAccess\(\)/);
   assert.match(billingReturnPage, /getProToPlusDowngradeState\(viewer\.id\)/);
+  assert.match(billingReturnPage, /getMyScheduledCancellation\(viewer\.id\)/);
   assert.match(billingStatusRoute, /if \(!viewer\)/);
   assert.match(billingStatusRoute, /getBillingAccess\(\)/);
   assert.match(billingStatusRoute, /private, no-store/);
@@ -133,7 +158,10 @@ test('billing return is authenticated, bounded, read-only and refreshes plans wi
   assert.match(billingReturnClient, /cache: "no-store"/);
   assert.match(billingReturnClient, /BILLING_RETURN_POLL_INTERVAL_MS/);
   assert.match(billingReturnClient, /BILLING_RETURN_TIMEOUT_MS/);
-  assert.match(billingReturnClient, /\/brand\/matti\/matti-plan-success\.png/);
+  assert.match(billingReturnPage, /\/brand\/matti\/matti-plan-success\.png/);
+  assert.match(billingReturnPage, /\/brand\/matti\/matti-plan-cancel\.png/,
+    'The dedicated cancellation Matti path is ready with a server-side fallback');
+  assert.match(billingReturnClient, /Seguir usando FILMATTA/);
   assert.match(billingReturnClient, /onClick=\{\(\) => window\.location\.replace\("\/planes"\)\}/,
     'The explicit CTA uses a full navigation to avoid the pre-upgrade Router Cache');
   assert.doesNotMatch(billingReturnClient, /BILLING_RETURN_REDIRECT_DELAY_MS/,
@@ -152,10 +180,10 @@ test('billing return is authenticated, bounded, read-only and refreshes plans wi
 
 test('plans page presents Checkout, current plan and controlled plan actions safely', () => {
   const action = (planId, currentPlan, authenticated = true, billingAvailable = true,
-    scheduledDowngradeAt = null, downgradeUnavailable = false) =>
+    scheduledDowngradeAt = null, downgradeUnavailable = false, cancellationScheduled = false) =>
     JSON.parse(JSON.stringify(
       planPresentation.getPlanCardAction({ planId, currentPlan, authenticated, billingAvailable,
-        scheduledDowngradeAt, downgradeUnavailable })
+        scheduledDowngradeAt, downgradeUnavailable, cancellationScheduled })
     ));
 
   assert.deepEqual(action('free', null), { kind: 'link', label: 'Explorar cursos', href: '/cursos' });
@@ -175,6 +203,12 @@ test('plans page presents Checkout, current plan and controlled plan actions saf
     kind: 'scheduled-downgrade', label: 'Deshacer cambio',
     effectiveAt: '2026-10-13T04:34:08.000Z',
   });
+  assert.deepEqual(action('plus', 'pro', true, true, null, false, true), {
+    kind: 'status', label: 'Cancelación programada',
+  }, 'Scheduled cancellation suppresses a contradictory downgrade action');
+  assert.deepEqual(action('pro', 'plus', true, true, null, false, true), {
+    kind: 'status', label: 'Cancelación programada',
+  }, 'Scheduled cancellation suppresses a contradictory upgrade action');
 
   for (const currentPlan of [null, 'plus', 'pro']) {
     assert.deepEqual(action('business', currentPlan), { kind: 'coming-soon', label: 'Próximamente' });
@@ -323,7 +357,8 @@ test('webhook verifies raw signatures, rejects live/Connect and retries failures
 function syncHarness() {
   const state = { status: 'active', plan: 'plus', scheduledPlan: null, multipleItems: false,
     refunded: false, country: 'MX', deleted: false, fail: false, locked: false,
-    owner: true, commits: 0, events: new Set(), grants: [], subscriptions: [], invoicePaid: true };
+    owner: true, commits: 0, events: new Set(), grants: [], subscriptions: [], invoicePaid: true,
+    cancelAtPeriodEnd: false, cancelAt: null, canceledAt: null };
   const end = Math.floor(Date.now() / 1000) + 3600;
   const priceId = () => state.plan === 'plus' ? 'price_plus' : state.plan === 'pro' ? 'price_pro' : 'price_unknown';
   const db = {
@@ -346,7 +381,9 @@ function syncHarness() {
   const stripe = {
     customers: { retrieve: async () => state.deleted ? { deleted: true } : { livemode: false, address: { country: state.country } } },
     subscriptions: { list: async () => ({ has_more: false, data: [{ id: 'sub_test', livemode: false,
-      status: state.status, pause_collection: null, latest_invoice: 'in_test', cancel_at_period_end: true,
+      status: state.status, pause_collection: null, latest_invoice: 'in_test',
+      cancel_at_period_end: state.cancelAtPeriodEnd, cancel_at: state.cancelAt,
+      canceled_at: state.canceledAt,
       schedule: state.scheduledPlan ? { phases: [{ items: [{ price: `price_${state.scheduledPlan}` }] }] } : null,
       items: { has_more: false, data: [
         { quantity: 1, current_period_end: end, price: { id: priceId(), livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } },
@@ -432,6 +469,20 @@ test('plan changes keep one subscription and replace the entitlement only after 
 
   await send('evt_downgrade_effective', 'customer.subscription.updated');
   assert.equal(state.commits, 7, 'Duplicate delivery does not write another snapshot');
+});
+
+test('scheduled cancellation timestamps are mirrored without revoking paid entitlement', async () => {
+  const { state, send } = syncHarness();
+  const cancelAt = Math.floor(Date.now() / 1000) + 1800;
+  state.cancelAt = cancelAt;
+  state.canceledAt = Math.floor(Date.now() / 1000) - 60;
+  await send('evt_cancel_scheduled', 'customer.subscription.updated');
+  assert.equal(state.subscriptions[0].cancel_at_period_end, false);
+  assert.equal(state.subscriptions[0].cancel_at, new Date(cancelAt * 1000).toISOString());
+  assert.equal(state.subscriptions[0].canceled_at,
+    new Date(state.canceledAt * 1000).toISOString());
+  assert.equal(state.grants[0].plan, 'plus',
+    'A paid active plan remains entitled until its paid period expires');
 });
 
 test('unknown Prices and subscriptions with multiple items never grant access', async () => {
@@ -617,7 +668,7 @@ test('portal session is restricted to Plus and Pro with immediate upgrades and s
         sessions++;
         assert.equal(params.customer, 'cus_trusted');
         assert.equal(params.configuration, 'bpc_test');
-        assert.equal(params.return_url, 'https://preview.test/cuenta/suscripcion');
+        assert.equal(params.return_url, 'https://preview.test/billing/portal-return');
         return { url: 'https://billing.stripe.com/p/session/test' };
       } },
     },
@@ -640,6 +691,98 @@ test('portal session is restricted to Plus and Pro with immediate upgrades and s
   mapped = false;
   await assert.rejects(portal('trusted'), /No billing customer/);
   assert.equal(sessions, 1);
+});
+
+test('scheduled cancellation recognizes both Stripe mechanisms and ignores audit timestamps', () => {
+  const now = Date.parse('2026-09-14T08:00:00Z');
+  const periodEnd = '2026-10-13T04:34:08Z';
+  const base = {
+    status: 'active', cancelAtPeriodEnd: false, cancelAt: null,
+    currentPeriodEnd: periodEnd, canceledAt: null,
+  };
+
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    cancellation.resolveScheduledCancellation({ ...base, cancelAtPeriodEnd: true }, now)
+  )), {
+    isCancellationScheduled: true,
+    cancellationEffectiveAt: '2026-10-13T04:34:08.000Z',
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    cancellation.resolveScheduledCancellation({ ...base, cancelAt: periodEnd }, now)
+  )), {
+    isCancellationScheduled: true,
+    cancellationEffectiveAt: '2026-10-13T04:34:08.000Z',
+  }, 'cancel_at equal to the period end is a real scheduled cancellation');
+  assert.equal(cancellation.resolveScheduledCancellation({
+    ...base, canceledAt: '2026-09-14T07:55:04Z',
+  }, now).isCancellationScheduled, false,
+  'canceled_at records the request and never revokes access by itself');
+  assert.equal(cancellation.resolveScheduledCancellation({
+    ...base, cancelAt: '2026-09-13T04:34:08Z', canceledAt: '2026-09-12T04:34:08Z',
+  }, now).isCancellationScheduled, false, 'Past cancellation dates are not pending');
+});
+
+test('scheduled cancellation state is scoped to the authenticated billing customer', async () => {
+  const periodEnd = Date.parse('2026-10-13T04:34:08Z') / 1000;
+  let filteredUser = null;
+  const q = {
+    select() { return q; },
+    eq(name, value) { assert.equal(name, 'user_id'); filteredUser = value; return q; },
+    maybeSingle: async () => ({ data: { stripe_customer_id: 'cus_trusted' }, error: null }),
+  };
+  const stripe = {
+    accounts: { retrieve: async (id) => {
+      assert.equal(id, 'acct_test');
+      return { id, country: 'MX' };
+    } },
+    customers: { retrieve: async (id) => ({ id, livemode: false, deleted: false }) },
+    subscriptions: { list: async (params) => {
+      assert.equal(params.customer, 'cus_trusted');
+      return { has_more: false, data: [{
+        id: 'sub_pro', livemode: false, status: 'active', customer: 'cus_trusted',
+        cancel_at_period_end: false, cancel_at: periodEnd,
+        canceled_at: Date.parse('2026-09-14T07:55:04Z') / 1000,
+        pause_collection: null, pending_update: null, schedule: null,
+        items: { has_more: false, data: [{
+          quantity: 1, current_period_end: periodEnd,
+          price: { id: 'price_pro', livemode: false, active: true, currency: 'mxn',
+            unit_amount: 49900,
+            recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' } },
+        }] },
+      }] };
+    } },
+  };
+  const getState = load('lib/billing/cancellation.ts', {
+    '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
+    '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
+    './config': { stripeClient: () => stripe, billingConfig: () => ({
+      account: 'acct_test', prices: { plus: 'price_plus', pro: 'price_pro' },
+    }) },
+  }).getMyScheduledCancellation;
+
+  const result = await getState('trusted-user');
+  assert.equal(filteredUser, 'trusted-user');
+  assert.equal(result.plan, 'pro');
+  assert.equal(result.isCancellationScheduled, true);
+  assert.equal(result.cancellationEffectiveAt, '2026-10-13T04:34:08.000Z');
+});
+
+test('Portal return verifies cancellation server-side and never trusts a redirect query', () => {
+  assert.match(billingPortalReturnPage, /getViewer\(\)/);
+  assert.match(billingPortalReturnPage, /getMyScheduledCancellation\(viewer\.id\)/);
+  assert.match(billingPortalReturnPage, /if \(cancellationScheduled\) redirect\("\/billing\/return\?source=cancel"\)/);
+  assert.doesNotMatch(billingPortalReturnPage, /searchParams|customer_id|subscription_id/);
+  assert.match(subscriptionPage, /getMyScheduledCancellation\(viewer\.id\)/);
+  assert.match(subscriptionPage, /Tu suscripción se cancelará el/);
+});
+
+test('scheduled cancellation migration is additive and keeps write authority on service role', () => {
+  assert.match(scheduledCancellationSql, /add column if not exists cancel_at timestamptz/);
+  assert.match(scheduledCancellationSql, /add column if not exists canceled_at timestamptz/);
+  assert.match(scheduledCancellationSql, /cancel_at=excluded\.cancel_at/);
+  assert.match(scheduledCancellationSql, /canceled_at=excluded\.canceled_at/);
+  assert.match(scheduledCancellationSql, /to service_role/);
+  assert.doesNotMatch(scheduledCancellationSql, /drop table|disable row level security/i);
 });
 
 test('Plus upgrade deep link resolves the active subscription server-side and targets only Pro', async () => {

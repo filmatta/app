@@ -22,6 +22,7 @@ import {
 } from "@/lib/page-container";
 import { formatBillingEffectiveDate } from "@/lib/billing/return-presentation";
 import { getProToPlusDowngradeState } from "@/lib/billing/subscription-schedule";
+import { getMyScheduledCancellation } from "@/lib/billing/cancellation";
 
 export const dynamic = "force-dynamic";
 
@@ -114,7 +115,18 @@ export default async function PlanesPage() {
   const currentPlan = viewer ? billing.plan : null;
   let scheduledDowngradeAt: string | null = null;
   let downgradeUnavailable = false;
-  if (viewer && currentPlan === "pro" && billingAvailable) {
+  let cancellationEffectiveAt: string | null = null;
+  if (viewer && currentPlan && billingAvailable) {
+    try {
+      const cancellation = await getMyScheduledCancellation(viewer.id);
+      if (cancellation.plan === currentPlan && cancellation.isCancellationScheduled) {
+        cancellationEffectiveAt = cancellation.cancellationEffectiveAt;
+      }
+    } catch (error) {
+      console.error("Unable to read the scheduled cancellation", error);
+    }
+  }
+  if (viewer && currentPlan === "pro" && billingAvailable && !cancellationEffectiveAt) {
     try {
       const downgrade = await getProToPlusDowngradeState(viewer.id);
       scheduledDowngradeAt = downgrade.scheduled ? downgrade.effectiveAt : null;
@@ -146,6 +158,14 @@ export default async function PlanesPage() {
                 Tu plan actual: FILMATTA {currentPlan === "plus" ? "Plus" : "Pro"}
               </p>
             )}
+            {currentPlan && cancellationEffectiveAt && (
+              <p
+                role="status"
+                className="mt-4 max-w-2xl rounded-xl border border-amber-300/25 bg-amber-300/[0.06] px-4 py-3 text-sm leading-6 text-amber-100/80"
+              >
+                Tu suscripción se cancelará el {formatBillingEffectiveDate(cancellationEffectiveAt)}. Seguirás teniendo acceso a FILMATTA {currentPlan === "plus" ? "Plus" : "Pro"} hasta esa fecha.
+              </p>
+            )}
           </div>
 
           <nav
@@ -175,6 +195,7 @@ export default async function PlanesPage() {
                 billingAvailable,
                 scheduledDowngradeAt,
                 downgradeUnavailable,
+                cancellationScheduled: Boolean(cancellationEffectiveAt),
               });
 
               return (
