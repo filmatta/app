@@ -12,7 +12,7 @@ security invoker
 set search_path = ''
 as $$
 begin
-  if p_playback_policy <> case when p_is_preview then 'public' else 'signed' end then
+  if p_playback_policy <> (case when p_is_preview then 'public' else 'signed' end) then
     raise exception 'Playback policy does not match preview setting';
   end if;
 
