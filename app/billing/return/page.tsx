@@ -26,7 +26,7 @@ export default async function BillingReturnPage({
   const parsedSource = parseBillingReturnSource(source);
   let downgradeEffectiveAt: string | null = null;
   let cancellationEffectiveAt: string | null = null;
-  if (parsedSource === "downgrade" && access.plan === "pro") {
+  if (parsedSource === "downgrade" && access.stripePlan === "pro") {
     try {
       const downgrade = await getProToPlusDowngradeState(viewer.id);
       downgradeEffectiveAt = downgrade.scheduled ? downgrade.effectiveAt : null;
@@ -34,10 +34,16 @@ export default async function BillingReturnPage({
       console.error("Unable to verify the Pro to Plus schedule");
     }
   }
-  if (parsedSource === "cancel" && (access.plan === "plus" || access.plan === "pro")) {
+  if (
+    parsedSource === "cancel" &&
+    (access.stripePlan === "plus" || access.stripePlan === "pro")
+  ) {
     try {
       const cancellation = await getMyScheduledCancellation(viewer.id);
-      if (cancellation.plan === access.plan && cancellation.isCancellationScheduled) {
+      if (
+        cancellation.plan === access.stripePlan &&
+        cancellation.isCancellationScheduled
+      ) {
         cancellationEffectiveAt = cancellation.cancellationEffectiveAt;
       }
     } catch (error) {
@@ -57,7 +63,7 @@ export default async function BillingReturnPage({
     <main className="min-h-screen bg-[#080808] text-white">
       <SiteHeader contextLink={{ href: "/planes", label: "← Planes" }} />
       <BillingReturnClient
-        initialPlan={access.plan}
+        initialPlan={access.stripePlan}
         source={parsedSource}
         downgradeEffectiveAt={downgradeEffectiveAt}
         cancellationEffectiveAt={cancellationEffectiveAt}

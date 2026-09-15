@@ -10,6 +10,12 @@ export default function AdminHeader() {
 
         <nav aria-label="Navegación administrativa" className="flex items-center gap-4">
           <Link
+            href="/admin/planes"
+            className="rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-white/65 transition hover:border-white/20 hover:bg-white/[0.04] hover:text-white"
+          >
+            Planes
+          </Link>
+          <Link
             href="/admin"
             className="rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-white/65 transition hover:border-white/20 hover:bg-white/[0.04] hover:text-white"
           >

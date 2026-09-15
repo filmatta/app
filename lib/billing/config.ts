@@ -4,8 +4,17 @@ import { testBillingEnabled } from "./policy";
 
 export function billingEnabled() { return testBillingEnabled(process.env); }
 
-export function billingConfig() {
+export function billingAccessConfig() {
   if (!billingEnabled()) throw new Error("Billing test mode is disabled");
+  const project = process.env.BILLING_TEST_SUPABASE_PROJECT_REF;
+  if (!project || new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").hostname !== `${project}.supabase.co`) {
+    throw new Error("Billing requires an explicitly selected test Supabase project");
+  }
+  return { project };
+}
+
+export function billingConfig() {
+  billingAccessConfig();
   const secret = process.env.STRIPE_SECRET_KEY ?? "";
   if (!secret.startsWith("sk_test_") && !secret.startsWith("rk_test_")) {
     throw new Error("Only Stripe test credentials are accepted");
@@ -14,10 +23,6 @@ export function billingConfig() {
   if (origin.origin !== process.env.BILLING_APP_URL ||
       (origin.protocol !== "https:" && !(origin.protocol === "http:" && origin.hostname === "localhost"))) {
     throw new Error("Invalid billing origin");
-  }
-  const project = process.env.BILLING_TEST_SUPABASE_PROJECT_REF;
-  if (!project || new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").hostname !== `${project}.supabase.co`) {
-    throw new Error("Billing requires an explicitly selected test Supabase project");
   }
   const prices = {
     plus: process.env.STRIPE_PLUS_PRICE_ID ?? "",
