@@ -22,6 +22,7 @@ export type PlanCardAction =
 export function getPlanCardAction({
   planId,
   currentPlan,
+  stripePlan = currentPlan,
   authenticated,
   billingAvailable,
   scheduledDowngradeAt = null,
@@ -31,6 +32,7 @@ export function getPlanCardAction({
 }: {
   planId: PlanCardId;
   currentPlan: BillingPlan | null;
+  stripePlan?: BillingPlan | null;
   authenticated: boolean;
   billingAvailable: boolean;
   scheduledDowngradeAt?: string | null;
@@ -87,6 +89,12 @@ export function getPlanCardAction({
   }
 
   if (effectivePlan === "pro" && planId === "plus") {
+    if (stripePlan === "plus") {
+      return { kind: "status", label: "Suscripción Plus activa" };
+    }
+    if (stripePlan !== "pro") {
+      return { kind: "status", label: "Incluido en tu acceso" };
+    }
     if (downgradeUnavailable) {
       return { kind: "status", label: "Cambio no disponible" };
     }
@@ -101,6 +109,10 @@ export function getPlanCardAction({
           label: "Cambiar a Plus",
           href: "/cuenta/suscripcion/cambiar-a-plus",
         };
+  }
+
+  if (effectivePlan === "plus" && planId === "pro" && stripePlan === null) {
+    return { kind: "checkout", label: "Obtener Pro", plan: "pro" };
   }
 
   return {

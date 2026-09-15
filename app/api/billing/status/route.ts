@@ -14,7 +14,7 @@ export async function GET() {
 
   const access = await getBillingAccess();
   return Response.json(
-    { plan: access.plan },
+    { plan: access.stripePlan },
     { headers: { "Cache-Control": "private, no-store" } }
   );
 }

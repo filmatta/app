@@ -117,22 +117,35 @@ export default async function PlanesPage({
   const billingAvailable = billingEnabled();
   const billing = viewer
     ? await getBillingAccess()
-    : { regularAccess: false, plan: null };
+    : {
+        regularAccess: false,
+        plan: null,
+        stripePlan: null,
+        adminGrantPlan: null,
+        adminGrantExpiresAt: null,
+        source: null,
+      };
   const currentPlan = viewer ? billing.plan : null;
   let scheduledDowngradeAt: string | null = null;
   let downgradeUnavailable = false;
   let cancellationEffectiveAt: string | null = null;
-  if (viewer && currentPlan && billingAvailable) {
+  if (viewer && billing.stripePlan && billingAvailable) {
     try {
       const cancellation = await getMyScheduledCancellation(viewer.id);
-      if (cancellation.plan === currentPlan && cancellation.isCancellationScheduled) {
+      if (cancellation.plan === billing.stripePlan && cancellation.isCancellationScheduled) {
         cancellationEffectiveAt = cancellation.cancellationEffectiveAt;
       }
     } catch (error) {
       console.error("Unable to read the scheduled cancellation", error);
     }
   }
-  if (viewer && currentPlan === "pro" && billingAvailable && !cancellationEffectiveAt) {
+  if (
+    viewer &&
+    currentPlan === "pro" &&
+    billing.stripePlan === "pro" &&
+    billingAvailable &&
+    !cancellationEffectiveAt
+  ) {
     try {
       const downgrade = await getProToPlusDowngradeState(viewer.id);
       scheduledDowngradeAt = downgrade.scheduled ? downgrade.effectiveAt : null;
@@ -164,12 +177,24 @@ export default async function PlanesPage({
                 Tu plan actual: FILMATTA {currentPlan === "plus" ? "Plus" : "Pro"}
               </p>
             )}
-            {currentPlan && cancellationEffectiveAt && (
+            {billing.source === "admin_grant" && currentPlan && (
+              <div className="mt-4 max-w-2xl rounded-xl border border-white/10 bg-white/[0.025] px-4 py-3 text-sm leading-6 text-white/60">
+                <p className="font-semibold text-white/75">
+                  Acceso otorgado por FILMATTA
+                </p>
+                {billing.adminGrantExpiresAt && (
+                  <p>
+                    Disponible hasta el {formatBillingEffectiveDate(billing.adminGrantExpiresAt)}.
+                  </p>
+                )}
+              </div>
+            )}
+            {billing.stripePlan && cancellationEffectiveAt && (
               <p
                 role="status"
                 className="mt-4 max-w-2xl rounded-xl border border-amber-300/25 bg-amber-300/[0.06] px-4 py-3 text-sm leading-6 text-amber-100/80"
               >
-                Tu suscripción se cancelará el {formatBillingEffectiveDate(cancellationEffectiveAt)}. Seguirás teniendo acceso a FILMATTA {currentPlan === "plus" ? "Plus" : "Pro"} hasta esa fecha.
+                Tu suscripción FILMATTA {billing.stripePlan === "plus" ? "Plus" : "Pro"} se cancelará el {formatBillingEffectiveDate(cancellationEffectiveAt)}.
               </p>
             )}
           </div>
@@ -197,11 +222,13 @@ export default async function PlanesPage({
               const action = getPlanCardAction({
                 planId: plan.id,
                 currentPlan,
+                stripePlan: billing.stripePlan,
                 authenticated: Boolean(viewer),
                 billingAvailable,
                 scheduledDowngradeAt,
                 downgradeUnavailable,
-                cancellationEffectiveAt,
+                cancellationEffectiveAt:
+                  billing.stripePlan === currentPlan ? cancellationEffectiveAt : null,
                 keepSubscriptionFeedback:
                   query.subscription === "kept"
                     ? "success"
