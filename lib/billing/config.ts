@@ -31,9 +31,17 @@ export function billingConfig() {
   if (!Object.values(prices).every((id) => /^price_[a-zA-Z0-9]+$/.test(id)) || prices.plus === prices.pro) {
     throw new Error("Configure two distinct test prices");
   }
+  const portals = {
+    admin: process.env.STRIPE_ADMIN_PORTAL_CONFIGURATION_ID ?? "",
+    upgrade: process.env.STRIPE_UPGRADE_PORTAL_CONFIGURATION_ID ?? "",
+  };
+  if (Object.values(portals).some((id) => id && !/^bpc_[a-zA-Z0-9]+$/.test(id)) ||
+      (portals.admin && portals.admin === portals.upgrade)) {
+    throw new Error("Configure distinct admin and upgrade portals");
+  }
   return { secret, origin: origin.origin, prices,
     taxRate: process.env.STRIPE_MX_TAX_RATE_ID ?? "",
-    portal: process.env.STRIPE_PORTAL_CONFIGURATION_ID ?? "",
+    portals,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
     account: process.env.STRIPE_TEST_ACCOUNT_ID ?? "",
   };

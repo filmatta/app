@@ -375,10 +375,13 @@ test('new entitlements require current paid evidence and previously paid access 
     'Expired rows cannot produce an effective plan even before the next webhook snapshot');
 });
 
-test('configuration rejects live keys, production and the wrong Supabase project', () => {
-  const env = { BILLING_ENABLED: 'true', BILLING_MODE: 'test', STRIPE_SECRET_KEY: 'sk_test_unit_fixture', BILLING_APP_URL: 'http://localhost:3000', BILLING_TEST_SUPABASE_PROJECT_REF: 'test-ref', NEXT_PUBLIC_SUPABASE_URL: 'https://test-ref.supabase.co', STRIPE_PLUS_PRICE_ID: 'price_plus', STRIPE_PRO_PRICE_ID: 'price_pro' };
-  assert.equal(load('lib/billing/config.ts', {}, env).billingConfig().origin, 'http://localhost:3000');
-  for (const change of [{ STRIPE_SECRET_KEY: 'sk_live_unit_fixture' }, { BILLING_MODE: 'live' }, { VERCEL_ENV: 'production' }, { BILLING_ENABLED: 'false' }, { NEXT_PUBLIC_SUPABASE_URL: 'https://another.supabase.co' }, { BILLING_APP_URL: 'https://site.test/path' }, { STRIPE_PRO_PRICE_ID: 'price_plus' }]) {
+test('configuration rejects live keys, production and shared Portal configurations', () => {
+  const env = { BILLING_ENABLED: 'true', BILLING_MODE: 'test', STRIPE_SECRET_KEY: 'sk_test_unit_fixture', BILLING_APP_URL: 'http://localhost:3000', BILLING_TEST_SUPABASE_PROJECT_REF: 'test-ref', NEXT_PUBLIC_SUPABASE_URL: 'https://test-ref.supabase.co', STRIPE_PLUS_PRICE_ID: 'price_plus', STRIPE_PRO_PRICE_ID: 'price_pro', STRIPE_ADMIN_PORTAL_CONFIGURATION_ID: 'bpc_admin', STRIPE_UPGRADE_PORTAL_CONFIGURATION_ID: 'bpc_upgrade' };
+  const config = load('lib/billing/config.ts', {}, env).billingConfig();
+  assert.equal(config.origin, 'http://localhost:3000');
+  assert.deepEqual(JSON.parse(JSON.stringify(config.portals)),
+    { admin: 'bpc_admin', upgrade: 'bpc_upgrade' });
+  for (const change of [{ STRIPE_SECRET_KEY: 'sk_live_unit_fixture' }, { BILLING_MODE: 'live' }, { VERCEL_ENV: 'production' }, { BILLING_ENABLED: 'false' }, { NEXT_PUBLIC_SUPABASE_URL: 'https://another.supabase.co' }, { BILLING_APP_URL: 'https://site.test/path' }, { STRIPE_PRO_PRICE_ID: 'price_plus' }, { STRIPE_UPGRADE_PORTAL_CONFIGURATION_ID: 'bpc_admin' }]) {
     assert.throws(() => load('lib/billing/config.ts', {}, { ...env, ...change }).billingConfig());
   }
 });
@@ -836,7 +839,7 @@ test('checkout authenticates and rejects forged plan/country before contacting S
 
 test('portal button depends on server configuration instead of the visual subscription list', () => {
   assert.match(subscriptionPage,
-    /const portalConfigured = Boolean\(process\.env\.STRIPE_PORTAL_CONFIGURATION_ID\);/);
+    /const portalConfigured = Boolean\(process\.env\.STRIPE_ADMIN_PORTAL_CONFIGURATION_ID\);/);
   const button = subscriptionPage.match(/<LoadingButton[^>]*>Ver y cambiar mi plan<\/LoadingButton>/)?.[0] ?? '';
   assert.match(button, /disabled=\{!portalConfigured\}/);
   assert.doesNotMatch(button, /subscriptions\.length/);
@@ -856,7 +859,7 @@ test('subscription account presents payment recovery through the secure Portal a
     'The recovery CTA sends no Billing identity or entitlement data');
 });
 
-test('portal session is restricted to Plus and Pro with immediate upgrades and scheduled downgrades', async () => {
+test('administration portal exposes payments, invoices and cancellation without plan updates', async () => {
   let sessions = 0;
   let mapped = true;
   const validPortal = {
@@ -864,16 +867,20 @@ test('portal session is restricted to Plus and Pro with immediate upgrades and s
     active: true,
     features: {
       customer_update: { enabled: false },
-      subscription_update: {
+      payment_method_update: { enabled: true },
+      invoice_history: { enabled: true },
+      subscription_cancel: {
         enabled: true,
+        mode: 'at_period_end',
+        proration_behavior: 'none',
+      },
+      subscription_update: {
+        enabled: false,
         billing_cycle_anchor: 'unchanged',
-        default_allowed_updates: ['price'],
-        proration_behavior: 'always_invoice',
-        schedule_at_period_end: { conditions: [{ type: 'decreasing_item_amount' }] },
-        products: [
-          { product: 'prod_plus', prices: ['price_plus'], adjustable_quantity: { enabled: false } },
-          { product: 'prod_pro', prices: ['price_pro'], adjustable_quantity: { enabled: false } },
-        ],
+        default_allowed_updates: [],
+        proration_behavior: 'none',
+        schedule_at_period_end: { conditions: [] },
+        products: [],
       },
     },
   };
@@ -884,7 +891,7 @@ test('portal session is restricted to Plus and Pro with immediate upgrades and s
     customers: { retrieve: async () => ({ id: 'cus_trusted', livemode: false, deleted: false }) },
     billingPortal: {
       configurations: { retrieve: async (id, params) => {
-        assert.equal(id, 'bpc_test');
+        assert.equal(id, 'bpc_admin');
         assert.equal(params.expand.length, 1);
         assert.equal(params.expand[0], 'features.subscription_update.products');
         return validPortal;
@@ -892,8 +899,9 @@ test('portal session is restricted to Plus and Pro with immediate upgrades and s
       sessions: { create: async (params) => {
         sessions++;
         assert.equal(params.customer, 'cus_trusted');
-        assert.equal(params.configuration, 'bpc_test');
+        assert.equal(params.configuration, 'bpc_admin');
         assert.equal(params.return_url, 'https://preview.test/billing/portal-return');
+        assert.equal(params.flow_data, undefined);
         return { url: 'https://billing.stripe.com/p/session/test' };
       } },
     },
@@ -901,7 +909,8 @@ test('portal session is restricted to Plus and Pro with immediate upgrades and s
   const portal = load('lib/billing/checkout.ts', {
     '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
     '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
-    './config': { stripeClient: () => stripe, billingConfig: () => ({ portal: 'bpc_test',
+    './config': { stripeClient: () => stripe, billingConfig: () => ({
+      portals: { admin: 'bpc_admin', upgrade: 'bpc_upgrade' },
       origin: 'https://preview.test', prices: { plus: 'price_plus', pro: 'price_pro' } }) },
     './lock': { withBillingLock: async (_id, fn) => fn('token') },
   }).createTestPortal;
@@ -909,9 +918,13 @@ test('portal session is restricted to Plus and Pro with immediate upgrades and s
   assert.equal(await portal('trusted'), 'https://billing.stripe.com/p/session/test');
   assert.equal(sessions, 1);
 
-  validPortal.features.subscription_update.products[1].prices = ['price_unknown'];
-  await assert.rejects(portal('trusted'), /outside the FILMATTA Plus and Pro policy/);
-  assert.equal(sessions, 1, 'Unknown Price is rejected before creating a session');
+  validPortal.features.subscription_update.enabled = true;
+  validPortal.features.subscription_update.default_allowed_updates = ['price'];
+  validPortal.features.subscription_update.products = [
+    { product: 'prod_plus', prices: ['price_plus'], adjustable_quantity: { enabled: false } },
+  ];
+  await assert.rejects(portal('trusted'), /Admin portal configuration is outside FILMATTA policy/);
+  assert.equal(sessions, 1, 'Any plan update capability is rejected before creating a session');
 
   mapped = false;
   await assert.rejects(portal('trusted'), /No billing customer/);
@@ -927,21 +940,20 @@ test('dedicated cancellation portal resolves the subscription server-side and re
     active: true,
     features: {
       customer_update: { enabled: false },
+      payment_method_update: { enabled: true },
+      invoice_history: { enabled: true },
       subscription_cancel: {
         enabled: true,
         mode: 'at_period_end',
         proration_behavior: 'none',
       },
       subscription_update: {
-        enabled: true,
+        enabled: false,
         billing_cycle_anchor: 'unchanged',
-        default_allowed_updates: ['price'],
-        proration_behavior: 'always_invoice',
-        schedule_at_period_end: { conditions: [{ type: 'decreasing_item_amount' }] },
-        products: [
-          { product: 'prod_plus', prices: ['price_plus'], adjustable_quantity: { enabled: false } },
-          { product: 'prod_pro', prices: ['price_pro'], adjustable_quantity: { enabled: false } },
-        ],
+        default_allowed_updates: [],
+        proration_behavior: 'none',
+        schedule_at_period_end: { conditions: [] },
+        products: [],
       },
     },
   };
@@ -1005,7 +1017,7 @@ test('dedicated cancellation portal resolves the subscription server-side and re
     billingPortal: {
       configurations: {
         retrieve: async (id, params) => {
-          assert.equal(id, 'bpc_test');
+          assert.equal(id, 'bpc_admin');
           assert.deepEqual(JSON.parse(JSON.stringify(params)), {
             expand: ['features.subscription_update.products'],
           });
@@ -1031,7 +1043,7 @@ test('dedicated cancellation portal resolves the subscription server-side and re
       stripeClient: () => stripe,
       billingConfig: () => ({
         account: 'acct_test',
-        portal: 'bpc_test',
+        portals: { admin: 'bpc_admin', upgrade: 'bpc_upgrade' },
         origin: 'https://preview.test',
         prices: { plus: 'price_plus', pro: 'price_pro' },
       }),
@@ -1050,7 +1062,7 @@ test('dedicated cancellation portal resolves the subscription server-side and re
   assert.equal(lockedCustomer, 'cus_trusted');
   assert.deepEqual(sessionParams, {
     customer: 'cus_trusted',
-    configuration: 'bpc_test',
+    configuration: 'bpc_admin',
     return_url: 'https://preview.test/cuenta/suscripcion',
     flow_data: {
       type: 'subscription_cancel',
@@ -1309,7 +1321,7 @@ test('Plus upgrade deep link resolves the active subscription server-side and ta
     } },
     billingPortal: {
       configurations: { retrieve: async (id, params) => {
-        assert.equal(id, 'bpc_test');
+        assert.equal(id, 'bpc_upgrade');
         assert.deepEqual(JSON.parse(JSON.stringify(params)), {
           expand: ['features.subscription_update.products'],
         });
@@ -1319,7 +1331,7 @@ test('Plus upgrade deep link resolves the active subscription server-side and ta
         sessions++;
         assert.deepEqual(JSON.parse(JSON.stringify(params)), {
           customer: 'cus_trusted',
-          configuration: 'bpc_test',
+          configuration: 'bpc_upgrade',
           return_url: 'https://preview.test/planes',
           flow_data: {
             type: 'subscription_update_confirm',
@@ -1341,7 +1353,8 @@ test('Plus upgrade deep link resolves the active subscription server-side and ta
     '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
     '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
     './config': { stripeClient: () => stripe, billingConfig: () => ({
-      portal: 'bpc_test', account: 'acct_test', origin: 'https://preview.test',
+      portals: { admin: 'bpc_admin', upgrade: 'bpc_upgrade' },
+      account: 'acct_test', origin: 'https://preview.test',
       prices: { plus: 'price_plus', pro: 'price_pro' },
     }) },
     './lock': { withBillingLock: async (_id, fn) => fn('token') },

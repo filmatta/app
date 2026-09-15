@@ -52,7 +52,7 @@ export default async function SubscriptionPage({ searchParams }: {
   const hasSubscription = subscriptions.some((s) => !["canceled", "incomplete_expired"].includes(s.status));
   const hasStripeSubscription = Boolean(access.stripePlan) || hasSubscription;
   const ready = enabled && !result.error && process.env.BILLING_MX_CHECKOUT_VERIFIED === "true";
-  const portalConfigured = Boolean(process.env.STRIPE_PORTAL_CONFIGURATION_ID);
+  const portalConfigured = Boolean(process.env.STRIPE_ADMIN_PORTAL_CONFIGURATION_ID);
   const hasPaymentIssue =
     subscriptions.some((subscription) =>
       ["past_due", "unpaid", "incomplete"].includes(subscription.status)
