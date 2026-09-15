@@ -85,7 +85,7 @@ Block if is_missing(:billing_address_country:) or :billing_address_country: != '
 
 Verificar en el sandbox que la regla esté disponible, se aplique a pagos iniciales y renovaciones, y no haya reglas Allow que la anulen. Esto usa domicilio de facturación declarado, no nacionalidad, IP ni país emisor de tarjeta. Probar dirección MX (permitida), US (bloqueada) y país ausente (bloqueado). El webhook además deniega acceso si el país no coincide. Si Radar no permite esta regla en el plan/cuenta, **mantener `BILLING_MX_CHECKOUT_VERIFIED=false`**; no activar un plan de pago adicional sin decisión del propietario. Hace falta resolver ese bloqueo o diseñar otra captura/confirmación antes de probar Checkout end-to-end. [Atributos](https://docs.stripe.com/radar/rules/supported-attributes), [reglas y orden](https://docs.stripe.com/radar/rules/reference).
 
-Configurar el portal de prueba: historial de facturas y actualización de métodos de pago; cancelación al final del periodo; deshabilitar cambio de plan y actualización de información/domicilio del cliente. Guardar, obtener ID `bpc_…` y ponerlo en la variable correspondiente. Mantener actualizaciones entre Plus/Pro fuera de V1; cancelar y esperar el fin del periodo antes de contratar otro plan. El código verifica las restricciones al abrir el portal.
+Configurar dos portales de prueba separados. El portal de administración permite historial de facturas, actualización de métodos de pago y cancelación al final del periodo; mantiene deshabilitados `subscription_update` y la actualización de información/domicilio del cliente. El portal de upgrade autoriza exclusivamente los Prices Plus/Pro y se usa sólo para el deep link Plus → Pro resuelto por FILMATTA. El downgrade Pro → Plus permanece en el Subscription Schedule propio. El código verifica cada política antes de crear una sesión y rechaza que ambos flujos compartan el mismo ID.
 
 ### 3. Variables del servidor, solo Local/Preview
 
@@ -104,7 +104,8 @@ No pegar secretos en chat. Introducirlos directamente en `.env.local` ignorado p
 | `STRIPE_TEST_ACCOUNT_ID` | `acct_1UEgEC19oXDbxLYe` para el entorno observado |
 | `STRIPE_PLUS_PRICE_ID` / `STRIPE_PRO_PRICE_ID` | IDs reales de los dos precios de prueba |
 | `STRIPE_MX_TAX_RATE_ID` | Tasa inclusiva de prueba `txr_…` |
-| `STRIPE_PORTAL_CONFIGURATION_ID` | Configuración de portal de prueba `bpc_…` |
+| `STRIPE_ADMIN_PORTAL_CONFIGURATION_ID` | Portal de administración sin cambios de Price: pagos, facturas y cancelación |
+| `STRIPE_UPGRADE_PORTAL_CONFIGURATION_ID` | Portal restringido usado únicamente para confirmar Plus → Pro |
 | `STRIPE_WEBHOOK_SECRET` | Secreto `whsec_…` del destino exacto o del listener local |
 | `BILLING_MX_CHECKOUT_VERIFIED` | `false` hasta verificar los tres casos de país; después `true` |
 
