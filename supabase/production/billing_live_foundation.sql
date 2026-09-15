@@ -5,6 +5,17 @@
 -- Stripe Live webhook reconciliation has been verified.
 begin;
 
+do $$
+begin
+  if to_regclass('public.courses') is null then
+    raise exception 'Production bootstrap prerequisite missing: public.courses';
+  end if;
+  if to_regnamespace('private') is null then
+    raise exception 'Production bootstrap prerequisite missing: private schema';
+  end if;
+end;
+$$;
+
 alter table public.courses add column billing_access text not null default 'regular'
   check (billing_access in ('regular', 'separate'));
 comment on column public.courses.billing_access is 'Separate/specialty content is excluded from Plus and Pro.';
@@ -372,10 +383,6 @@ revoke all on function public.claim_billing_customer(text), public.release_billi
   public.apply_billing_snapshot(text,uuid,text,text,jsonb,jsonb,jsonb,jsonb) from public,anon,authenticated;
 grant execute on function public.claim_billing_customer(text), public.release_billing_customer(text,uuid),
   public.apply_billing_snapshot(text,uuid,text,text,jsonb,jsonb,jsonb,jsonb) to service_role;
-commit;
-
-begin;
-
 alter table public.billing_subscriptions
   add column if not exists cancel_at timestamptz,
   add column if not exists canceled_at timestamptz;
@@ -585,10 +592,7 @@ revoke all on function public.apply_billing_snapshot(text,uuid,text,text,jsonb,j
 grant execute on function public.apply_billing_snapshot(text,uuid,text,text,jsonb,jsonb,jsonb,jsonb)
   to service_role;
 
-commit;
-
--- REVIEW ONLY. Apply manually after reviewing the Admin Grants Preview.
-begin;
+-- Admin Grants remain independent from Stripe billing records.
 
 create table public.admin_plan_grants (
   id uuid primary key default gen_random_uuid(),
