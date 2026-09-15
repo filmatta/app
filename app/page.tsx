@@ -323,7 +323,12 @@ export default function Home() {
                 Descubre casas, estudios, foros, oficinas, exteriores y espacios
                 disponibles para proyectos audiovisuales.
               </p>
-              <ComingSoon light />
+              <PrimaryLink
+                href="/locaciones"
+                colorClass="bg-orange-50 text-[#4a211b] hover:bg-white focus-visible:outline-orange-50"
+              >
+                Explorar locaciones
+              </PrimaryLink>
             </div>
 
             <div className="lg:col-span-6 lg:pl-12">
