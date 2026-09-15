@@ -2,9 +2,11 @@
 
 Production usa Stripe Live y un proyecto Supabase Production separado. No se
 debe reutilizar ningún proyecto, webhook u objeto de Stripe Test. Mantener
-`BILLING_ENABLED=false` hasta aplicar y revisar manualmente
-`supabase/production/billing_live_foundation.sql`, configurar todas las
-variables y verificar el webhook Live.
+`BILLING_ENABLED=false` hasta aplicar y revisar manualmente el orden completo
+de `supabase/production/BOOTSTRAP_ORDER.md`, configurar todas las variables y
+verificar el webhook Live. Un proyecto vacío debe crear primero la foundation
+de Profiles/Courses y el schema Learn; `billing_live_foundation.sql` no es el
+primer script del bootstrap.
 
 | Variable | Tipo | Obligatoria | Validación en Production |
 | --- | --- | --- | --- |
