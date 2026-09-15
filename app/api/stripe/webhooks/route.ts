@@ -16,7 +16,9 @@ export async function POST(request: Request) {
   try {
     event = stripeClient().webhooks.constructEvent(raw, request.headers.get("stripe-signature") ?? "", config.webhookSecret);
   } catch { return new Response("Invalid signature", { status: 400 }); }
-  if (event.livemode || event.account) return new Response("Unsupported event scope", { status: 400 });
+  if (event.livemode !== config.livemode || event.account) {
+    return new Response("Unsupported event scope", { status: 400 });
+  }
   try {
     await reconcileBillingEvent(event);
     return Response.json({ received: true });

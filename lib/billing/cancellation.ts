@@ -2,7 +2,7 @@ import "server-only";
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
-import { billingConfig, stripeClient } from "./config";
+import { assertExpectedStripeMode, billingConfig, stripeClient } from "./config";
 import { withBillingLock } from "./lock";
 import type { BillingPlan } from "./policy";
 
@@ -98,7 +98,7 @@ export async function keepScheduledSubscription(
       cancellationUpdate,
       {
         idempotencyKey: [
-          "filmatta-test-keep",
+          `filmatta-${config.mode}-keep`,
           context.subscription.id,
           Math.floor(Date.parse(context.cancellationEffectiveAt) / 1000),
           context.subscription.canceled_at ?? 0,
@@ -156,15 +156,15 @@ async function resolveCancellationContext(
   ]);
 
   if (!config.account || account.id !== config.account || account.country !== "MX") {
-    throw new Error("Incorrect Stripe test account");
+    throw new Error("Incorrect Stripe account");
   }
   if (
     customer.deleted ||
-    customer.livemode ||
     customer.id !== customerId
   ) {
-    throw new Error("Invalid Stripe test customer");
+    throw new Error("Invalid Stripe customer");
   }
+  assertExpectedStripeMode(customer, config);
   if (subscriptions.has_more) {
     throw new Error("Subscription reconciliation limit exceeded");
   }
@@ -182,7 +182,6 @@ async function resolveCancellationContext(
   const subscription = current[0];
   const subscriptionCustomerId = expandableId(subscription.customer);
   if (
-    subscription.livemode ||
     subscriptionCustomerId !== customer.id ||
     subscription.status !== "active" ||
     subscription.pause_collection ||
@@ -193,6 +192,7 @@ async function resolveCancellationContext(
   ) {
     throw new Error("Unexpected active subscription");
   }
+  assertExpectedStripeMode(subscription, config);
 
   const item = subscription.items.data[0];
   const price = item.price;
@@ -200,7 +200,6 @@ async function resolveCancellationContext(
   if (
     !plan ||
     item.quantity !== 1 ||
-    price.livemode ||
     !price.active ||
     price.currency !== "mxn" ||
     price.unit_amount !== FILMATTA_PLAN_PRICES[plan] * 100 ||
@@ -210,6 +209,7 @@ async function resolveCancellationContext(
   ) {
     throw new Error("Unexpected subscription price");
   }
+  assertExpectedStripeMode(price, config);
 
   const cancellation = resolveScheduledCancellation({
     status: subscription.status,

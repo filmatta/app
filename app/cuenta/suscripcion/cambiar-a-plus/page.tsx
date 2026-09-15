@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import SiteHeader from "@/components/SiteHeader";
 import LoadingButton from "@/components/ui/LoadingButton";
 import { getViewer } from "@/lib/auth/get-viewer";
-import { billingEnabled } from "@/lib/billing/config";
+import { billingEnabled, billingMode } from "@/lib/billing/config";
 import { formatBillingEffectiveDate } from "@/lib/billing/return-presentation";
 import { getProToPlusDowngradeState } from "@/lib/billing/subscription-schedule";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
@@ -24,6 +24,7 @@ export default async function ChangeToPlusPage({
     redirect("/acceso?next=%2Fcuenta%2Fsuscripcion%2Fcambiar-a-plus");
   }
   if (!billingEnabled()) redirect("/planes");
+  const mode = billingMode();
 
   const feedback = await searchParams;
   let state = null;
@@ -40,9 +41,9 @@ export default async function ChangeToPlusPage({
       <main className="min-h-screen bg-[#080808] text-white">
         <SiteHeader contextLink={{ href: "/planes", label: "← Planes" }} />
         <section className="mx-auto max-w-3xl px-6 py-20 sm:px-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-200/65">
+          {mode === "test" && <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-200/65">
             Stripe Test Mode
-          </p>
+          </p>}
           <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em]">
             Verifiquemos el cambio
           </h1>
@@ -79,9 +80,9 @@ export default async function ChangeToPlusPage({
     <main className="min-h-screen bg-[#080808] text-white">
       <SiteHeader contextLink={{ href: "/planes", label: "← Planes" }} />
       <section className="mx-auto max-w-3xl px-6 py-14 sm:px-8 sm:py-20">
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-200/65">
+        {mode === "test" && <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-200/65">
           Stripe Test Mode
-        </p>
+        </p>}
         <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
           Cambiar a FILMATTA Plus
         </h1>

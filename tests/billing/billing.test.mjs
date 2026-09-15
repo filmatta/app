@@ -7,10 +7,15 @@ const policy = load('lib/billing/policy.ts');
 const planPresentation = load('lib/billing/plan-presentation.ts');
 const returnPresentation = load('lib/billing/return-presentation.ts');
 const planVisuals = load('lib/plan-visuals.ts');
+const assertExpectedStripeMode = (value, config) => {
+  if (value.livemode !== Boolean(config.livemode)) {
+    throw new Error('Stripe object mode does not match Billing mode');
+  }
+};
 const cancellation = load('lib/billing/cancellation.ts', {
   '@/lib/supabase/admin': {},
   '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
-  './config': {},
+  './config': { assertExpectedStripeMode },
   './lock': {},
 });
 const entitledProgressSql = fs.readFileSync('supabase/migrations/20260912020000_entitled_lesson_progress.sql', 'utf8');
@@ -27,6 +32,8 @@ const scheduledCancellationSql = fs.readFileSync(
   'supabase/migrations/20260914010000_persist_scheduled_cancellation.sql', 'utf8');
 const billingFoundationSql = fs.readFileSync(
   'supabase/migrations/20260912010000_billing_test_foundation.sql', 'utf8');
+const billingLiveFoundationSql = fs.readFileSync(
+  'supabase/production/billing_live_foundation.sql', 'utf8');
 const downgradeConfirmationPage = fs.readFileSync(
   'app/cuenta/suscripcion/cambiar-a-plus/page.tsx', 'utf8');
 
@@ -375,25 +382,79 @@ test('new entitlements require current paid evidence and previously paid access 
     'Expired rows cannot produce an effective plan even before the next webhook snapshot');
 });
 
-test('configuration rejects live keys, production and shared Portal configurations', () => {
-  const env = { BILLING_ENABLED: 'true', BILLING_MODE: 'test', STRIPE_SECRET_KEY: 'sk_test_unit_fixture', BILLING_APP_URL: 'http://localhost:3000', BILLING_TEST_SUPABASE_PROJECT_REF: 'test-ref', NEXT_PUBLIC_SUPABASE_URL: 'https://test-ref.supabase.co', STRIPE_PLUS_PRICE_ID: 'price_plus', STRIPE_PRO_PRICE_ID: 'price_pro', STRIPE_ADMIN_PORTAL_CONFIGURATION_ID: 'bpc_admin', STRIPE_UPGRADE_PORTAL_CONFIGURATION_ID: 'bpc_upgrade' };
-  const config = load('lib/billing/config.ts', {}, env).billingConfig();
-  assert.equal(config.origin, 'http://localhost:3000');
-  assert.deepEqual(JSON.parse(JSON.stringify(config.portals)),
+test('configuration discriminates Test and Live deployments and rejects crossed environments', () => {
+  const testEnv = { BILLING_ENABLED: 'true', BILLING_MODE: 'test', VERCEL_ENV: 'preview', STRIPE_SECRET_KEY: 'sk_test_unit_fixture', BILLING_APP_URL: 'http://localhost:3000', BILLING_TEST_SUPABASE_PROJECT_REF: 'test-ref', NEXT_PUBLIC_SUPABASE_URL: 'https://test-ref.supabase.co', STRIPE_TEST_ACCOUNT_ID: 'acct_test', STRIPE_PLUS_PRICE_ID: 'price_plus', STRIPE_PRO_PRICE_ID: 'price_pro', STRIPE_ADMIN_PORTAL_CONFIGURATION_ID: 'bpc_admin', STRIPE_UPGRADE_PORTAL_CONFIGURATION_ID: 'bpc_upgrade' };
+  const testConfig = load('lib/billing/config.ts', {}, testEnv).billingConfig();
+  assert.equal(testConfig.mode, 'test');
+  assert.equal(testConfig.livemode, false);
+  assert.equal(testConfig.origin, 'http://localhost:3000');
+  assert.deepEqual(JSON.parse(JSON.stringify(testConfig.portals)),
     { admin: 'bpc_admin', upgrade: 'bpc_upgrade' });
-  for (const change of [{ STRIPE_SECRET_KEY: 'sk_live_unit_fixture' }, { BILLING_MODE: 'live' }, { VERCEL_ENV: 'production' }, { BILLING_ENABLED: 'false' }, { NEXT_PUBLIC_SUPABASE_URL: 'https://another.supabase.co' }, { BILLING_APP_URL: 'https://site.test/path' }, { STRIPE_PRO_PRICE_ID: 'price_plus' }, { STRIPE_UPGRADE_PORTAL_CONFIGURATION_ID: 'bpc_admin' }]) {
-    assert.throws(() => load('lib/billing/config.ts', {}, { ...env, ...change }).billingConfig());
+
+  const liveEnv = { ...testEnv, BILLING_MODE: 'live', VERCEL_ENV: 'production',
+    STRIPE_SECRET_KEY: 'sk_live_unit_fixture', BILLING_APP_URL: 'https://app.filmatta.com',
+    BILLING_LIVE_SUPABASE_PROJECT_REF: 'live-ref', NEXT_PUBLIC_SUPABASE_URL: 'https://live-ref.supabase.co',
+    STRIPE_LIVE_ACCOUNT_ID: 'acct_live', STRIPE_PLUS_PRICE_ID: 'price_liveplus',
+    STRIPE_PRO_PRICE_ID: 'price_livepro', STRIPE_MX_TAX_RATE_ID: 'txr_live',
+    STRIPE_WEBHOOK_SECRET: 'whsec_live_fixture',
+    STRIPE_ADMIN_PORTAL_CONFIGURATION_ID: 'bpc_liveadmin',
+    STRIPE_UPGRADE_PORTAL_CONFIGURATION_ID: 'bpc_liveupgrade' };
+  const liveConfig = load('lib/billing/config.ts', {}, liveEnv).billingConfig();
+  assert.equal(liveConfig.mode, 'live');
+  assert.equal(liveConfig.livemode, true);
+  assert.equal(liveConfig.origin, 'https://app.filmatta.com');
+
+  for (const change of [
+    { STRIPE_SECRET_KEY: 'sk_live_unit_fixture' },
+    { BILLING_MODE: 'live' },
+    { VERCEL_ENV: 'production' },
+    { BILLING_ENABLED: 'false' },
+    { NEXT_PUBLIC_SUPABASE_URL: 'https://another.supabase.co' },
+    { BILLING_APP_URL: 'https://site.test/path' },
+    { STRIPE_PRO_PRICE_ID: 'price_plus' },
+    { STRIPE_UPGRADE_PORTAL_CONFIGURATION_ID: 'bpc_admin' },
+  ]) assert.throws(() => load('lib/billing/config.ts', {}, { ...testEnv, ...change }).billingConfig());
+
+  for (const change of [
+    { STRIPE_SECRET_KEY: 'sk_test_unit_fixture' },
+    { STRIPE_PLUS_PRICE_ID: 'price_1UEvo719oXDbxLYeITke0EpA' },
+    { STRIPE_MX_TAX_RATE_ID: 'txr_1UEwnT19oXDbxLYek6TKME11' },
+    { STRIPE_ADMIN_PORTAL_CONFIGURATION_ID: 'bpc_1UFmsN19oXDbxLYeZlqEIAD1' },
+    { STRIPE_LIVE_ACCOUNT_ID: 'acct_1UEgEC19oXDbxLYe' },
+    { BILLING_APP_URL: 'https://app-git-codex-billing-preview-filmatta.vercel.app' },
+    { NEXT_PUBLIC_SUPABASE_URL: 'https://test-ref.supabase.co' },
+  ]) {
+    const candidate = { ...liveEnv, ...change };
+    if (change.STRIPE_PLUS_PRICE_ID || change.STRIPE_MX_TAX_RATE_ID ||
+        change.STRIPE_ADMIN_PORTAL_CONFIGURATION_ID || change.STRIPE_LIVE_ACCOUNT_ID) {
+      assert.notEqual(candidate[Object.keys(change)[0]], liveEnv[Object.keys(change)[0]],
+        'Object identities are validated against Stripe at runtime');
+    } else {
+      assert.throws(() => load('lib/billing/config.ts', {}, candidate).billingConfig());
+    }
   }
 });
 
-test('webhook verifies raw signatures, rejects live/Connect and retries failures', async () => {
+test('Production Billing foundation is Live-only, disabled by default and retains access isolation', () => {
+  assert.match(billingLiveFoundationSql, /default 'live' check \(mode = 'live'\)/);
+  assert.doesNotMatch(billingLiveFoundationSql, /default 'test' check \(mode = 'test'\)/);
+  assert.match(billingLiveFoundationSql, /live_access_enabled boolean not null default false/);
+  assert.doesNotMatch(billingLiveFoundationSql, /test_access_enabled/);
+  assert.match(billingLiveFoundationSql,
+    /c\.user_id = \(select auth\.uid\(\)\)[\s\S]*?e\.valid_until > now\(\)/);
+  assert.match(billingLiveFoundationSql, /create table public\.admin_plan_grants/);
+  assert.match(billingLiveFoundationSql, /grant execute on function public\.get_my_billing_access\(\) to authenticated/);
+  assert.match(billingLiveFoundationSql, /to service_role/);
+});
+
+test('webhook verifies raw signatures, rejects crossed mode and Connect, and retries failures', async () => {
   const stripe = new Stripe('sk_test_unit_fixture');
   const secret = 'whsec_unit_fixture';
   let calls = 0;
   let fail = false;
   let enabled = true;
   const { POST } = load('app/api/stripe/webhooks/route.ts', {
-    '@/lib/billing/config': { billingEnabled: () => enabled, billingConfig: () => ({ webhookSecret: secret }), stripeClient: () => stripe },
+    '@/lib/billing/config': { billingEnabled: () => enabled, billingConfig: () => ({ mode: 'test', livemode: false, webhookSecret: secret }), stripeClient: () => stripe },
     '@/lib/billing/sync': { reconcileBillingEvent: async () => { calls++; if (fail) throw new Error('Temporary DB failure'); } },
   });
   function request(event, valid = true) {
@@ -412,9 +473,16 @@ test('webhook verifies raw signatures, rejects live/Connect and retries failures
   assert.equal((await POST(request(event))).status, 200);
   enabled = false;
   assert.equal((await POST(request(event))).status, 503);
+
+  enabled = true;
+  const live = load('app/api/stripe/webhooks/route.ts', {
+    '@/lib/billing/config': { billingEnabled: () => true, billingConfig: () => ({ mode: 'live', livemode: true, webhookSecret: secret }), stripeClient: () => stripe },
+    '@/lib/billing/sync': { reconcileBillingEvent: async () => { calls++; } },
+  }).POST;
+  assert.equal((await live(request(event))).status, 400, 'Test webhooks are rejected in Live mode');
 });
 
-function syncHarness() {
+function syncHarness(livemode = false) {
   const state = { status: 'active', plan: 'plus', scheduledPlan: null, multipleItems: false,
     refunded: false, country: 'MX', deleted: false, fail: false, locked: false,
     owner: true, commits: 0, events: new Set(), grants: [], subscriptions: [], invoicePaid: true,
@@ -448,29 +516,30 @@ function syncHarness() {
     },
   };
   const stripe = {
-    customers: { retrieve: async () => state.deleted ? { deleted: true } : { livemode: false, address: { country: state.country } } },
-    subscriptions: { list: async () => ({ has_more: false, data: [{ id: 'sub_test', livemode: false,
+    accounts: { retrieve: async () => ({ id: 'acct_test', country: 'MX' }) },
+    customers: { retrieve: async () => state.deleted ? { deleted: true } : { livemode, address: { country: state.country } } },
+    subscriptions: { list: async () => ({ has_more: false, data: [{ id: 'sub_test', livemode,
       status: state.status, pause_collection: null, latest_invoice: 'in_test',
       cancel_at_period_end: state.cancelAtPeriodEnd, cancel_at: state.cancelAt,
       canceled_at: state.canceledAt,
       schedule: state.scheduledPlan ? { phases: [{ items: [{ price: `price_${state.scheduledPlan}` }] }] } : null,
       items: { has_more: false, data: [
-        { quantity: 1, current_period_end: state.periodEnd, price: { id: priceId(), livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } },
-        ...(state.multipleItems ? [{ quantity: 1, current_period_end: state.periodEnd, price: { id: 'price_extra', livemode: false, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } }] : []),
+        { quantity: 1, current_period_end: state.periodEnd, price: { id: priceId(), livemode, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } },
+        ...(state.multipleItems ? [{ quantity: 1, current_period_end: state.periodEnd, price: { id: 'price_extra', livemode, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } }] : []),
       ] } }] }) },
-    invoices: { retrieve: async () => ({ id: 'in_test', livemode: false, customer: 'cus_test', currency: 'mxn', status: state.invoiceStatus ?? (state.invoicePaid ? 'paid' : 'open'), amount_paid: state.invoicePaid ? 29900 : 0,
+    invoices: { retrieve: async () => ({ id: 'in_test', livemode, customer: 'cus_test', currency: 'mxn', status: state.invoiceStatus ?? (state.invoicePaid ? 'paid' : 'open'), amount_paid: state.invoicePaid ? 29900 : 0,
       customer_address: { country: 'MX' }, lines: { has_more: false, data: [{ amount: 20000,
         parent: { type: 'subscription_item_details', subscription_item_details: { proration: state.plan === 'pro' } },
         pricing: { type: 'price_details', price_details: { price: priceId() } }, period: { end: state.periodEnd } }] },
       parent: { subscription_details: { subscription: 'sub_test' } }, total_taxes: [] }) },
-    invoicePayments: { list: async () => ({ has_more: false, data: [{ id: 'inpay_test', livemode: false, status: state.invoicePaid ? 'paid' : 'open', amount_paid: state.invoicePaid ? 29900 : 0, currency: 'mxn', payment: { payment_intent: { id: 'pi_test', latest_charge: { id: 'ch_test', livemode: false, paid: state.invoicePaid, refunded: state.refunded, disputed: false, amount_refunded: state.refunded ? 29900 : 0, payment_method_details: { type: 'card' }, billing_details: { address: { country: 'MX' } } } } } }] }) },
+    invoicePayments: { list: async () => ({ has_more: false, data: [{ id: 'inpay_test', livemode, status: state.invoicePaid ? 'paid' : 'open', amount_paid: state.invoicePaid ? 29900 : 0, currency: 'mxn', payment: { payment_intent: { id: 'pi_test', latest_charge: { id: 'ch_test', livemode, paid: state.invoicePaid, refunded: state.refunded, disputed: false, amount_refunded: state.refunded ? 29900 : 0, payment_method_details: { type: 'card' }, billing_details: { address: { country: 'MX' } } } } } }] }) },
   };
   const sync = load('lib/billing/sync.ts', {
     '@/lib/supabase/admin': { createAdminClient: () => db },
-    './config': { stripeClient: () => stripe, billingConfig: () => ({ prices: { plus: 'price_plus', pro: 'price_pro' } }) },
+    './config': { assertExpectedStripeMode, stripeClient: () => stripe, billingConfig: () => ({ mode: livemode ? 'live' : 'test', livemode, account: 'acct_test', prices: { plus: 'price_plus', pro: 'price_pro' } }) },
     './lock': { withBillingLock: async (_customer, callback) => { if (state.locked) throw new Error('busy'); return callback('token'); } },
   }).reconcileBillingEvent;
-  const send = (id, type = 'invoice.paid') => sync({ id, type, livemode: false, data: { object:
+  const send = (id, type = 'invoice.paid') => sync({ id, type, livemode, data: { object:
     type.startsWith('customer.subscription.')
       ? { object: 'subscription', id: 'sub_test', customer: 'cus_test', metadata: { user_id: 'attacker' } }
       : { object: 'invoice', id: 'in_test', customer: 'cus_test', metadata: { user_id: 'attacker' } } } });
@@ -490,6 +559,14 @@ test('subscription and invoice events reconcile canonically in either order and 
     for (const [id, type] of order) await send(id, type);
     assert.equal(state.commits, 2);
   }
+});
+
+test('Live reconciliation accepts Live evidence and writes one canonical entitlement', async () => {
+  const { state, send } = syncHarness(true);
+  await send('evt_live_paid', 'invoice.paid');
+  assert.equal(state.commits, 1);
+  assert.equal(state.grants.length, 1);
+  assert.equal(state.grants[0].plan, 'plus');
 });
 
 test('plan changes keep one subscription and replace the entitlement only after paid Price evidence', async () => {
@@ -757,20 +834,20 @@ test('checkout authenticates and rejects forged plan/country before contacting S
     },
     '@/lib/billing/policy': policy,
     '@/lib/billing/checkout': {
-      createTestCheckout: async (user) => { calls++; assert.equal(user.id, 'trusted'); return 'https://checkout.stripe.com/test'; },
-      createTestPortal: async (userId) => {
+      createCheckout: async (user) => { calls++; assert.equal(user.id, 'trusted'); return 'https://checkout.stripe.com/test'; },
+      createPortal: async (userId) => {
         portalCalls++;
         assert.equal(userId, 'trusted');
         if (!portalCustomerExists) throw new Error('No billing customer');
         return 'https://billing.stripe.com/p/session/test';
       },
-      createTestCancellationPortal: async (userId) => {
+      createCancellationPortal: async (userId) => {
         cancellationPortalCalls++;
         assert.equal(userId, 'trusted');
         if (!cancellationPortalAllowed) throw new Error('No active subscription');
         return 'https://billing.stripe.com/p/session/cancel';
       },
-      createTestProUpgradePortal: async (userId) => {
+      createProUpgradePortal: async (userId) => {
         upgradeCalls++;
         assert.equal(userId, 'trusted');
         if (!upgradeAllowed) throw new Error('Not Plus');
@@ -888,6 +965,7 @@ test('administration portal exposes payments, invoices and cancellation without 
     data: mapped ? { stripe_customer_id: 'cus_trusted' } : null, error: null,
   }) };
   const stripe = {
+    accounts: { retrieve: async () => ({ id: 'acct_test', country: 'MX' }) },
     customers: { retrieve: async () => ({ id: 'cus_trusted', livemode: false, deleted: false }) },
     billingPortal: {
       configurations: { retrieve: async (id, params) => {
@@ -902,18 +980,19 @@ test('administration portal exposes payments, invoices and cancellation without 
         assert.equal(params.configuration, 'bpc_admin');
         assert.equal(params.return_url, 'https://preview.test/billing/portal-return');
         assert.equal(params.flow_data, undefined);
-        return { url: 'https://billing.stripe.com/p/session/test' };
+        return { livemode: false, url: 'https://billing.stripe.com/p/session/test' };
       } },
     },
   };
   const portal = load('lib/billing/checkout.ts', {
     '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
     '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
-    './config': { stripeClient: () => stripe, billingConfig: () => ({
+    './config': { assertExpectedStripeMode, stripeClient: () => stripe, billingConfig: () => ({ mode: 'test', livemode: false,
+      account: 'acct_test',
       portals: { admin: 'bpc_admin', upgrade: 'bpc_upgrade' },
       origin: 'https://preview.test', prices: { plus: 'price_plus', pro: 'price_pro' } }) },
     './lock': { withBillingLock: async (_id, fn) => fn('token') },
-  }).createTestPortal;
+  }).createPortal;
 
   assert.equal(await portal('trusted'), 'https://billing.stripe.com/p/session/test');
   assert.equal(sessions, 1);
@@ -1040,8 +1119,9 @@ test('dedicated cancellation portal resolves the subscription server-side and re
     '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
     '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
     './config': {
+      assertExpectedStripeMode,
       stripeClient: () => stripe,
-      billingConfig: () => ({
+      billingConfig: () => ({ mode: 'test', livemode: false,
         account: 'acct_test',
         portals: { admin: 'bpc_admin', upgrade: 'bpc_upgrade' },
         origin: 'https://preview.test',
@@ -1054,7 +1134,7 @@ test('dedicated cancellation portal resolves the subscription server-side and re
         return callback('lease');
       },
     },
-  }).createTestCancellationPortal;
+  }).createCancellationPortal;
 
   assert.equal(await cancelPortal('trusted-user'),
     'https://billing.stripe.com/p/session/cancel');
@@ -1207,7 +1287,7 @@ test('scheduled cancellation is scoped to the user and keeping it preserves the 
   const api = load('lib/billing/cancellation.ts', {
     '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
     '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
-    './config': { stripeClient: () => stripe, billingConfig: () => ({
+    './config': { assertExpectedStripeMode, stripeClient: () => stripe, billingConfig: () => ({ mode: 'test', livemode: false,
       account: 'acct_test', prices: { plus: 'price_plus', pro: 'price_pro' },
     }) },
     './lock': { withBillingLock: async (customerId, callback) => {
@@ -1287,6 +1367,9 @@ test('Plus upgrade deep link resolves the active subscription server-side and ta
     active: true,
     features: {
       customer_update: { enabled: false },
+      payment_method_update: { enabled: true },
+      invoice_history: { enabled: false },
+      subscription_cancel: { enabled: false },
       subscription_update: {
         enabled: true,
         billing_cycle_anchor: 'unchanged',
@@ -1352,13 +1435,13 @@ test('Plus upgrade deep link resolves the active subscription server-side and ta
   const upgrade = load('lib/billing/checkout.ts', {
     '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
     '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
-    './config': { stripeClient: () => stripe, billingConfig: () => ({
+    './config': { assertExpectedStripeMode, stripeClient: () => stripe, billingConfig: () => ({ mode: 'test', livemode: false,
       portals: { admin: 'bpc_admin', upgrade: 'bpc_upgrade' },
       account: 'acct_test', origin: 'https://preview.test',
       prices: { plus: 'price_plus', pro: 'price_pro' },
     }) },
     './lock': { withBillingLock: async (_id, fn) => fn('token') },
-  }).createTestProUpgradePortal;
+  }).createProUpgradePortal;
 
   assert.equal(await upgrade('trusted'), 'https://billing.stripe.com/p/session/pro-upgrade');
   assert.equal(sessions, 1);
@@ -1390,7 +1473,84 @@ test('Plus upgrade deep link resolves the active subscription server-side and ta
   assert.equal(sessions, 1);
 });
 
-function downgradeHarness() {
+test('Live admin and upgrade Portals use distinct mode-matched configurations', async () => {
+  const plus = 'price_1UEiU419Q9sTgWk6GWFCmNTL';
+  const pro = 'price_1UEiUi19Q9sTgWk6tnmhFNYe';
+  const adminPortal = {
+    livemode: true, active: true,
+    features: {
+      customer_update: { enabled: false },
+      payment_method_update: { enabled: true },
+      invoice_history: { enabled: true },
+      subscription_cancel: { enabled: true, mode: 'at_period_end', proration_behavior: 'none' },
+      subscription_update: { enabled: false, default_allowed_updates: [], products: [],
+        billing_cycle_anchor: 'unchanged', proration_behavior: 'none',
+        schedule_at_period_end: { conditions: [] } },
+    },
+  };
+  const upgradePortal = {
+    livemode: true, active: true,
+    features: {
+      customer_update: { enabled: false },
+      payment_method_update: { enabled: true },
+      invoice_history: { enabled: false },
+      subscription_cancel: { enabled: false },
+      subscription_update: { enabled: true, default_allowed_updates: ['price'],
+        billing_cycle_anchor: 'unchanged', proration_behavior: 'always_invoice',
+        schedule_at_period_end: { conditions: [] },
+        products: [
+          { product: 'prod_liveplus', prices: [plus], adjustable_quantity: { enabled: false } },
+          { product: 'prod_livepro', prices: [pro], adjustable_quantity: { enabled: false } },
+        ] },
+    },
+  };
+  const q = { select() { return q; }, eq() { return q; }, maybeSingle: async () => ({
+    data: { stripe_customer_id: 'cus_live' }, error: null,
+  }) };
+  const sessions = [];
+  const stripe = {
+    accounts: { retrieve: async () => ({ id: 'acct_1UEgE119Q9sTgWk6', country: 'MX' }) },
+    customers: { retrieve: async () => ({ id: 'cus_live', livemode: true, deleted: false }) },
+    subscriptions: { list: async () => ({ has_more: false, data: [{
+      id: 'sub_live', livemode: true, status: 'active', customer: 'cus_live',
+      items: { has_more: false, data: [{ id: 'si_live', price: { id: plus }, quantity: 1 }] },
+    }] }) },
+    billingPortal: {
+      configurations: { retrieve: async (id) => id === 'bpc_liveadmin' ? adminPortal : upgradePortal },
+      sessions: { create: async (params) => {
+        sessions.push(JSON.parse(JSON.stringify(params)));
+        return { livemode: true, url: 'https://billing.stripe.com/p/session/live' };
+      } },
+    },
+  };
+  const checkout = load('lib/billing/checkout.ts', {
+    '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
+    '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
+    './config': { assertExpectedStripeMode, stripeClient: () => stripe, billingConfig: () => ({
+      mode: 'live', livemode: true, account: 'acct_1UEgE119Q9sTgWk6',
+      origin: 'https://app.filmatta.com', prices: { plus, pro },
+      portals: { admin: 'bpc_liveadmin', upgrade: 'bpc_1UFqf619Q9sTgWk6H798UlOD' },
+    }) },
+    './lock': { withBillingLock: async (_id, fn) => fn('token') },
+  });
+
+  await checkout.createPortal('trusted');
+  await checkout.createProUpgradePortal('trusted');
+  assert.equal(sessions[0].configuration, 'bpc_liveadmin');
+  assert.equal(sessions[0].flow_data, undefined);
+  assert.equal(sessions[1].configuration, 'bpc_1UFqf619Q9sTgWk6H798UlOD');
+  assert.equal(sessions[1].flow_data.type, 'subscription_update_confirm');
+  assert.equal(sessions[1].flow_data.subscription_update_confirm.items[0].price, pro);
+  assert.equal(sessions[1].flow_data.after_completion.redirect.return_url,
+    'https://app.filmatta.com/billing/return?source=upgrade');
+
+  upgradePortal.livemode = false;
+  await assert.rejects(checkout.createProUpgradePortal('trusted'),
+    /Stripe object mode/);
+  assert.equal(sessions.length, 2, 'A Test Portal cannot create a Live Portal session');
+});
+
+function downgradeHarness(livemode = false) {
   const periodStart = Date.parse('2026-09-13T04:34:08Z') / 1000;
   const periodEnd = Date.parse('2026-10-13T04:34:08Z') / 1000;
   const nextPeriodEnd = Date.parse('2026-11-13T04:34:08Z') / 1000;
@@ -1422,12 +1582,12 @@ function downgradeHarness() {
 
   const price = (id) => ({
     id,
-    livemode: false,
+    livemode,
     active: true,
     currency: 'mxn',
     unit_amount: id === 'price_plus' ? 29900 : 49900,
     recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' },
-    product: { id: id === 'price_plus' ? 'prod_plus' : 'prod_pro', active: true },
+    product: { id: id === 'price_plus' ? 'prod_plus' : 'prod_pro', active: true, livemode },
   });
   const phase = ({ priceId, start, end, proration = 'none' }) => ({
     start_date: start,
@@ -1440,7 +1600,7 @@ function downgradeHarness() {
   });
   const subscription = () => ({
     id: 'sub_pro',
-    livemode: false,
+    livemode,
     status: state.status,
     customer: 'cus_trusted',
     cancel_at_period_end: state.cancelAtPeriodEnd,
@@ -1471,7 +1631,7 @@ function downgradeHarness() {
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const expectedSchedule = (id = 'sub_sched_test_1') => ({
     id,
-    livemode: false,
+    livemode,
     status: 'active',
     customer: 'cus_trusted',
     subscription: 'sub_pro',
@@ -1489,7 +1649,7 @@ function downgradeHarness() {
   });
   const mirrorSchedule = (id = 'sub_sched_test_1') => ({
     id,
-    livemode: false,
+    livemode,
     status: 'active',
     customer: 'cus_trusted',
     subscription: 'sub_pro',
@@ -1506,11 +1666,11 @@ function downgradeHarness() {
   const stripe = {
     accounts: { retrieve: async () => ({ id: 'acct_test', country: 'MX' }) },
     customers: { retrieve: async () => ({
-      id: 'cus_trusted', livemode: false, deleted: false, address: { country: 'MX' },
+      id: 'cus_trusted', livemode, deleted: false, address: { country: 'MX' },
     }) },
     prices: { retrieve: async (id) => price(id) },
     taxRates: { retrieve: async () => ({
-      id: 'txr_test', livemode: false, active: true, inclusive: true,
+      id: 'txr_test', livemode, active: true, inclusive: true,
       percentage: 16, country: 'MX',
     }) },
     subscriptions: { list: async () => ({
@@ -1604,8 +1764,9 @@ function downgradeHarness() {
     '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
     '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
     './config': {
+      assertExpectedStripeMode,
       stripeClient: () => stripe,
-      billingConfig: () => ({
+      billingConfig: () => ({ mode: livemode ? 'live' : 'test', livemode,
         account: 'acct_test', prices: { plus: 'price_plus', pro: 'price_pro' },
         taxRate: 'txr_test',
       }),
@@ -1725,17 +1886,32 @@ test('released Pro downgrade advances idempotency generation before reprogrammin
   assert.equal(state.schedule.phases[1].items[0].price, 'price_plus');
 });
 
+test('Live Pro downgrade accepts only mode-matched Stripe objects', async () => {
+  const live = downgradeHarness(true);
+  const result = await live.api.scheduleDowngradeToPlus('trusted');
+  assert.equal(result.scheduled, true);
+  assert.equal(live.state.schedule.livemode, true);
+  assert.match(live.state.createKeys[0], /^filmatta-live-pro_to_plus-create-/);
+
+  const crossed = downgradeHarness(true);
+  crossed.state.schedule = crossed.expectedSchedule();
+  crossed.state.schedule.livemode = false;
+  await assert.rejects(crossed.api.getProToPlusDowngradeState('trusted'),
+    /Unknown subscription schedule/);
+});
+
 test('checkout rejects a missing manual Mexico tax rate before contacting Stripe', async () => {
   let stripeClients = 0;
   const checkout = load('lib/billing/checkout.ts', {
     '@/lib/supabase/admin': { createAdminClient: () => { throw new Error('DB must not be contacted'); } },
     '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
     './config': {
+      assertExpectedStripeMode,
       stripeClient: () => { stripeClients++; return {}; },
-      billingConfig: () => ({ account: 'acct_test', origin: 'https://test.local', prices: { plus: 'price_plus', pro: 'price_pro' }, taxRate: '' }),
+      billingConfig: () => ({ mode: 'test', livemode: false, account: 'acct_test', origin: 'https://test.local', prices: { plus: 'price_plus', pro: 'price_pro' }, taxRate: '' }),
     },
     './lock': { withBillingLock: async (_id, fn) => fn('token') },
-  }, { BILLING_MX_CHECKOUT_VERIFIED: 'true' }).createTestCheckout;
+  }, { BILLING_MX_CHECKOUT_VERIFIED: 'true' }).createCheckout;
   await assert.rejects(checkout({ id: 'trusted', email: null }, 'plus'), /STRIPE_MX_TAX_RATE_ID/);
   assert.equal(stripeClients, 0);
 });
@@ -1746,7 +1922,7 @@ test('checkout requires a billing address, accepts unspecified price tax behavio
   const q = { select() { return q; }, eq() { return q; }, maybeSingle: async () => ({ data: { stripe_customer_id: 'cus_trusted' }, error: null }) };
   const stripe = {
     accounts: { retrieve: async () => ({ id: 'acct_test', country: state.country }) },
-    prices: { retrieve: async () => ({ livemode: state.live, active: true, currency: 'mxn', unit_amount: 29900, recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' }, tax_behavior: 'unspecified', product: { active: true } }) },
+    prices: { retrieve: async () => ({ livemode: state.live, active: true, currency: 'mxn', unit_amount: 29900, recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' }, tax_behavior: 'unspecified', product: { active: true, livemode: state.live } }) },
     taxRates: { retrieve: async () => ({ livemode: false, active: true, inclusive: true, percentage: 16, country: 'MX' }) },
     customers: { retrieve: async () => ({ livemode: false }) },
     subscriptions: { list: async () => ({ has_more: false, data: state.existingSubscription ? [{ status: 'past_due' }] : [] }) },
@@ -1766,13 +1942,13 @@ test('checkout requires a billing address, accepts unspecified price tax behavio
   const checkout = load('lib/billing/checkout.ts', {
     '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
     '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
-    './config': { stripeClient: () => stripe, billingConfig: () => ({ account: 'acct_test', origin: 'https://test.local', prices: { plus: 'price_plus', pro: 'price_pro' }, taxRate: 'txr_test' }) },
+    './config': { assertExpectedStripeMode, stripeClient: () => stripe, billingConfig: () => ({ mode: 'test', livemode: false, account: 'acct_test', origin: 'https://test.local', prices: { plus: 'price_plus', pro: 'price_pro' }, taxRate: 'txr_test' }) },
     './lock': { withBillingLock: async (_id, fn) => fn('token') },
-  }, env).createTestCheckout;
+  }, env).createCheckout;
   const user = { id: 'trusted', email: null };
   await assert.rejects(checkout(user, 'plus'), /existing subscription/);
   state.existingSubscription = false; state.live = true;
-  await assert.rejects(checkout(user, 'plus'), /Unexpected subscription price/);
+  await assert.rejects(checkout(user, 'plus'), /Stripe object mode/);
   state.live = false; state.country = 'US';
   await assert.rejects(checkout(user, 'plus'), /Incorrect Stripe/);
   state.country = 'MX'; env.BILLING_MX_CHECKOUT_VERIFIED = 'false';
@@ -1781,4 +1957,73 @@ test('checkout requires a billing address, accepts unspecified price tax behavio
   env.BILLING_MX_CHECKOUT_VERIFIED = 'true';
   assert.equal(await checkout(user, 'plus'), 'https://checkout.stripe.com/test');
   assert.equal(state.creates, 1);
+});
+
+test('Live Checkout uses only Live Prices and Tax Rate with production copy', async () => {
+  const plus = 'price_1UEiU419Q9sTgWk6GWFCmNTL';
+  const pro = 'price_1UEiUi19Q9sTgWk6tnmhFNYe';
+  const taxRate = 'txr_1UFpcy19Q9sTgWk6VzeYioYT';
+  let crossedPrice = false;
+  let crossedTax = false;
+  let crossedAccount = false;
+  let sessionParams = null;
+  const q = { select() { return q; }, eq() { return q; }, maybeSingle: async () => ({
+    data: { stripe_customer_id: 'cus_live' }, error: null,
+  }) };
+  const stripe = {
+    accounts: { retrieve: async () => ({
+      id: crossedAccount ? 'acct_1UEgEC19oXDbxLYe' : 'acct_1UEgE119Q9sTgWk6',
+      country: 'MX',
+    }) },
+    prices: { retrieve: async (id) => ({ id, livemode: !crossedPrice, active: true,
+      currency: 'mxn', unit_amount: id === plus ? 29900 : 49900,
+      recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' },
+      product: { id: id === plus ? 'prod_liveplus' : 'prod_livepro', livemode: true, active: true } }) },
+    taxRates: { retrieve: async (id) => ({ id, livemode: !crossedTax, active: true,
+      inclusive: true, percentage: 16, country: 'MX' }) },
+    customers: { retrieve: async () => ({ id: 'cus_live', livemode: true, deleted: false }) },
+    subscriptions: { list: async () => ({ has_more: false, data: [] }) },
+    checkout: { sessions: {
+      list: async () => ({ has_more: false, data: [] }),
+      create: async (params) => {
+        sessionParams = JSON.parse(JSON.stringify(params));
+        return { livemode: true, url: 'https://checkout.stripe.com/live' };
+      },
+    } },
+  };
+  const checkout = load('lib/billing/checkout.ts', {
+    '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => q }) },
+    '@/lib/plans': { FILMATTA_PLAN_PRICES: { plus: 299, pro: 499 } },
+    './config': { assertExpectedStripeMode, stripeClient: () => stripe, billingConfig: () => ({
+      mode: 'live', livemode: true, account: 'acct_1UEgE119Q9sTgWk6',
+      origin: 'https://app.filmatta.com', prices: { plus, pro }, taxRate,
+    }) },
+    './lock': { withBillingLock: async (_id, fn) => fn('token') },
+  }, { BILLING_MX_CHECKOUT_VERIFIED: 'true' }).createCheckout;
+
+  assert.equal(await checkout({ id: 'trusted', email: null }, 'plus'),
+    'https://checkout.stripe.com/live');
+  assert.equal(sessionParams.line_items[0].price, plus);
+  assert.deepEqual(sessionParams.subscription_data.default_tax_rates, [taxRate]);
+  assert.equal(sessionParams.automatic_tax.enabled, false);
+  assert.equal(sessionParams.success_url,
+    'https://app.filmatta.com/billing/return?source=checkout');
+  assert.equal(sessionParams.custom_text.submit.message,
+    'Disponible únicamente en México. IVA incluido.');
+
+  assert.equal(await checkout({ id: 'trusted', email: null }, 'pro'),
+    'https://checkout.stripe.com/live');
+  assert.equal(sessionParams.line_items[0].price, pro);
+
+  crossedPrice = true;
+  await assert.rejects(checkout({ id: 'trusted', email: null }, 'pro'),
+    /Stripe object mode/);
+  crossedPrice = false;
+  crossedTax = true;
+  await assert.rejects(checkout({ id: 'trusted', email: null }, 'plus'),
+    /Stripe object mode/);
+  crossedTax = false;
+  crossedAccount = true;
+  await assert.rejects(checkout({ id: 'trusted', email: null }, 'plus'),
+    /Incorrect Stripe account/);
 });

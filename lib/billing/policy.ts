@@ -1,12 +1,15 @@
 export type BillingPlan = "plus" | "pro";
+export type BillingMode = "test" | "live";
 
 export function isBillingPlan(value: unknown): value is BillingPlan {
   return value === "plus" || value === "pro";
 }
 
-export function testBillingEnabled(env: Record<string, string | undefined>) {
-  return env.BILLING_ENABLED === "true" && env.BILLING_MODE === "test" &&
-    env.VERCEL_ENV !== "production";
+export function billingModeEnabled(env: Record<string, string | undefined>) {
+  if (env.BILLING_ENABLED !== "true") return false;
+  if (env.BILLING_MODE === "test") return env.VERCEL_ENV !== "production";
+  if (env.BILLING_MODE === "live") return env.VERCEL_ENV === "production";
+  return false;
 }
 
 export function canReadLesson(input: {
