@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { billingEnabled } from "@/lib/billing/config";
+import { billingEnabled, billingMode } from "@/lib/billing/config";
 import SiteHeader from "@/components/SiteHeader";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
 import { getViewer } from "@/lib/auth/get-viewer";
@@ -115,6 +115,7 @@ export default async function PlanesPage({
   const query = await searchParams;
   const viewer = await getViewer();
   const billingAvailable = billingEnabled();
+  const mode = billingMode();
   const billing = viewer
     ? await getBillingAccess()
     : {
@@ -325,9 +326,11 @@ export default async function PlanesPage({
           </section>
 
           <p className="mt-8 text-center text-sm text-white/30">
-            {billingAvailable
+            {mode === "test"
               ? "Stripe Test Mode. Usa únicamente tarjetas de prueba."
-              : "Los planes premium estarán disponibles próximamente."}
+              : billingAvailable
+                ? "Suscripciones disponibles en México. Precios con IVA incluido."
+                : "Los planes premium estarán disponibles próximamente."}
           </p>
         </div>
       </section>

@@ -2,7 +2,7 @@ import "server-only";
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
-import { billingConfig, stripeClient } from "./config";
+import { assertExpectedStripeMode, billingConfig, stripeClient } from "./config";
 import { withBillingLock } from "./lock";
 
 const DOWNGRADE_OPERATION = "pro_to_plus";
@@ -167,12 +167,12 @@ export async function releaseScheduledDowngrade(
       }
     );
     if (
-      released.livemode ||
       released.status !== "released" ||
       released.released_subscription !== context.subscription.id
     ) {
       throw new Error("Subscription schedule was not released safely");
     }
+    assertExpectedStripeMode(released, config);
 
     const current = await resolveDowngradeContext(config, stripe, customerId);
     if (expandableId(current.subscription.schedule)) {
@@ -216,30 +216,30 @@ async function resolveDowngradeContext(
     ]);
 
   if (!config.account || account.id !== config.account || account.country !== "MX") {
-    throw new Error("Incorrect Stripe test account");
+    throw new Error("Incorrect Stripe account");
   }
   if (
     customer.deleted ||
-    customer.livemode ||
     customer.id !== customerId ||
     customer.address?.country !== "MX"
   ) {
-    throw new Error("Invalid Stripe test customer");
+    throw new Error("Invalid Stripe customer");
   }
-  assertPlanPrice(plusPrice, config.prices.plus, FILMATTA_PLAN_PRICES.plus);
-  assertPlanPrice(proPrice, config.prices.pro, FILMATTA_PLAN_PRICES.pro);
+  assertExpectedStripeMode(customer, config);
+  assertPlanPrice(plusPrice, config.prices.plus, FILMATTA_PLAN_PRICES.plus, config);
+  assertPlanPrice(proPrice, config.prices.pro, FILMATTA_PLAN_PRICES.pro, config);
   if (expandableId(plusPrice.product) === expandableId(proPrice.product)) {
     throw new Error("FILMATTA Plus and Pro must use separate Stripe products");
   }
   if (
-    taxRate.livemode ||
     !taxRate.active ||
     !taxRate.inclusive ||
     taxRate.percentage !== 16 ||
     taxRate.country !== "MX"
   ) {
-    throw new Error("Invalid Mexico test tax rate");
+    throw new Error("Invalid Mexico tax rate");
   }
+  assertExpectedStripeMode(taxRate, config);
   if (subscriptions.has_more) {
     throw new Error("Subscription reconciliation limit exceeded");
   }
@@ -254,7 +254,6 @@ async function resolveDowngradeContext(
   const subscription = nonTerminal[0];
   const subscriptionCustomer = expandableId(subscription.customer);
   if (
-    subscription.livemode ||
     subscriptionCustomer !== customerId ||
     subscription.cancel_at_period_end ||
     subscription.cancel_at !== null ||
@@ -267,6 +266,7 @@ async function resolveDowngradeContext(
   ) {
     throw new Error("Unexpected active subscription");
   }
+  assertExpectedStripeMode(subscription, config);
 
   const item = subscription.items.data[0];
   const itemPrice = item.price;
@@ -275,7 +275,6 @@ async function resolveDowngradeContext(
   if (
     item.quantity !== 1 ||
     itemPrice.id !== config.prices.pro ||
-    itemPrice.livemode ||
     itemPrice.currency !== "mxn" ||
     itemPrice.recurring?.interval !== "month" ||
     itemPrice.recurring.interval_count !== 1 ||
@@ -286,6 +285,7 @@ async function resolveDowngradeContext(
   ) {
     throw new Error("Only a single active FILMATTA Pro item can be downgraded");
   }
+  assertExpectedStripeMode(itemPrice, config);
 
   return {
     config,
@@ -298,11 +298,15 @@ async function resolveDowngradeContext(
   };
 }
 
-function assertPlanPrice(price: Stripe.Price, expectedId: string, amount: number) {
+function assertPlanPrice(
+  price: Stripe.Price,
+  expectedId: string,
+  amount: number,
+  config: BillingConfig
+) {
   const product = typeof price.product === "string" ? null : price.product;
   if (
     price.id !== expectedId ||
-    price.livemode ||
     !price.active ||
     price.currency !== "mxn" ||
     price.unit_amount !== amount * 100 ||
@@ -315,6 +319,8 @@ function assertPlanPrice(price: Stripe.Price, expectedId: string, amount: number
   ) {
     throw new Error("Unexpected subscription price");
   }
+  assertExpectedStripeMode(price, config);
+  assertExpectedStripeMode(product, config);
 }
 
 async function retrieveAttachedSchedule(context: DowngradeContext) {
@@ -349,7 +355,7 @@ function isReleasedDowngradeSchedule(
   context: DowngradeContext
 ) {
   if (
-    schedule.livemode ||
+    schedule.livemode !== context.config.livemode ||
     schedule.status !== "released" ||
     expandableId(schedule.customer) !== context.customerId ||
     schedule.released_subscription !== context.subscription.id ||
@@ -454,7 +460,7 @@ function isScheduleBaseValid(
   context: DowngradeContext
 ) {
   return (
-    !schedule.livemode &&
+    schedule.livemode === context.config.livemode &&
     schedule.status === "active" &&
     expandableId(schedule.customer) === context.customerId &&
     expandableId(schedule.subscription) === context.subscription.id
@@ -518,7 +524,7 @@ function downgradeIdempotencyKey(
   context: DowngradeContext,
   generation: string
 ) {
-  return `filmatta-test-${DOWNGRADE_OPERATION}-${operation}-${context.subscription.id}-${context.currentPeriodEnd}-${generation}`;
+  return `filmatta-${context.config.mode}-${DOWNGRADE_OPERATION}-${operation}-${context.subscription.id}-${context.currentPeriodEnd}-${generation}`;
 }
 
 function toPublicState(

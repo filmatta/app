@@ -1,7 +1,7 @@
 import "server-only";
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { billingConfig, stripeClient } from "./config";
+import { assertExpectedStripeMode, billingConfig, stripeClient } from "./config";
 import {
   paidAccessUntil,
   previouslyPaidAccessUntil,
@@ -12,10 +12,6 @@ import { withBillingLock } from "./lock";
 function id(value: string | { id: string } | null | undefined) {
   return typeof value === "string" ? value : value?.id ?? null;
 }
-function assertTest(value: { livemode: boolean }) {
-  if (value.livemode) throw new Error("Live Stripe object rejected");
-}
-
 export const BILLING_EVENTS = new Set([
   "checkout.session.completed", "checkout.session.async_payment_succeeded",
   "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted",
@@ -26,16 +22,21 @@ export const BILLING_EVENTS = new Set([
 ]);
 
 export async function reconcileBillingEvent(event: Stripe.Event) {
-  assertTest(event);
+  const config = billingConfig();
+  assertExpectedStripeMode(event, config);
   if (!BILLING_EVENTS.has(event.type)) return;
   const stripe = stripeClient();
+  const account = await stripe.accounts.retrieve(config.account);
+  if (account.id !== config.account || account.country !== "MX") {
+    throw new Error("Incorrect Stripe account");
+  }
   const object = event.data.object;
   let customer: string | null = null;
   let extraInvoice: string | null = null;
   if (object.object === "customer") customer = object.id;
   else if (object.object === "dispute") {
     const charge = await stripe.charges.retrieve(id(object.charge)!);
-    assertTest(charge);
+    assertExpectedStripeMode(charge, config);
     customer = id(charge.customer);
   } else if ("customer" in object) customer = id(object.customer);
   if (object.object === "invoice") extraInvoice = object.id;
@@ -75,10 +76,10 @@ export async function reconcileBillingEvent(event: Stripe.Event) {
       if (deletionError) throw deletionError;
       return;
     }
-    assertTest(currentCustomer);
+    assertExpectedStripeMode(currentCustomer, config);
     const subscriptions = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 100 });
     if (subscriptions.has_more) throw new Error("Subscription reconciliation limit exceeded");
-    const prices = billingConfig().prices;
+    const prices = config.prices;
     const invoiceIds = new Set<string>();
     if (extraInvoice) invoiceIds.add(extraInvoice);
     subscriptions.data.forEach((s) => { const invoice = id(s.latest_invoice); if (invoice) invoiceIds.add(invoice); });
@@ -100,7 +101,7 @@ export async function reconcileBillingEvent(event: Stripe.Event) {
     const reversedSubscriptions = new Set<string>();
     for (const invoiceId of invoiceIds) {
       const invoice = await stripe.invoices.retrieve(invoiceId);
-      assertTest(invoice);
+      assertExpectedStripeMode(invoice, config);
       if (id(invoice.customer) !== customerId) throw new Error("Invoice owner mismatch");
       if (invoice.currency !== "mxn") continue; // Unknown currency never grants access.
       const invoicePayments = await stripe.invoicePayments.list({ invoice: invoice.id, limit: 100,
@@ -109,11 +110,11 @@ export async function reconcileBillingEvent(event: Stripe.Event) {
       let reversed = false;
       let paidByCard = false;
       for (const payment of invoicePayments.data) {
-        assertTest(payment);
+        assertExpectedStripeMode(payment, config);
         const intent = payment.payment.payment_intent;
         const chargeValue = payment.payment.charge ?? (typeof intent === "object" ? intent.latest_charge : null);
         const charge = typeof chargeValue === "string" ? await stripe.charges.retrieve(chargeValue) : chargeValue;
-        if (charge) assertTest(charge);
+        if (charge) assertExpectedStripeMode(charge, config);
         let disputed = charge?.disputed ?? false;
         if (disputed && charge) {
           const disputes = await stripe.disputes.list({ charge: charge.id, limit: 100 });
@@ -153,11 +154,11 @@ export async function reconcileBillingEvent(event: Stripe.Event) {
     }
     const entitlements: Array<{ subscription: string; plan: BillingPlan; valid_until: string }> = [];
     const snapshots = subscriptions.data.map((subscription) => {
-      assertTest(subscription);
+      assertExpectedStripeMode(subscription, config);
       const item = subscription.items.data[0];
       const price = item?.price;
       const plan: BillingPlan | null = price?.id === prices.pro ? "pro" : price?.id === prices.plus ? "plus" : null;
-      const knownPrice = Boolean(plan && price && !price.livemode && price.currency === "mxn" &&
+      const knownPrice = Boolean(plan && price && price.livemode === config.livemode && price.currency === "mxn" &&
         price.recurring?.interval === "month" && price.recurring.interval_count === 1 &&
         item.quantity === 1 && subscription.items.data.length === 1 && !subscription.items.has_more);
       const invoice = evidence.get(id(subscription.latest_invoice) ?? "");

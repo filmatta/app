@@ -6,10 +6,10 @@ import { getViewer } from "@/lib/auth/get-viewer";
 import { keepScheduledSubscription } from "@/lib/billing/cancellation";
 import { isBillingPlan } from "@/lib/billing/policy";
 import {
-  createTestCancellationPortal,
-  createTestCheckout,
-  createTestPortal,
-  createTestProUpgradePortal,
+  createCancellationPortal,
+  createCheckout,
+  createPortal,
+  createProUpgradePortal,
 } from "@/lib/billing/checkout";
 import {
   releaseScheduledDowngrade,
@@ -22,8 +22,8 @@ export async function startCheckout(form: FormData) {
   const plan = form.get("plan");
   if (!isBillingPlan(plan) || form.get("country") !== "MX") redirect("/cuenta/suscripcion?error=country");
   let url: string;
-  try { url = await createTestCheckout(viewer, plan); }
-  catch { console.error("Test checkout unavailable"); redirect("/cuenta/suscripcion?error=checkout"); }
+  try { url = await createCheckout(viewer, plan); }
+  catch { console.error("Billing checkout unavailable"); redirect("/cuenta/suscripcion?error=checkout"); }
   redirect(url);
 }
 
@@ -31,8 +31,8 @@ export async function openBillingPortal() {
   const viewer = await getViewer();
   if (!viewer) redirect("/acceso?next=%2Fcuenta%2Fsuscripcion");
   let url: string;
-  try { url = await createTestPortal(viewer.id); }
-  catch { console.error("Test portal unavailable"); redirect("/cuenta/suscripcion?error=portal"); }
+  try { url = await createPortal(viewer.id); }
+  catch { console.error("Billing portal unavailable"); redirect("/cuenta/suscripcion?error=portal"); }
   redirect(url);
 }
 
@@ -41,9 +41,9 @@ export async function cancelSubscriptionViaPortal() {
   if (!viewer) redirect("/acceso?next=%2Fcuenta%2Fsuscripcion");
   let url: string;
   try {
-    url = await createTestCancellationPortal(viewer.id);
+    url = await createCancellationPortal(viewer.id);
   } catch (error) {
-    console.error("Test subscription cancellation portal unavailable", error);
+    console.error("Subscription cancellation portal unavailable", error);
     redirect("/cuenta/suscripcion?error=cancel");
   }
   redirect(url);
@@ -53,8 +53,8 @@ export async function upgradeToPro() {
   const viewer = await getViewer();
   if (!viewer) redirect("/acceso?next=%2Fplanes");
   let url: string;
-  try { url = await createTestProUpgradePortal(viewer.id); }
-  catch { console.error("Test Pro upgrade unavailable"); redirect("/cuenta/suscripcion?error=portal"); }
+  try { url = await createProUpgradePortal(viewer.id); }
+  catch { console.error("Pro upgrade unavailable"); redirect("/cuenta/suscripcion?error=portal"); }
   redirect(url);
 }
 
@@ -64,7 +64,7 @@ export async function scheduleDowngradeToPlus() {
   try {
     await scheduleDowngradeToPlusForUser(viewer.id);
   } catch (error) {
-    console.error("Test Plus downgrade unavailable", error);
+    console.error("Plus downgrade unavailable", error);
     redirect("/cuenta/suscripcion/cambiar-a-plus?error=schedule");
   }
   redirect("/billing/return?source=downgrade");
@@ -76,7 +76,7 @@ export async function undoDowngradeToPlus() {
   try {
     await releaseScheduledDowngrade(viewer.id);
   } catch (error) {
-    console.error("Test Plus downgrade release unavailable", error);
+    console.error("Plus downgrade release unavailable", error);
     redirect("/planes?error=downgrade");
   }
   redirect("/planes?downgrade=released");
@@ -88,7 +88,7 @@ export async function keepSubscription() {
   try {
     await keepScheduledSubscription(viewer.id);
   } catch (error) {
-    console.error("Test subscription cancellation removal unavailable", error);
+    console.error("Subscription cancellation removal unavailable", error);
     redirect("/planes?error=keep-subscription");
   }
   revalidatePath("/planes");
