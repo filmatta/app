@@ -1,40 +1,120 @@
-﻿import Link from "next/link";
+import type { Metadata } from "next";
+import Link from "next/link";
+import SiteHeader from "@/components/SiteHeader";
+import {
+  PublicDataError,
+  PublicEmptyState,
+} from "@/components/verticals/PublicDataState";
+import {
+  formatOpportunityCompensation,
+  getOpportunityCategoryLabel,
+  getOpportunityWorkModeLabel,
+} from "@/lib/opportunities/format";
+import {
+  getPublishedOpportunities,
+  type PublicOpportunitySummary,
+} from "@/lib/opportunities/public";
 
-export default function Page() {
+export const metadata: Metadata = {
+  title: "Oportunidades",
+  description:
+    "Convocatorias estructuradas de proyectos audiovisuales en FILMATTA.",
+};
+
+export default async function OpportunitiesPage() {
+  const result = await getPublishedOpportunities();
+
+  if (!result.ok) {
+    return (
+      <PublicDataError
+        backHref="/"
+        backLabel="← Inicio"
+        title="No pudimos cargar las oportunidades."
+      />
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#080808] text-white">
-      <header className="border-b border-white/10">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 lg:px-8">
-          <Link href="/" className="text-xl font-black tracking-[0.25em]">
-            FILMATTA
-          </Link>
+      <SiteHeader contextLink={{ href: "/", label: "← Volver" }} />
 
-          <Link
-            href="/"
-            className="text-sm text-white/50 transition hover:text-white"
-          >
-            ← Volver
-          </Link>
-        </div>
-      </header>
-
-      <section className="mx-auto flex min-h-[80vh] max-w-7xl flex-col justify-center px-6 py-24 lg:px-8">
-        <p className="mb-6 text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
-          FILMATTA
+      <section className="mx-auto max-w-7xl px-6 pb-20 pt-20 lg:px-8 lg:pb-28 lg:pt-24">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
+          Proyectos audiovisuales
         </p>
-
-        <h1 className="max-w-5xl text-5xl font-semibold tracking-[-0.04em] sm:text-7xl">
+        <h1 className="mt-5 max-w-5xl text-5xl font-semibold tracking-[-0.04em] sm:text-7xl">
           Oportunidades
         </h1>
-
-        <p className="mt-8 max-w-2xl text-lg leading-8 text-white/50">
-          Encuentra proyectos, convocatorias, trabajos y colaboraciones.
+        <p className="mt-7 max-w-2xl text-lg leading-8 text-white/50">
+          Explora convocatorias de casting, crew, trabajo y colaboración
+          publicadas dentro de proyectos reales.
         </p>
 
-        <div className="mt-12 border-t border-white/10 pt-8 text-sm text-white/30">
-          Próximamente.
-        </div>
+        {result.opportunities.length > 0 ? (
+          <div className="mt-14 divide-y divide-white/10 border-y border-white/10">
+            {result.opportunities.map((opportunity) => (
+              <OpportunityRow key={opportunity.id} opportunity={opportunity} />
+            ))}
+          </div>
+        ) : (
+          <PublicEmptyState
+            title="Todavía no hay oportunidades publicadas."
+            description="Cuando un proyecto publique una convocatoria, aparecerá aquí con su información esencial."
+          />
+        )}
       </section>
     </main>
+  );
+}
+
+function OpportunityRow({
+  opportunity,
+}: {
+  opportunity: PublicOpportunitySummary;
+}) {
+  const place = [
+    opportunity.city,
+    getOpportunityWorkModeLabel(opportunity.workMode),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <Link
+      href={`/oportunidades/${opportunity.slug}`}
+      className="group grid gap-8 py-9 transition hover:bg-white/[0.02] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white md:grid-cols-[minmax(0,1fr)_14rem] md:px-5"
+    >
+      <div>
+        <div className="flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.2em] text-white/35">
+          <span>{getOpportunityCategoryLabel(opportunity.category)}</span>
+          {opportunity.discipline && (
+            <>
+              <span aria-hidden="true">•</span>
+              <span>{opportunity.discipline}</span>
+            </>
+          )}
+        </div>
+        <h2 className="mt-4 text-3xl font-semibold tracking-[-0.025em] transition group-hover:text-white/80 sm:text-4xl">
+          {opportunity.title}
+        </h2>
+        <p className="mt-3 text-sm text-white/35">{opportunity.projectTitle}</p>
+        {opportunity.summary && (
+          <p className="mt-5 max-w-3xl text-base leading-7 text-white/50">
+            {opportunity.summary}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-col justify-between gap-6 md:text-right">
+        <div>
+          <p className="text-sm text-white/55">{place}</p>
+          <p className="mt-2 text-sm text-white/35">
+            {formatOpportunityCompensation(opportunity)}
+          </p>
+        </div>
+        <span className="text-sm font-semibold text-white/65 transition group-hover:text-white">
+          Ver convocatoria →
+        </span>
+      </div>
+    </Link>
   );
 }
