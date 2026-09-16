@@ -5,6 +5,8 @@ import { OPPORTUNITY_CATEGORIES } from "@/lib/opportunities/form";
 
 export type EditableOpportunity = {
   id: string;
+  opportunity_type?: string;
+  deliverables?: string | null;
   title: string;
   summary: string | null;
   description: string | null;
@@ -23,9 +25,12 @@ export type EditableOpportunity = {
 };
 export default function OpportunityForm({
   opportunity,
+  job = false,
 }: {
   opportunity?: EditableOpportunity;
+  job?: boolean;
 }) {
+  const isJob = opportunity?.opportunity_type === "job" || job;
   const [state, action, pending] = useActionState(saveOpportunity, {
     error: "",
   });
@@ -115,11 +120,24 @@ export default function OpportunityForm({
   ];
   return (
     <form action={action} className="mt-10 max-w-4xl">
+      <input
+        type="hidden"
+        name="opportunity_type"
+        value={isJob ? "job" : "opportunity"}
+      />
+      {isJob && (
+        <>
+          <input type="hidden" name="category" value="paid_work" />
+          <input type="hidden" name="compensation_type" value="paid" />
+        </>
+      )}
       {opportunity && <input type="hidden" name="id" value={opportunity.id} />}
       <p className="mb-8 max-w-2xl leading-7 text-white/65">
         Al publicar se hacen visibles la convocatoria y el título del proyecto.
-        No incluyas teléfonos, correos ni datos privados. Las postulaciones
-        dentro de FILMATTA aún no están disponibles.
+        No incluyas teléfonos, correos ni datos privados.{" "}
+        {isJob
+          ? "Los interesados con perfil publicado pueden presentar su interés por consulta privada. No es un proceso de contratación."
+          : "Las postulaciones de estas convocatorias aún no están disponibles."}
       </p>
       {!opportunity && (
         <label className="mb-6 block">
@@ -165,24 +183,29 @@ export default function OpportunityForm({
             </label>
           );
         })}
-        {selects.map((field) => (
-          <div className="text-sm" key={field.name}>
-            <label htmlFor={`opportunity-${field.name}`}>{field.label}</label>
-            <select
-              id={`opportunity-${field.name}`}
-              name={field.name}
-              value={fieldValue(field.name, field.initial)}
-              onChange={changeValue}
-              className="catalog-input mt-2"
-            >
-              {field.options.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        ))}
+        {selects
+          .filter(
+            (field) =>
+              !isJob || !["category", "compensation_type"].includes(field.name),
+          )
+          .map((field) => (
+            <div className="text-sm" key={field.name}>
+              <label htmlFor={`opportunity-${field.name}`}>{field.label}</label>
+              <select
+                id={`opportunity-${field.name}`}
+                name={field.name}
+                value={fieldValue(field.name, field.initial)}
+                onChange={changeValue}
+                className="catalog-input mt-2"
+              >
+                {field.options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
       </div>
       <label className="mt-6 block text-sm">
         Brief y requisitos (máximo 20 000 caracteres)
@@ -195,6 +218,23 @@ export default function OpportunityForm({
           className="catalog-input mt-2"
         />
       </label>
+      {isJob && (
+        <label className="mt-6 block text-sm">
+          Entregables (20 a 4 000 caracteres al publicar)
+          <textarea
+            name="deliverables"
+            rows={5}
+            maxLength={4000}
+            value={fieldValue("deliverables")}
+            onChange={changeValue}
+            className="catalog-input mt-2"
+          />
+          <span className="mt-2 block text-white/60">
+            Indica piezas, formatos y alcance. Para publicar también necesitas
+            disciplina, presupuesto positivo, moneda y fecha límite.
+          </span>
+        </label>
+      )}
       {state.error && (
         <p
           role="alert"
@@ -208,7 +248,11 @@ export default function OpportunityForm({
         disabled={pending}
         className="editorial-primary mt-8 disabled:opacity-50"
       >
-        {pending ? "Guardando…" : "Guardar oportunidad"}
+        {pending
+          ? "Guardando…"
+          : isJob
+            ? "Guardar encargo"
+            : "Guardar oportunidad"}
       </button>
     </form>
   );

@@ -35,7 +35,7 @@ test("landings have real CTAs, complete content and no duplicated H1 values", ()
     ]) {
       if (href.startsWith("/descubre/"))
         assert.ok(getLanding(href.split("/").pop()));
-      else assert.ok(fs.existsSync(`app${href}/page.tsx`), href);
+      else assert.ok(fs.existsSync(`app${href.split(/[?#]/)[0]}/page.tsx`), href);
     }
   }
 });

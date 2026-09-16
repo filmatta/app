@@ -11,7 +11,7 @@ export const navigationFeatures = {
   talent: true,
   opportunityFilters: true,
   marketplace: true,
-  jobs: false,
+  jobs: true,
   tools: false,
 } as const;
 
@@ -120,6 +120,7 @@ export const publishingNavigation: NavigationLink[] = [
   { label: "Completar mi perfil", href: "/mi-perfil" },
   { label: "Nueva locación", href: "/mis-locaciones/nueva" },
   { label: "Publicar oportunidad", href: "/mis-oportunidades/nueva" },
+  { label: "Publicar encargo", href: "/mis-oportunidades/nueva?type=job" },
   { label: "Ofrecer servicio", href: "/mis-servicios/nuevo" },
 ];
 

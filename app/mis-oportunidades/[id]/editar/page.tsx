@@ -25,7 +25,7 @@ export default async function EditOpportunity({
   const { data, error } = await supabase
     .from("opportunities")
     .select(
-      "id,title,summary,description,category,discipline,city,work_mode,compensation_type,compensation_min,compensation_max,compensation_currency,starts_on,ends_on,application_deadline,status",
+      "id,title,summary,description,category,discipline,city,work_mode,compensation_type,compensation_min,compensation_max,compensation_currency,starts_on,ends_on,application_deadline,status,opportunity_type,deliverables",
     )
     .eq("id", id)
     .eq("owner_id", viewer.id)

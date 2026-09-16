@@ -15,6 +15,8 @@ export function parseOpportunityForm(form: FormData) {
   const projectTitle = text("project_title");
   const values = {
     title: text("title"),
+    opportunity_type: text("opportunity_type") || "opportunity",
+    deliverables: optional("deliverables"),
     summary: optional("summary"),
     description: optional("description"),
     category: text("category"),
@@ -37,6 +39,31 @@ export function parseOpportunityForm(form: FormData) {
       ? `${text("application_deadline")}T23:59:59Z`
       : null,
   };
+  if (
+    !["opportunity", "job"].includes(values.opportunity_type) ||
+    (values.deliverables?.length ?? 0) > 4000
+  )
+    return {
+      ok: false as const,
+      error:
+        "Revisa el tipo de publicación y los entregables (máximo 4 000 caracteres).",
+    };
+  if (
+    values.opportunity_type === "job" &&
+    (values.category !== "paid_work" ||
+      values.compensation_type !== "paid" ||
+      (status === "published" &&
+        ((values.deliverables?.length ?? 0) < 20 ||
+          (values.description?.length ?? 0) < 40 ||
+          (values.discipline?.length ?? 0) < 2 ||
+          !(values.compensation_min !== null && values.compensation_min > 0) ||
+          !values.application_deadline)))
+  )
+    return {
+      ok: false as const,
+      error:
+        "Para publicar un encargo pagado, define brief (40 caracteres), entregables (20), disciplina, presupuesto positivo, moneda y fecha límite.",
+    };
   if (id && !UUID_PATTERN.test(id))
     return { ok: false as const, error: "No encontramos esta publicación." };
   if (

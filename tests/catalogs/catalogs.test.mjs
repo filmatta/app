@@ -39,7 +39,7 @@ test("pagination preserves encoded filters without page-one clutter", () => {
 function clientFixture(data = [], error = null) {
   const calls = [];
   const query = {};
-  for (const method of ["select", "eq", "ilike", "order", "range", "in"])
+  for (const method of ["select", "eq", "ilike", "order", "range", "in", "gte"])
     query[method] = (...args) => {
       calls.push([method, ...args]);
       return query;
@@ -135,4 +135,55 @@ test("missing schema is distinguished from network failure and empty catalog", a
     assert.equal(f.calls[0][2].p_talent, true);
     assert.equal(Object.hasOwn(f.calls[0][2], "user_id"), false);
   }
+});
+
+test("Jobs filters keep paid subset, currency semantics and pagination on Opportunities", async () => {
+  const f = clientFixture();
+  const mod = load("lib/opportunities/public.ts", {
+    react: { cache: (fn) => fn },
+    "@/lib/catalogs/filters": filters,
+    "@/lib/supabase/server": { createClient: async () => f.client },
+  });
+  await mod.getPublishedOpportunities(
+    filters.parseCatalogFilters({
+      page: "2",
+      budgetMin: "1500",
+      currency: "MXN",
+      deadlineFrom: "2030-01-01",
+      discipline: "Edición",
+    }),
+    true,
+  );
+  for (const expected of [
+    ["from", "opportunities"],
+    ["eq", "opportunity_type", "job"],
+    ["eq", "compensation_type", "paid"],
+    ["eq", "compensation_currency", "MXN"],
+    ["gte", "compensation_min", 1500],
+    ["gte", "application_deadline", "2030-01-01T00:00:00Z"],
+    ["range", 24, 48],
+  ])
+    assert.ok(
+      f.calls.some((c) => JSON.stringify(c) === JSON.stringify(expected)),
+      JSON.stringify(expected),
+    );
+  assert.equal(
+    filters.parseCatalogFilters({
+      deadlineFrom: "2030-02-30",
+      budgetMin: "Infinity",
+      currency: "ALL",
+    }).deadlineFrom,
+    "",
+  );
+  const f2 = clientFixture();
+  const mod2 = load("lib/opportunities/public.ts", {
+    react: { cache: (fn) => fn },
+    "@/lib/catalogs/filters": filters,
+    "@/lib/supabase/server": { createClient: async () => f2.client },
+  });
+  await mod2.getPublishedOpportunities(
+    filters.parseCatalogFilters({ budgetMin: "1500" }),
+    true,
+  );
+  assert.ok(!f2.calls.some((c) => c[0] === "gte"));
 });

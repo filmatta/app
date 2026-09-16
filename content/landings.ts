@@ -1,6 +1,6 @@
 export type Landing = {
   name: string; accent: string; title: string; description: string;
-  layout: "portfolio" | "talent" | "spaces" | "board" | "learn" | "services";
+  layout: "portfolio" | "talent" | "spaces" | "board" | "learn" | "services" | "job";
   primary: { label: string; href: string };
   secondary: { label: string; href: string };
   capabilities: { title: string; description: string }[];
@@ -8,6 +8,19 @@ export type Landing = {
 };
 
 export const landings: Record<string, Landing> = {
+  jobs: {
+    name:"Jobs",accent:"#9DADBD",layout:"job",
+    title:"Un encargo claro. El profesional adecuado.",
+    description:"Publica lo que necesitas producir o descubre encargos audiovisuales con entregables, fechas, ubicación y presupuesto definidos.",
+    primary:{label:"Ver trabajos",href:"/jobs"},secondary:{label:"Publicar un encargo",href:"/mis-oportunidades/nueva?type=job"},
+    capabilities:[
+      {title:"Define el resultado.",description:"Describe el brief y concreta los entregables: piezas, formatos y alcance del trabajo audiovisual."},
+      {title:"Presenta las condiciones.",description:"Indica disciplina, modalidad, presupuesto, moneda y fecha límite. Un encargo publicado es una oportunidad pagada."},
+      {title:"Recibe propuestas con contexto.",description:"Las personas con perfil publicado pueden presentar su interés mediante una consulta privada. Revisa su presentación y acepta o declina el interés en tu bandeja."},
+    ],
+    steps:["Prepara el brief y guarda un borrador.","Publica cuando entregables y condiciones estén definidos.","Revisa el interés recibido en Consultas privadas."],
+    connection:{title:"El trabajo ayuda a decidir.",description:"Un reel y los proyectos seleccionados dan contexto a la presentación profesional. Jobs comparte la identidad y los perfiles de FILMATTA.",label:"Explorar profesionales",href:"/perfiles"},
+  },
   marketplace: {
     name:"Marketplace",accent:"#A7C4BF",layout:"services",
     title:"Los servicios detrás de cada producción.",

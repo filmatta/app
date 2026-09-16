@@ -3,6 +3,7 @@ import { catalogPageHref, type CatalogFilters } from "@/lib/catalogs/filters";
 export type FilterField = {
   name: keyof CatalogFilters;
   label: string;
+  type?: "date" | "number";
   options?: readonly { value: string; label: string }[];
 };
 
@@ -47,6 +48,22 @@ export function CatalogFiltersForm({
               name={field.name}
               defaultValue={filters[field.name]}
               maxLength={80}
+              type={field.type ?? "text"}
+              min={
+                field.type === "number"
+                  ? 0
+                  : field.type === "date"
+                    ? "2000-01-01"
+                    : undefined
+              }
+              max={
+                field.type === "number"
+                  ? 9999999999.99
+                  : field.type === "date"
+                    ? "2200-12-31"
+                    : undefined
+              }
+              step={field.type === "number" ? "0.01" : undefined}
               className="catalog-input"
             />
           )}

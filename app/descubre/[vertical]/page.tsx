@@ -43,6 +43,7 @@ export default async function EditorialLanding({ params }: Props) {
         <div><p className="eyebrow">Cómo funciona</p><h2>Un siguiente paso claro.</h2>
           {vertical === "locaciones" && <p>La primera versión permite publicar y evaluar espacios. Las reservas y el contacto privado desde FILMATTA todavía no están disponibles.</p>}
           {vertical === "oportunidades" && <p>Publica una convocatoria con el contexto de su proyecto. Puedes empezar con un borrador y hacerla visible cuando esté lista.</p>}
+          {vertical === "jobs" && <p>Jobs forma parte de Oportunidades. La primera versión permite presentar interés por consulta privada; no gestiona contratación ni pagos.</p>}
           {vertical === "marketplace" && <p>Esta primera versión es un directorio de contacto. FILMATTA no gestiona pagos, reservas, depósitos, seguros ni disputas entre participantes.</p>}
         </div>
         <ol>{landing.steps.map((step, index) => <li key={step}><span aria-hidden="true">0{index + 1}</span><p>{step}</p></li>)}</ol>

@@ -10,6 +10,9 @@ export type CatalogFilters = {
   environment: string;
   workMode: string;
   level: string;
+  budgetMin: string;
+  currency: string;
+  deadlineFrom: string;
 };
 export function parseCatalogFilters(params: SearchParams): CatalogFilters {
   const text = (key: string, max = 80) =>
@@ -39,6 +42,19 @@ export function parseCatalogFilters(params: SearchParams): CatalogFilters {
     environment: choice("environment", ["interior", "exterior", "both"]),
     workMode: choice("workMode", ["on_site", "remote", "hybrid"]),
     level: text("level"),
+    budgetMin: /^\d{1,10}(\.\d{1,2})?$/.test(text("budgetMin"))
+      ? text("budgetMin")
+      : "",
+    currency: choice("currency", ["MXN", "USD", "EUR"]),
+    deadlineFrom:
+      /^\d{4}-\d{2}-\d{2}$/.test(text("deadlineFrom")) &&
+      text("deadlineFrom") >= "2000-01-01" &&
+      text("deadlineFrom") <= "2200-12-31" &&
+      Number.isFinite(Date.parse(text("deadlineFrom"))) &&
+      new Date(text("deadlineFrom")).toISOString().slice(0, 10) ===
+        text("deadlineFrom")
+        ? text("deadlineFrom")
+        : "",
   };
 }
 export function escapeLike(value: string): string {

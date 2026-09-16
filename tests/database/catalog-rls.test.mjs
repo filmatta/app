@@ -40,6 +40,7 @@ before(async () => {
     "20260916010000_public_profile_catalog.sql",
     "20260916020000_opportunity_owner_publishing.sql",
     "20260916030000_services_directory.sql",
+    "20260916040000_jobs_specialization.sql",
   ]) {
     await db.exec(fs.readFileSync(`supabase/migrations/${file}`, "utf8"));
   }
@@ -314,7 +315,28 @@ test('Services schema, ownership, publication and private inquiry boundaries',as
   await db.query("select save_my_service($1,$2,'draft')",[id,values]);
   await as('authenticated',stranger);
   const received=(await db.query('select * from list_my_catalog_inquiries()')).rows[0];
-  assert.equal(received.status,'accepted');assert.equal(received.target_title,'Servicio no disponible');assert.equal(received.target_href,null);
+  assert.equal(received.status,'accepted');assert.equal(received.target_title,'Publicación no disponible');assert.equal(received.target_href,null);
   await as('authenticated',admin);assert.equal((await db.query('select id from service_listings where id=$1',[id])).rows.length,1);
   await db.query("update service_listings set status='archived' where id=$1",[id]);
+});
+
+test("jobs are constrained Opportunities with the shared private inbox",async()=>{
+ const data={title:"Edición de un corto",opportunity_type:"job",category:"paid_work",compensation_type:"paid",work_mode:"remote",description:"Edición y revisión de un cortometraje audiovisual de ficción.",deliverables:"Montaje final y dos revisiones con archivos de exportación.",discipline:"Edición",compensation_min:1500,compensation_currency:"MXN",application_deadline:"2099-01-01T23:59:59Z"};
+ await as("authenticated",owner);
+ const id=(await db.query("select save_my_opportunity(null,$1,'Proyecto Jobs','draft') id",[data])).rows[0].id;
+ const {slug}= (await db.query('select slug from opportunities where id=$1',[id])).rows[0];
+ for(const invalid of [{deliverables:null},{compensation_min:0},{discipline:null},{application_deadline:null}])await assert.rejects(db.query("select save_my_opportunity($1,$2,null,'published')",[id,{...data,...invalid}]));
+ await as("anon");assert.equal((await db.query('select id from opportunities where id=$1',[id])).rows.length,0);
+ await as("authenticated",stranger);await assert.rejects(db.query("select save_my_opportunity($1,$2,null,'published')",[id,data]));
+ await as("authenticated",owner);await db.query("select save_my_opportunity($1,$2,null,'published')",[id,data]);
+ await as("anon");assert.equal((await db.query("select id from opportunities where id=$1 and opportunity_type='job' and compensation_type='paid'",[id])).rows.length,1);
+ await as("authenticated",stranger);
+ const inquiry=(await db.query('select send_job_inquiry($1,$2) id',[slug,'Me interesa el encargo y presento mi experiencia audiovisual.'])).rows[0].id;
+ await assert.rejects(db.query('select send_job_inquiry($1,$2)',[slug,'Me interesa el encargo y presento mi experiencia audiovisual.']),/unique/);
+ assert.equal((await db.query("update catalog_inquiries set status='accepted' where id=$1 returning id",[inquiry])).rows.length,0);
+ await as("authenticated",owner);await db.query("update catalog_inquiries set status='accepted' where id=$1",[inquiry]);
+ await db.query("select save_my_opportunity($1,$2,null,'closed')",[id,data]);
+ await as("authenticated",stranger);const row=(await db.query('select * from list_my_catalog_inquiries() where id=$1',[inquiry])).rows[0];assert.equal(row.target_href,null);assert.equal(row.status,'accepted');
+ await assert.rejects(db.query('select send_job_inquiry($1,$2)',[slug,'Una segunda presentación para el mismo encargo.']));
+ await as("authenticated",admin);assert.equal((await db.query('select id from opportunities where id=$1',[id])).rows.length,1);
 });

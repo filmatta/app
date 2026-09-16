@@ -13,6 +13,8 @@ export type OpportunityCategory =
 
 export type PublicOpportunity = {
   id: string;
+  opportunityType: "opportunity" | "job";
+  deliverables: string | null;
   projectId: string;
   projectTitle: string;
   projectSlug: string;
@@ -50,6 +52,8 @@ export type PublicOpportunityResult =
 
 type OpportunityRow = {
   id: string;
+  opportunity_type: "opportunity" | "job";
+  deliverables: string | null;
   project_id: string;
   title: string;
   slug: string;
@@ -81,10 +85,10 @@ type ProjectRow = {
 };
 
 const OPPORTUNITY_SUMMARY_FIELDS =
-  "id, project_id, title, slug, summary, category, discipline, city, work_mode, compensation_type, compensation_min, compensation_max, compensation_currency, published_at";
+  "opportunity_type, deliverables, id, project_id, title, slug, summary, category, discipline, city, work_mode, compensation_type, compensation_min, compensation_max, compensation_currency, published_at";
 
 const OPPORTUNITY_DETAIL_FIELDS =
-  "id, project_id, title, slug, summary, description, category, discipline, city, work_mode, compensation_type, compensation_min, compensation_max, compensation_currency, starts_on, ends_on, application_deadline, published_at";
+  "opportunity_type, deliverables, id, project_id, title, slug, summary, description, category, discipline, city, work_mode, compensation_type, compensation_min, compensation_max, compensation_currency, starts_on, ends_on, application_deadline, published_at";
 
 const getPublishedProjects = async (projectIds: string[]) => {
   const projectsById = new Map<string, ProjectRow>();
@@ -118,6 +122,8 @@ function mapOpportunitySummary(
 ): PublicOpportunitySummary {
   return {
     id: row.id,
+    opportunityType: row.opportunity_type,
+    deliverables: row.deliverables,
     projectId: row.project_id,
     projectTitle: project.title,
     projectSlug: project.slug,
@@ -152,6 +158,7 @@ function mapOpportunity(
 export const getPublishedOpportunities = cache(
   async (
     filters: CatalogFilters = parseCatalogFilters({}),
+    jobsOnly = false,
   ): Promise<PublicOpportunitiesResult> => {
     const supabase = await createClient();
     let query = supabase
@@ -161,6 +168,25 @@ export const getPublishedOpportunities = cache(
       .eq("projects.status", "published")
       .order("published_at", { ascending: false })
       .order("id", { ascending: true });
+    if (jobsOnly) {
+      query = query
+        .eq("opportunity_type", "job")
+        .eq("compensation_type", "paid");
+      if (filters.currency)
+        query = query.eq("compensation_currency", filters.currency);
+      if (filters.budgetMin && filters.currency)
+        query = query.gte("compensation_min", Number(filters.budgetMin));
+      if (filters.deadlineFrom)
+        query = query.gte(
+          "application_deadline",
+          filters.deadlineFrom + "T00:00:00Z",
+        );
+    }
+    if (filters.discipline)
+      query = query.ilike(
+        "discipline",
+        "%" + escapeLike(filters.discipline) + "%",
+      );
     if (filters.category) query = query.eq("category", filters.category);
     if (filters.city)
       query = query.ilike("city", `%${escapeLike(filters.city)}%`);
