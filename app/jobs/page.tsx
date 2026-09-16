@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import SiteHeader from "@/components/SiteHeader";
 import Link from "next/link";
 import {
@@ -18,7 +19,10 @@ export default async function JobsPage({
   filters.category = "";
   const result = await getPublishedOpportunities(filters, true);
   return (
-    <div className="editorial-page">
+    <div
+      className="editorial-page"
+      style={{ "--vertical-accent": "#9DADBD" } as CSSProperties}
+    >
       <SiteHeader />
       <main className="editorial-container py-16">
         <p className="eyebrow">Oportunidades / Jobs</p>

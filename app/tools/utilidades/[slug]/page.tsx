@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -70,7 +71,10 @@ export default async function UtilityPage({ params }: Props) {
   if (!tool?.utility) notFound();
   const note = notes[tool.utility];
   return (
-    <div className="editorial-page">
+    <div
+      className="editorial-page"
+      style={{ "--vertical-accent": "#BFC0D7" } as CSSProperties}
+    >
       <SiteHeader
         contextLink={{ href: "/tools/utilidades", label: "← Utilidades" }}
       />

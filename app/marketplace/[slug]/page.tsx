@@ -113,7 +113,7 @@ export default async function ServiceDetail({
                 </aside>
               </div>
               <section className="mt-14 border-t border-white/20 py-10">
-                <h2 className="text-3xl">Conversa con quien lo ofrece.</h2>
+                <h2 className="text-3xl">Presenta tu consulta.</h2>
                 {owned?.data ? (
                   <Link
                     className="editorial-secondary mt-5"

@@ -1,10 +1,14 @@
+import type { CSSProperties } from "react";
 import SiteHeader from "@/components/SiteHeader";
 import ToolCards from "@/components/tools/ToolCards";
 import { utilityTools } from "@/lib/tools/registry";
 export const metadata = { title: "Utilidades · Calculadoras audiovisuales" };
 export default function UtilitiesPage() {
   return (
-    <div className="editorial-page">
+    <div
+      className="editorial-page"
+      style={{ "--vertical-accent": "#BFC0D7" } as CSSProperties}
+    >
       <SiteHeader contextLink={{ href: "/tools", label: "← Tools" }} />
       <main className="editorial-container py-16">
         <p className="eyebrow">Tools / Utilidades</p>

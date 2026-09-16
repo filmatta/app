@@ -31,7 +31,7 @@ export const landings: Record<string, Landing> = {
       {title:"Dónde trabajan.",description:"Busca por ciudad y modalidad. Distingue lo que necesita presencia en set de lo que puede resolverse a distancia."},
       {title:"Cómo solicitar información.",description:"Con tu perfil profesional publicado, envía una consulta privada. El responsable podrá verla y responder a tu interés desde su bandeja."},
     ],
-    steps:["Encuentra una especialidad y revisa la ficha completa.","Presenta tu proyecto en una consulta privada.","Consulta la respuesta y acuerda las condiciones con el responsable."],
+    steps:["Encuentra una especialidad y revisa la ficha completa.","Presenta tu proyecto en una consulta privada.","Consulta si el responsable acepta tu interés en la bandeja privada."],
     connection:{title:"Un servicio tiene personas detrás.",description:"Conoce el trabajo y la experiencia de quien participa en tu producción. La identidad profesional conecta el directorio con el resto de FILMATTA.",label:"Explorar profesionales",href:"/perfiles"},
   },
   perfiles: {

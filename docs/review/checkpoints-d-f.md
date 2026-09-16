@@ -29,7 +29,7 @@ Modelo aditivo service_listings: propietario Auth, identidad/slug inmutables, da
 
 Contacto mínimo real: catalog_inquiries, privado para participantes/admin, destinatario derivado en SQL y protegido con FK compuesta al propietario. Requiere perfil profesional público del emisor; una consulta por ficha y hasta diez en 24 horas, serializadas por emisor. El receptor acepta, declina o archiva; el emisor consulta estado. No hay chat, correo, pago ni contrato automático. Al despublicar se oculta el título nuevo de la ficha a emisores anteriores. La bandeja deja preparado un segundo tipo de destino por FK para Jobs, sin duplicar mensajería.
 
-Migración 20260916030000_services_directory.sql validada desde PostgreSQL limpio (PGlite) y aplicada exclusivamente en Test con historial transaccional. Test real Auth/PostgREST aprobado, incluyendo ciclo de estados, owner/non-owner/admin, columnas públicas, rechazo de enlaces inseguros y privacidad de consultas. TypeScript, lint focal y tests de navegación/formulario/RLS correctos. Capturas y smoke de navegador completos se añadirán al cierre D–F.
+Migración 20260916030000_services_directory.sql validada desde PostgreSQL limpio (PGlite) y aplicada exclusivamente en Test con historial transaccional. Test real Auth/PostgREST aprobado, incluyendo ciclo de estados, owner/non-owner/admin, columnas públicas, rechazo de enlaces inseguros y privacidad de consultas. TypeScript, lint focal y tests de navegación/formulario/RLS correctos. Capturas y smoke de navegador completos se incluyen en la validación final inferior.
 
 ## Checkpoint E — Jobs sobre Opportunities
 
@@ -46,3 +46,71 @@ Registro tipado lib/tools/registry.ts, versionado en código. Sin tabla Tools. /
 Funciones puras, unidades, rangos, supuestos y resultados con precisión limitada sólo en presentación. Obturación admite conversión en ambos sentidos y prohíbe exposición mayor que un fotograma; almacenamiento separa bits/bytes, GB/GiB y margen elegido; aspecto usa píxeles cuadrados y redondeo visible sin prometer compatibilidad de códec; equivalencia focal usa full frame 36×24 mm y explicita diagonal, aspecto, perspectiva y ausencia de cálculo de profundidad de campo. Fuentes técnicas enlazadas en cada utilidad: RED, IEC y Nikon. FOV avanzado, DoF, hiperfocal y electricidad/seguridad siguen pendientes.
 
 Seis tests de fórmulas/registro aprobados, incluyendo valores no finitos, cero, negativos, bordes y conversiones inversas. Dos pruebas de navegador de interacción y estado aprobadas. TypeScript, lint focal y diff --check correctos. La fotografía existente de cottonbro studio se reutiliza en Production Assistant y queda registrada en content/image-sources.json. No se descargaron imágenes nuevas ni se simulan usuarios o proveedores.
+
+## Entrega y commits
+
+Rama: feature/navigation-landings-catalog-foundations. Worktree: G:\PROYECTOS\filmatta-navigation-landings. Main y origin/main permanecen en c542b0a7c6e8ecd5ca578c1271819ebed46cfd49. El checkout de main permanece limpio y los cambios locales ajenos del checkout original se conservaron.
+
+| Commit | Entrega |
+| --- | --- |
+| 8193537 | Gate real de las dos migraciones previas en Supabase Test |
+| 349243e | D: Services, directorio y consultas privadas |
+| b8e6660 | E: Jobs sobre Opportunities, sin motor paralelo |
+| 3855445 | F: registro Tools, landings y cuatro utilidades |
+| Commit de revisión posterior | Ajustes visuales focalizados, smoke del build, capturas y este informe |
+
+No se modificaron archivos de Billing, Stripe, grants, entitlements, webhooks, autorización Mux ni configuración Production. Sin push, merge, despliegue, pagos o cambios de variables Vercel. El manifiesto del Home se conserva.
+
+## Validación final
+
+| Comprobación | Resultado |
+| --- | --- |
+| Suite Billing existente | 54/54 aprobados |
+| Navegación y destinos | 8/8 aprobados |
+| Catálogos, filtros, paginación y formularios | 14/14 aprobados |
+| SQL/RLS desde base limpia PGlite | 9/9 aprobados; incluye límite diario compartido y denegación de INSERT directo |
+| Fórmulas y registro Tools | 6/6 aprobados |
+| Navegador con transporte local | 20/20 aprobados (18 regresión + 2 Tools; dos selectores de las pruebas nuevas se corrigieron y repitieron) |
+| Auth/PostgREST reales en Test | 3/3 suites: catálogos previos, Services y Jobs; la suite previa se repitió tras extender Opportunities |
+| Navegador contra Test real | 2/2 sobre build optimizado: 70 combinaciones ruta/tamaño + flujo propietario/contacto/no autorizado/admin |
+| TypeScript | Sin errores |
+| ESLint completo | Sin errores; 8 advertencias preexistentes de img en Learn/Locaciones/Admin/Cuenta |
+| Build optimizado Next.js | Aprobado, ejecutado localmente con configuración pública Test y Billing deshabilitado |
+| git diff --check | Sin errores |
+
+El smoke del build cubre crear servicio en borrador, acceso público denegado al borrador, publicar, filtrar, detalle por URL directa, rechazo de editor ajeno, enviar consulta privada, aceptar interés y ocultarla a un tercero. También publica un Job mediante el formulario compartido, verifica presupuesto y entregables, envía interés desde móvil, cierra el Job y archiva el servicio. Admin se valida mediante sesión Auth real y rol del servidor. Las sesiones de navegador usan tokens legítimos de Auth obtenidos por el helper, no tokens inventados. Los fixtures se eliminan al terminar.
+
+Evidencia del destino, historial y RLS: [test-database-evidence.json](test-database-evidence.json). El helper administrativo se limita a preparar y eliminar usuarios sintéticos; ninguna operación funcional o UI usa service_role.
+
+## Revisión visual
+
+Revisados 360, 390, 768, 1024, 1280, 1440 y 1920 px sin overflow horizontal. Capturas desktop 1440 y móvil 390 inspeccionadas visualmente para Marketplace, Jobs, Tools, Writer, Production Assistant y Utilities; también se revisaron calculadoras y bandeja privada. Se ajustaron acentos lila/slate y la carga eager del hero de Production Assistant. No se rediseñaron las cinco landings aprobadas; sus capturas de regresión sólo reflejan el menú ampliado.
+
+Las 27 capturas nuevas proceden del build optimizado local conectado a Test. Las fichas con la leyenda «prueba aislada» corresponden exclusivamente a fixtures temporales eliminados, no a inventario ni miembros reales.
+
+[Índice completo de capturas](screenshots-d-f.md)
+
+## Migraciones y Preview
+
+Aplicadas y validadas en Test ezlycwkuzkwcnhrhiruv:
+
+- 20260916010000_public_profile_catalog.sql (previa).
+- 20260916020000_opportunity_owner_publishing.sql (previa).
+- 20260916030000_services_directory.sql (nueva D).
+- 20260916040000_jobs_specialization.sql (nueva E).
+
+Ninguna fue ejecutada en Production por esta tarea. Las dos nuevas siguen pendientes de rollout Production y requieren las dos previas y las foundations originales. No ejecutar una migración aislada saltándose dependencias. En Test no queda ninguna migración de este bloque pendiente.
+
+Para un Preview compartible: publicar esta rama aislada cuando corresponda, crear el Preview con la URL/clave pública del proyecto Test y Billing deshabilitado, configurar su URL de retorno de Auth en Test si hace falta y repetir el smoke sobre esa URL. No copiar claves Production. No hay Preview remoto desplegado por esta ejecución.
+
+Reproducir navegador Test: configurar FILMATTA_RUN_REMOTE_TESTS=ezlycwkuzkwcnhrhiruv y FILMATTA_TEST_ENV_FILE apuntando a la configuración Test local. Ejecutar npx playwright test --config playwright.remote.config.mjs. Con build local previo, FILMATTA_TEST_BUILD=true ejecuta next start. Nunca guardar tokens o archivos de sesión en Git.
+
+## Límites y siguiente iteración
+
+- Services es directorio con consulta inicial y respuesta de interés; no es chat bidireccional, mensajería por email, contratación ni marketplace transaccional. Una consulta por ficha y diez en 24 horas entre ambos módulos. Siguiente bloque de contacto: conversaciones/notificaciones y herramientas de abuso, con autorización de producto propia.
+- Moderación admin se sostiene en RLS existente y permisos explícitos. No se añadió una consola específica de moderación de Services o Jobs.
+- Jobs usa una disciplina textual existente. El presupuesto es orientativo y no convierte divisas. Un plazo vencido bloquea nuevos contactos, pero no archiva automáticamente la ficha; el propietario puede cerrar o archivar.
+- Writer y Production Assistant sólo presentan la visión en desarrollo. Sin editor, autosave, importación, exportación, IA, scheduling ni call sheets funcionales.
+- Utilidades limitadas a las cuatro publicadas. Sin cálculo de profundidad de campo, FOV avanzado, hiperfocal ni electricidad/seguridad. Las notas de cada cálculo delimitan su uso.
+- Las pruebas visuales automatizadas usan Chrome en Windows; no se declara una matriz Safari/Firefox ni una auditoría externa de accesibilidad. Se verificaron teclado, foco, Escape, drawer y tamaños indicados.
+- No se ha probado un flujo de pago Live: sólo se ejecutó la suite Billing existente. No se tocaron Production ni sus servicios.

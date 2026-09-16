@@ -340,3 +340,19 @@ test("jobs are constrained Opportunities with the shared private inbox",async()=
  await assert.rejects(db.query('select send_job_inquiry($1,$2)',[slug,'Una segunda presentación para el mismo encargo.']));
  await as("authenticated",admin);assert.equal((await db.query('select id from opportunities where id=$1',[id])).rows.length,1);
 });
+
+test("inquiry limit is shared across Jobs and Services and direct inserts remain denied",async()=>{
+ await as("authenticated",stranger);
+ const used=Number((await db.query('select count(*) n from catalog_inquiries where sender_id=$1',[stranger])).rows[0].n);
+ await assert.rejects(db.query("insert into catalog_inquiries(sender_id,recipient_id,message) values($1,$2,'A forged initial inquiry without a validated target')",[stranger,owner]),/permission denied/);
+ const slugs=[];await as("authenticated",owner);
+ for(let i=0;i<=10-used;i++){
+  const data={title:'Límite de consultas '+i,category:'sound',work_mode:'remote',description:'Servicio audiovisual para validar el límite compartido de consultas.',portfolio_links:[]};
+  const id=(await db.query("select save_my_service(null,$1,'published') id",[data])).rows[0].id;
+  slugs.push((await db.query('select slug from service_listings where id=$1',[id])).rows[0].slug);
+ }
+ await as("authenticated",stranger);
+ for(const slug of slugs.slice(0,-1))await db.query('select send_service_inquiry($1,$2)',[slug,'Consulta de prueba para validar el límite diario compartido.']);
+ await assert.rejects(db.query('select send_service_inquiry($1,$2)',[slugs.at(-1),'Consulta que excede el límite diario compartido.']),/Daily inquiry limit/);
+ assert.equal(Number((await db.query('select count(*) n from catalog_inquiries where sender_id=$1',[stranger])).rows[0].n),10);
+});

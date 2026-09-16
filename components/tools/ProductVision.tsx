@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import SiteHeader from "@/components/SiteHeader";
@@ -73,7 +74,10 @@ export default function ProductVision({
   const c = concepts[product];
   const writer = product === "writer";
   return (
-    <div className="editorial-page">
+    <div
+      className="editorial-page"
+      style={{ "--vertical-accent": "#BFC0D7" } as CSSProperties}
+    >
       <SiteHeader contextLink={{ href: "/tools", label: "← Tools" }} />
       <main>
         <section className="editorial-container grid gap-12 py-16 lg:grid-cols-2 lg:items-center">
@@ -121,6 +125,7 @@ export default function ProductVision({
             <figure>
               <Image
                 src="/images/editorial/monitor.webp"
+                loading="eager"
                 width={1800}
                 height={1200}
                 alt="Equipo revisando una escena en un monitor de rodaje"
