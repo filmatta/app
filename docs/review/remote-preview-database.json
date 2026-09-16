@@ -1,0 +1,281 @@
+{
+  "date": "2026-09-16T05:59:02.850Z",
+  "ref": "ezlycwkuzkwcnhrhiruv",
+  "migrations": [
+    {
+      "name": "public_profile_catalog",
+      "version": "20260916010000"
+    },
+    {
+      "name": "opportunity_owner_publishing",
+      "version": "20260916020000"
+    },
+    {
+      "name": "services_directory",
+      "version": "20260916030000"
+    },
+    {
+      "name": "jobs_specialization",
+      "version": "20260916040000"
+    }
+  ],
+  "tables": [
+    {
+      "relname": "catalog_inquiries",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "location_photos",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "locations",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "opportunities",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "professional_profiles",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "projects",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "service_listings",
+      "relrowsecurity": true
+    }
+  ],
+  "policies": [
+    {
+      "cmd": "SELECT",
+      "policyname": "inquiry_participant_read",
+      "roles": "{authenticated}",
+      "tablename": "catalog_inquiries"
+    },
+    {
+      "cmd": "UPDATE",
+      "policyname": "inquiry_recipient_update",
+      "roles": "{authenticated}",
+      "tablename": "catalog_inquiries"
+    },
+    {
+      "cmd": "ALL",
+      "policyname": "location_photos_admin_all",
+      "roles": "{authenticated}",
+      "tablename": "location_photos"
+    },
+    {
+      "cmd": "DELETE",
+      "policyname": "location_photos_owner_delete",
+      "roles": "{authenticated}",
+      "tablename": "location_photos"
+    },
+    {
+      "cmd": "INSERT",
+      "policyname": "location_photos_owner_insert",
+      "roles": "{authenticated}",
+      "tablename": "location_photos"
+    },
+    {
+      "cmd": "SELECT",
+      "policyname": "location_photos_owner_read",
+      "roles": "{authenticated}",
+      "tablename": "location_photos"
+    },
+    {
+      "cmd": "UPDATE",
+      "policyname": "location_photos_owner_update",
+      "roles": "{authenticated}",
+      "tablename": "location_photos"
+    },
+    {
+      "cmd": "SELECT",
+      "policyname": "location_photos_public_read",
+      "roles": "{anon,authenticated}",
+      "tablename": "location_photos"
+    },
+    {
+      "cmd": "ALL",
+      "policyname": "locations_admin_all",
+      "roles": "{authenticated}",
+      "tablename": "locations"
+    },
+    {
+      "cmd": "DELETE",
+      "policyname": "locations_owner_delete",
+      "roles": "{authenticated}",
+      "tablename": "locations"
+    },
+    {
+      "cmd": "INSERT",
+      "policyname": "locations_owner_insert",
+      "roles": "{authenticated}",
+      "tablename": "locations"
+    },
+    {
+      "cmd": "SELECT",
+      "policyname": "locations_owner_read",
+      "roles": "{authenticated}",
+      "tablename": "locations"
+    },
+    {
+      "cmd": "UPDATE",
+      "policyname": "locations_owner_update",
+      "roles": "{authenticated}",
+      "tablename": "locations"
+    },
+    {
+      "cmd": "SELECT",
+      "policyname": "locations_public_read",
+      "roles": "{anon,authenticated}",
+      "tablename": "locations"
+    },
+    {
+      "cmd": "ALL",
+      "policyname": "opportunities_admin_all",
+      "roles": "{authenticated}",
+      "tablename": "opportunities"
+    },
+    {
+      "cmd": "DELETE",
+      "policyname": "opportunities_owner_delete",
+      "roles": "{authenticated}",
+      "tablename": "opportunities"
+    },
+    {
+      "cmd": "INSERT",
+      "policyname": "opportunities_owner_insert",
+      "roles": "{authenticated}",
+      "tablename": "opportunities"
+    },
+    {
+      "cmd": "SELECT",
+      "policyname": "opportunities_owner_read",
+      "roles": "{authenticated}",
+      "tablename": "opportunities"
+    },
+    {
+      "cmd": "UPDATE",
+      "policyname": "opportunities_owner_update",
+      "roles": "{authenticated}",
+      "tablename": "opportunities"
+    },
+    {
+      "cmd": "SELECT",
+      "policyname": "opportunities_public_read",
+      "roles": "{anon,authenticated}",
+      "tablename": "opportunities"
+    },
+    {
+      "cmd": "SELECT",
+      "policyname": "professional_profiles_owner_read",
+      "roles": "{authenticated}",
+      "tablename": "professional_profiles"
+    },
+    {
+      "cmd": "ALL",
+      "policyname": "projects_admin_all",
+      "roles": "{authenticated}",
+      "tablename": "projects"
+    },
+    {
+      "cmd": "DELETE",
+      "policyname": "projects_owner_delete",
+      "roles": "{authenticated}",
+      "tablename": "projects"
+    },
+    {
+      "cmd": "INSERT",
+      "policyname": "projects_owner_insert",
+      "roles": "{authenticated}",
+      "tablename": "projects"
+    },
+    {
+      "cmd": "SELECT",
+      "policyname": "projects_owner_read",
+      "roles": "{authenticated}",
+      "tablename": "projects"
+    },
+    {
+      "cmd": "UPDATE",
+      "policyname": "projects_owner_update",
+      "roles": "{authenticated}",
+      "tablename": "projects"
+    },
+    {
+      "cmd": "SELECT",
+      "policyname": "projects_public_read",
+      "roles": "{anon,authenticated}",
+      "tablename": "projects"
+    },
+    {
+      "cmd": "ALL",
+      "policyname": "service_admin",
+      "roles": "{authenticated}",
+      "tablename": "service_listings"
+    },
+    {
+      "cmd": "INSERT",
+      "policyname": "service_owner_insert",
+      "roles": "{authenticated}",
+      "tablename": "service_listings"
+    },
+    {
+      "cmd": "SELECT",
+      "policyname": "service_owner_read",
+      "roles": "{authenticated}",
+      "tablename": "service_listings"
+    },
+    {
+      "cmd": "UPDATE",
+      "policyname": "service_owner_update",
+      "roles": "{authenticated}",
+      "tablename": "service_listings"
+    },
+    {
+      "cmd": "SELECT",
+      "policyname": "service_public_read",
+      "roles": "{anon,authenticated}",
+      "tablename": "service_listings"
+    }
+  ],
+  "rpcs": [
+    {
+      "proname": "list_my_catalog_inquiries",
+      "prosecdef": true
+    },
+    {
+      "proname": "list_public_professional_profiles",
+      "prosecdef": true
+    },
+    {
+      "proname": "save_my_opportunity",
+      "prosecdef": false
+    },
+    {
+      "proname": "save_my_professional_profile",
+      "prosecdef": true
+    },
+    {
+      "proname": "save_my_service",
+      "prosecdef": false
+    },
+    {
+      "proname": "send_job_inquiry",
+      "prosecdef": true
+    },
+    {
+      "proname": "send_service_inquiry",
+      "prosecdef": true
+    }
+  ],
+  "temporaryUsers": [
+    {
+      "count": 0
+    }
+  ]
+}

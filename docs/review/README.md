@@ -1,3 +1,5 @@
+> Estado actualizado: [Preview remoto y revisión final](remote-preview.md). Este documento conserva la evidencia histórica de su checkpoint.
+
 # Revisión local — Navigation / Landings / Catalogs
 
 Entrega parcial deliberada: A + B (cinco verticales existentes) + C. El siguiente bloque es D, Marketplace/Services con contacto protegido; después Jobs y Tools. No hay Preview remoto ni cambios en Production.

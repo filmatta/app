@@ -1,0 +1,29 @@
+{
+  "id": "dpl_7JVnJdTqq55AZgWTtxHH21dfnjah",
+  "url": "https://app-21491pa08-filmatta.vercel.app",
+  "environment": "preview",
+  "apiTarget": null,
+  "readyState": "READY",
+  "gitCommit": "6fb7f171ee92e94c525c34215c183a169d8565fa",
+  "gitBranch": "feature/navigation-landings-catalog-foundations",
+  "gitDirtyAtUpload": "1",
+  "reviewCommit": "6fb7f171ee92e94c525c34215c183a169d8565fa",
+  "onlyUncommittedUpload": "Non-sensitive schema audit JSON; application files identical to reviewCommit",
+  "supabaseTestRef": "ezlycwkuzkwcnhrhiruv",
+  "deploymentOnlyOverrides": {
+    "BILLING_ENABLED": "false",
+    "BILLING_MODE": "test",
+    "clearedKeys": [
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "MUX_TOKEN_ID",
+      "MUX_TOKEN_SECRET",
+      "MUX_SIGNING_KEY",
+      "MUX_PRIVATE_KEY",
+      "MUX_WEBHOOK_SECRET"
+    ]
+  },
+  "protected": true,
+  "temporaryQaAccessRevoked": true
+}

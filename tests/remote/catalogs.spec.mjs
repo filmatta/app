@@ -4,6 +4,8 @@ import {
   checked,
   TEST_REF,
 } from "../integration/test-project.mjs";
+import { previewAccess, previewBase } from "./preview-access.mjs";
+test.beforeEach(async ({ context }) => previewAccess(context));
 const routes = [
   "/descubre/marketplace",
   "/descubre/jobs",
@@ -38,7 +40,7 @@ test("real Test public pages at seven widths with desktop/mobile evidence", asyn
         await page.getByRole("button", { name: "Calcular" }).click();
       if (width === 390 || width === 1440)
         await page.screenshot({
-          path: `docs/review/df${route.replaceAll("/", "-")}-${width}.png`,
+          path: `${process.env.FILMATTA_PREVIEW_URL ? "docs/review/remote/df" : "docs/review/df"}${route.replaceAll("/", "-")}-${width}.png`,
           fullPage: true,
           style: "nextjs-portal{visibility:hidden}",
         });
@@ -48,7 +50,7 @@ test("real Test public pages at seven widths with desktop/mobile evidence", asyn
 async function signedContext(browser, user) {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
-    baseURL: "http://127.0.0.1:3106",
+    baseURL: previewBase,
   });
   const session = checked(await user.client.auth.getSession()).session;
   const value =
@@ -60,12 +62,14 @@ async function signedContext(browser, user) {
     chunks.map((value, i) => ({
       name: `sb-${TEST_REF}-auth-token${chunks.length > 1 ? "." + i : ""}`,
       value,
-      domain: "127.0.0.1",
+      domain: new URL(previewBase).hostname,
+      secure: previewBase.startsWith("https:"),
       path: "/",
       httpOnly: false,
       sameSite: "Lax",
     })),
   );
+  await previewAccess(context);
   return context;
 }
 test("real Test browser owner publishing, non-owner rejection and private contact", async ({
@@ -115,13 +119,13 @@ test("real Test browser owner publishing, non-owner rejection and private contac
         page.getByRole("link", { name: "Entrar para contactar" }),
       ).toBeVisible();
       await page.screenshot({
-        path: "docs/review/df-service-public-1440.png",
+        path: `${process.env.FILMATTA_PREVIEW_URL ? "docs/review/remote/df" : "docs/review/df"}-service-public-1440.png`,
         fullPage: true,
         style: "nextjs-portal{visibility:hidden}",
       });
       await page.setViewportSize({ width: 390, height: 844 });
       await page.screenshot({
-        path: "docs/review/df-service-public-390.png",
+        path: `${process.env.FILMATTA_PREVIEW_URL ? "docs/review/remote/df" : "docs/review/df"}-service-public-390.png`,
         fullPage: true,
         style: "nextjs-portal{visibility:hidden}",
       });
@@ -158,7 +162,7 @@ test("real Test browser owner publishing, non-owner rejection and private contac
         op.getByText("Recibida / Interés aceptado", { exact: true }),
       ).toBeVisible();
       await op.screenshot({
-        path: "docs/review/df-inbox-owner-1440.png",
+        path: `${process.env.FILMATTA_PREVIEW_URL ? "docs/review/remote/df" : "docs/review/df"}-inbox-owner-1440.png`,
         fullPage: true,
         style: "nextjs-portal{visibility:hidden}",
       });
@@ -207,13 +211,13 @@ test("real Test browser owner publishing, non-owner rejection and private contac
         page.getByRole("heading", { name: "Entregables", exact: true }),
       ).toBeVisible();
       await page.screenshot({
-        path: "docs/review/df-job-public-1440.png",
+        path: `${process.env.FILMATTA_PREVIEW_URL ? "docs/review/remote/df" : "docs/review/df"}-job-public-1440.png`,
         fullPage: true,
         style: "nextjs-portal{visibility:hidden}",
       });
       await page.setViewportSize({ width: 390, height: 844 });
       await page.screenshot({
-        path: "docs/review/df-job-public-390.png",
+        path: `${process.env.FILMATTA_PREVIEW_URL ? "docs/review/remote/df" : "docs/review/df"}-job-public-390.png`,
         fullPage: true,
         style: "nextjs-portal{visibility:hidden}",
       });
@@ -223,7 +227,7 @@ test("real Test browser owner publishing, non-owner rejection and private contac
         page.getByText("No hay encargos para esta selección.", { exact: true }),
       ).toBeVisible();
       await page.screenshot({
-        path: "docs/review/df-jobs-empty-1440.png",
+        path: `${process.env.FILMATTA_PREVIEW_URL ? "docs/review/remote/df" : "docs/review/df"}-jobs-empty-1440.png`,
         fullPage: true,
         style: "nextjs-portal{visibility:hidden}",
       });
@@ -236,8 +240,11 @@ test("real Test browser owner publishing, non-owner rejection and private contac
         );
       await sp.getByRole("button", { name: "Enviar consulta privada" }).click();
       await expect(sp).toHaveURL(/consultas\?sent=1/);
+      await expect(
+        sp.getByText("Enviada / Pendiente", { exact: true }),
+      ).toBeVisible();
       await sp.screenshot({
-        path: "docs/review/df-inbox-sender-390.png",
+        path: `${process.env.FILMATTA_PREVIEW_URL ? "docs/review/remote/df" : "docs/review/df"}-inbox-sender-390.png`,
         fullPage: true,
         style: "nextjs-portal{visibility:hidden}",
       });
@@ -247,6 +254,16 @@ test("real Test browser owner publishing, non-owner rejection and private contac
       await expect(op).toHaveURL(/saved=1/);
       await page.goto(`/oportunidades/${job.slug}`);
       await expect(page.getByRole("heading", { name: /404/ })).toBeVisible();
+      await op.goto(`/mis-servicios/${service.id}/editar`);
+      await op.locator('main [name="status"]').selectOption("draft");
+      await op.getByRole("button", { name: "Guardar servicio" }).click();
+      await expect(op).toHaveURL(/saved=1/);
+      await page.goto(`/marketplace/${service.slug}`);
+      await expect(page.getByRole("heading", { name: /404/ })).toBeVisible();
+      await op.goto(`/mis-servicios/${service.id}/editar`);
+      await op.locator('main [name="status"]').selectOption("published");
+      await op.getByRole("button", { name: "Guardar servicio" }).click();
+      await expect(op).toHaveURL(/saved=1/);
       await op.goto(`/mis-servicios/${service.id}/editar`);
       await op.locator('main [name="status"]').selectOption("archived");
       await op.getByRole("button", { name: "Guardar servicio" }).click();

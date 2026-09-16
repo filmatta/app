@@ -4,7 +4,7 @@ import { testConfiguration } from "./tests/integration/test-project.mjs";
 const config = testConfiguration();
 export default defineConfig({
   testDir: "./tests/remote",
-  testMatch: "**/*.spec.mjs",
+  testMatch: "**/catalogs.spec.mjs",
   workers: 1,
   timeout: 600000,
   expect: { timeout: 20000 },

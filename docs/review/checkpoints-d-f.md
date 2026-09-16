@@ -1,3 +1,5 @@
+> Estado actualizado: [Preview remoto y revisión final](remote-preview.md). Este documento conserva la evidencia histórica de su checkpoint.
+
 # Checkpoints D–F — continuación
 
 Rama y worktree existentes: feature/navigation-landings-catalog-foundations, G:\PROYECTOS\filmatta-navigation-landings. Base aprobada d5f8e07. No se rehacen A–C.

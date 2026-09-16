@@ -1,0 +1,50 @@
+{
+  "date": "2026-09-16T06:14:24.147Z",
+  "ref": "ezlycwkuzkwcnhrhiruv",
+  "counts": [
+    {
+      "kind": "auth_users",
+      "remaining": 0
+    },
+    {
+      "kind": "locations",
+      "remaining": 0
+    },
+    {
+      "kind": "projects",
+      "remaining": 0
+    },
+    {
+      "kind": "opportunities",
+      "remaining": 0
+    },
+    {
+      "kind": "services",
+      "remaining": 0
+    },
+    {
+      "kind": "location_photos",
+      "remaining": 0
+    },
+    {
+      "kind": "professional_profiles",
+      "remaining": 0
+    }
+  ],
+  "finalCheck": "2026-09-16T06:20:12.706Z",
+  "afterPagination": [
+    {
+      "kind": "auth_users",
+      "remaining": 0
+    },
+    {
+      "kind": "pagination_services",
+      "remaining": 0
+    },
+    {
+      "kind": "visual_services",
+      "remaining": 0
+    }
+  ],
+  "temporaryPreviewAccessRevoked": true
+}

@@ -1,0 +1,22 @@
+{
+  "date": "2026-09-16T06:10:56.945Z",
+  "branch": "feature/navigation-landings-catalog-foundations",
+  "head": "6fb7f171ee92e94c525c34215c183a169d8565fa",
+  "main": "c542b0a7c6e8ecd5ca578c1271819ebed46cfd49",
+  "originMain": "c542b0a7c6e8ecd5ca578c1271819ebed46cfd49",
+  "protectedPathsUnchanged": [
+    "lib/billing",
+    "app/api/stripe",
+    "app/api/mux",
+    "lib/mux",
+    "app/billing",
+    "app/planes",
+    "app/cuenta/suscripcion",
+    "lib/auth/require-admin.ts"
+  ],
+  "trackedFilesScanned": 331,
+  "credentialPatternFindings": [],
+  "trackedEnvFiles": [],
+  "stagedFilesScanned": 85,
+  "stagedCredentialFindings": []
+}
