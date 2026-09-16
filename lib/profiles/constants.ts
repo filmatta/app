@@ -17,6 +17,7 @@ export const PROFILE_DISCIPLINES = [
   "VFX",
   "Animación",
   "Actuación",
+  "Modelaje",
   "Guion",
   "Música",
   "Foto fija",

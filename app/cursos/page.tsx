@@ -1,6 +1,19 @@
 import Link from "next/link";
 import SiteHeader from "@/components/SiteHeader";
 import {
+  CatalogFailure,
+  CatalogFiltersForm,
+  CatalogPagination,
+} from "@/components/catalogs/CatalogControls";
+import {
+  catalogErrorKind,
+  escapeLike,
+  PAGE_SIZE,
+  parseCatalogFilters,
+  type SearchParams,
+} from "@/lib/catalogs/filters";
+import { COURSE_CATEGORIES, COURSE_LEVELS } from "@/lib/course-options";
+import {
   getLearnContentType,
   type LearnContentType,
 } from "@/lib/learn/content-type";
@@ -19,19 +32,33 @@ type CatalogContent = {
   content_type?: unknown;
 };
 
-export default async function CursosPage() {
+export default async function CursosPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const filters = parseCatalogFilters(await searchParams);
   const supabase = await createClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("courses")
-    .select("*")
+    .select(
+      "id,title,slug,short_description,cover_image_url,category,level,duration_minutes,featured,content_type",
+    )
     .eq("status", "published")
-    .order("sort_order", { ascending: true });
-  const publishedContent = (data ?? []) as CatalogContent[];
+    .order("sort_order", { ascending: true })
+    .order("id", { ascending: true });
+  if (filters.q) query = query.ilike("title", `%${escapeLike(filters.q)}%`);
+  if (filters.category) query = query.eq("category", filters.category);
+  if (filters.level) query = query.eq("level", filters.level);
+  const offset = (filters.page - 1) * PAGE_SIZE;
+  const { data, error } = await query.range(offset, offset + PAGE_SIZE);
+  const hasNext = (data?.length ?? 0) > PAGE_SIZE;
+  const publishedContent = (data ?? []).slice(0, PAGE_SIZE) as CatalogContent[];
   const courses = publishedContent.filter(
-    (item) => getLearnContentType(item) === "course"
+    (item) => getLearnContentType(item) === "course",
   );
   const quickGuides = publishedContent.filter(
-    (item) => getLearnContentType(item) === "quick_guide"
+    (item) => getLearnContentType(item) === "quick_guide",
   );
 
   return (
@@ -39,15 +66,15 @@ export default async function CursosPage() {
       <SiteHeader contextLink={{ href: "/", label: "← Volver" }} />
 
       <section className="mx-auto max-w-7xl px-6 pb-20 pt-20 lg:px-8 lg:pb-28 lg:pt-24">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/65">
           FILMATTA Learn
         </p>
         <h1 className="mt-5 max-w-4xl text-5xl font-semibold tracking-[-0.04em] sm:text-7xl">
           Aprender
         </h1>
-        <p className="mt-7 max-w-2xl text-lg leading-8 text-white/50">
-          Desarrolla habilidades prácticas para el audiovisual, la creatividad
-          y tu carrera profesional con contenido pensado para aplicar en el
+        <p className="mt-7 max-w-2xl text-lg leading-8 text-white/65">
+          Desarrolla habilidades prácticas para el audiovisual, la creatividad y
+          tu carrera profesional con contenido pensado para aplicar en el
           trabajo real.
         </p>
 
@@ -58,6 +85,26 @@ export default async function CursosPage() {
           <SectionLink href="#cursos">Cursos</SectionLink>
           <SectionLink href="#guias-rapidas">Guías rápidas</SectionLink>
         </nav>
+        <CatalogFiltersForm
+          path="/cursos"
+          filters={filters}
+          fields={[
+            { name: "q", label: "Buscar curso o guía" },
+            {
+              name: "category",
+              label: "Categoría",
+              options: COURSE_CATEGORIES.map((value) => ({
+                value,
+                label: value,
+              })),
+            },
+            {
+              name: "level",
+              label: "Nivel",
+              options: COURSE_LEVELS.map((value) => ({ value, label: value })),
+            },
+          ]}
+        />
       </section>
 
       <CatalogSection
@@ -68,7 +115,7 @@ export default async function CursosPage() {
         description="Recorre módulos y lecciones diseñados para desarrollar una habilidad completa paso a paso."
       >
         {error ? (
-          <CatalogError />
+          <CatalogFailure kind={catalogErrorKind(error)} />
         ) : courses.length > 0 ? (
           <ContentGrid>
             {courses.map((item) => (
@@ -76,7 +123,9 @@ export default async function CursosPage() {
             ))}
           </ContentGrid>
         ) : (
-          <EmptyRow>Todavía no hay cursos publicados.</EmptyRow>
+          <EmptyRow>
+            No hay cursos para esta selección. Prueba otros filtros.
+          </EmptyRow>
         )}
       </CatalogSection>
 
@@ -98,22 +147,29 @@ export default async function CursosPage() {
             ))}
           </ContentGrid>
         ) : (
-          <div className="mt-12 rounded-2xl border border-white/10 bg-white/[0.02] px-7 py-12 sm:px-10 sm:py-16">
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/30">
-              Próximamente
-            </p>
-            <p className="mt-4 max-w-2xl text-xl leading-8 text-white/65 sm:text-2xl">
-              Estamos preparando guías rápidas para resolver tareas concretas
-              en pocos minutos.
-            </p>
-          </div>
+          <EmptyRow>No hay guías rápidas para esta selección.</EmptyRow>
         )}
       </CatalogSection>
+      {!error && (
+        <div className="mx-auto max-w-7xl px-6 pb-16 lg:px-8">
+          <CatalogPagination
+            path="/cursos"
+            filters={filters}
+            hasNext={hasNext}
+          />
+        </div>
+      )}
     </main>
   );
 }
 
-function SectionLink({ href, children }: { href: string; children: React.ReactNode }) {
+function SectionLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
   return (
     <Link
       href={href}
@@ -156,7 +212,7 @@ function CatalogSection({
           >
             {title}
           </h2>
-          <p className="mt-4 leading-7 text-white/45">{description}</p>
+          <p className="mt-4 leading-7 text-white/65">{description}</p>
         </div>
         {children}
       </div>
@@ -165,7 +221,11 @@ function CatalogSection({
 }
 
 function ContentGrid({ children }: { children: React.ReactNode }) {
-  return <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">{children}</div>;
+  return (
+    <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      {children}
+    </div>
+  );
 }
 
 function ContentCard({
@@ -210,11 +270,11 @@ function ContentCard({
       </div>
 
       <div className="flex min-h-[300px] flex-col p-7">
-        <span className="text-xs uppercase tracking-[0.2em] text-white/35">
+        <span className="text-xs uppercase tracking-[0.2em] text-white/65">
           {item.category}
         </span>
         <div className="mt-auto">
-          <div className="mb-4 flex gap-3 text-xs text-white/35">
+          <div className="mb-4 flex gap-3 text-xs text-white/65">
             {item.level && <span>{item.level}</span>}
             {item.duration_minutes && (
               <>
@@ -223,8 +283,10 @@ function ContentCard({
               </>
             )}
           </div>
-          <h3 className="text-3xl font-semibold tracking-tight">{item.title}</h3>
-          <p className="mt-4 line-clamp-3 leading-7 text-white/45">
+          <h3 className="text-3xl font-semibold tracking-tight">
+            {item.title}
+          </h3>
+          <p className="mt-4 line-clamp-3 leading-7 text-white/65">
             {item.short_description}
           </p>
           <span className="mt-8 inline-block text-sm font-semibold text-white/70 transition group-hover:text-white">
@@ -236,16 +298,12 @@ function ContentCard({
   );
 }
 
-function CatalogError() {
-  return (
-    <div className="mt-12 rounded-xl border border-red-500/30 p-6 text-red-300">
-      No pudimos cargar el contenido de Aprender en este momento.
-    </div>
-  );
-}
-
 function EmptyRow({ children }: { children: React.ReactNode }) {
-  return <p className="mt-12 border-y border-white/10 py-10 text-white/40">{children}</p>;
+  return (
+    <p className="mt-12 border-y border-white/10 py-10 text-white/65">
+      {children}
+    </p>
+  );
 }
 
 function formatDuration(minutes: number) {

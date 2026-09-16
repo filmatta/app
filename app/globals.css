@@ -63,7 +63,7 @@ html {
 @media (min-width: 1280px) { .global-header-inner { padding-inline: 3rem; } }
 @media (max-width: 389px) { .global-header-inner { gap: .5rem; padding-inline: 1rem; } .nav-brand { font-size: 1rem; letter-spacing: .12em; } }
 
-.editorial-page { background: #080808; color: #f1efe9; --vertical-accent: #b9dceb; }
+.editorial-page { min-height: 100vh; background: #080808; color: #f1efe9; --vertical-accent: #b9dceb; }
 .editorial-container { width: 100%; max-width: 1600px; margin-inline: auto; padding-inline: 1.5rem; }
 .editorial-page :is(a,button,input,select):focus-visible { outline: 2px solid var(--vertical-accent); outline-offset: 5px; }
 .eyebrow { font-size: .6875rem; line-height: 1.7; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--vertical-accent); }
@@ -72,7 +72,7 @@ html {
 .hero-description { max-width: 38rem; margin-top: 1.75rem; font-size: 1.0625rem; line-height: 1.85; color: #b5b3ae; }
 .editorial-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem 1.5rem; margin-top: 2rem; }
 .editorial-primary, .editorial-secondary { display: inline-flex; align-items: center; justify-content: space-between; gap: 1.5rem; min-height: 48px; padding-block: .8rem; font-size: .875rem; font-weight: 600; }
-.editorial-primary { padding-inline: 1.3rem; border-radius: 999px; background: var(--vertical-accent); color: #101211; }
+.editorial-primary { padding-inline: 1.3rem; border-radius: 999px; background: var(--vertical-accent, #b9dceb); color: #101211; }
 .editorial-primary:hover { filter: brightness(1.08); }
 .editorial-secondary { color: #e0ded8; border-bottom: 1px solid #ffffff40; }
 .editorial-photo { width: 100%; height: auto; display: block; filter: saturate(.55); }
@@ -102,6 +102,8 @@ html {
 .editorial-final { padding-block: 5rem; }
 .editorial-final h2 { margin-block: 1.5rem 2rem; font-size: clamp(3rem, 7vw, 7rem); line-height: 1; letter-spacing: -.06em; font-weight: 600; }
 .editorial-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1.5rem; padding-block: 2rem; border-top: 1px solid #ffffff26; font-size: .75rem; color: #a3a19c; }
+.catalog-filters { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,12rem),1fr)); gap: 1rem; margin-block: 2.5rem; padding-block: 1.5rem; border-block: 1px solid #ffffff26; }
+.catalog-input { color-scheme: dark; width: 100%; min-height: 48px; border: 1px solid #ffffff40; background: #151515; color: #f1efe9; padding: .7rem; border-radius: 3px; }
 @media (min-width: 768px) {
   .editorial-capabilities { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 2rem; }
   .editorial-process { grid-template-columns: 1fr 1fr; gap: 4rem; }

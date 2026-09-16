@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:billing": "node --test tests/billing/*.test.mjs"
+    "test:billing": "node --test tests/billing/*.test.mjs",
+    "test:navigation": "node --test tests/navigation/*.test.mjs",
+    "test:catalogs": "node --test tests/catalogs/*.test.mjs",
+    "test:database": "node --test tests/database/*.test.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@mux/mux-node": "^15.1.0",
@@ -20,6 +24,7 @@
     "stripe": "22.6.2"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",

@@ -1,5 +1,12 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import {
+  catalogErrorKind,
+  escapeLike,
+  PAGE_SIZE,
+  parseCatalogFilters,
+  type CatalogFilters,
+} from "@/lib/catalogs/filters";
 
 export type PublicLocationPhoto = {
   id: string;
@@ -31,8 +38,8 @@ export type PublicLocationSummary = Omit<
 >;
 
 export type PublicLocationsResult =
-  | { ok: true; locations: PublicLocationSummary[] }
-  | { ok: false; locations: [] };
+  | { ok: true; locations: PublicLocationSummary[]; hasNext: boolean }
+  | { ok: false; locations: []; kind: "unconfigured" | "error" };
 
 export type PublicLocationResult =
   | { kind: "found"; location: PublicLocation }
@@ -73,7 +80,10 @@ const LOCATION_DETAIL_FIELDS =
 
 const getPublishedPhotos = async (locationIds: string[]) => {
   if (locationIds.length === 0) {
-    return { photosByLocation: new Map<string, PublicLocationPhoto[]>(), error: false };
+    return {
+      photosByLocation: new Map<string, PublicLocationPhoto[]>(),
+      error: false,
+    };
   }
 
   const supabase = await createClient();
@@ -87,7 +97,10 @@ const getPublishedPhotos = async (locationIds: string[]) => {
 
   if (error) {
     console.error("Error loading public location photos:", error);
-    return { photosByLocation: new Map<string, PublicLocationPhoto[]>(), error: true };
+    return {
+      photosByLocation: new Map<string, PublicLocationPhoto[]>(),
+      error: true,
+    };
   }
 
   const photosByLocation = new Map<string, PublicLocationPhoto[]>();
@@ -107,7 +120,7 @@ const getPublishedPhotos = async (locationIds: string[]) => {
 
 function mapLocationSummary(
   row: LocationSummaryRow,
-  photosByLocation: Map<string, PublicLocationPhoto[]>
+  photosByLocation: Map<string, PublicLocationPhoto[]>,
 ): PublicLocationSummary {
   return {
     id: row.id,
@@ -128,7 +141,7 @@ function mapLocationSummary(
 
 function mapLocation(
   row: LocationRow,
-  photosByLocation: Map<string, PublicLocationPhoto[]>
+  photosByLocation: Map<string, PublicLocationPhoto[]>,
 ): PublicLocation {
   return {
     ...mapLocationSummary(row, photosByLocation),
@@ -138,34 +151,45 @@ function mapLocation(
 }
 
 export const getPublishedLocations = cache(
-  async (): Promise<PublicLocationsResult> => {
+  async (
+    filters: CatalogFilters = parseCatalogFilters({}),
+  ): Promise<PublicLocationsResult> => {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    let query = supabase
       .from("locations")
       .select(LOCATION_SUMMARY_FIELDS)
       .eq("status", "published")
       .order("published_at", { ascending: false })
       .order("id", { ascending: true });
+    if (filters.city)
+      query = query.ilike("city", `%${escapeLike(filters.city)}%`);
+    if (filters.q) query = query.ilike("title", `%${escapeLike(filters.q)}%`);
+    if (filters.environment)
+      query = query.eq("environment", filters.environment);
+    const offset = (filters.page - 1) * PAGE_SIZE;
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE);
 
     if (error) {
       console.error("Error loading public locations:", error);
-      return { ok: false, locations: [] };
+      return { ok: false, locations: [], kind: catalogErrorKind(error) };
     }
 
-    const rows = (data ?? []) as LocationSummaryRow[];
+    const allRows = (data ?? []) as LocationSummaryRow[];
+    const rows = allRows.slice(0, PAGE_SIZE);
     const photos = await getPublishedPhotos(rows.map((row) => row.id));
 
     if (photos.error) {
-      return { ok: false, locations: [] };
+      return { ok: false, locations: [], kind: "error" };
     }
 
     return {
       ok: true,
+      hasNext: allRows.length > PAGE_SIZE,
       locations: rows.map((row) =>
-        mapLocationSummary(row, photos.photosByLocation)
+        mapLocationSummary(row, photos.photosByLocation),
       ),
     };
-  }
+  },
 );
 
 export const getPublishedLocation = cache(
@@ -198,5 +222,5 @@ export const getPublishedLocation = cache(
       kind: "found",
       location: mapLocation(row, photos.photosByLocation),
     };
-  }
+  },
 );

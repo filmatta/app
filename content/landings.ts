@@ -27,7 +27,7 @@ export const landings: Record<string, Landing> = {
     title: "Presencia frente a cámara. Un perfil que la muestre.",
     description: "Un espacio para actores, actrices y modelos: book, reel y experiencia presentados con el contexto que necesita una producción.",
     primary: { label: "Crear mi perfil de talento", href: "/mi-perfil" },
-    secondary: { label: "Explorar perfiles", href: "/perfiles" },
+    secondary: { label: "Explorar talento", href: "/talento" },
     capabilities: [
       { title: "Material que habla por ti.", description: "Enlaza tu reel, book y trabajos seleccionados. Presenta material vigente y accesible para quien revise tu perfil." },
       { title: "Tu experiencia en contexto.", description: "Cuenta tu participación en cada proyecto y añade las habilidades que forman parte de tu trabajo frente a cámara." },
@@ -55,7 +55,7 @@ export const landings: Record<string, Landing> = {
     title: "Tu próximo proyecto empieza con una oportunidad.",
     description: "Encuentra castings, llamados de crew, colaboraciones y convocatorias audiovisuales con requisitos y condiciones claros.",
     primary: { label: "Ver oportunidades", href: "/oportunidades" },
-    secondary: { label: "Preparar mi perfil", href: "/mi-perfil" },
+    secondary: { label: "Publicar oportunidad", href: "/mis-oportunidades/nueva" },
     capabilities: [
       { title: "Qué buscan.", description: "Conoce la disciplina, el perfil y el contexto del proyecto. Una convocatoria precisa ayuda a decidir si puedes aportar." },
       { title: "Cuándo y dónde.", description: "Revisa ciudad, modalidad, fechas y compensación declaradas. Las condiciones deben estar claras antes de participar." },
@@ -85,6 +85,6 @@ export function getLanding(slug: string): Landing | null {
 }
 
 export function landingActionHref(href: string, authenticated: boolean) {
-  const needsAccount = href === "/mi-perfil" || href.startsWith("/mis-locaciones/");
+  const needsAccount = href === "/mi-perfil" || href.startsWith("/mis-locaciones/") || href.startsWith("/mis-oportunidades/");
   return needsAccount && !authenticated ? `/registro?next=${encodeURIComponent(href)}` : href;
 }

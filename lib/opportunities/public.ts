@@ -1,12 +1,15 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import {
+  catalogErrorKind,
+  escapeLike,
+  PAGE_SIZE,
+  parseCatalogFilters,
+  type CatalogFilters,
+} from "@/lib/catalogs/filters";
 
 export type OpportunityCategory =
-  | "casting"
-  | "crew"
-  | "paid_work"
-  | "collaboration"
-  | "internship";
+  "casting" | "crew" | "paid_work" | "collaboration" | "internship";
 
 export type PublicOpportunity = {
   id: string;
@@ -37,8 +40,8 @@ export type PublicOpportunitySummary = Omit<
 >;
 
 export type PublicOpportunitiesResult =
-  | { ok: true; opportunities: PublicOpportunitySummary[] }
-  | { ok: false; opportunities: [] };
+  | { ok: true; opportunities: PublicOpportunitySummary[]; hasNext: boolean }
+  | { ok: false; opportunities: []; kind: "unconfigured" | "error" };
 
 export type PublicOpportunityResult =
   | { kind: "found"; opportunity: PublicOpportunity }
@@ -111,7 +114,7 @@ const getPublishedProjects = async (projectIds: string[]) => {
 
 function mapOpportunitySummary(
   row: OpportunitySummaryRow,
-  project: ProjectRow
+  project: ProjectRow,
 ): PublicOpportunitySummary {
   return {
     id: row.id,
@@ -135,7 +138,7 @@ function mapOpportunitySummary(
 
 function mapOpportunity(
   row: OpportunityRow,
-  project: ProjectRow
+  project: ProjectRow,
 ): PublicOpportunity {
   return {
     ...mapOpportunitySummary(row, project),
@@ -147,37 +150,42 @@ function mapOpportunity(
 }
 
 export const getPublishedOpportunities = cache(
-  async (): Promise<PublicOpportunitiesResult> => {
+  async (
+    filters: CatalogFilters = parseCatalogFilters({}),
+  ): Promise<PublicOpportunitiesResult> => {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    let query = supabase
       .from("opportunities")
-      .select(OPPORTUNITY_SUMMARY_FIELDS)
+      .select(`${OPPORTUNITY_SUMMARY_FIELDS}, projects!inner(id,title,slug)`)
       .eq("status", "published")
+      .eq("projects.status", "published")
       .order("published_at", { ascending: false })
       .order("id", { ascending: true });
+    if (filters.category) query = query.eq("category", filters.category);
+    if (filters.city)
+      query = query.ilike("city", `%${escapeLike(filters.city)}%`);
+    if (filters.q) query = query.ilike("title", `%${escapeLike(filters.q)}%`);
+    if (filters.workMode) query = query.eq("work_mode", filters.workMode);
+    const offset = (filters.page - 1) * PAGE_SIZE;
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE);
 
     if (error) {
       console.error("Error loading public opportunities:", error);
-      return { ok: false, opportunities: [] };
+      return { ok: false, opportunities: [], kind: catalogErrorKind(error) };
     }
 
-    const rows = (data ?? []) as OpportunitySummaryRow[];
-    const projects = await getPublishedProjects(
-      [...new Set(rows.map((row) => row.project_id))]
-    );
-
-    if (projects.error) {
-      return { ok: false, opportunities: [] };
-    }
+    const rows = (data ?? []) as unknown as (OpportunitySummaryRow & {
+      projects: ProjectRow;
+    })[];
 
     return {
       ok: true,
-      opportunities: rows.flatMap((row) => {
-        const project = projects.projectsById.get(row.project_id);
-        return project ? [mapOpportunitySummary(row, project)] : [];
-      }),
+      hasNext: rows.length > PAGE_SIZE,
+      opportunities: rows
+        .slice(0, PAGE_SIZE)
+        .map((row) => mapOpportunitySummary(row, row.projects)),
     };
-  }
+  },
 );
 
 export const getPublishedOpportunity = cache(
@@ -212,5 +220,5 @@ export const getPublishedOpportunity = cache(
     }
 
     return { kind: "found", opportunity: mapOpportunity(row, project) };
-  }
+  },
 );

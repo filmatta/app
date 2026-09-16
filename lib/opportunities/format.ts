@@ -22,7 +22,7 @@ export function getOpportunityCategoryLabel(category: OpportunityCategory) {
 }
 
 export function getOpportunityWorkModeLabel(
-  workMode: PublicOpportunity["workMode"]
+  workMode: PublicOpportunity["workMode"],
 ) {
   return WORK_MODE_LABELS[workMode];
 }
@@ -34,7 +34,7 @@ export function formatOpportunityCompensation(
     | "compensationMin"
     | "compensationMax"
     | "compensationCurrency"
-  >
+  >,
 ) {
   if (
     opportunity.compensationType === "paid" &&
@@ -44,7 +44,9 @@ export function formatOpportunityCompensation(
     const formatter = new Intl.NumberFormat("es-MX", {
       style: "currency",
       currency: opportunity.compensationCurrency,
-      maximumFractionDigits: 0,
+      currencyDisplay: "code",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
     });
     const minimum = formatter.format(opportunity.compensationMin);
 
@@ -94,12 +96,12 @@ export function formatOpportunityDeadline(dateTime: string) {
 }
 
 export function formatOpportunityMetadataDescription(
-  opportunity: PublicOpportunity
+  opportunity: PublicOpportunity,
 ) {
   return truncateMetadataDescription(
     opportunity.summary ||
       opportunity.description ||
-      `Descubre ${opportunity.title} en FILMATTA.`
+      `Descubre ${opportunity.title} en FILMATTA.`,
   );
 }
 

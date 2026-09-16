@@ -41,8 +41,8 @@ export default async function EditorialLanding({ params }: Props) {
       </section>
       <section className="editorial-container editorial-process">
         <div><p className="eyebrow">Cómo funciona</p><h2>Un siguiente paso claro.</h2>
-          {vertical === "locaciones" && <p>La primera versión es un directorio de contacto. Las visitas y condiciones se acuerdan directamente con quien administra el espacio.</p>}
-          {vertical === "oportunidades" && <p>La publicación desde tu cuenta se está preparando. Ya puedes consultar las convocatorias disponibles y sus condiciones.</p>}
+          {vertical === "locaciones" && <p>La primera versión permite publicar y evaluar espacios. Las reservas y el contacto privado desde FILMATTA todavía no están disponibles.</p>}
+          {vertical === "oportunidades" && <p>Publica una convocatoria con el contexto de su proyecto. Puedes empezar con un borrador y hacerla visible cuando esté lista.</p>}
         </div>
         <ol>{landing.steps.map((step, index) => <li key={step}><span aria-hidden="true">0{index + 1}</span><p>{step}</p></li>)}</ol>
       </section>
