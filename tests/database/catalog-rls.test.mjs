@@ -39,6 +39,7 @@ before(async () => {
     "20260910230000_create_locations_opportunities_foundations.sql",
     "20260916010000_public_profile_catalog.sql",
     "20260916020000_opportunity_owner_publishing.sql",
+    "20260916030000_services_directory.sql",
   ]) {
     await db.exec(fs.readFileSync(`supabase/migrations/${file}`, "utf8"));
   }
@@ -281,4 +282,39 @@ test("publishing RPC is atomic, owner-bound and preserves shared links across ed
     (await db.query("select count(*)::int as n from projects")).rows[0].n,
     beforeCount,
   );
+});
+
+test('Services schema, ownership, publication and private inquiry boundaries',async()=>{
+  await as('authenticated',owner);
+  const values={title:'Sonido directo',category:'sound',description:'Equipo de sonido directo para producciones audiovisuales.',city:'México',work_mode:'on_site',indicative_price:1200.50,currency:'MXN',portfolio_links:[{label:'Portafolio',url:'https://example.com/work'}]};
+  const saved=await db.query("select save_my_service(null,$1,'draft')",[values]);const id=saved.rows[0].save_my_service;
+  const listing=(await db.query('select * from service_listings where id=$1',[id])).rows[0];
+  await as('anon');assert.equal((await db.query('select id,title from service_listings where id=$1',[id])).rows.length,0);
+  await assert.rejects(db.query('select owner_user_id from service_listings'));
+  await as('authenticated',stranger);
+  await assert.rejects(db.query("select save_my_service($1,$2,'published')",[id,values]),/Not authorized/);
+  assert.equal((await db.query("update service_listings set title='Ajeno' where id=$1 returning id",[id])).rows.length,0);
+  await as('authenticated',owner);
+  await assert.rejects(db.query("update service_listings set owner_user_id=$1 where id=$2",[stranger,id]));
+  await assert.rejects(db.query("select save_my_service(null,$1,'published')",[{...values,description:''}]));
+  await assert.rejects(db.query("select save_my_service(null,$1,'draft')",[{...values,portfolio_links:[{label:'Bad',url:'javascript:alert(1)'}]}]));
+  await db.query("select save_my_service($1,$2,'published')",[id,{...values,title:'Sonido actualizado'}]);
+  await as('anon');assert.equal((await db.query('select slug from service_listings where id=$1',[id])).rows[0].slug,listing.slug);
+  await assert.rejects(db.query('select * from catalog_inquiries'));
+  await assert.rejects(db.query('select send_service_inquiry($1,$2)',[listing.slug,'Consulta privada para esta producción.']));
+  await as('authenticated',stranger);
+  await db.query("select save_my_professional_profile(array['Actuación'],null,null,'available','{}','{}','[]',true,'members_only')");
+  const inquiry=(await db.query('select send_service_inquiry($1,$2)',[listing.slug,'Consulta privada para esta producción.'])).rows[0].send_service_inquiry;
+  await assert.rejects(db.query('select send_service_inquiry($1,$2)',[listing.slug,'Consulta privada para esta producción.']),/unique/);
+  assert.equal((await db.query("update catalog_inquiries set status='accepted' where id=$1 returning id",[inquiry])).rows.length,0);
+  await assert.rejects(db.query('update catalog_inquiries set recipient_id=$1 where id=$2',[stranger,inquiry]));
+  await as('authenticated',owner);
+  assert.equal((await db.query('select * from list_my_catalog_inquiries()')).rows.length,1);
+  await db.query("update catalog_inquiries set status='accepted' where id=$1",[inquiry]);
+  await db.query("select save_my_service($1,$2,'draft')",[id,values]);
+  await as('authenticated',stranger);
+  const received=(await db.query('select * from list_my_catalog_inquiries()')).rows[0];
+  assert.equal(received.status,'accepted');assert.equal(received.target_title,'Servicio no disponible');assert.equal(received.target_href,null);
+  await as('authenticated',admin);assert.equal((await db.query('select id from service_listings where id=$1',[id])).rows.length,1);
+  await db.query("update service_listings set status='archived' where id=$1",[id]);
 });

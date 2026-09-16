@@ -10,7 +10,7 @@ export const navigationFeatures = {
   landings: true,
   talent: true,
   opportunityFilters: true,
-  marketplace: false,
+  marketplace: true,
   jobs: false,
   tools: false,
 } as const;
@@ -106,6 +106,8 @@ export function getAccountNavigation(role: string): NavigationLink[] {
     { label: "Mi aprendizaje", href: "/cuenta#mis-cursos" },
     { label: "Mis locaciones", href: "/mis-locaciones" },
     { label: "Mis publicaciones", href: "/mis-oportunidades" },
+    { label: "Mis servicios", href: "/mis-servicios" },
+    { label: "Consultas privadas", href: "/mis-servicios/consultas" },
     { label: "Mi suscripción", href: "/cuenta/suscripcion" },
     { label: "Ajustes", href: "/cuenta#configuracion" },
     ...(role === "admin"
@@ -118,6 +120,7 @@ export const publishingNavigation: NavigationLink[] = [
   { label: "Completar mi perfil", href: "/mi-perfil" },
   { label: "Nueva locación", href: "/mis-locaciones/nueva" },
   { label: "Publicar oportunidad", href: "/mis-oportunidades/nueva" },
+  { label: "Ofrecer servicio", href: "/mis-servicios/nuevo" },
 ];
 
 export function isNavigationActive(pathname: string, href: string): boolean {

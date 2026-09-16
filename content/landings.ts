@@ -1,6 +1,6 @@
 export type Landing = {
   name: string; accent: string; title: string; description: string;
-  layout: "portfolio" | "talent" | "spaces" | "board" | "learn";
+  layout: "portfolio" | "talent" | "spaces" | "board" | "learn" | "services";
   primary: { label: string; href: string };
   secondary: { label: string; href: string };
   capabilities: { title: string; description: string }[];
@@ -8,6 +8,19 @@ export type Landing = {
 };
 
 export const landings: Record<string, Landing> = {
+  marketplace: {
+    name:"Marketplace",accent:"#A7C4BF",layout:"services",
+    title:"Los servicios detrás de cada producción.",
+    description:"Encuentra proveedores de equipo, postproducción, sonido, arte y otros servicios audiovisuales con información clara sobre lo que ofrecen.",
+    primary:{label:"Explorar servicios",href:"/marketplace"},secondary:{label:"Publicar un servicio",href:"/mis-servicios/nuevo"},
+    capabilities:[
+      {title:"Qué ofrecen.",description:"Revisa el alcance del servicio, sus muestras de trabajo y el precio orientativo cuando esté indicado."},
+      {title:"Dónde trabajan.",description:"Busca por ciudad y modalidad. Distingue lo que necesita presencia en set de lo que puede resolverse a distancia."},
+      {title:"Cómo solicitar información.",description:"Con tu perfil profesional publicado, envía una consulta privada. El responsable podrá verla y responder a tu interés desde su bandeja."},
+    ],
+    steps:["Encuentra una especialidad y revisa la ficha completa.","Presenta tu proyecto en una consulta privada.","Consulta la respuesta y acuerda las condiciones con el responsable."],
+    connection:{title:"Un servicio tiene personas detrás.",description:"Conoce el trabajo y la experiencia de quien participa en tu producción. La identidad profesional conecta el directorio con el resto de FILMATTA.",label:"Explorar profesionales",href:"/perfiles"},
+  },
   perfiles: {
     name: "Perfiles", accent: "#B9DCEB", layout: "portfolio",
     title: "Tu trabajo merece una mejor presentación.",
@@ -85,6 +98,6 @@ export function getLanding(slug: string): Landing | null {
 }
 
 export function landingActionHref(href: string, authenticated: boolean) {
-  const needsAccount = href === "/mi-perfil" || href.startsWith("/mis-locaciones/") || href.startsWith("/mis-oportunidades/");
+  const needsAccount = href === "/mi-perfil" || href.startsWith("/mis-locaciones/") || href.startsWith("/mis-oportunidades/") || href.startsWith("/mis-servicios/");
   return needsAccount && !authenticated ? `/registro?next=${encodeURIComponent(href)}` : href;
 }

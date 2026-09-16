@@ -7,6 +7,7 @@ function Photo({ name, alt, portrait = false }: { name: string; alt: string; por
 }
 
 export default function LandingVisual({ layout }: { layout: Landing["layout"] }) {
+  if(layout==='services')return <div className="service-editorial"><p className="eyebrow">El trabajo que sostiene la producción</p><div className="mt-7 grid grid-cols-2 gap-px bg-white/15">{[['01','Equipo'],['02','Postproducción'],['03','Sonido'],['04','Arte']].map(([number,title])=><div key={number} className="bg-[#101716] p-5 sm:p-8"><p className="text-sm text-[#A7C4BF]">{number}</p><p className="mt-8 text-xl tracking-tight sm:text-2xl">{title}</p></div>)}</div><p className="mt-6 text-sm leading-7 text-white/65">Especialidades conectadas por un mismo proyecto. Explora la oferta publicada o presenta la tuya.</p><p className="mt-5 border-t border-white/15 pt-5 text-xs text-white/60">Mapa de especialidades / sin proveedores de ejemplo.</p></div>;
   if (layout === "spaces") return <figure className="space-visual">
     <Photo name="space" alt="Estudio vacío con espejos, ventanas amplias y luz natural" />
     <figcaption className="visual-caption"><span>Luz · Escala · Posibilidades</span><span>Fotografía editorial / Pexels</span></figcaption>

@@ -20,3 +20,13 @@ Auditoría SQL: RLS activo en professional_profiles/projects/opportunities; anon
 El primer intento de preparar el admin con service_role fue denegado por grants existentes. Se respetó la denegación y se cambió únicamente la preparación del fixture a SQL administrativo. Las dos migraciones se aplicaron sin fallos; no hubo que corregirlas ni reinicializar Test. La revisión automática rechazó inicialmente la ejecución por la restricción antigua; autorizó el mismo comando al contrastar la autorización expresa del nuevo brief.
 
 Reproducción: definir FILMATTA_RUN_REMOTE_TESTS con el ref Test y FILMATTA_TEST_ENV_FILE con la ruta a la configuración Test existente; ejecutar node --test tests/integration/previous-catalogs.test.mjs. El helper valida ambos refs y rechaza claves JWT de otro proyecto. No registrar secretos en informes.
+
+## Checkpoint D — Services
+
+Implementado: /descubre/marketplace, /marketplace, /marketplace/[slug], /mis-servicios, /mis-servicios/nuevo, /mis-servicios/[id]/editar y /mis-servicios/consultas. Menú público/autenticado y Mis servicios habilitados. Mantiene el lenguaje visual; la landing usa un mapa editorial de especialidades sin proveedores ficticios ni nuevas fotografías innecesarias.
+
+Modelo aditivo service_listings: propietario Auth, identidad/slug inmutables, datos profesionales no duplicados, enlaces HTTPS estructurados, precio/moneda opcionales coherentes, borrador por defecto, publicar/despublicar/archivar y timestamps derivados. Índices de catálogo/categoría/propietario, constraints y RLS explícitos. Anónimo sólo puede seleccionar columnas públicas de fichas publicadas; admin puede moderar mediante políticas existentes.
+
+Contacto mínimo real: catalog_inquiries, privado para participantes/admin, destinatario derivado en SQL y protegido con FK compuesta al propietario. Requiere perfil profesional público del emisor; una consulta por ficha y hasta diez en 24 horas, serializadas por emisor. El receptor acepta, declina o archiva; el emisor consulta estado. No hay chat, correo, pago ni contrato automático. Al despublicar se oculta el título nuevo de la ficha a emisores anteriores. La bandeja deja preparado un segundo tipo de destino por FK para Jobs, sin duplicar mensajería.
+
+Migración 20260916030000_services_directory.sql validada desde PostgreSQL limpio (PGlite) y aplicada exclusivamente en Test con historial transaccional. Test real Auth/PostgREST aprobado, incluyendo ciclo de estados, owner/non-owner/admin, columnas públicas, rechazo de enlaces inseguros y privacidad de consultas. TypeScript, lint focal y tests de navegación/formulario/RLS correctos. Capturas y smoke de navegador completos se añadirán al cierre D–F.
