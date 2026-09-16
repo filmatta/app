@@ -12,7 +12,7 @@ export const navigationFeatures = {
   opportunityFilters: true,
   marketplace: true,
   jobs: true,
-  tools: false,
+  tools: true,
 } as const;
 
 export function getPrimaryNavigation(authenticated: boolean): NavigationItem[] {

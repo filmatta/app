@@ -11,7 +11,8 @@
     "test:navigation": "node --test tests/navigation/*.test.mjs",
     "test:catalogs": "node --test tests/catalogs/*.test.mjs",
     "test:database": "node --test tests/database/*.test.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:tools": "node --test tests/tools/*.test.mjs"
   },
   "dependencies": {
     "@mux/mux-node": "^15.1.0",
