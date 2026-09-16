@@ -1,0 +1,10 @@
+{
+  "license": "https://www.pexels.com/license/",
+  "licenseConsulted": "2026-09-16",
+  "use": "Editorial illustration; no endorsement, customer, provider or testimonial claim. Pexels permits free use and modification; no standalone resale or implied endorsement.",
+  "images": [
+    { "file": "/images/editorial/camera.webp", "source": "https://www.pexels.com/photo/a-person-filming-11493130/", "author": "Kerem Kaplan", "obtained": "2026-09-16", "width": 1800, "height": 2700, "focalPoint": "50% 55%", "landings": ["talento"] },
+    { "file": "/images/editorial/monitor.webp", "source": "https://www.pexels.com/photo/men-sitting-at-studio-and-working-on-recording-6883796/", "author": "cottonbro studio", "obtained": "2026-09-16", "width": 1800, "height": 1200, "focalPoint": "50% 50%", "landings": ["perfiles", "learn"] },
+    { "file": "/images/editorial/space.webp", "source": "https://www.pexels.com/photo/an-empty-room-7318661/", "author": "MART PRODUCTION", "obtained": "2026-09-16", "width": 1800, "height": 1200, "focalPoint": "50% 50%", "landings": ["locaciones"] }
+  ]
+}

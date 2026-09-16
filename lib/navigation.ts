@@ -3,7 +3,7 @@ export type NavigationItem = NavigationLink & { children?: NavigationLink[] };
 
 // Enable destinations in the checkpoint that delivers them.
 export const navigationFeatures = {
-  landings: false,
+  landings: true,
   talent: false,
   opportunityFilters: false,
   marketplace: false,

@@ -74,10 +74,16 @@ export default function Home() {
 
       <FilmSetStrip />
 
+      <section className="border-b border-white/10 bg-[#080808]" aria-label="Nuestra forma de crear">
+        <p className={`${WIDE_PAGE_CONTAINER_CLASS_NAME} mx-auto max-w-[1600px] py-9 text-base leading-7 text-white/65 sm:text-xl`}>
+          Orden para crear. Claridad para decidir. Herramientas para producir.
+        </p>
+      </section>
+
       <div id="ecosistema">
         <section
           aria-labelledby="profiles-heading"
-          className="border-b border-emerald-200/10 bg-[#07130d]"
+          className="border-b border-sky-200/10 bg-[#0b1115]"
         >
           <div
             className={`${WIDE_PAGE_CONTAINER_CLASS_NAME} mx-auto grid max-w-[1600px] gap-14 py-20 sm:py-28 lg:min-h-[760px] lg:grid-cols-12 lg:items-center lg:py-32`}
@@ -86,7 +92,7 @@ export default function Home() {
               <SectionLabel
                 number="01"
                 product="FILMATTA Profiles"
-                color="text-emerald-300"
+                color="text-sky-300"
               />
               <h2
                 id="profiles-heading"
@@ -102,44 +108,44 @@ export default function Home() {
               </p>
               <PrimaryLink
                 href="/perfiles"
-                colorClass="bg-emerald-300 text-[#06100a] hover:bg-emerald-200 focus-visible:outline-emerald-200"
+                colorClass="bg-[#B9DCEB] text-[#101619] hover:bg-sky-200 focus-visible:outline-sky-200"
               >
                 Crear mi perfil
               </PrimaryLink>
             </div>
 
             <div className="lg:col-span-7 lg:pl-10">
-              <div className="relative min-h-[430px] overflow-hidden border border-emerald-200/15 bg-[#0b1b12] p-5 sm:min-h-[520px] sm:p-8">
-                <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full border border-emerald-200/15" />
-                <div className="absolute -right-4 -top-8 h-44 w-44 rounded-full bg-emerald-300/10" />
+              <div className="relative min-h-[430px] overflow-hidden border border-sky-200/15 bg-[#101619] p-5 sm:min-h-[520px] sm:p-8">
+                <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full border border-sky-200/15" />
+                <div className="absolute -right-4 -top-8 h-44 w-44 rounded-full bg-[#B9DCEB]/10" />
                 <div className="relative flex h-full min-h-[390px] flex-col justify-between sm:min-h-[456px]">
                   <div className="flex items-start justify-between gap-6">
                     <div className="flex items-center gap-4">
-                      <div className="grid h-14 w-14 place-items-center rounded-full bg-emerald-300 text-lg font-black text-[#07130d]">
+                      <div className="grid h-14 w-14 place-items-center rounded-full bg-[#B9DCEB] text-lg font-black text-[#0b1115]">
                         F
                       </div>
                       <div>
                         <p className="text-lg font-semibold">
                           Tu perfil profesional
                         </p>
-                        <p className="mt-1 text-sm text-emerald-100/45">
+                        <p className="mt-1 text-sm text-sky-100/45">
                           México · Industria audiovisual
                         </p>
                       </div>
                     </div>
-                    <span className="text-xs uppercase tracking-[0.25em] text-emerald-200/40">
+                    <span className="text-xs uppercase tracking-[0.25em] text-sky-200/40">
                       Profiles
                     </span>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="border border-emerald-100/10 bg-black/15 p-5 sm:row-span-2 sm:min-h-64">
-                      <p className="text-xs uppercase tracking-[0.22em] text-emerald-200/35">
+                    <div className="border border-sky-100/10 bg-black/15 p-5 sm:row-span-2 sm:min-h-64">
+                      <p className="text-xs uppercase tracking-[0.22em] text-sky-200/35">
                         Demo reel
                       </p>
-                      <div className="mt-12 flex aspect-video items-center justify-center border border-emerald-100/10 bg-emerald-50/[0.03]">
+                      <div className="mt-12 flex aspect-video items-center justify-center border border-sky-100/10 bg-sky-50/[0.03]">
                         <span
-                          className="grid h-14 w-14 place-items-center rounded-full border border-emerald-100/25 text-emerald-100/70"
+                          className="grid h-14 w-14 place-items-center rounded-full border border-sky-100/25 text-sky-100/70"
                           aria-hidden
                         >
                           ▶
@@ -162,7 +168,7 @@ export default function Home() {
                     ].map((item) => (
                       <span
                         key={item}
-                        className="rounded-full border border-emerald-100/15 px-3 py-1.5 text-xs text-emerald-100/50"
+                        className="rounded-full border border-sky-100/15 px-3 py-1.5 text-xs text-sky-100/50"
                       >
                         {item}
                       </span>
@@ -509,11 +515,11 @@ function ComingSoon({ light = false }: { light?: boolean }) {
 
 function ProfileMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border border-emerald-100/10 bg-black/15 p-5">
-      <p className="text-xs uppercase tracking-[0.22em] text-emerald-200/35">
+    <div className="border border-sky-100/10 bg-black/15 p-5">
+      <p className="text-xs uppercase tracking-[0.22em] text-sky-200/35">
         {label}
       </p>
-      <p className="mt-8 text-lg text-emerald-50/70">{value}</p>
+      <p className="mt-8 text-lg text-sky-50/70">{value}</p>
     </div>
   );
 }

@@ -70,6 +70,15 @@ export default function GlobalNavigation({ authenticated, role, badge, children 
     {children}
     <dialog id="global-navigation-drawer" ref={dialog} aria-labelledby="navigation-drawer-title"
       className="nav-drawer" onClose={() => { document.body.style.overflow = ""; }}
+      onKeyDown={event => {
+        if (event.key !== "Tab") return;
+        const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),summary'))
+          .filter(item => item.getClientRects().length > 0);
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }}
       onClick={event => { if (event.target === event.currentTarget) close(); }}>
       <div className="min-h-full p-6">
         <div className="mb-8 flex items-center justify-between border-b border-white/15 pb-5">

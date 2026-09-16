@@ -26,3 +26,10 @@ Shared public/authenticated navigation, server-validated role, unchanged subscri
 - [Writer vision](https://docs.google.com/document/d/1xqC75YyhjfjZ_dSthU1nytKg-qpIcYaHmM4awOlU8jA/edit)
 - [Production strategy](https://docs.google.com/document/d/16ljbRdGXK4Na7V7OvGPaNGcYwVjx3z8klfqOK5NrqXg/edit)
 - themesh.art timed out; no visual inspection claimed.
+
+## B — Editorial landings for existing verticals
+Implemented /descubre/perfiles, /descubre/talento, /descubre/locaciones, /descubre/oportunidades and /descubre/learn. Marketplace/Jobs/Tools landings remain with their later product blocks, so no nonfunctional catalog CTA is introduced. Shared structure with distinct portfolio, portrait, panorama, brief and learning compositions. Pale blue Profiles/Talent; muted olive Locations, steel Opportunities and amber Learn. Home composition preserved, manifesto added, Profiles accent corrected.
+
+Final copy lives in content/landings.ts. Descriptions explicitly acknowledge that private contact and applications are not functional in the baseline. Three local optimized WebP images, 528 KB combined; source/author/license/dimensions/focal point documented in content/image-sources.json. No stock person presented as a customer or registered professional.
+
+Validation: 8 navigation/content unit tests; 12 Playwright tests covering server sessions (local transport fixtures), admin visibility, anonymous route protection, keyboard interaction and all seven requested widths. Corrected mobile reverse-Tab focus escape. Inspected full-page desktop/mobile captures for all five landings in docs/review. UI fixtures do not establish database authorization correctness.

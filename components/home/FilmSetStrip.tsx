@@ -67,7 +67,7 @@ export default function FilmSetStrip() {
     <section
       ref={stripRef}
       aria-label="Equipo audiovisual trabajando en una producción"
-      className="relative w-screen overflow-hidden bg-black"
+      className="relative w-full overflow-hidden bg-black"
     >
       <div className="relative h-[280px] w-full overflow-hidden sm:h-[360px] lg:h-[clamp(440px,32vw,520px)]">
         <Image
