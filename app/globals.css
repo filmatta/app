@@ -44,3 +44,21 @@ html {
     scroll-behavior: auto;
   }
 }
+
+/* Navigation neutrals are independent from subscription plan tokens. */
+.global-header { position: relative; z-index: 40; }
+.global-header-inner { margin: 0 auto; max-width: 1800px; display: flex; min-height: 80px; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.5rem; }
+.nav-brand { font-size: 1.125rem; font-weight: 900; letter-spacing: .2em; }
+.nav-trigger { align-items: center; min-height: 44px; padding: .5rem .25rem; font-size: .875rem; color: #c8c6c2; white-space: nowrap; }
+.nav-trigger:hover, .nav-active, .nav-trigger[aria-current="page"] { color: #fff; }
+.nav-active, .nav-trigger[aria-current="page"] { text-decoration: underline; text-decoration-color: #a9163f; text-underline-offset: .6rem; }
+.nav-signup { min-height: 44px; align-items: center; border: 1px solid #f1efe9; padding: .65rem 1rem; color: #080808; background: #f1efe9; font-size: .875rem; font-weight: 600; border-radius: 999px; }
+.nav-disclosure { position: absolute; top: calc(100% + .5rem); z-index: 60; width: min(20rem, calc(100vw - 2rem)); padding: .75rem; border: 1px solid #ffffff26; background: #131313; box-shadow: 0 20px 60px #0008; }
+.nav-menu-link { display: block; min-height: 44px; padding: .75rem; font-size: .875rem; color: #e0ded8; }
+.nav-menu-link:hover, .nav-menu-link[aria-current="page"] { background: #ffffff0a; color: #fff; }
+.global-header :is(a,button,summary):focus-visible { outline: 2px solid #f1efe9; outline-offset: 4px; }
+.nav-drawer { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(28rem,100%); max-width: 100%; height: 100dvh; max-height: 100dvh; overflow-y: auto; background: #101010; color: #f1efe9; border-left: 1px solid #ffffff26; }
+.nav-drawer::backdrop { background: #000b; }
+@media (min-width: 1024px) { .global-header-inner { padding-inline: 2rem; } }
+@media (min-width: 1280px) { .global-header-inner { padding-inline: 3rem; } }
+@media (max-width: 389px) { .global-header-inner { gap: .5rem; padding-inline: 1rem; } .nav-brand { font-size: 1rem; letter-spacing: .12em; } }
