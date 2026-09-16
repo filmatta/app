@@ -486,7 +486,7 @@ function syncHarness(livemode = false) {
   const state = { status: 'active', plan: 'plus', scheduledPlan: null, multipleItems: false,
     refunded: false, country: 'MX', deleted: false, fail: false, locked: false,
     owner: true, commits: 0, events: new Set(), grants: [], subscriptions: [], invoicePaid: true,
-    invoiceStatus: null,
+    invoiceStatus: null, invoiceAmountPaid: 29900,
     cancelAtPeriodEnd: false, cancelAt: null, canceledAt: null };
   const end = Math.floor(Date.now() / 1000) + 3600;
   state.periodEnd = end;
@@ -527,12 +527,12 @@ function syncHarness(livemode = false) {
         { quantity: 1, current_period_end: state.periodEnd, price: { id: priceId(), livemode, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } },
         ...(state.multipleItems ? [{ quantity: 1, current_period_end: state.periodEnd, price: { id: 'price_extra', livemode, currency: 'mxn', recurring: { interval: 'month', interval_count: 1 } } }] : []),
       ] } }] }) },
-    invoices: { retrieve: async () => ({ id: 'in_test', livemode, customer: 'cus_test', currency: 'mxn', status: state.invoiceStatus ?? (state.invoicePaid ? 'paid' : 'open'), amount_paid: state.invoicePaid ? 29900 : 0,
+    invoices: { retrieve: async () => ({ id: 'in_test', livemode, customer: 'cus_test', currency: 'mxn', status: state.invoiceStatus ?? (state.invoicePaid ? 'paid' : 'open'), amount_paid: state.invoicePaid ? state.invoiceAmountPaid : 0,
       customer_address: { country: 'MX' }, lines: { has_more: false, data: [{ amount: 20000,
         parent: { type: 'subscription_item_details', subscription_item_details: { proration: state.plan === 'pro' } },
         pricing: { type: 'price_details', price_details: { price: priceId() } }, period: { end: state.periodEnd } }] },
       parent: { subscription_details: { subscription: 'sub_test' } }, total_taxes: [] }) },
-    invoicePayments: { list: async () => ({ has_more: false, data: [{ id: 'inpay_test', livemode, status: state.invoicePaid ? 'paid' : 'open', amount_paid: state.invoicePaid ? 29900 : 0, currency: 'mxn', payment: { payment_intent: { id: 'pi_test', latest_charge: { id: 'ch_test', livemode, paid: state.invoicePaid, refunded: state.refunded, disputed: false, amount_refunded: state.refunded ? 29900 : 0, payment_method_details: { type: 'card' }, billing_details: { address: { country: 'MX' } } } } } }] }) },
+    invoicePayments: { list: async () => ({ has_more: false, data: [{ id: 'inpay_test', livemode, status: state.invoicePaid ? 'paid' : 'open', amount_paid: state.invoicePaid ? state.invoiceAmountPaid : 0, currency: 'mxn', payment: { payment_intent: { id: 'pi_test', latest_charge: { id: 'ch_test', livemode, paid: state.invoicePaid, refunded: state.refunded, disputed: false, amount_refunded: state.refunded ? state.invoiceAmountPaid : 0, payment_method_details: { type: 'card' }, billing_details: { address: { country: 'MX' } } } } } }] }) },
   };
   const sync = load('lib/billing/sync.ts', {
     '@/lib/supabase/admin': { createAdminClient: () => db },
@@ -565,6 +565,14 @@ test('Live reconciliation accepts Live evidence and writes one canonical entitle
   const { state, send } = syncHarness(true);
   await send('evt_live_paid', 'invoice.paid');
   assert.equal(state.commits, 1);
+  assert.equal(state.grants.length, 1);
+  assert.equal(state.grants[0].plan, 'plus');
+});
+
+test('a positive discounted Live invoice still grants the canonical Price entitlement', async () => {
+  const { state, send } = syncHarness(true);
+  state.invoiceAmountPaid = 4900;
+  await send('evt_live_smoke_discount_paid', 'invoice.paid');
   assert.equal(state.grants.length, 1);
   assert.equal(state.grants[0].plan, 'plus');
 });
@@ -834,7 +842,13 @@ test('checkout authenticates and rejects forged plan/country before contacting S
     },
     '@/lib/billing/policy': policy,
     '@/lib/billing/checkout': {
-      createCheckout: async (user) => { calls++; assert.equal(user.id, 'trusted'); return 'https://checkout.stripe.com/test'; },
+      createCheckout: async (...args) => {
+        calls++;
+        assert.equal(args.length, 2);
+        assert.equal(args[0].id, 'trusted');
+        assert.equal(args[1], 'plus');
+        return 'https://checkout.stripe.com/test';
+      },
       createPortal: async (userId) => {
         portalCalls++;
         assert.equal(userId, 'trusted');
@@ -878,6 +892,7 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   form.set('plan', 'plus'); form.set('country', 'US'); await assert.rejects(actions.startCheckout(form), /country/);
   assert.equal(calls, 0);
   form.set('country', 'MX'); form.set('user_id', 'attacker'); form.set('customer', 'cus_attacker');
+  form.set('smoke_test', 'true'); form.set('coupon', 'attacker_coupon');
   await assert.rejects(actions.startCheckout(form), /checkout.stripe.com/);
   assert.equal(calls, 1);
   await assert.rejects(actions.openBillingPortal(), /billing.stripe.com/);
@@ -1918,7 +1933,9 @@ test('checkout rejects a missing manual Mexico tax rate before contacting Stripe
 
 test('checkout requires a billing address, accepts unspecified price tax behavior and applies the manual tax rate', async () => {
   const state = { existingSubscription: true, live: false, country: 'MX', creates: 0 };
-  const env = { BILLING_MX_CHECKOUT_VERIFIED: 'true' };
+  const env = { BILLING_MX_CHECKOUT_VERIFIED: 'true',
+    STRIPE_LIVE_SMOKE_TEST_QA_USER_ID: 'trusted',
+    STRIPE_LIVE_SMOKE_TEST_COUPON_ID: 'coupon_must_be_ignored_in_test' };
   const q = { select() { return q; }, eq() { return q; }, maybeSingle: async () => ({ data: { stripe_customer_id: 'cus_trusted' }, error: null }) };
   const stripe = {
     accounts: { retrieve: async () => ({ id: 'acct_test', country: state.country }) },
@@ -1963,9 +1980,14 @@ test('Live Checkout uses only Live Prices and Tax Rate with production copy', as
   const plus = 'price_1UEiU419Q9sTgWk6GWFCmNTL';
   const pro = 'price_1UEiUi19Q9sTgWk6tnmhFNYe';
   const taxRate = 'txr_1UFpcy19Q9sTgWk6VzeYioYT';
+  const qaUserId = '11111111-1111-4111-8111-111111111111';
+  const smokeCouponId = 'coupon_live_smoke_fixture';
   let crossedPrice = false;
   let crossedTax = false;
   let crossedAccount = false;
+  let crossedCoupon = false;
+  let invalidCouponAmount = false;
+  let couponRetrieves = 0;
   let sessionParams = null;
   const q = { select() { return q; }, eq() { return q; }, maybeSingle: async () => ({
     data: { stripe_customer_id: 'cus_live' }, error: null,
@@ -1981,6 +2003,12 @@ test('Live Checkout uses only Live Prices and Tax Rate with production copy', as
       product: { id: id === plus ? 'prod_liveplus' : 'prod_livepro', livemode: true, active: true } }) },
     taxRates: { retrieve: async (id) => ({ id, livemode: !crossedTax, active: true,
       inclusive: true, percentage: 16, country: 'MX' }) },
+    coupons: { retrieve: async (id) => {
+      couponRetrieves++;
+      return { id, livemode: !crossedCoupon, valid: true,
+        name: 'FILMATTA First Live Smoke Test', amount_off: invalidCouponAmount ? 24900 : 25000,
+        currency: 'mxn', duration: 'once', percent_off: null, times_redeemed: 0 };
+    } },
     customers: { retrieve: async () => ({ id: 'cus_live', livemode: true, deleted: false }) },
     subscriptions: { list: async () => ({ has_more: false, data: [] }) },
     checkout: { sessions: {
@@ -1999,11 +2027,15 @@ test('Live Checkout uses only Live Prices and Tax Rate with production copy', as
       origin: 'https://app.filmatta.com', prices: { plus, pro }, taxRate,
     }) },
     './lock': { withBillingLock: async (_id, fn) => fn('token') },
-  }, { BILLING_MX_CHECKOUT_VERIFIED: 'true' }).createCheckout;
+  }, { BILLING_MX_CHECKOUT_VERIFIED: 'true',
+    STRIPE_LIVE_SMOKE_TEST_QA_USER_ID: qaUserId,
+    STRIPE_LIVE_SMOKE_TEST_COUPON_ID: smokeCouponId }).createCheckout;
 
   assert.equal(await checkout({ id: 'trusted', email: null }, 'plus'),
     'https://checkout.stripe.com/live');
+  assert.equal(couponRetrieves, 0, 'Normal users never retrieve or receive the smoke coupon');
   assert.equal(sessionParams.line_items[0].price, plus);
+  assert.equal(sessionParams.discounts, undefined);
   assert.deepEqual(sessionParams.subscription_data.default_tax_rates, [taxRate]);
   assert.equal(sessionParams.automatic_tax.enabled, false);
   assert.equal(sessionParams.success_url,
@@ -2011,9 +2043,30 @@ test('Live Checkout uses only Live Prices and Tax Rate with production copy', as
   assert.equal(sessionParams.custom_text.submit.message,
     'Disponible únicamente en México. IVA incluido.');
 
-  assert.equal(await checkout({ id: 'trusted', email: null }, 'pro'),
+  assert.equal(await checkout({ id: qaUserId, email: null }, 'plus'),
+    'https://checkout.stripe.com/live');
+  assert.equal(couponRetrieves, 1);
+  assert.deepEqual(sessionParams.discounts, [{ coupon: smokeCouponId }]);
+  assert.equal(sessionParams.metadata.filmatta_smoke_test_coupon, smokeCouponId);
+  assert.equal(sessionParams.line_items[0].price, plus,
+    'The discount never replaces the official Plus Price');
+  assert.deepEqual(sessionParams.subscription_data.default_tax_rates, [taxRate]);
+  assert.equal(sessionParams.automatic_tax.enabled, false);
+
+  assert.equal(await checkout({ id: qaUserId, email: null }, 'pro'),
     'https://checkout.stripe.com/live');
   assert.equal(sessionParams.line_items[0].price, pro);
+  assert.equal(sessionParams.discounts, undefined, 'The smoke discount is Plus-only');
+  assert.equal(couponRetrieves, 1);
+
+  crossedCoupon = true;
+  await assert.rejects(checkout({ id: qaUserId, email: null }, 'plus'),
+    /Stripe object mode/);
+  crossedCoupon = false;
+  invalidCouponAmount = true;
+  await assert.rejects(checkout({ id: qaUserId, email: null }, 'plus'),
+    /Unexpected Live smoke test coupon/);
+  invalidCouponAmount = false;
 
   crossedPrice = true;
   await assert.rejects(checkout({ id: 'trusted', email: null }, 'pro'),
