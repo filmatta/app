@@ -101,3 +101,22 @@ test("typed Tools registry exposes four implemented utilities and honest product
   }
   assert.equal(getUtility("__proto__"), undefined);
 });
+
+test("bitrate units preserve storage and decimal output selects MB, GB, TB at boundaries", () => {
+  near(f.bitrateToMbps(100000, "kbps"), 100);
+  near(f.bitrateToMbps(0.1, "Gbps"), 100);
+  for (const unit of ["kbps", "Mbps", "Gbps"]) {
+    for (const value of [NaN, Infinity, 0, -1]) assert.throws(() => f.bitrateToMbps(value, unit));
+  }
+  assert.throws(() => f.bitrateToMbps(100, "MBps"));
+  assert.throws(() => f.bitrateToMbps(100, "__proto__"));
+  near(f.bitrateToMbps(0.000001, "Gbps"), 0.001);
+  assert.equal(f.decimalStorage(0).unit, "MB");
+  assert.equal(f.decimalStorage(1e6).value, 1);
+  assert.equal(f.decimalStorage(1e9 - 1).unit, "MB");
+  assert.equal(f.decimalStorage(1e9).unit, "GB");
+  assert.equal(f.decimalStorage(1e12 - 1).unit, "GB");
+  assert.equal(f.decimalStorage(1e12).unit, "TB");
+  assert.equal(f.decimalStorage(1e12).value, 1);
+  for (const value of [NaN, Infinity, -1]) assert.throws(() => f.decimalStorage(value));
+});

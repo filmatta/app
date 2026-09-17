@@ -22,6 +22,7 @@ const concepts = {
         "La visión es ofrecer apoyo a la revisión y la continuidad. Las decisiones creativas y la autoría siguen siendo tuyas.",
       ],
     ],
+    flow: ["Guion", "Escenas", "Personajes", "Locaciones", "Necesidades de producción"],
     steps: [
       "Escribir con claridad.",
       "Revisar con contexto.",
@@ -35,6 +36,7 @@ const concepts = {
     note: "Esta página presenta la dirección del producto. El editor, la importación, la exportación y el análisis asistido todavía no están disponibles.",
   },
   "production-assistant": {
+    flow: ["Idea", "Guion", "Desglose", "Necesidades", "Talento / Locaciones / Servicios", "Producción"],
     name: "Production Assistant",
     title: "De la idea a una producción organizada.",
     description:
@@ -141,6 +143,15 @@ export default function ProductVision({
           <p className="border-l-2 border-[#BFC0D7] pl-5 text-sm leading-7 text-white/70 lg:col-span-2">
             {c.note}
           </p>
+        </section>
+        <section className="editorial-container border-t border-white/15 py-10" aria-labelledby="concept-flow">
+          <h2 id="concept-flow" className="text-2xl">{writer ? "Del guion a sus necesidades." : "De la idea a la producción."}</h2>
+          <p className="mt-4 text-sm leading-7 text-white/65">Recorrido conceptual de una herramienta en desarrollo.</p>
+          <ol className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-4">
+            {c.flow.map((step, index) => <li key={step} className="max-w-full text-lg text-[#BFC0D7]">
+              {index > 0 && <span aria-hidden="true" className="mr-5 text-white/40">→</span>}{step}
+            </li>)}
+          </ol>
         </section>
         <section
           id="vision"

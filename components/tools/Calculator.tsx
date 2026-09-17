@@ -5,6 +5,9 @@ import {
   angleToExposure,
   exposureToAngle,
   storageEstimate,
+  bitrateToMbps,
+  decimalStorage,
+  type BitrateUnit,
   aspectFromDimensions,
   dimensionFromAspect,
   focalFromCrop,
@@ -13,7 +16,9 @@ import {
 type Values = Record<string, string>;
 const defaults: Record<UtilitySlug, Values> = {
   obturacion: { mode: "angle", fps: "24", angle: "180", denominator: "48" },
-  almacenamiento: { mbps: "100", minutes: "60", margin: "0" },
+  almacenamiento: {
+    mbps: "100", bitrateUnit: "Mbps", minutes: "60", margin: "0",
+  },
   "relacion-aspecto": {
     mode: "calculate",
     width: "1920",
@@ -111,11 +116,17 @@ export default function Calculator({ slug }: { slug: UtilitySlug }) {
         ]);
       }
       if (slug === "almacenamiento") {
-        const r = storageEstimate(n("mbps"), n("minutes"), n("margin"));
+        const r = storageEstimate(
+          bitrateToMbps(n("mbps"), values.bitrateUnit as BitrateUnit),
+          n("minutes"),
+          n("margin"),
+        );
+        const decimal = decimalStorage(r.bytes);
+        const planned = decimalStorage(r.plannedGb * 1e9);
         setResult([
           {
             label: "Estimación sin margen (decimal)",
-            value: fmt(r.gb) + " GB",
+            value: fmt(decimal.value) + " " + decimal.unit,
           },
           {
             label: "Equivalente binario sin margen",
@@ -123,7 +134,7 @@ export default function Calculator({ slug }: { slug: UtilitySlug }) {
           },
           {
             label: `Espacio con ${fmt(n("margin"))}% de margen`,
-            value: fmt(r.plannedGb) + " GB",
+            value: fmt(planned.value) + " " + planned.unit,
           },
         ]);
       }
@@ -201,7 +212,16 @@ export default function Calculator({ slug }: { slug: UtilitySlug }) {
           )}
           {slug === "almacenamiento" && (
             <>
-              {input("mbps", "Bitrate total (Mbps)", 0.001, 100000)}
+              {select("bitrateUnit", "Unidad de bitrate", [
+                ["kbps", "kbps · kilobits/s"],
+                ["Mbps", "Mbps · megabits/s"],
+                ["Gbps", "Gbps · gigabits/s"],
+              ])}
+              {input(
+                "mbps", `Bitrate total (${values.bitrateUnit})`,
+                values.bitrateUnit === "kbps" ? 1 : values.bitrateUnit === "Gbps" ? 0.000001 : 0.001,
+                values.bitrateUnit === "kbps" ? 100000000 : values.bitrateUnit === "Gbps" ? 100 : 100000,
+              )}
               {input("minutes", "Duración (min)", 0, 10080)}
               {input("margin", "Margen adicional (%)", 0, 100)}
             </>
@@ -224,6 +244,20 @@ export default function Calculator({ slug }: { slug: UtilitySlug }) {
                     ["height", "Alto"],
                   ])}
                   {input("known", "Dimensión conocida (px)", 1, 131072, "1")}
+                  <label className="block text-sm">
+                    Proporción común
+                    <select className="catalog-input mt-2" value={["16:9", "9:16", "4:3", "1:1", "2.39:1"].includes(`${values.ratioWidth}:${values.ratioHeight}`) ? `${values.ratioWidth}:${values.ratioHeight}` : "custom"}
+                      onChange={(event) => {
+                        if (event.target.value === "custom") return;
+                        const [ratioWidth, ratioHeight] = event.target.value.split(":");
+                        setValues((old) => ({ ...old, ratioWidth, ratioHeight }));
+                        setResult(null);
+                        setError("");
+                      }}>
+                      <option value="custom">Personalizada · edita los valores</option>
+                      {["16:9", "9:16", "4:3", "1:1", "2.39:1"].map((ratio) => <option key={ratio} value={ratio}>{ratio}</option>)}
+                    </select>
+                  </label>
                   {input("ratioWidth", "Proporción horizontal", 0.001, 10000)}
                   {input("ratioHeight", "Proporción vertical", 0.001, 10000)}
                 </>

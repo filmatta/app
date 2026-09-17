@@ -53,7 +53,7 @@ export const tools: readonly Tool[] = [
     name: "Bitrate y almacenamiento",
     category: "Video",
     description:
-      "Estima espacio a partir del bitrate total y la duración. GB y GiB, con unidades claras.",
+      "Estima espacio a partir del bitrate total y la duración. MB, GB o TB y equivalencia en GiB.",
     status: "available",
     access: "public",
     href: "/tools/utilidades/almacenamiento",

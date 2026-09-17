@@ -46,3 +46,23 @@ test("Tools states and Jobs hierarchy lead to real public destinations", async (
   await expect(page.getByText("En desarrollo", { exact: true })).toBeVisible();
   await expect(page.getByRole("textbox")).toHaveCount(0);
 });
+
+test("storage unit selection, MB/TB output and common aspect presets", async ({ page }) => {
+  await page.goto("/tools/utilidades/almacenamiento");
+  await page.getByLabel("Unidad de bitrate").selectOption("kbps");
+  await page.getByLabel("Bitrate total").fill("8000");
+  await page.getByLabel("Duración (min)").fill("1");
+  await page.getByRole("button", { name: "Calcular" }).click();
+  await expect(page.getByText("60 MB", { exact: true }).first()).toBeVisible();
+  await page.getByLabel("Unidad de bitrate").selectOption("Gbps");
+  await expect(page.getByText("60 MB", { exact: true })).toHaveCount(0);
+  await page.getByLabel("Bitrate total").fill("8");
+  await page.getByLabel("Duración (min)").fill("60");
+  await page.getByRole("button", { name: "Calcular" }).click();
+  await expect(page.getByText("3.6 TB", { exact: true }).first()).toBeVisible();
+  await page.goto("/tools/utilidades/relacion-aspecto");
+  await page.getByLabel("Proporción común").selectOption("9:16");
+  await page.getByLabel("Dimensión conocida (px)", { exact: true }).fill("1080");
+  await page.getByRole("button", { name: "Calcular" }).click();
+  await expect(page.getByText("1080 × 1920 px", { exact: true })).toBeVisible();
+});

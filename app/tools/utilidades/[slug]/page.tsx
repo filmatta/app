@@ -28,8 +28,8 @@ const notes: Record<
   almacenamiento: {
     formula: "Bytes = Mbps × 1 000 000 × minutos × 60 / 8.",
     assumptions: [
-      "Usa el bitrate medio total, incluido audio si quieres estimarlo. Mbps significa megabits por segundo; no megabytes.",
-      "1 GB = 1 000 000 000 bytes. 1 GiB = 1 073 741 824 bytes. El archivo real varía con bitrate variable, metadatos y contenedor.",
+      "Usa el bitrate medio total, incluido audio. kbps, Mbps y Gbps son kilobits, megabits y gigabits por segundo (base decimal); no bytes. Se convierten a Mbps antes del cálculo.",
+      "Los resultados decimales eligen MB, GB o TB: 1 MB = 10⁶, 1 GB = 10⁹ y 1 TB = 10¹² bytes. 1 GiB = 1 073 741 824 bytes. El archivo real varía con bitrate variable, metadatos y contenedor.",
       "El margen es una reserva que eliges, no un cálculo automático del contenedor. Rango: 0.001–100 000 Mbps, 0–10 080 minutos y 0–100% de margen.",
     ],
     source: {

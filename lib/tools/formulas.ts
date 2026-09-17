@@ -24,6 +24,18 @@ export function exposureToAngle(fps: number, denominator: number) {
     );
   return { angle, seconds: 1 / denominator, denominator };
 }
+export type BitrateUnit = "kbps" | "Mbps" | "Gbps";
+export function bitrateToMbps(value: number, unit: BitrateUnit) {
+  const scales = { kbps: 0.001, Mbps: 1, Gbps: 1000 };
+  if (!Object.hasOwn(scales, unit)) throw new Error("Elige una unidad de bitrate válida.");
+  return bounded(value * scales[unit], 0.001, 100000, "Bitrate equivalente en Mbps");
+}
+export function decimalStorage(bytes: number) {
+  bounded(bytes, 0, Number.MAX_SAFE_INTEGER, "Almacenamiento en bytes");
+  const unit = bytes >= 1e12 ? "TB" : bytes >= 1e9 ? "GB" : "MB";
+  const divisor = unit === "TB" ? 1e12 : unit === "GB" ? 1e9 : 1e6;
+  return { value: bytes / divisor, unit };
+}
 export function storageEstimate(
   mbps: number,
   minutes: number,

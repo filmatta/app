@@ -25,6 +25,7 @@ test("real Test Auth/PostgREST: public Profiles and Opportunities owner lifecycl
       }),
     );
     assert.match(slug, /^[a-z0-9]+(-[a-z0-9]+)*$/);
+    assert.notEqual(slug, privateSlug, "Different owners retain unique slugs");
     const filter = {
       p_page: 1,
       p_city: prefix,
@@ -62,6 +63,9 @@ test("real Test Auth/PostgREST: public Profiles and Opportunities owner lifecycl
         0,
       );
     }
+    assert.equal(checked(await anon.rpc("list_public_professional_profiles", {
+      ...filter, p_page: 2,
+    })).length, 0, "Real PostgREST pagination excludes the previous page");
     assert.equal(
       checked(
         await anon.rpc("get_public_professional_profile", { p_slug: slug }),
