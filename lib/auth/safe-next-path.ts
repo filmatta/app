@@ -34,3 +34,19 @@ export function getSafePostAuthPath(
 
   return path;
 }
+
+export function getRecoveryReturnPath(value: string) {
+  const url = new URL(value, "https://filmatta.invalid");
+
+  if (url.origin !== "https://filmatta.invalid") {
+    return null;
+  }
+
+  const pathname = url.pathname.replace(/\/+$/, "") || "/";
+
+  if (pathname !== "/restablecer-contrasena") {
+    return null;
+  }
+
+  return getSafeNextPath(url.searchParams.get("next"), "/cuenta");
+}
