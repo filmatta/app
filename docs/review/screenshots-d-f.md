@@ -1,6 +1,6 @@
 # Capturas D–F
 
-Build optimizado local, Supabase Test. Desktop 1440 px; móvil 390 px. Los datos marcados como prueba aislada son fixtures temporales ya eliminados.
+Capturas renovadas en el cierre del 17 de septiembre de 2026, commit de producto 5cd8a1d. Build optimizado local, Supabase Test. Desktop 1440 px; móvil 390 px. Los datos marcados como prueba aislada son fixtures temporales ya eliminados.
 
 - [df-descubre-jobs-1440.png](df-descubre-jobs-1440.png)
 - [df-descubre-jobs-390.png](df-descubre-jobs-390.png)

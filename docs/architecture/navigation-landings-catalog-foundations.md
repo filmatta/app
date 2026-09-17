@@ -1,115 +1,90 @@
-# Navigation, landings and catalog foundations
+# Navigation + Catalog Foundations — arquitectura de cierre
 
-Base: c542b0a7c6e8ecd5ca578c1271819ebed46cfd49 (main = origin/main after fetch).
-Branch: feature/navigation-landings-catalog-foundations.
-Worktree: G:\PROYECTOS\filmatta-navigation-landings.
+Estado de cierre: 17 de septiembre de 2026. Rama `feature/navigation-landings-catalog-foundations`, worktree `G:\PROYECTOS\filmatta-navigation-landings`.
 
-## Scope override
-The execution brief explicitly advances public catalogs, derived Talent, service directory, Jobs and Tools foundations beyond the future scope in AGENTS.md. Depth and security take precedence over coverage. Jobs reuses opportunities. Tools uses a typed code registry. Public routes remain public according to existing policies. No Production deployment, remote migrations, fixtures, payments, Billing changes or integration of live-smoke-discount.
+## Base y alcance auditados
 
-## Baseline audit
-- /: versioned editorial Home and FILMATTA wordmark. Uncommitted Home work in the original billing checkout was not imported.
-- /perfiles: presentation; /perfiles/[slug] and /mi-perfil use privacy-preserving RPCs. Public directory RPC absent.
-- /locaciones and detail: published inventory. /mis-locaciones contains owner CMS.
-- /oportunidades and detail: published opportunities linked to published projects; publishing UI absent.
-- /cursos: existing Learn access, progress and playback, preserved.
-- /cuenta: #mis-cursos and #configuracion available.
-- Marketplace, Jobs, Talent and Tools routes absent at baseline.
-- proxy.ts refreshes sessions without privatizing public catalogs.
-- No Production environment or secrets copied into this worktree.
+La base histórica del bloque es `c542b0a7c6e8ecd5ca578c1271819ebed46cfd49`. Al iniciar este cierre, la rama estaba limpia en `ba4d87e9f442e821e1bcfc36f9918a60ae881af3`; main local y la referencia remota consultada ya apuntaban al mismo commit. Este cierre no hizo merge, push ni deploy. Los documentos de QA del 16 de septiembre son evidencia histórica, no un inventario actual de Production.
 
-## A — Navigation
-Shared public/authenticated navigation, server-validated role, unchanged subscription badge. Slash-separated desktop menu from 1440px; compact modal below. Disclosure buttons support click, Tab, Escape and outside click; mobile native dialog provides focus containment and restoration. Account and publishing links reuse authorized routes. Features enable only once their destination exists. UI role checks do not replace server authorization.
+La autorización de producto adelanta los catálogos y las foundations de Services, Jobs y Tools respecto al backlog original de AGENTS.md. A–F ya estaban implementados: se auditaron y conservaron. Este cierre completa controles de unidades/proporciones en Utilities, recorridos conceptuales de las dos herramientas futuras y documentación. No modifica Billing, Stripe, Mux, grants, entitlements, Auth/SMTP ni las cinco landings iniciales.
 
-## Sources consulted
-- [Home roadmap](https://docs.google.com/document/d/1cHL3YTvP5DvgSgEfzOFK-wNRV5gatXwb7nglXnq1180/edit)
-- [Writer vision](https://docs.google.com/document/d/1xqC75YyhjfjZ_dSthU1nytKg-qpIcYaHmM4awOlU8jA/edit)
-- [Production strategy](https://docs.google.com/document/d/16ljbRdGXK4Na7V7OvGPaNGcYwVjx3z8klfqOK5NrqXg/edit)
-- themesh.art timed out; no visual inspection claimed.
+## Real / operativo y rutas
 
-## B — Editorial landings for existing verticals
-Implemented /descubre/perfiles, /descubre/talento, /descubre/locaciones, /descubre/oportunidades and /descubre/learn. Marketplace/Jobs/Tools landings remain with their later product blocks, so no nonfunctional catalog CTA is introduced. Shared structure with distinct portfolio, portrait, panorama, brief and learning compositions. Pale blue Profiles/Talent; muted olive Locations, steel Opportunities and amber Learn. Home composition preserved, manifesto added, Profiles accent corrected.
+| Módulo | Presentación | Producto y reglas |
+| --- | --- | --- |
+| Perfiles | `/descubre/perfiles` | `/perfiles`, `/perfiles/[slug]`, `/mi-perfil`; RPCs de `professional_profiles`, proyección pública sin identidad privada, disciplina/ciudad/disponibilidad, orden y páginas |
+| Talento | `/descubre/talento` | `/talento`, misma tabla, identidad y permisos; Actuación/Modelaje |
+| Locaciones | `/descubre/locaciones` | `/locaciones`, detalle y CMS `/mis-locaciones`; conserva fotos, ownership y estados |
+| Oportunidades | `/descubre/oportunidades` | `/oportunidades`, detalle y `/mis-oportunidades`; crear/editar/publicar/cerrar/archivar; proyecto mínimo interno |
+| Learn | `/descubre/learn` | `/cursos`, detalle, lecciones y cuenta existentes; conserva progreso y acceso |
+| Marketplace | `/descubre/marketplace` | `/marketplace`, `/marketplace/[slug]`, `/mis-servicios`, `/mis-servicios/nuevo`, `/mis-servicios/[id]/editar`, `/mis-servicios/consultas` |
+| Jobs | `/descubre/jobs` | `/jobs`; detalle `/oportunidades/[slug]`; crear `/mis-oportunidades/nueva?type=job`; CMS compartido |
+| Tools | `/tools` | Registry tipado `lib/tools/registry.ts`, sin tabla Supabase; cuatro calculadoras públicas |
 
-Final copy lives in content/landings.ts. Descriptions explicitly acknowledge that private contact and applications are not functional in the baseline. Three local optimized WebP images, 528 KB combined; source/author/license/dimensions/focal point documented in content/image-sources.json. No stock person presented as a customer or registered professional.
+Cada catálogo conserva sus reglas públicas por URL directa. Vacío, fallo de transporte y esquema ausente tienen estados distintos. Filtros y paginación se ejecutan en servidor; los formularios validan del lado servidor y SQL vuelve a comprobar ownership y publicación.
 
-Validation: 8 navigation/content unit tests; 12 Playwright tests covering server sessions (local transport fixtures), admin visibility, anonymous route protection, keyboard interaction and all seven requested widths. Corrected mobile reverse-Tab focus escape. Inspected full-page desktop/mobile captures for all five landings in docs/review. UI fixtures do not establish database authorization correctness.
+## Marketplace y contacto
 
-## C — Catálogos existentes y publicación de oportunidades
+`service_listings` almacena propietario, slug estable, categoría, descripción, ciudad/modalidad, enlaces HTTPS, precio/moneda opcional, estado y timestamps. No duplica nombre, avatar ni disciplinas del perfil profesional. Catálogo por categoría/ciudad/modalidad, orden estable, paginación, detalle público y CMS de propietario con borrador/publicar/despublicar/archivar.
 
-Entrega de este checkpoint: Perfiles publicados, Talento derivado, Locaciones, Oportunidades y Learn. Filtros GET compartibles, consultas limitadas a 24 elementos más una fila de anticipación, orden con desempate estable y paginación anterior/siguiente. No se generan cifras de inventario. Se distinguen ausencia de migración, error de carga y cero resultados. Hay estados de carga y error por ruta; los límites de error usan `retry`, conforme a la documentación de Next.js instalada.
+`catalog_inquiries` es la bandeja protegida compartida con Jobs. Sólo participantes/admin leen sus consultas. El destinatario se deriva en SQL, con FK compuesta al propietario; el emisor necesita perfil profesional publicado. Una consulta por ficha y máximo diez en 24 horas entre ambos módulos. El receptor acepta, declina o archiva; el emisor ve el estado. No se publican teléfono/correo, ni hay chat, email automático o contratación. service_role sólo prepara/limpia fixtures Test y nunca resuelve operaciones de producto.
 
-Perfiles consulta una proyección pública explícita mediante RPC. No se amplían permisos SELECT de la tabla profesional, ni se devuelven user_id, correo, teléfono o nombre privado. Talento filtra Actuación/Modelaje en la misma tabla; crear o editar sigue pasando por /mi-perfil y sus RPCs existentes. Modelaje se añade al selector de disciplinas. No se crea una segunda identidad.
+## Jobs sobre Opportunities
 
-Locaciones conserva su CMS, fotos, ciclo de publicación y ownership. Se añaden búsqueda por título, ciudad y entorno. Oportunidades filtra categoría, ciudad, título y modalidad; el proyecto publicado se filtra antes de paginar mediante la relación existente. Learn filtra título, categoría y nivel, con orden estable; no cambia acceso, progreso, grants ni playback.
+Sólo se añaden `opportunity_type` y `deliverables`. Se reutilizan `compensation_type`, `compensation_min/max/currency`, `discipline`, `work_mode`, `city`, `application_deadline`, `starts_on/ends_on`, propietario, proyecto y estados existentes. No existe tabla ni motor Jobs.
 
-`/mis-oportunidades` permite listar y editar publicaciones propias. `/mis-oportunidades/nueva` crea atómicamente un proyecto mínimo y una oportunidad. Por defecto queda en borrador; publicar requiere brief y ciudad cuando no es remoto. La UI explica que también se publica el título del proyecto. Editar conserva el slug compartido, y permite cerrar/archivar. El RPC deriva auth.uid(), comprueba propiedad y mantiene RLS mediante SECURITY INVOKER. La transacción evita proyectos huérfanos. La Server Action valida campos, enum, importes, moneda y fechas. Un error conserva los valores del formulario.
+Publicar exige trabajo pagado, importe positivo, moneda, disciplina, brief, entregables y fecha límite. `/jobs` consulta el subconjunto `opportunity_type='job'`. Filtros: disciplina, ciudad/modalidad, moneda e importe mínimo ofrecido, fecha límite. No compara monedas distintas. Contacto y moderación siguen los permisos del sistema compartido.
 
-Los importes de Oportunidades muestran código de moneda y hasta dos decimales. Se corrigió contraste de texto secundario en los tres listados existentes, el fondo en pantallas altas y la legibilidad de controles de fecha. No cambian tokens de planes.
+## Tools y Utilities disponibles
 
-### Matriz de rutas y estado
+Registro versionado con slug, nombre, categoría, descripción, estado, acceso y ruta. Estados `available`, `beta`, `in-development`; hoy cuatro disponibles y dos en desarrollo.
 
-| Vertical | Destino anónimo | Destino autenticado / catálogo público | Crear / editar | Estado |
-| --- | --- | --- | --- | --- |
-| Perfiles | /descubre/perfiles | /perfiles | /mi-perfil | Requiere RPC nuevo para listado |
-| Talento | /descubre/talento | /talento | /mi-perfil | Vista derivada; requiere el mismo RPC |
-| Locaciones | /descubre/locaciones | /locaciones | /mis-locaciones | Catálogo y CMS existentes integrados |
-| Oportunidades | /descubre/oportunidades | /oportunidades | /mis-oportunidades | Listado existente; escritura requiere RPC nuevo |
-| Learn | /descubre/learn | /cursos | CMS existente | Filtros/listado integrados |
+- `/tools/utilidades/obturacion`: ángulo ↔ exposición por fps de grabación; exposición máxima de un fotograma.
+- `/tools/utilidades/almacenamiento`: bitrate en kbps/Mbps/Gbps, minutos y margen; salida adaptativa MB/GB/TB y equivalencia GiB. Base decimal explícita, bits distintos de bytes.
+- `/tools/utilidades/relacion-aspecto`: ancho desde alto o alto desde ancho, proporción desde dimensiones; presets 16:9, 9:16, 4:3, 1:1 y 2.39:1, además de valores personalizados.
+- `/tools/utilidades/focal-equivalente`: crop conocido o diagonal del área activa frente a full frame 36×24 mm. Equivalencia de encuadre; no cambia focal física ni perspectiva desde la misma posición, ni calcula DoF.
 
-Se conservan /perfiles/[slug], /locaciones/[slug], /oportunidades/[slug] y /cursos/[slug]. Una URL pública directa no redirige a login por ser anónima. Los filtros Casting/Crew/Colaboraciones enlazan al catálogo público; el acceso general anónimo abre la landing. La sesión sólo determina destinos y CTAs, nunca sustituye RLS.
+Funciones puras con rangos, unidades, supuestos y rechazo de NaN/Infinity; resultados obsoletos se eliminan al cambiar entradas. No se envían entradas al servidor.
 
-Mi cuenta incluye resumen, perfil, aprendizaje, locaciones, publicaciones, suscripción, ajustes y cierre de sesión. Admin sólo aparece para el rol validado exacto. Publicar incluye perfil, locación y oportunidad. A 1440 px se mantiene la navegación con separadores; Publicar aparece a partir de 1600 px y está disponible en el drawer compacto. Jobs/Marketplace/Tools no se añaden aún al menú porque sus destinos no están entregados.
+## En desarrollo
 
-### Migraciones locales preparadas
+`/tools/writer`: landing «Escribe tu historia. Mira más allá de las páginas.»; muestra Guion → Escenas → Personajes → Locaciones → Necesidades de producción, explícitamente conceptual. Orden, claridad, autoría, continuidad y asistencia creativa; sin editor simulado.
 
-1. `supabase/migrations/20260916010000_public_profile_catalog.sql`: proyección pública, filtros y dos índices parciales.
-2. `supabase/migrations/20260916020000_opportunity_owner_publishing.sql`: creación/edición atómica por propietario con RLS existente.
+`/tools/production-assistant`: landing «De la idea a una producción organizada.»; Idea → Guion → Desglose → Necesidades → Talento / Locaciones / Servicios → Producción. Sin scheduling, presupuestos inteligentes, call sheets ni automatización ofrecidos como disponibles.
 
-Ambas se ejecutaron en PostgreSQL desechable mediante PGlite, junto con las migraciones reales previas de Perfiles y Locations/Opportunities. El harness crea únicamente los prerrequisitos locales de auth y roles. No se aplicaron a ninguna base remota. No hay tabla Jobs ni tabla Tools. No se modifica configuración de Supabase Production.
+## Navegación final
 
-### Límites funcionales explícitos
+Perfiles ▾ / Oportunidades ▾ / Locaciones / Marketplace / Learn / Tools ▾ / Planes. Separadores decorativos aria-hidden. Perfiles agrupa Profesionales/Talento; Oportunidades agrupa Todas/Jobs/Casting/Crew/Colaboraciones; Tools incluye hub, Writer, Production Assistant y utilidades. Anónimo llega a landings; autenticado a catálogos. Los filtros específicos de oportunidades son públicos.
 
-El baseline no tiene contacto privado ni postulaciones operativas para estos catálogos. Este checkpoint no inventa un botón de contacto ni revela datos personales para suplirlo. Las landings y el formulario lo indican. Oportunidades permite publicar y consultar convocatorias; no constituye todavía un flujo completo de contratación o postulación. El contacto protegido será una dependencia del siguiente bloque de Servicios y de Jobs, con ownership de emisor/receptor y pruebas de acceso cruzado.
+Mi cuenta: resumen, perfil, aprendizaje, locaciones, publicaciones, servicios, consultas, suscripción y ajustes; cerrar sesión y Admin según rol validado. Publicar enlaza a formularios existentes de perfil/locación/oportunidad/job/servicio. Desktop desde 1440 px; drawer jerárquico por debajo. Click/teclado/Escape/foco y cierre al navegar verificados. Ningún middleware nuevo privatiza catálogos.
 
-### Validación acumulada
+## Migraciones y estado remoto
 
-- Billing: 54/54 pruebas existentes.
-- Navegación y contenido: 8/8.
-- Catálogos, validación y Server Actions: 11/11.
-- PostgreSQL/RLS: 6/6 con migraciones reales. Anónimo, propietario, usuario ajeno y admin; exclusión de borradores, proyección pública, filtros/paginación, publicación y rollback atómico.
-- Navegador: 18/18 en Chrome, usando exclusivamente transporte Supabase simulado local. Destinos por sesión, teclado/Escape/foco, siete anchos, acceso directo, cero resultados, esquema ausente, fallo, publicados, borradores, creación y conservación de valores tras error.
-- TypeScript: correcto. Lint focal del código nuevo: correcto. Lint completo: cero errores y ocho advertencias existentes `no-img-element`.
-- Build: correcto con variables locales ficticias y Billing deshabilitado. `git diff --check`: correcto.
+Supabase de validación exclusivo: `ezlycwkuzkwcnhrhiruv`. Las cuatro migraciones ya estaban registradas; se verificaron y NO se reaplicaron durante este cierre:
 
-Las pruebas de navegador no validan por sí solas RLS: esa comprobación independiente se realiza con PostgreSQL. Aún falta la integración en un Supabase Preview real (PostgREST, Auth y Storage). No se afirma haberla probado ni se usa Production como sustituto.
+1. `20260916010000_public_profile_catalog.sql`: RPC público e índices; requiere Professional Profiles.
+2. `20260916020000_opportunity_owner_publishing.sql`: RPC propietario; requiere foundations Projects/Opportunities.
+3. `20260916030000_services_directory.sql`: Services e inbox; requiere Auth, Profiles, `private.is_admin()` y triggers foundation.
+4. `20260916040000_jobs_specialization.sql`: requiere Opportunities y migraciones 2 y 3.
 
-### Copys e imágenes
+Auth/PostgREST/RLS/RPCs reales aprobados con anon, owner, no-owner y admin; fixtures eliminados. Evidencia actual: [closure-test-evidence.json](../review/closure-test-evidence.json). Evidencia de aplicación histórica y grafo detallado: [checkpoints D–F](../review/checkpoints-d-f.md) y [Preview previo](../review/remote-preview.md).
 
-El texto final completo está en `content/landings.ts`; el bloque explicativo contextual adicional está en `app/descubre/[vertical]/page.tsx`. Los cinco H1 conservan el brief:
+**Production `ihryubbegljbwmuyazbn` no fue consultada ni modificada en este cierre. No se puede certificar que las cuatro migraciones sigan pendientes allí basándose en informes históricos, especialmente porque main ya contiene el bloque.** No se crearon migraciones nuevas en este cierre. En Test no quedan pendientes. Antes de un rollout autorizado, verificar historial Production y aplicar sólo las ausentes, en el orden anterior; nunca ejecutar reset ni duplicar registros de historial.
 
-- Perfiles: «Tu trabajo merece una mejor presentación.»
-- Talento: «Presencia frente a cámara. Un perfil que la muestre.»
-- Locaciones: «El siguiente escenario de tu producción.»
-- Oportunidades: «Tu próximo proyecto empieza con una oportunidad.»
-- Learn: «Aprende el oficio. Lleva tus ideas al set.»
+## Validación y revisión visual
 
-Home conserva «El ecosistema de la industria audiovisual.» y añade «Orden para crear. Claridad para decidir. Herramientas para producir.» como banda editorial. Business permanece informativo/próximamente.
+[Cierre reproducible, resultados y capturas](../review/closure.md). Pruebas de fórmulas/catálogos/permisos, Billing, lint, TypeScript, build optimizado local y navegador. El build usa sólo la configuración pública Test, sin Billing habilitado. Chrome comprueba 360/390/768/1024/1280/1440/1920 px. Las capturas de fichas corresponden a fixtures temporales identificados, no inventario real.
 
-Fuentes, autores, licencia consultada, fecha, dimensiones, focal point y uso por landing: `content/image-sources.json`. Las fotos son ilustración editorial Pexels, no inventario, miembros ni testimonios. Las capturas de catálogos contienen fixtures identificados como prueba local; no existen en la aplicación ni en bases remotas.
+Copy de verticales: `content/landings.ts`; herramientas futuras: `components/tools/ProductVision.tsx`. Fuentes de fotos, autor, licencia, dimensiones y crops: `content/image-sources.json`. No se añadieron imágenes en este cierre ni se inventaron usuarios, vendors o testimonios.
 
-## Siguiente bloque exacto: D — Marketplace / Services
+## Pasos posteriores de despliegue (no ejecutados)
 
-Esta entrega se cierra en A, B para las cinco verticales existentes, y C. Se priorizó completar y verificar estos recorridos. El alcance global del brief continúa pendiente; no se marca Marketplace/Jobs/Tools como disponible.
+1. Revisar los commits de cierre frente a main actual. No reincorporar D–F como si faltaran: ya estaban en `ba4d87e`.
+2. Preparar un nuevo Preview del commit aprobado, con URL/clave pública exclusivamente Test y Billing deshabilitado; conservar las reglas de protección Vercel. El Preview histórico no contiene los ajustes de este cierre.
+3. Repetir `playwright.preview.config.mjs` sobre la URL exacta autorizada, usando acceso temporal sin registrar tokens; limpiar fixtures y revocar acceso QA al terminar.
+4. Sólo con autorización posterior, auditar historial y dependencias Production. Aplicar únicamente SQL faltante; los ajustes de este cierre no requieren SQL. Desplegar el commit aprobado y hacer smoke de rutas/roles, sin pagos como parte de este bloque.
+5. Si el smoke falla, volver al deployment anterior; las migraciones son aditivas y no deben eliminarse para revertir el frontend.
 
-1. D: migración aditiva Services con propietario, borrador por defecto, publicación/archivo, RLS, campos públicos explícitos y contacto protegido mínimo. Después listado, filtros/paginación, detalle, crear/editar/archivar, landing /descubre/marketplace y navegación. Sin pagos ni transacciones.
-2. E: Jobs como subconjunto de Opportunities. Reutilizar compensation_min/max/currency, work_mode, discipline, application_deadline, starts_on/ends_on; añadir sólo semántica/deliverables que falten. Incorporar mecanismo real de contacto/postulación, /jobs y /descubre/jobs. No segunda tabla/motor.
-3. F: registro tipado versionado en código para /tools. Writer y Production Assistant sólo landings con estado En desarrollo. Utilities: shutter angle/speed, bitrate/almacenamiento, aspect ratio y crop/focal equivalente, con unidades, supuestos y tests de límites. Ninguna herramienta nueva está disponible en este checkpoint.
+## Deuda y futuro
 
-## Pasos para un Preview revisable
-
-1. Revisar estos commits en la rama aislada y las dos migraciones. Instalar dependencias con `npm ci`.
-2. Provisionar o seleccionar un Supabase exclusivamente de desarrollo/Preview con el esquema base ya validado del proyecto. Aplicar allí, tras revisión, sólo las migraciones pendientes en orden. No ejecutar reset ni migraciones contra Production.
-3. Configurar URL y clave pública del entorno aislado en variables de Preview. No copiar secretos Production. Mantener Billing deshabilitado para esta revisión; no modificar su configuración ni Test/Live existentes.
-4. Crear usuarios de prueba separados y contenido propio de desarrollo. Comprobar Auth/PostgREST/Storage reales: edición del propietario, denegación cruzada, publicación/archivo, RPC de Perfiles y visibilidad anónima. No cargar fixtures en Production.
-5. Ejecutar scripts test:billing, test:navigation, test:catalogs, test:database, test:e2e, TypeScript, lint y build. El script e2e levanta sus propios servidores locales con valores ficticios, sin usar .env Production.
-6. Preparar un deploy exclusivamente Preview de esta rama cuando corresponda. En esta ejecución no se hizo push, deploy ni cambio remoto. Las capturas locales permiten revisar ya la composición y los flujos, sin presentar esa prueba como integración remota.
+Reviews, matching, pagos Marketplace, mapa/geografía, Projects/Production completo, Writer real, Production Assistant real y Tools avanzadas siguen en backlog. Sin DoF, hiperfocal ni electricidad/seguridad. Services/Jobs tienen consulta inicial, no mensajería completa ni notificaciones. Falta UI administrativa específica de moderación; RLS admin sí existe. Jobs mantiene una disciplina textual y no archiva automáticamente al vencer. Ocho advertencias históricas de `<img>` siguen sin errores de lint. Matriz actual Chrome/Windows; Safari/Firefox y auditoría externa de accesibilidad pendientes. Recuperación portable y SMTP pertenecen a la rama separada `codex/recovery-callback` y no se integraron aquí.

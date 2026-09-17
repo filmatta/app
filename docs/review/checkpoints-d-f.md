@@ -1,3 +1,5 @@
+> Documento histórico del 16 de septiembre. Estado actual y limitaciones de Production: [cierre](closure.md).
+
 > Estado actualizado: [Preview remoto y revisión final](remote-preview.md). Este documento conserva la evidencia histórica de su checkpoint.
 
 # Checkpoints D–F — continuación

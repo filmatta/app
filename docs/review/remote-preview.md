@@ -1,3 +1,5 @@
+> Documento histórico del 16 de septiembre. Estado actual y limitaciones de Production: [cierre](closure.md).
+
 # Preview remoto — FILMATTA ecosystem
 
 Fecha: 16 de septiembre de 2026. Rama: `feature/navigation-landings-catalog-foundations`.

@@ -1,0 +1,11 @@
+{
+  "project": "ezlycwkuzkwcnhrhiruv",
+  "checkedAt": "2026-09-17T08:15:26.1916303Z",
+  "rows": [
+    {
+      "catalog_migrations": 4,
+      "rls_enabled": true,
+      "temporary_users_remaining": 0
+    }
+  ]
+}
