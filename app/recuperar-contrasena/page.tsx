@@ -6,7 +6,7 @@ import LoadingButton from "@/components/ui/LoadingButton";
 export default async function PasswordRecoveryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; sent?: string }>;
+  searchParams: Promise<{ next?: string; sent?: string; error?: string }>;
 }) {
   const params = await searchParams;
   const nextPath = getSafeNextPath(params.next ?? null, "/cuenta");
@@ -30,6 +30,13 @@ export default async function PasswordRecoveryPage({
           <p className="mt-7 rounded-xl border border-green-500/20 bg-green-500/[0.05] p-4 text-sm leading-6 text-green-200">
             Si el correo puede recibir recuperación, encontrarás allí las
             instrucciones en unos minutos.
+          </p>
+        )}
+
+        {params.error === "invalid_recovery" && (
+          <p className="mt-7 rounded-xl border border-red-500/20 bg-red-500/[0.05] p-4 text-sm leading-6 text-red-200">
+            No pudimos validar el enlace. Solicita uno nuevo desde este
+            navegador.
           </p>
         )}
 

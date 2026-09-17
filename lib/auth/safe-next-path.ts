@@ -86,3 +86,20 @@ function hasSafeDecodedForm(value: string) {
 
   return false;
 }
+
+export function getRecoveryReturnPath(value: string) {
+  const path = normalizeInternalPath(value);
+
+  if (!path) {
+    return null;
+  }
+
+  const url = new URL(path, FILMATTA_ORIGIN);
+  const pathname = url.pathname.replace(/\/+$/, "") || "/";
+
+  if (pathname !== "/restablecer-contrasena") {
+    return null;
+  }
+
+  return getSafeNextPath(url.searchParams.get("next"), "/cuenta");
+}
