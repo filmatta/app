@@ -9,7 +9,8 @@ import { presentVideo } from "@/lib/mux/playback";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { getLearnContentType } from "@/lib/learn/content-type";
 import {
-  createMuxClient,
+  createValidatedMuxClient,
+  type createMuxClient,
   getLessonIdFromPassthrough,
   getLessonVideoPassthrough,
   getMuxErrorStatus,
@@ -437,7 +438,7 @@ async function readLessonVideoPresentation(
 
   if (data?.status === "ready" && data.mux_asset_id) {
     try {
-      const asset = await createMuxClient().video.assets.retrieve(data.mux_asset_id);
+      const asset = await (await createValidatedMuxClient()).video.assets.retrieve(data.mux_asset_id);
       const assetAttemptId = getVideoAttemptId(asset.passthrough);
       const replacementPending = assetAttemptId
         ? assetAttemptId !== data.id
@@ -566,7 +567,7 @@ export async function createLessonVideoUpload(
   let origin: string;
   try {
     origin = await getTrustedOrigin();
-    mux = createMuxClient();
+    mux = await createValidatedMuxClient();
   } catch {
     return { ok: false as const, message: "Revisa la configuración del servicio de video y el origen de la aplicación antes de subir." };
   }
@@ -833,7 +834,7 @@ export async function markLessonVideoUploadFailed({
   let mux: ReturnType<typeof createMuxClient>;
   let upload: Upload;
   try {
-    mux = createMuxClient();
+    mux = await createValidatedMuxClient();
     upload = await mux.video.uploads.retrieve(uploadId);
     const passthrough = upload.new_asset_settings?.passthrough;
     const externalId = upload.new_asset_settings?.meta?.external_id;
@@ -895,7 +896,7 @@ export async function getLessonVideoState(
 
   try {
     const shouldInspectMux = Boolean(trackedUploadId || discoverReplacement);
-    const mux = shouldInspectMux ? createMuxClient() : null;
+    const mux = shouldInspectMux ? await createValidatedMuxClient() : null;
 
     if (mux && !trackedUploadId && discoverReplacement) {
       const { data: video, error } = await supabase
@@ -1028,7 +1029,7 @@ export async function reconcileLessonVideo(lessonId: string) {
     .select("id, lesson_id, mux_asset_id, mux_playback_id, playback_policy, status, updated_at, created_at").eq("lesson_id", lessonId).maybeSingle();
   if (error || !video) return { ok: false as const, message: "No se pudo consultar el registro de video." };
   try {
-    const mux = createMuxClient();
+    const mux = await createValidatedMuxClient();
     let needsUploadLookup = !video.mux_asset_id;
     if (video.mux_asset_id) {
       try {

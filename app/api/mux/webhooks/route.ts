@@ -1,4 +1,8 @@
 import { createMuxClient } from "@/lib/mux/server";
+import {
+  assertMuxEnvironment,
+  getMuxEnvironmentExpectation,
+} from "@/lib/mux/environment";
 import { syncMuxAsset, syncMuxUpload } from "@/lib/mux/sync-asset";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -13,6 +17,20 @@ export async function POST(request: Request) {
     console.warn("Mux webhook rejected", { reason: "invalid-signature" });
     return Response.json({ error: "Firma inválida." }, { status: 400 });
   }
+
+  let expectedEnvironment;
+  try {
+    expectedEnvironment = getMuxEnvironmentExpectation();
+  } catch {
+    console.error("Mux webhook rejected", { reason: "environment-not-configured" });
+    return Response.json({ error: "Webhook no configurado." }, { status: 503 });
+  }
+
+  if (!event.environment?.id || event.environment.id !== expectedEnvironment.id) {
+    console.warn("Mux webhook rejected", { reason: "wrong-environment" });
+    return Response.json({ error: "Environment inválido." }, { status: 403 });
+  }
+
   console.info("Mux webhook received", { type: event.type, eventId: event.id });
   if (
     event.type !== "video.upload.asset_created" &&
@@ -23,8 +41,16 @@ export async function POST(request: Request) {
     console.info("Mux webhook skipped", { reason: "unsupported-event", type: event.type });
     return Response.json({ received: true });
   }
+
+  const mux = createMuxClient();
   try {
-    const mux = createMuxClient();
+    await assertMuxEnvironment(mux);
+  } catch {
+    console.error("Mux webhook rejected", { reason: "environment-validation-failed" });
+    return Response.json({ error: "Environment no disponible." }, { status: 503 });
+  }
+
+  try {
     const supabase = createAdminClient();
 
     if (event.type === "video.upload.asset_created") {
