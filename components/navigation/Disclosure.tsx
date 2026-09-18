@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
-export default function Disclosure({ label, active = false, align = "left", children }: {
-  label: string; active?: boolean; align?: "left" | "right"; children: ReactNode;
+export default function Disclosure({ label, active = false, align = "left", panelClassName = "", onOpen, children }: {
+  label: string; active?: boolean; align?: "left" | "right"; panelClassName?: string; onOpen?: () => void; children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const id = useId();
@@ -23,14 +23,17 @@ export default function Disclosure({ label, active = false, align = "left", chil
       document.removeEventListener("keydown", escape);
     };
   }, [open]);
-  return <div ref={root} className="relative" onBlur={event => {
+  return <div ref={root} className="nav-disclosure-root relative" onBlur={event => {
     if (!event.currentTarget.contains(event.relatedTarget as Node)) setOpen(false);
   }}>
     <button ref={trigger} type="button" aria-expanded={open} aria-controls={id}
-      onClick={() => setOpen(!open)} className={`nav-trigger ${active ? "nav-active" : ""}`}>
-      {label}<span aria-hidden="true" className="ml-1.5 text-xs text-white/50">{open ? "−" : "⌄"}</span>
+      onClick={() => { if (!open) onOpen?.(); setOpen(!open); }} className={`nav-trigger ${active ? "nav-active" : ""}`}>
+      <span>{label}</span>
+      <svg aria-hidden="true" viewBox="0 0 16 16" className="nav-caret" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m4 6 4 4 4-4" />
+      </svg>
     </button>
-    {open && <div id={id} className={`nav-disclosure ${align === "right" ? "right-0" : "left-0"}`}
-      onClick={event => { if ((event.target as HTMLElement).closest("a")) setOpen(false); }}>{children}</div>}
+    <div id={id} hidden={!open} className={`nav-disclosure ${align === "right" ? "right-0" : "left-0"} ${panelClassName}`}
+      onClick={event => { if ((event.target as HTMLElement).closest("a")) setOpen(false); }}>{children}</div>
   </div>;
 }

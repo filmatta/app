@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { logout } from "@/app/cuenta/actions";
 import LoadingButton from "@/components/ui/LoadingButton";
 import Disclosure from "./Disclosure";
@@ -16,11 +16,37 @@ function MenuLinks({ items }: { items: NavigationLink[] }) {
 }
 
 export function AccountNavigation({ role }: { role: string }) {
-  return <Disclosure label="Mi cuenta" align="right">
-    <MenuLinks items={getAccountNavigation(role)} />
-    <form action={logout} className="mt-2 border-t border-white/15 pt-2">
-      <LoadingButton type="submit" loadingText="Saliendo…" className="nav-menu-link w-full text-left">Cerrar sesión</LoadingButton>
-    </form>
+  const pathname = usePathname();
+  const [hash, setHash] = useState("");
+  const accountLinks = getAccountNavigation(role);
+  const personalLinks = ["/mi-perfil", "/mis-locaciones", "/mis-servicios", "/cuenta#mis-cursos", "/cuenta/suscripcion"]
+    .map(href => accountLinks.find(item => item.href === href)!);
+  const settings = accountLinks.find(item => item.href === "/cuenta#configuracion")!;
+  const admin = accountLinks.find(item => item.href === "/admin");
+  const accountLink = (item: NavigationLink, label = item.label) => {
+    const active = item.href.includes("#")
+      ? pathname === "/cuenta" && (item.href.endsWith("#mis-cursos") ? hash === "#mis-cursos" : hash !== "#mis-cursos")
+      : isNavigationActive(pathname, item.href);
+    return <Link key={item.href} href={item.href} aria-current={active ? (item.href.includes("#") ? "location" : "page") : undefined} className="account-menu-link">{label}</Link>;
+  };
+  return <Disclosure key={pathname} label="Mi cuenta" align="right" panelClassName="account-panel" onOpen={() => setHash(window.location.hash)}>
+    <nav aria-label="Menú de cuenta">
+      <div className="account-menu-section">
+        <p className="account-menu-heading">Mi FILMATTA</p>
+        {personalLinks.map(item => accountLink(item))}
+      </div>
+      <div className="account-menu-section">
+        <p className="account-menu-heading">Cuenta</p>
+        {accountLink(settings, "Configuración / cuenta")}
+        <form action={logout}>
+          <LoadingButton type="submit" loadingText="Saliendo…" className="account-menu-link account-signout w-full">Cerrar sesión</LoadingButton>
+        </form>
+      </div>
+      {admin && <div className="account-menu-section">
+        <p className="account-menu-heading">Administración</p>
+        {accountLink(admin, "Panel admin")}
+      </div>}
+    </nav>
   </Disclosure>;
 }
 
@@ -56,7 +82,7 @@ export default function GlobalNavigation({ authenticated, role, badge, children 
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">
         {authenticated ? <>
           <div className="hidden min-[1600px]:block"><Disclosure label="Publicar" align="right"><MenuLinks items={publishingNavigation} /></Disclosure></div>
-          <AccountNavigation role={role ?? "user"} />
+          <div className="hidden min-[1280px]:block"><AccountNavigation role={role ?? "user"} /></div>
         </> : <>
           <Link href="/login" className="nav-trigger hidden sm:inline-flex">Entrar</Link>
           <Link href="/registro" className="nav-signup hidden sm:inline-flex">Crear cuenta</Link>

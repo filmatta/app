@@ -82,7 +82,7 @@ for (const role of ["user", "admin"] as const)
     await expect(
       page.getByRole("link", { name: "Mi aprendizaje", exact: true }),
     ).toBeVisible();
-    const admin = page.getByRole("link", { name: "Administrar FILMATTA" });
+    const admin = page.getByRole("link", { name: "Panel admin", exact: true });
     if (role === "admin") await expect(admin).toBeVisible();
     else await expect(admin).toHaveCount(0);
     await page.keyboard.press("Escape");
@@ -245,10 +245,13 @@ test("authenticated header stays usable at every requested width", async ({
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
-    await page.getByRole("button", { name: "Mi cuenta", exact: true }).click();
-    await expect(
-      page.getByRole("link", { name: "Mis publicaciones", exact: true }),
-    ).toBeVisible();
+    if (width >= 1280) {
+      await page.getByRole("button", { name: "Mi cuenta", exact: true }).click();
+      await expect(page.getByRole("navigation", { name: "Menú de cuenta", exact: true }).getByRole("link", { name: "Mis servicios", exact: true })).toBeVisible();
+    } else {
+      await page.getByRole("button", { name: "Menú", exact: false }).click();
+      await expect(page.getByRole("dialog").getByRole("link", { name: "Mis publicaciones", exact: true })).toBeVisible();
+    }
     await page.keyboard.press("Escape");
   }
 });
