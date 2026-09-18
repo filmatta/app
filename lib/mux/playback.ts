@@ -1,6 +1,6 @@
 import "server-only";
 import type { VideoPresentation } from "@/components/LessonVideoPlayer";
-import { createMuxClient } from "./server";
+import { createValidatedMuxClient } from "./server";
 
 type StoredVideo = {
   status: string;
@@ -16,7 +16,7 @@ export async function presentVideo(video: StoredVideo | null): Promise<VideoPres
   if (video.playback_policy === "public") return { status: "ready", playbackId: video.mux_playback_id };
   if (video.playback_policy !== "signed") return { status: "errored" };
   if (!process.env.MUX_SIGNING_KEY || !process.env.MUX_PRIVATE_KEY) return { status: "ready", message: "Video listo. La reproducción protegida requiere configurar las claves de firma del servicio de video." };
-  const mux = createMuxClient();
+  const mux = await createValidatedMuxClient();
   const privateKey = process.env.MUX_PRIVATE_KEY.replace(/\\n/g, "\n");
   const [playback, thumbnail, storyboard] = await Promise.all([
     mux.jwt.signPlaybackId(video.mux_playback_id, { expiration: "4h", type: "video", keySecret: privateKey }),
@@ -52,7 +52,7 @@ export async function presentVideoPoster(video: StoredVideo | null) {
     return null;
   }
 
-  const thumbnailToken = await createMuxClient().jwt.signPlaybackId(
+  const thumbnailToken = await (await createValidatedMuxClient()).jwt.signPlaybackId(
     video.mux_playback_id,
     {
       expiration: "15m",

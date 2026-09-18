@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:mux": "node --test tests/mux/*.test.mjs",
     "test:billing": "node --test tests/billing/*.test.mjs",
     "test:navigation": "node --test tests/navigation/*.test.mjs",
     "test:catalogs": "node --test tests/catalogs/*.test.mjs",

@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createMuxClient, getVideoAttemptId } from "./server";
+import { createValidatedMuxClient, getVideoAttemptId } from "./server";
 
 type PlaybackPolicy = "public" | "signed";
 
@@ -36,7 +36,7 @@ export async function changeLessonPlaybackPolicy(
     };
   }
 
-  const mux = createMuxClient();
+  const mux = await createValidatedMuxClient();
   const asset = await mux.video.assets.retrieve(video.mux_asset_id);
   const assetAttemptId = getVideoAttemptId(asset.passthrough);
   const pendingReplacement = assetAttemptId

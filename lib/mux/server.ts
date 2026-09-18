@@ -1,5 +1,6 @@
 import "server-only";
 import Mux from "@mux/mux-node";
+import { assertMuxEnvironment } from "./environment";
 
 const LESSON_VIDEO_PREFIX = "filmatta:lesson:";
 const UUID_PATTERN =
@@ -18,6 +19,12 @@ export function createMuxClient() {
     tokenSecret,
     webhookSecret: process.env.MUX_WEBHOOK_SECRET,
   });
+}
+
+export async function createValidatedMuxClient() {
+  const mux = createMuxClient();
+  await assertMuxEnvironment(mux);
+  return mux;
 }
 
 export function getMuxErrorStatus(error: unknown) {
