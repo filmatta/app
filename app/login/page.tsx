@@ -4,6 +4,7 @@ import { login } from "@/app/auth/actions";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getSafePostAuthPath } from "@/lib/auth/safe-next-path";
 import LoadingButton from "@/components/ui/LoadingButton";
+import GoogleSignInForm from "@/components/auth/GoogleSignInForm";
 
 export default async function LoginPage({
   searchParams,
@@ -57,7 +58,9 @@ export default async function LoginPage({
           </p>
         )}
 
-        <form action={login} className="mt-10 space-y-5">
+        <GoogleSignInForm nextPath={nextPath} />
+
+        <form action={login} className="space-y-5">
           <input type="hidden" name="next" value={nextPath} />
 
           <Field label="Correo" htmlFor="email">

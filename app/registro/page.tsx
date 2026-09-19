@@ -4,6 +4,7 @@ import { signUp } from "@/app/auth/actions";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getSafePostAuthPath } from "@/lib/auth/safe-next-path";
 import LoadingButton from "@/components/ui/LoadingButton";
+import GoogleSignInForm from "@/components/auth/GoogleSignInForm";
 
 export default async function RegistroPage({
   searchParams,
@@ -51,7 +52,9 @@ export default async function RegistroPage({
           identidad profesional.
         </p>
 
-        <form action={signUp} className="mt-10 space-y-5">
+        <GoogleSignInForm nextPath={nextPath} />
+
+        <form action={signUp} className="space-y-5">
           <input type="hidden" name="next" value={nextPath} />
 
           <Field label="Nombre" htmlFor="full_name">

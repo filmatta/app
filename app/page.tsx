@@ -453,7 +453,15 @@ export default function Home() {
           <span className="font-bold tracking-[0.2em] text-white">
             FILMATTA
           </span>
-          <span>© 2026 FILMATTA</span>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <Link href="/privacidad" className="transition hover:text-white">
+              Privacidad
+            </Link>
+            <Link href="/terminos" className="transition hover:text-white">
+              Términos
+            </Link>
+            <span>© 2026 FILMATTA</span>
+          </div>
         </div>
       </footer>
     </main>
