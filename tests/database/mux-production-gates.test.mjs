@@ -5,7 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 const db = new PGlite();
 const migration = fs.readFileSync(
-  "supabase/migrations/20260918010000_mux_production_gates.sql",
+  "supabase/migrations/20260918030000_mux_production_gates.sql",
   "utf8",
 );
 
