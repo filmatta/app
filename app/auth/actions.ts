@@ -5,12 +5,17 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSafePostAuthPath } from "@/lib/auth/safe-next-path";
 import { createClient } from "@/lib/supabase/server";
+import { allowAuthAttempt } from "@/lib/security/auth-rate-limit";
 
 export async function login(formData: FormData) {
   const supabase = await createClient();
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const nextPath = getSafePostAuthPath(formData.get("next"));
+
+  if (!(await allowAuthAttempt("login", email))) {
+    redirect(getAuthFeedbackUrl("/login", nextPath, { error: "No pudimos iniciar sesión. Revisa tus datos o inténtalo más tarde." }));
+  }
 
   const { error } = await supabase.auth.signInWithPassword({
     email,
@@ -37,6 +42,10 @@ export async function signUp(formData: FormData) {
   const nextPath = getSafePostAuthPath(formData.get("next"));
   const requestHeaders = await headers();
   const origin = requestHeaders.get("origin");
+
+  if (!(await allowAuthAttempt("signup", email))) {
+    redirect(getAuthFeedbackUrl("/registro", nextPath, { error: "No pudimos procesar la solicitud. Inténtalo más tarde." }));
+  }
 
   if (!email || password.length < 8) {
     redirect(

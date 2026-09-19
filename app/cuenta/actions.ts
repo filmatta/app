@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSafeNextPath } from "@/lib/auth/safe-next-path";
 import { createClient } from "@/lib/supabase/server";
+import { allowAuthAttempt } from "@/lib/security/auth-rate-limit";
 
 export async function updatePersonalProfile(formData: FormData) {
   const supabase = await createClient();
@@ -89,7 +90,7 @@ export async function requestPasswordReset(formData: FormData) {
   const nextPath = getSafeNextPath(formData.get("next"), "/cuenta");
   const origin = (await headers()).get("origin");
 
-  if (isValidEmail(email) && origin) {
+  if (isValidEmail(email) && origin && await allowAuthAttempt("recovery", email)) {
     const resetPage = `/restablecer-contrasena?next=${encodeURIComponent(nextPath)}`;
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(resetPage)}`,
