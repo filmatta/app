@@ -92,8 +92,10 @@ export async function createCheckout(user: { id: string; email: string | null },
       line_items: [{ price: config.prices[plan], quantity: 1 }], payment_method_types: ["card"],
       billing_address_collection: "required", customer_update: { address: "auto", name: "auto" },
       automatic_tax: { enabled: false }, subscription_data: { default_tax_rates: [config.taxRate] },
-      discounts: smokeTestCoupon ? [{ coupon: smokeTestCoupon.id }] : undefined,
-      allow_promotion_codes: false, locale: "es", expires_at: Math.floor(Date.now() / 1000) + 1800,
+      ...(smokeTestCoupon
+        ? { discounts: [{ coupon: smokeTestCoupon.id }] }
+        : { allow_promotion_codes: false }),
+      locale: "es", expires_at: Math.floor(Date.now() / 1000) + 1800,
       metadata: { filmatta_plan: plan,
         ...(smokeTestCoupon ? { filmatta_smoke_test_coupon: smokeTestCoupon.id } : {}) },
       success_url: `${config.origin}/billing/return?source=checkout`,

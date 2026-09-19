@@ -889,6 +889,12 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   await assert.rejects(actions.keepSubscription(), /acceso/);
   viewer = { id: 'trusted', email: null };
   form.set('plan', 'business'); await assert.rejects(actions.startCheckout(form), /country/);
+  form.set('plan', 'plus'); form.delete('country');
+  await assert.rejects(
+    actions.startCheckout(form, new URLSearchParams('country=MX')),
+    /country/,
+    'A forged query parameter cannot replace the country FormData field',
+  );
   form.set('plan', 'plus'); form.set('country', 'US'); await assert.rejects(actions.startCheckout(form), /country/);
   assert.equal(calls, 0);
   form.set('country', 'MX'); form.set('user_id', 'attacker'); form.set('customer', 'cus_attacker');
@@ -927,6 +933,16 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   keepAllowed = false;
   await assert.rejects(actions.keepSubscription(forged), /error=keep-subscription/);
   assert.equal(keepCalls, 2);
+});
+
+test('checkout forms submit canonical MX while displaying Mexico to the user', () => {
+  assert.match(subscriptionPage,
+    /<select name="country" required[^>]*><option value="MX">México<\/option><\/select>/);
+  assert.match(plansPage, /<input type="hidden" name="country" value="MX" \/>/);
+  assert.match(subscriptionPage, /feedback\.error === "country"/);
+  assert.match(subscriptionPage, /feedback\.error === "checkout"/);
+  assert.doesNotMatch(subscriptionPage,
+    /Revisa tu suscripción existente o intenta más tarde\. Las suscripciones están limitadas a México\./);
 });
 
 test('portal button depends on server configuration instead of the visual subscription list', () => {
@@ -2036,6 +2052,7 @@ test('Live Checkout uses only Live Prices and Tax Rate with production copy', as
   assert.equal(couponRetrieves, 0, 'Normal users never retrieve or receive the smoke coupon');
   assert.equal(sessionParams.line_items[0].price, plus);
   assert.equal(sessionParams.discounts, undefined);
+  assert.equal(sessionParams.allow_promotion_codes, false);
   assert.deepEqual(sessionParams.subscription_data.default_tax_rates, [taxRate]);
   assert.equal(sessionParams.automatic_tax.enabled, false);
   assert.equal(sessionParams.success_url,
@@ -2047,6 +2064,8 @@ test('Live Checkout uses only Live Prices and Tax Rate with production copy', as
     'https://checkout.stripe.com/live');
   assert.equal(couponRetrieves, 1);
   assert.deepEqual(sessionParams.discounts, [{ coupon: smokeCouponId }]);
+  assert.equal('allow_promotion_codes' in sessionParams, false,
+    'Stripe rejects allow_promotion_codes when a fixed discount is present');
   assert.equal(sessionParams.metadata.filmatta_smoke_test_coupon, smokeCouponId);
   assert.equal(sessionParams.line_items[0].price, plus,
     'The discount never replaces the official Plus Price');
@@ -2057,6 +2076,7 @@ test('Live Checkout uses only Live Prices and Tax Rate with production copy', as
     'https://checkout.stripe.com/live');
   assert.equal(sessionParams.line_items[0].price, pro);
   assert.equal(sessionParams.discounts, undefined, 'The smoke discount is Plus-only');
+  assert.equal(sessionParams.allow_promotion_codes, false);
   assert.equal(couponRetrieves, 1);
 
   crossedCoupon = true;

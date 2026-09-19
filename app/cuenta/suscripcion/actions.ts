@@ -23,7 +23,10 @@ export async function startCheckout(form: FormData) {
   if (!isBillingPlan(plan) || form.get("country") !== "MX") redirect("/cuenta/suscripcion?error=country");
   let url: string;
   try { url = await createCheckout(viewer, plan); }
-  catch { console.error("Billing checkout unavailable"); redirect("/cuenta/suscripcion?error=checkout"); }
+  catch (error) {
+    console.error("Billing checkout unavailable", error);
+    redirect("/cuenta/suscripcion?error=checkout");
+  }
   redirect(url);
 }
 
