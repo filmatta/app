@@ -2,6 +2,11 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Asset } from "@mux/mux-node/resources/video/assets";
 import type { Upload } from "@mux/mux-node/resources/video/uploads";
+import type { MuxEnvironmentExpectation } from "./environment";
+import {
+  hasMuxEnvironmentProvenance,
+  muxEnvironmentMatches,
+} from "./provenance";
 import { getLessonIdFromPassthrough, getVideoAttemptId } from "./server";
 
 type MuxAssetReader = {
@@ -16,6 +21,7 @@ export async function syncMuxUpload(
   supabase: SupabaseClient,
   mux: MuxAssetReader,
   upload: Upload,
+  environment: MuxEnvironmentExpectation,
   knownAsset?: Asset,
 ) {
   const passthrough = upload.new_asset_settings?.passthrough;
@@ -34,7 +40,7 @@ export async function syncMuxUpload(
 
   const { data: video, error } = await supabase
     .from("lesson_videos")
-    .select("id, playback_policy")
+    .select("id, playback_policy, mux_environment_id, mux_environment_type")
     .eq("lesson_id", lessonId)
     .maybeSingle();
 
@@ -60,6 +66,20 @@ export async function syncMuxUpload(
       reason: "stale-attempt",
     });
     return { outcome: "skipped" as const, reason: "stale-attempt" };
+  }
+
+  if (
+    hasMuxEnvironmentProvenance(video) &&
+    !muxEnvironmentMatches(video, environment)
+  ) {
+    console.info("Mux upload skipped", {
+      uploadId: upload.id,
+      assetId: upload.asset_id,
+      lessonId,
+      attemptId,
+      reason: "wrong-environment",
+    });
+    return { outcome: "skipped" as const, reason: "wrong-environment" };
   }
 
   if (["errored", "timed_out", "cancelled"].includes(upload.status)) {
@@ -105,7 +125,7 @@ export async function syncMuxUpload(
     return { outcome: "skipped" as const, reason: "asset-upload-mismatch" };
   }
 
-  const result = await syncMuxAsset(supabase, asset);
+  const result = await syncMuxAsset(supabase, asset, environment);
   console.info("Mux replacement sync completed", {
     uploadId: upload.id,
     assetId: asset.id,
@@ -120,7 +140,11 @@ export async function syncMuxUpload(
   return { ...result, uploadId: upload.id, lessonId, attemptId };
 }
 
-export async function syncMuxAsset(supabase: SupabaseClient, asset: Asset) {
+export async function syncMuxAsset(
+  supabase: SupabaseClient,
+  asset: Asset,
+  environment: MuxEnvironmentExpectation,
+) {
   const lessonId = getLessonIdFromPassthrough(asset.passthrough);
   const attemptId = getVideoAttemptId(asset.passthrough);
   if (
@@ -132,7 +156,7 @@ export async function syncMuxAsset(supabase: SupabaseClient, asset: Asset) {
     return { outcome: "skipped" as const, reason: "invalid-association" };
   }
   const { data: video, error } = await supabase.from("lesson_videos")
-    .select("id, lesson_id, mux_asset_id, playback_policy, status, updated_at, created_at")
+    .select("id, lesson_id, mux_asset_id, playback_policy, status, updated_at, created_at, mux_environment_id, mux_environment_type")
     .eq("lesson_id", lessonId).maybeSingle();
   if (error) throw error;
   console.info("Mux asset association evaluated", {
@@ -147,6 +171,17 @@ export async function syncMuxAsset(supabase: SupabaseClient, asset: Asset) {
   if (!video || (attemptId && attemptId !== video.id)) {
     console.info("Mux asset skipped", { lessonId, reason: "missing-row-or-stale-attempt" });
     return { outcome: "skipped" as const, reason: "missing-row-or-stale-attempt" };
+  }
+  if (
+    hasMuxEnvironmentProvenance(video) &&
+    !muxEnvironmentMatches(video, environment)
+  ) {
+    console.info("Mux asset skipped", {
+      assetId: asset.id,
+      lessonId,
+      reason: "wrong-environment",
+    });
+    return { outcome: "skipped" as const, reason: "wrong-environment" };
   }
   const replacingAsset = Boolean(
     video.mux_asset_id && video.mux_asset_id !== asset.id,
@@ -198,13 +233,19 @@ export async function syncMuxAsset(supabase: SupabaseClient, asset: Asset) {
 
   let alreadySynchronized = false;
   const { data: updated, error: updateError } = await supabase.from("lesson_videos")
-    .update({ mux_asset_id: asset.id, mux_playback_id: playback?.id ?? null, status })
+    .update({
+      mux_asset_id: asset.id,
+      mux_playback_id: playback?.id ?? null,
+      mux_environment_id: environment.id,
+      mux_environment_type: environment.type,
+      status,
+    })
     .eq("id", video.id).eq("updated_at", video.updated_at).select("id");
   if (updateError) throw updateError;
   if (!updated?.length) {
     const { data: current, error: currentError } = await supabase
       .from("lesson_videos")
-      .select("id, mux_asset_id, mux_playback_id, playback_policy, status")
+      .select("id, mux_asset_id, mux_playback_id, playback_policy, status, mux_environment_id, mux_environment_type")
       .eq("lesson_id", lessonId)
       .maybeSingle();
     if (currentError) throw currentError;
@@ -214,6 +255,8 @@ export async function syncMuxAsset(supabase: SupabaseClient, asset: Asset) {
       current.mux_asset_id === asset.id &&
       current.mux_playback_id === (playback?.id ?? null) &&
       current.playback_policy === video.playback_policy &&
+      current.mux_environment_id === environment.id &&
+      current.mux_environment_type === environment.type &&
       current.status === status
     ) {
       console.info("Mux asset already synchronized", {

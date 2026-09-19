@@ -70,7 +70,12 @@ export async function POST(request: Request) {
 
     if (event.type === "video.upload.asset_created") {
       const upload = await mux.video.uploads.retrieve(event.data.id);
-      const result = await syncMuxUpload(supabase, mux, upload);
+      const result = await syncMuxUpload(
+        supabase,
+        mux,
+        upload,
+        expectedEnvironment,
+      );
       console.info("Mux upload webhook handled", {
         eventId: event.id,
         uploadId: upload.id,
@@ -88,9 +93,10 @@ export async function POST(request: Request) {
           supabase,
           mux,
           await mux.video.uploads.retrieve(asset.upload_id),
+          expectedEnvironment,
           asset,
         )
-      : await syncMuxAsset(supabase, asset);
+      : await syncMuxAsset(supabase, asset, expectedEnvironment);
     console.info("Mux asset webhook handled", {
       eventId: event.id,
       assetId: asset.id,

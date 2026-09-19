@@ -194,7 +194,7 @@ export default async function LessonPage({
       // Authorization above checks this exact lesson, its parents and enrollment.
       const videoClient = isAdmin ? supabase : createAdminClient();
       const { data: video, error } = await videoClient.from("lesson_videos")
-        .select("status, playback_policy, mux_playback_id").eq("lesson_id", lesson.id).maybeSingle();
+        .select("status, playback_policy, mux_playback_id, mux_environment_id, mux_environment_type").eq("lesson_id", lesson.id).maybeSingle();
       if (error) throw error;
       videoPresentation = await presentVideo(video);
     } catch {
@@ -207,7 +207,7 @@ export default async function LessonPage({
       // never calls presentVideo, so no playback or storyboard token is minted.
       const { data: video, error } = await createAdminClient()
         .from("lesson_videos")
-        .select("status, playback_policy, mux_playback_id")
+        .select("status, playback_policy, mux_playback_id, mux_environment_id, mux_environment_type")
         .eq("lesson_id", lesson.id)
         .maybeSingle();
       if (error) throw error;

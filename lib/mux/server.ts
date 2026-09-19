@@ -1,6 +1,9 @@
 import "server-only";
 import Mux from "@mux/mux-node";
-import { assertMuxEnvironment } from "./environment";
+import {
+  assertMuxEnvironment,
+  type MuxEnvironmentType,
+} from "./environment";
 
 const LESSON_VIDEO_PREFIX = "filmatta:lesson:";
 const UUID_PATTERN =
@@ -22,9 +25,22 @@ export function createMuxClient() {
 }
 
 export async function createValidatedMuxClient() {
+  return (await createValidatedMuxContext()).mux;
+}
+
+export async function createValidatedMuxContext() {
   const mux = createMuxClient();
-  await assertMuxEnvironment(mux);
-  return mux;
+  const identity = await assertMuxEnvironment(mux);
+  const environmentType: MuxEnvironmentType = identity.environment_type === "production"
+    ? "production"
+    : "development";
+  return {
+    mux,
+    environment: {
+      id: identity.environment_id,
+      type: environmentType,
+    },
+  };
 }
 
 export function getMuxErrorStatus(error: unknown) {

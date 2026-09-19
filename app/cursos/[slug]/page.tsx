@@ -184,6 +184,9 @@ export async function generateMetadata({
   return {
     title: course.title,
     description,
+    robots: course.is_listed
+      ? undefined
+      : { index: false, follow: false },
     openGraph: {
       title: course.title,
       description,

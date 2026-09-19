@@ -10,6 +10,7 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { getLearnContentType } from "@/lib/learn/content-type";
 import {
   createValidatedMuxClient,
+  createValidatedMuxContext,
   type createMuxClient,
   getLessonIdFromPassthrough,
   getLessonVideoPassthrough,
@@ -17,6 +18,11 @@ import {
   getVideoAttemptId,
   isMuxNotFoundError,
 } from "@/lib/mux/server";
+import type { MuxEnvironmentExpectation } from "@/lib/mux/environment";
+import {
+  hasMuxEnvironmentProvenance,
+  muxEnvironmentMatches,
+} from "@/lib/mux/provenance";
 
 type AdminSupabaseClient = Awaited<ReturnType<typeof requireAdmin>>["supabase"];
 const FAILED_UPLOAD_GRACE_MS = 5 * 60 * 1000;
@@ -146,6 +152,8 @@ type RestorableLessonVideo = {
   mux_asset_id: string | null;
   mux_playback_id: string | null;
   playback_policy: string;
+  mux_environment_id: string | null;
+  mux_environment_type: string | null;
 };
 
 type StoredLessonVideo = RestorableLessonVideo & {
@@ -186,7 +194,7 @@ async function repairOrphanedVideoReference(
     .eq("status", "ready")
     .eq("updated_at", video.updated_at)
     .select(
-      "id, lesson_id, status, mux_asset_id, mux_playback_id, playback_policy, updated_at, created_at",
+      "id, lesson_id, status, mux_asset_id, mux_playback_id, playback_policy, mux_environment_id, mux_environment_type, updated_at, created_at",
     )
     .maybeSingle();
 
@@ -196,7 +204,7 @@ async function repairOrphanedVideoReference(
   const { data: current, error: currentError } = await supabase
     .from("lesson_videos")
     .select(
-      "id, lesson_id, status, mux_asset_id, mux_playback_id, playback_policy, updated_at, created_at",
+      "id, lesson_id, status, mux_asset_id, mux_playback_id, playback_policy, mux_environment_id, mux_environment_type, updated_at, created_at",
     )
     .eq("id", repaired.data.id)
     .eq("lesson_id", video.lesson_id)
@@ -333,7 +341,7 @@ async function closeFailedUploadAttempt(
   const { data: video, error: videoError } = await supabase
     .from("lesson_videos")
     .select(
-      "id, status, mux_asset_id, mux_playback_id, playback_policy",
+      "id, status, mux_asset_id, mux_playback_id, playback_policy, mux_environment_id, mux_environment_type",
     )
     .eq("lesson_id", lessonId)
     .maybeSingle();
@@ -426,9 +434,9 @@ async function readLessonVideoPresentation(
   supabase: AdminSupabaseClient,
   lessonId: string,
 ) {
-  const { data, error } = await supabase
+  const { data: loadedVideo, error } = await supabase
     .from("lesson_videos")
-    .select("id, lesson_id, status, playback_policy, mux_playback_id, mux_asset_id, created_at, updated_at")
+    .select("id, lesson_id, status, playback_policy, mux_playback_id, mux_asset_id, mux_environment_id, mux_environment_type, created_at, updated_at")
     .eq("lesson_id", lessonId)
     .maybeSingle();
 
@@ -436,20 +444,48 @@ async function readLessonVideoPresentation(
     throw new Error("No se pudo consultar el estado del video.");
   }
 
+  let data = loadedVideo;
+
   if (data?.status === "ready" && data.mux_asset_id) {
     try {
-      const asset = await (await createValidatedMuxClient()).video.assets.retrieve(data.mux_asset_id);
+      const { mux, environment } = await createValidatedMuxContext();
+      if (
+        hasMuxEnvironmentProvenance(data) &&
+        !muxEnvironmentMatches(data, environment)
+      ) {
+        return {
+          status: "unavailable" as const,
+          message: "El video pertenece a otro environment Mux.",
+        };
+      }
+      const asset = await mux.video.assets.retrieve(data.mux_asset_id);
       const assetAttemptId = getVideoAttemptId(asset.passthrough);
       const replacementPending = assetAttemptId
         ? assetAttemptId !== data.id
         : Date.now() - Date.parse(data.created_at) < 60 * 60 * 1000;
+      const currentPlaybackId = data.mux_playback_id;
+      const currentPlaybackPolicy = data.playback_policy;
       const policyCoherent = Boolean(
         asset.playback_ids?.some(
           (playback) =>
-            playback.id === data.mux_playback_id &&
-            playback.policy === data.playback_policy,
+            playback.id === currentPlaybackId &&
+            playback.policy === currentPlaybackPolicy,
         ),
       );
+      if (!hasMuxEnvironmentProvenance(data)) {
+        const backfill = await syncMuxAsset(supabase, asset, environment);
+        if (backfill.outcome === "skipped") {
+          return {
+            status: "unavailable" as const,
+            message: "No se pudo validar la procedencia del video.",
+          };
+        }
+        data = {
+          ...data,
+          mux_environment_id: environment.id,
+          mux_environment_type: environment.type,
+        };
+      }
       if (replacementPending) {
         return {
           ...(await presentVideo(data)),
@@ -549,7 +585,7 @@ export async function createLessonVideoUpload(
 
   const { data: loadedVideo, error: videoError } = await supabase
     .from("lesson_videos")
-    .select("id, lesson_id, status, mux_asset_id, mux_playback_id, playback_policy, updated_at, created_at")
+    .select("id, lesson_id, status, mux_asset_id, mux_playback_id, playback_policy, mux_environment_id, mux_environment_type, updated_at, created_at")
     .eq("lesson_id", lesson.id)
     .maybeSingle();
 
@@ -564,12 +600,26 @@ export async function createLessonVideoUpload(
   let currentAsset: Asset | null = null;
 
   let mux: ReturnType<typeof createMuxClient>;
+  let muxEnvironment: MuxEnvironmentExpectation;
   let origin: string;
   try {
     origin = await getTrustedOrigin();
-    mux = await createValidatedMuxClient();
+    const muxContext = await createValidatedMuxContext();
+    mux = muxContext.mux;
+    muxEnvironment = muxContext.environment;
   } catch {
     return { ok: false as const, message: "Revisa la configuración del servicio de video y el origen de la aplicación antes de subir." };
+  }
+
+  if (
+    currentVideo &&
+    hasMuxEnvironmentProvenance(currentVideo) &&
+    !muxEnvironmentMatches(currentVideo, muxEnvironment)
+  ) {
+    return {
+      ok: false as const,
+      message: "El video pertenece a otro environment Mux y no puede modificarse aquí.",
+    };
   }
 
   if (
@@ -615,7 +665,12 @@ export async function createLessonVideoUpload(
       );
       if (pendingUpload && pendingDifferentAsset) {
         if (pendingUpload.asset_id) {
-          await syncMuxUpload(supabase, mux, pendingUpload);
+          await syncMuxUpload(
+            supabase,
+            mux,
+            pendingUpload,
+            muxEnvironment,
+          );
         }
         return {
           ok: false as const,
@@ -756,6 +811,8 @@ export async function createLessonVideoUpload(
           .update({
             id: attemptId,
             created_at: reservedAt,
+            mux_environment_id: muxEnvironment.id,
+            mux_environment_type: muxEnvironment.type,
           })
           .eq("id", currentVideo.id)
           .eq("updated_at", currentVideo.updated_at)
@@ -770,6 +827,8 @@ export async function createLessonVideoUpload(
           provider: "mux",
           mux_asset_id: null,
           mux_playback_id: null,
+          mux_environment_id: muxEnvironment.id,
+          mux_environment_type: muxEnvironment.type,
           playback_policy: playbackPolicy,
           status: "preparing",
         })
@@ -783,6 +842,8 @@ export async function createLessonVideoUpload(
           id: attemptId,
           lesson_id: lesson.id,
           provider: "mux",
+          mux_environment_id: muxEnvironment.id,
+          mux_environment_type: muxEnvironment.type,
           playback_policy: playbackPolicy,
           status: "preparing",
         })
@@ -896,12 +957,16 @@ export async function getLessonVideoState(
 
   try {
     const shouldInspectMux = Boolean(trackedUploadId || discoverReplacement);
-    const mux = shouldInspectMux ? await createValidatedMuxClient() : null;
+    const muxContext = shouldInspectMux
+      ? await createValidatedMuxContext()
+      : null;
+    const mux = muxContext?.mux ?? null;
+    const muxEnvironment = muxContext?.environment ?? null;
 
     if (mux && !trackedUploadId && discoverReplacement) {
       const { data: video, error } = await supabase
         .from("lesson_videos")
-        .select("id, mux_asset_id")
+        .select("id, mux_asset_id, mux_environment_id, mux_environment_type")
         .eq("lesson_id", lessonId)
         .maybeSingle();
 
@@ -945,7 +1010,7 @@ export async function getLessonVideoState(
       trackedAttemptId = uploadAttemptId;
       const { data: attemptVideo, error: attemptError } = await supabase
         .from("lesson_videos")
-        .select("id, status, mux_asset_id, mux_playback_id, playback_policy")
+        .select("id, status, mux_asset_id, mux_playback_id, playback_policy, mux_environment_id, mux_environment_type")
         .eq("lesson_id", lessonId)
         .maybeSingle();
       if (attemptError) throw attemptError;
@@ -955,7 +1020,15 @@ export async function getLessonVideoState(
         attemptVideo.mux_asset_id &&
         attemptVideo.mux_playback_id,
       );
-      const result = await syncMuxUpload(supabase, mux, upload);
+      if (!muxEnvironment) {
+        throw new Error("Mux environment was not validated.");
+      }
+      const result = await syncMuxUpload(
+        supabase,
+        mux,
+        upload,
+        muxEnvironment,
+      );
       const terminalUploadFailure = result.outcome === "failed";
       const replacementAssetFailure =
         result.outcome === "skipped" &&
@@ -1026,16 +1099,26 @@ export async function reconcileLessonVideo(lessonId: string) {
   const { supabase } = await requireAdmin();
   getLessonVideoPassthrough(lessonId);
   const { data: video, error } = await supabase.from("lesson_videos")
-    .select("id, lesson_id, mux_asset_id, mux_playback_id, playback_policy, status, updated_at, created_at").eq("lesson_id", lessonId).maybeSingle();
+    .select("id, lesson_id, mux_asset_id, mux_playback_id, playback_policy, status, mux_environment_id, mux_environment_type, updated_at, created_at").eq("lesson_id", lessonId).maybeSingle();
   if (error || !video) return { ok: false as const, message: "No se pudo consultar el registro de video." };
   try {
-    const mux = await createValidatedMuxClient();
+    const { mux, environment: muxEnvironment } =
+      await createValidatedMuxContext();
+    if (
+      hasMuxEnvironmentProvenance(video) &&
+      !muxEnvironmentMatches(video, muxEnvironment)
+    ) {
+      return {
+        ok: false as const,
+        message: "El video pertenece a otro environment Mux y no se modificó.",
+      };
+    }
     let needsUploadLookup = !video.mux_asset_id;
     if (video.mux_asset_id) {
       try {
         const currentAsset = await mux.video.assets.retrieve(video.mux_asset_id);
         if (getVideoAttemptId(currentAsset.passthrough) === video.id) {
-          await syncMuxAsset(supabase, currentAsset);
+          await syncMuxAsset(supabase, currentAsset, muxEnvironment);
         } else {
           needsUploadLookup = true;
         }
@@ -1053,7 +1136,12 @@ export async function reconcileLessonVideo(lessonId: string) {
         );
         if (exactUpload && validReplacement) {
           if (exactUpload.asset_id) {
-            await syncMuxUpload(supabase, mux, exactUpload);
+            await syncMuxUpload(
+              supabase,
+              mux,
+              exactUpload,
+              muxEnvironment,
+            );
           }
           return finishReconciliation(
             supabase,
@@ -1138,7 +1226,12 @@ export async function reconcileLessonVideo(lessonId: string) {
       for (const upload of candidates) {
           const legacy = upload.new_asset_settings?.passthrough === getLessonVideoPassthrough(lessonId);
           if (upload.asset_id) {
-            const sync = await syncMuxUpload(supabase, mux, upload);
+            const sync = await syncMuxUpload(
+              supabase,
+              mux,
+              upload,
+              muxEnvironment,
+            );
             if (sync.outcome === "skipped") {
               if (sync.reason === "replacement-processing") {
                 return finishReconciliation(

@@ -45,6 +45,7 @@ export default async function CursosPage({
       "id,title,slug,short_description,cover_image_url,category,level,duration_minutes,featured,content_type",
     )
     .eq("status", "published")
+    .eq("is_listed", true)
     .order("sort_order", { ascending: true })
     .order("id", { ascending: true });
   if (filters.q) query = query.ilike("title", `%${escapeLike(filters.q)}%`);

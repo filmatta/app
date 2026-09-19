@@ -110,7 +110,10 @@ export default async function AdminCursosPage({
                     >
                       {getLearnContentTypeLabel(contentType)}
                     </span>
-                    <StatusBadge status={item.status} />
+                    <StatusBadge
+                      status={item.status}
+                      listed={item.is_listed !== false}
+                    />
                     {item.featured && (
                       <span className="rounded-full bg-white/5 px-3 py-1 text-xs text-white/40">
                         Destacado
@@ -189,22 +192,34 @@ function FilterLink({
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({
+  status,
+  listed,
+}: {
+  status: string;
+  listed: boolean;
+}) {
+  const label = status === "published"
+    ? listed
+      ? "Publicado · listado"
+      : "Publicado · no listado"
+    : status === "archived"
+      ? "Archivado"
+      : "Borrador";
+
   return (
     <span
       className={`rounded-full px-3 py-1 text-xs ${
         status === "published"
-          ? "bg-green-500/10 text-green-300"
+          ? listed
+            ? "bg-green-500/10 text-green-300"
+            : "bg-blue-400/10 text-blue-200"
           : status === "archived"
             ? "bg-orange-500/10 text-orange-300"
             : "bg-white/5 text-white/40"
       }`}
     >
-      {status === "published"
-        ? "Público"
-        : status === "archived"
-          ? "Archivado"
-          : "Privado"}
+      {label}
     </span>
   );
 }

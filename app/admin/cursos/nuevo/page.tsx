@@ -156,6 +156,24 @@ export default async function NuevoCursoPage({
 
           <VisibilitySwitch id="new-content-public" />
 
+          <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-5 text-sm text-white/60">
+            <input
+              name="is_listed"
+              type="checkbox"
+              defaultChecked
+              className="mt-1 size-4 accent-white"
+            />
+            <span>
+              <span className="block font-semibold text-white/80">
+                Mostrar en catálogo
+              </span>
+              <span className="mt-1 block leading-6 text-white/40">
+                Si se publica, aparecerá en /cursos. Desactívalo para contenido
+                accesible sólo mediante su URL directa.
+              </span>
+            </span>
+          </label>
+
           <label className="flex items-center gap-3 text-sm text-white/60">
             <input
               name="featured"

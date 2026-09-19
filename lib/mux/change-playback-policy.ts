@@ -1,7 +1,8 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createValidatedMuxClient, getVideoAttemptId } from "./server";
+import { assertMuxEnvironmentProvenance } from "./provenance";
+import { createValidatedMuxContext, getVideoAttemptId } from "./server";
 
 type PlaybackPolicy = "public" | "signed";
 
@@ -13,7 +14,7 @@ export async function changeLessonPlaybackPolicy(
   const targetPolicy: PlaybackPolicy = isPreview ? "public" : "signed";
   const { data: video, error } = await supabase
     .from("lesson_videos")
-    .select("id, mux_asset_id, mux_playback_id, playback_policy, status, created_at")
+    .select("id, mux_asset_id, mux_playback_id, playback_policy, status, created_at, mux_environment_id, mux_environment_type")
     .eq("lesson_id", lessonId)
     .maybeSingle();
 
@@ -36,7 +37,15 @@ export async function changeLessonPlaybackPolicy(
     };
   }
 
-  const mux = await createValidatedMuxClient();
+  const { mux, environment } = await createValidatedMuxContext();
+  try {
+    assertMuxEnvironmentProvenance(video, environment);
+  } catch {
+    return {
+      ok: false as const,
+      message: "El video pertenece a otro environment Mux y no puede modificarse aquí.",
+    };
+  }
   const asset = await mux.video.assets.retrieve(video.mux_asset_id);
   const assetAttemptId = getVideoAttemptId(asset.passthrough);
   const pendingReplacement = assetAttemptId

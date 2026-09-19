@@ -310,6 +310,25 @@ export default async function EditarCursoPage({
             archived={course.status === "archived"}
           />
 
+          <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-5 text-sm text-white/60">
+            <input
+              name="is_listed"
+              type="checkbox"
+              defaultChecked={course.is_listed !== false}
+              disabled={course.status === "archived"}
+              className="mt-1 size-4 accent-white disabled:cursor-not-allowed disabled:opacity-40"
+            />
+            <span>
+              <span className="block font-semibold text-white/80">
+                Mostrar en catálogo
+              </span>
+              <span className="mt-1 block leading-6 text-white/40">
+                Sólo afecta contenido publicado. Desactivado, la URL directa
+                continúa funcionando y los buscadores reciben noindex.
+              </span>
+            </span>
+          </label>
+
           <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-4 text-sm text-white/60">
             <input
               name="featured"

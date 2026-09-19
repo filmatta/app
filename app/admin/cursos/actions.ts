@@ -206,6 +206,9 @@ export async function createCourse(formData: FormData) {
 
       status: courseStatus,
 
+      is_listed:
+        formData.get("is_listed") === "on",
+
       featured:
         formData.get("featured") === "on",
 
@@ -404,6 +407,11 @@ export async function updateCourse(
         null,
 
       status: courseStatus,
+
+      is_listed:
+        courseStatus === "archived"
+          ? existingCourse.is_listed !== false
+          : formData.get("is_listed") === "on",
 
       featured:
         formData.get("featured") === "on",
