@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
-export default function Disclosure({ label, active = false, align = "left", panelClassName = "", onOpen, children }: {
-  label: string; active?: boolean; align?: "left" | "right"; panelClassName?: string; onOpen?: () => void; children: ReactNode;
+export default function Disclosure({ label, leading, active = false, align = "left", panelClassName = "", onOpen, children }: {
+  label: string; leading?: ReactNode; active?: boolean; align?: "left" | "right"; panelClassName?: string; onOpen?: () => void; children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const id = useId();
@@ -26,14 +26,15 @@ export default function Disclosure({ label, active = false, align = "left", pane
   return <div ref={root} className="nav-disclosure-root relative" onBlur={event => {
     if (!event.currentTarget.contains(event.relatedTarget as Node)) setOpen(false);
   }}>
-    <button ref={trigger} type="button" aria-expanded={open} aria-controls={id}
+    <button id={`${id}-trigger`} ref={trigger} type="button" aria-expanded={open} aria-controls={id}
       onClick={() => { if (!open) onOpen?.(); setOpen(!open); }} className={`nav-trigger ${active ? "nav-active" : ""}`}>
+      {leading}
       <span>{label}</span>
       <svg aria-hidden="true" viewBox="0 0 16 16" className="nav-caret" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="m4 6 4 4 4-4" />
       </svg>
     </button>
-    <div id={id} hidden={!open} className={`nav-disclosure ${align === "right" ? "right-0" : "left-0"} ${panelClassName}`}
+    <div id={id} aria-labelledby={`${id}-trigger`} hidden={!open} className={`nav-disclosure ${align === "right" ? "right-0" : "left-0"} ${panelClassName}`}
       onClick={event => { if ((event.target as HTMLElement).closest("a")) setOpen(false); }}>{children}</div>
   </div>;
 }

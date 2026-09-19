@@ -8,11 +8,11 @@ import LoadingButton from "@/components/ui/LoadingButton";
 import Disclosure from "./Disclosure";
 import { getAccountNavigation, getPrimaryNavigation, isNavigationActive, publishingNavigation, type NavigationLink } from "@/lib/navigation";
 
-function MenuLinks({ items }: { items: NavigationLink[] }) {
+function MenuLinks({ items, descriptions = true }: { items: NavigationLink[]; descriptions?: boolean }) {
   return <>{items.map(item => {
     const content = <>
       <span>{item.label}</span>
-      {item.description && <span className="mt-1 block text-xs leading-5 text-white/55">{item.description}</span>}
+      {descriptions && item.description && <span className="nav-menu-description">{item.description}</span>}
     </>;
     return item.href === "/admin"
       ? <a key={item.href} href={item.href} className="nav-menu-link">{content}</a>
@@ -20,7 +20,59 @@ function MenuLinks({ items }: { items: NavigationLink[] }) {
   })}</>;
 }
 
-export function AccountNavigation({ role }: { role: string }) {
+function initials(value: string) {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "F";
+  return `${parts[0][0]}${parts.length > 1 ? parts.at(-1)?.[0] ?? "" : ""}`.toUpperCase();
+}
+
+function AccountAvatar({ name, small = false }: { name: string; small?: boolean }) {
+  return <i aria-hidden="true" className={`account-avatar ${small ? "account-avatar--small" : ""}`}>{initials(name)}</i>;
+}
+
+function AccountIdentity({ name, mobile = false }: { name: string; mobile?: boolean }) {
+  return <div className={`account-identity ${mobile ? "account-identity--mobile" : ""}`}>
+    <AccountAvatar name={name} />
+    <span className="min-w-0">
+      <span className="account-identity-name">{name}</span>
+      <span className="account-identity-meta">Mi cuenta</span>
+    </span>
+  </div>;
+}
+
+function DesktopMenu({ item }: { item: { label: string; children: NavigationLink[] } }) {
+  if (item.label === "Tools") {
+    const byLabel = (label: string) => item.children.find(link => link.label === label)!;
+    return <div className="nav-product-menu nav-product-menu--tools">
+      <p className="nav-panel-heading">Tools</p>
+      <div className="nav-tools-grid">
+        <div className="nav-tools-column">
+          <p className="nav-panel-group">Crear</p>
+          <MenuLinks descriptions={false} items={[byLabel("FILMATTA Writer"), byLabel("Production Assistant")]} />
+        </div>
+        <div className="nav-tools-column">
+          <p className="nav-panel-group">Utilidades</p>
+          <MenuLinks descriptions={false} items={[byLabel("Calculadoras y conversores"), byLabel("Todas las herramientas")]} />
+        </div>
+      </div>
+    </div>;
+  }
+
+  if (item.label === "Oportunidades") {
+    return <div className="nav-product-menu nav-product-menu--opportunities">
+      <p className="nav-panel-heading">Oportunidades</p>
+      <div className="nav-opportunities-grid"><MenuLinks descriptions={false} items={item.children} /></div>
+      <p className="nav-panel-note">Convocatorias para hacer posibles los proyectos.</p>
+    </div>;
+  }
+
+  return <div className="nav-product-menu nav-product-menu--profiles">
+    <p className="nav-panel-heading">Perfiles</p>
+    <MenuLinks items={item.children} />
+  </div>;
+}
+
+export function AccountNavigation({ role, displayName }: { role: string; displayName: string }) {
   const pathname = usePathname();
   const [hash, setHash] = useState("");
   const accountLinks = getAccountNavigation(role);
@@ -40,8 +92,9 @@ export function AccountNavigation({ role }: { role: string }) {
       ? <a key={item.href} href={item.href} {...attributes}>{label}</a>
       : <Link key={item.href} href={item.href} {...attributes}>{label}</Link>;
   };
-  return <Disclosure key={pathname} label="Mi cuenta" align="right" panelClassName="account-panel" onOpen={() => setHash(window.location.hash)}>
+  return <Disclosure key={pathname} label="Mi cuenta" leading={<AccountAvatar name={displayName} small />} align="right" panelClassName="account-panel" onOpen={() => setHash(window.location.hash)}>
     <nav aria-label="Menú de cuenta">
+      <AccountIdentity name={displayName} />
       <div className="account-menu-section">
         <p className="account-menu-heading">Mi FILMATTA</p>
         {personalLinks.map(item => accountLink(item))}
@@ -61,8 +114,8 @@ export function AccountNavigation({ role }: { role: string }) {
   </Disclosure>;
 }
 
-export default function GlobalNavigation({ authenticated, role, badge, children }: {
-  authenticated: boolean; role?: string; badge?: ReactNode; children?: ReactNode;
+export default function GlobalNavigation({ authenticated, role, accountName = "Mi cuenta", hasContextLink = false, badge, children }: {
+  authenticated: boolean; role?: string; accountName?: string; hasContextLink?: boolean; badge?: ReactNode; children?: ReactNode;
 }) {
   const pathname = usePathname();
   const links = getPrimaryNavigation(authenticated);
@@ -75,7 +128,7 @@ export default function GlobalNavigation({ authenticated, role, badge, children 
     media.addEventListener("change", resize);
     return () => { media.removeEventListener("change", resize); document.body.style.overflow = ""; };
   }, []);
-  return <header className="global-header border-b border-white/15 bg-[#080808] text-[#f1efe9]">
+  return <header className={`global-header border-b border-white/15 bg-[#080808] text-[#f1efe9] ${hasContextLink ? "global-header--context" : ""}`}>
     <div className="global-header-inner">
       <div className="flex min-w-0 shrink-0 items-center gap-2">
         <Link href="/" aria-label="FILMATTA — Inicio" className="nav-brand">FILMATTA</Link>{badge}
@@ -84,16 +137,16 @@ export default function GlobalNavigation({ authenticated, role, badge, children 
         <ul className="flex items-center gap-3">
           {links.map((item, index) => <li key={item.label} className="flex items-center gap-3">
             {index > 0 && <span aria-hidden="true" className="select-none text-white/25">/</span>}
-            {item.children ? <Disclosure label={item.label} active={isNavigationActive(pathname, item.href) || item.children.some(link => isNavigationActive(pathname, link.href))}>
-              <MenuLinks items={item.children} />
+            {item.children ? <Disclosure label={item.label} panelClassName={`nav-primary-panel nav-primary-panel--${item.label.toLowerCase()}`} active={isNavigationActive(pathname, item.href) || item.children.some(link => isNavigationActive(pathname, link.href))}>
+              <DesktopMenu item={{ label: item.label, children: item.children }} />
             </Disclosure> : <Link href={item.href} aria-current={isNavigationActive(pathname, item.href) ? "page" : undefined} className="nav-trigger">{item.label}</Link>}
           </li>)}
         </ul>
       </nav>
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">
         {authenticated ? <>
-          <div className="hidden min-[1600px]:block"><Disclosure label="Publicar" align="right"><MenuLinks items={publishingNavigation} /></Disclosure></div>
-          <div className="hidden min-[1280px]:block"><AccountNavigation role={role ?? "user"} /></div>
+          <div className="nav-publish-slot hidden min-[1600px]:flex"><Disclosure label="Publicar" align="right" panelClassName="nav-publishing-panel"><MenuLinks items={publishingNavigation} /></Disclosure></div>
+          <div className="nav-account-slot hidden min-[1280px]:flex"><AccountNavigation role={role ?? "user"} displayName={accountName} /></div>
         </> : <>
           <Link href="/login" className="nav-trigger hidden sm:inline-flex">Entrar</Link>
           <Link href="/registro" className="nav-signup hidden sm:inline-flex">Crear cuenta</Link>
@@ -130,6 +183,7 @@ export default function GlobalNavigation({ authenticated, role, badge, children 
           <div className="mt-8">
             {authenticated ? <>
               <p className="mb-2 text-xs uppercase tracking-[0.2em] text-white/50">Tu espacio</p>
+              <AccountIdentity name={accountName} mobile />
               <MenuLinks items={getAccountNavigation(role ?? "user")} />
               <p className="mb-2 mt-7 text-xs uppercase tracking-[0.2em] text-white/50">Publicar</p>
               <MenuLinks items={publishingNavigation} />

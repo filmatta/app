@@ -78,7 +78,11 @@ test("account click outside, Escape, Tab and route navigation", async ({ page, c
     await page.goto("/tools");
     await trigger.click();
     await panel.getByRole("link", { name: label, exact: true }).click();
-    await expect(page).toHaveURL(`http://127.0.0.1:3105${href}`);
+    if (href === "/admin") {
+      await expect(page).toHaveURL("http://127.0.0.1:3105/verificar-admin?next=%2Fadmin");
+    } else {
+      await expect(page).toHaveURL(`http://127.0.0.1:3105${href}`);
+    }
     await expect(panel).not.toBeVisible();
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     if (href.includes("#")) {
