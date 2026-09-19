@@ -11,9 +11,14 @@ const base = process.env.FILMATTA_PREVIEW_URL;
 assert.match(base ?? "", /^https:\/\/app-[a-z0-9]+-filmatta\.vercel\.app$/);
 const config = testConfiguration();
 const setup = createClient(config.NEXT_PUBLIC_SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-const share = JSON.parse(fs.readFileSync(process.env.FILMATTA_PREVIEW_SHARE_FILE, "utf8"));
-const secret = Object.entries(share.protectionBypass).find(([, info]) => info.scope === "shareable-link")?.[0];
-assert.ok(secret, "Scoped share link required");
+const shareFile = process.env.FILMATTA_PREVIEW_SHARE_FILE;
+const bypassCookieFile = process.env.FILMATTA_PREVIEW_BYPASS_COOKIE_FILE;
+assert.ok(shareFile || bypassCookieFile, "Scoped Preview access required");
+const share = shareFile ? JSON.parse(fs.readFileSync(shareFile, "utf8")) : null;
+const secret = share ? Object.entries(share.protectionBypass).find(([, info]) => info.scope === "shareable-link")?.[0] : null;
+const bypassCookie = bypassCookieFile ? JSON.parse(fs.readFileSync(bypassCookieFile, "utf8")) : null;
+if (shareFile) assert.ok(secret, "Scoped share link required");
+if (bypassCookieFile) assert.equal(bypassCookie?.name, "_vercel_jwt", "Vercel bypass cookie required");
 const browser = await chromium.launch({ headless: true, executablePath: process.env.FILMATTA_CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" });
 const report = { preview: base, headers: [], cookies: [], checks: [], cspViolations: [] };
 const users = [];
@@ -28,7 +33,10 @@ async function context() {
   const ctx = await browser.newContext({ extraHTTPHeaders: { "x-vercel-skip-toolbar": "1" } });
   ctx.setDefaultTimeout(20_000);
   ctx.setDefaultNavigationTimeout(25_000);
-  const access = await ctx.request.get(`${base}/?_vercel_share=${encodeURIComponent(secret)}`);
+  if (bypassCookie) {
+    await ctx.addCookies([{ ...bypassCookie, domain: new URL(base).hostname, path: "/", secure: true, httpOnly: true, sameSite: "Lax" }]);
+  }
+  const access = await ctx.request.get(secret ? `${base}/?_vercel_share=${encodeURIComponent(secret)}` : base);
   assert.equal(new URL(access.url()).origin, base, "Preview access failed");
   ctx.on("response", response => {
     const phase = stage;
@@ -159,14 +167,44 @@ try {
   await login(page, admin, "/admin/cursos");
   await page.waitForURL(url=>url.pathname === "/verificar-admin");
   assert.equal(new URL(page.url()).pathname, "/verificar-admin");
-  stage = "mfa-enroll";
-  await page.getByRole("button", { name: "Configurar autenticador", exact: true }).click();
-  await page.locator("code").waitFor();
-  const seed = await page.locator("code").innerText();
+  stage = "mfa-enroll-cta";
+  const enrollmentResponse = page.waitForResponse(response =>
+    new URL(response.url()).pathname.endsWith("/auth/v1/factors") &&
+    response.request().method() === "POST" &&
+    response.status() === 200
+  );
+  await page.getByRole("button", { name: "Configurar 2FA", exact: true }).click();
+  const enrollmentPayload = await (await enrollmentResponse).json();
+  const enrollmentSecret = enrollmentPayload?.totp?.secret;
+  assert.ok(enrollmentSecret, "Supabase Test enrollment secret required");
+  stage = "mfa-enroll-qr";
+  const qr = page.getByAltText("Código QR para configurar tu aplicación de autenticación");
+  await qr.waitFor();
+  const qrBox = await qr.boundingBox();
+  assert.ok(qrBox?.width >= 220 && qrBox.width <= 280, "QR must be large enough to scan");
+  assert.equal(await qr.evaluate(node => getComputedStyle(node.parentElement).backgroundColor), "rgb(255, 255, 255)");
+  await page.getByRole("button", { name: "Mostrar", exact: true }).click();
+  await page.waitForFunction(() => {
+    const text = document.querySelector("code")?.textContent ?? "";
+    return text.length > 0 && !text.includes("•");
+  });
+  const seed = (await page.locator("code").innerText()).replace(/\s/g, "");
+  if (seed !== enrollmentSecret) throw new Error("Manual secret does not match Supabase enrollment");
+  record(`Manual secret metadata: length=${seed.length}; base32=${/^[A-Z2-7]+=*$/i.test(seed)}`);
+  if (Date.now() % 30_000 > 25_000) {
+    await new Promise(resolve => setTimeout(resolve, 31_000 - Date.now() % 30_000));
+  }
   const enrollmentCode = totp(seed);
-  await page.locator("#totp").fill(enrollmentCode);
-  await page.getByRole("button", { name: "Verificar y continuar", exact: true }).click();
-  await page.waitForURL(url=>url.pathname === "/admin/cursos", { timeout: 20000 });
+  await page.locator("#totp-code").fill(enrollmentCode);
+  stage = "mfa-enroll-verify";
+  await page.getByRole("button", { name: "Verificar y activar", exact: true }).click();
+  await Promise.race([
+    page.waitForURL(url=>url.pathname === "/admin/cursos", { timeout: 20000 }),
+    page.locator('p[role="alert"]').last().waitFor({ timeout: 20000 }),
+  ]);
+  if (new URL(page.url()).pathname !== "/admin/cursos") {
+    throw new Error((await page.locator('p[role="alert"]').allInnerTexts()).filter(Boolean).join(" | "));
+  }
   report.cspViolations.push(...await page.evaluate(()=>window.__csp ?? []));
   record("Admin password-only blocked; real TOTP enrollment grants original admin destination");
   await page.goto(base + "/cuenta");
@@ -175,15 +213,18 @@ try {
   await login(page, admin, "/admin");
   await page.waitForURL(url=>url.pathname === "/verificar-admin");
   assert.equal(new URL(page.url()).pathname, "/verificar-admin");
-  assert.equal(await page.getByRole("button", { name: "Configurar autenticador" }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Configurar 2FA" }).count(), 0);
   record("Fresh password login requires existing TOTP challenge again");
   // Supabase rejects replaying the same TOTP timestep, so use the next code.
   if (totp(seed) === enrollmentCode) await new Promise(resolve => setTimeout(resolve, 31_000 - Date.now() % 30_000));
   stage="mfa-challenge";
-  await page.locator("#totp").fill(totp(seed));
-  await page.getByRole("button", { name: "Verificar y continuar", exact: true }).click();
+  await page.locator("#totp-code").fill(totp(seed));
+  await page.getByRole("button", { name: "Verificar identidad", exact: true }).click();
   await page.waitForURL(url=>url.pathname === "/admin");
   record("Existing TOTP challenge grants admin access after fresh login");
+  await page.goto(base + "/cuenta#seguridad");
+  await page.locator('section[aria-labelledby="seguridad-heading"]').getByText("Activa", { exact: true }).waitFor();
+  record("Account security reflects verified factor and current AAL2 session");
   assert.equal((await ctx.cookies("https://app.filmatta.com")).filter(authCookie).length,0);
   record("Cookie jar sends no Preview Auth cookies to Production (no Production request)");
   assert.equal(report.cspViolations.length,0);
@@ -192,7 +233,8 @@ try {
 } catch(error) {
   report.result="FAIL"; report.failedStage=stage;
   report.failedPath=activePage ? new URL(activePage.url()).pathname : null;
-  console.error(`Preview validation failed in ${stage}: ${error.name}`);
+  report.safeError=String(error.message ?? error).split("\n")[0];
+  console.error(`Preview validation failed in ${stage}: ${error.name}: ${report.safeError}`);
   process.exitCode=1;
 } finally {
   await browser.close();

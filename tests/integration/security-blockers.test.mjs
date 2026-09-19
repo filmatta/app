@@ -21,7 +21,13 @@ test("Test only: real JWT MFA, RLS/Storage and distributed publication quotas", 
           if (level === "aal2") {
             const enrolled = await user.client.auth.mfa.enroll({ factorType: "totp", friendlyName: "Security QA" });
             assert.equal(enrolled.error, null, "Test MFA enrollment failed");
-            const verified = await user.client.auth.mfa.challengeAndVerify({ factorId: enrolled.data.id, code: totp(enrolled.data.totp.secret) });
+            const challenge = await user.client.auth.mfa.challenge({ factorId: enrolled.data.id });
+            assert.equal(challenge.error, null, "Test TOTP challenge failed");
+            const verified = await user.client.auth.mfa.verify({
+              factorId: enrolled.data.id,
+              challengeId: challenge.data.id,
+              code: totp(enrolled.data.totp.secret),
+            });
             assert.equal(verified.error, null, "Test TOTP verification failed");
           }
           const assurance = await user.client.auth.mfa.getAuthenticatorAssuranceLevel();

@@ -11,8 +11,10 @@ import {
 import AuthenticatedHeader from "@/components/student/AuthenticatedHeader";
 import AccountNavigationSidebar from "@/components/student/AccountNavigationSidebar";
 import AuthenticatedWorkspaceLayout from "@/components/student/AuthenticatedWorkspaceLayout";
+import MfaTotpManager from "@/components/auth/MfaTotpManager";
 import LoadingButton from "@/components/ui/LoadingButton";
 import { getViewer } from "@/lib/auth/get-viewer";
+import { buildMfaSnapshot } from "@/lib/auth/mfa-state";
 import { getLearnContentType } from "@/lib/learn/content-type";
 import { getResumeActions, type ResumeAction } from "@/lib/learn/resume";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
@@ -65,6 +67,11 @@ export default async function CuentaPage({
   const billing = await getBillingAccess();
 
   const supabase = await createClient();
+  const [mfaFactors, mfaAssurance] = await Promise.all([
+    supabase.auth.mfa.listFactors(),
+    supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+  ]);
+  const mfaSnapshot = buildMfaSnapshot(mfaFactors, mfaAssurance);
   const { data: enrollmentData, error: enrollmentError } = await supabase
     .from("course_enrollments")
     .select("id, course_id, status, enrolled_at, completed_at")
@@ -468,35 +475,7 @@ export default async function CuentaPage({
           title="Seguridad"
           description="Administra las capas adicionales de protección de tu cuenta."
         >
-          <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-6 sm:p-8">
-            <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-start">
-              <div>
-                <h3 className="font-medium text-white/85">
-                  Autenticación en dos pasos
-                </h3>
-                <p className="mt-2 max-w-lg text-sm leading-6 text-white/40">
-                  Añade una capa adicional de seguridad a tu cuenta.
-                </p>
-                <p className="mt-4 text-xs text-white/30">
-                  Esta opción estará disponible próximamente.
-                </p>
-              </div>
-              <span className="w-fit rounded-full border border-white/10 bg-white/[0.025] px-3 py-1.5 text-xs font-medium text-white/35">
-                No configurada
-              </span>
-            </div>
-            <button
-              type="button"
-              disabled
-              aria-describedby="two-factor-unavailable"
-              className="mt-6 cursor-not-allowed rounded-full border border-white/10 px-5 py-3 text-sm font-medium text-white/25"
-            >
-              Configurar 2FA
-            </button>
-            <p id="two-factor-unavailable" className="sr-only">
-              Esta opción estará disponible próximamente.
-            </p>
-          </div>
+          <MfaTotpManager initialSnapshot={mfaSnapshot} />
         </PlaceholderAccountSection>
 
         <section
