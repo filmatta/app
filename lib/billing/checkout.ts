@@ -7,11 +7,6 @@ import { assertExpectedStripeMode, billingConfig, stripeClient } from "./config"
 import { withBillingLock } from "./lock";
 import type { BillingPlan } from "./policy";
 
-const LIVE_SMOKE_TEST_COUPON_NAME = "FILMATTA First Live Smoke Test";
-const LIVE_SMOKE_TEST_COUPON_AMOUNT = 25_000;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const COUPON_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
-
 export async function createCheckout(user: { id: string; email: string | null }, plan: BillingPlan) {
   const config = billingConfig();
   // Hosted Checkout cannot constrain billing countries using allowed_countries.
@@ -21,11 +16,9 @@ export async function createCheckout(user: { id: string; email: string | null },
     throw new Error("Configure STRIPE_MX_TAX_RATE_ID");
   }
   const stripe = stripeClient();
-  const smokeTestCouponId = resolveLiveSmokeTestCouponId(user.id, plan, config.mode);
-  const [account, price, tax, smokeTestCoupon] = await Promise.all([
+  const [account, price, tax] = await Promise.all([
     stripe.accounts.retrieve(config.account), stripe.prices.retrieve(config.prices[plan], { expand: ["product"] }),
     stripe.taxRates.retrieve(config.taxRate),
-    smokeTestCouponId ? stripe.coupons.retrieve(smokeTestCouponId) : Promise.resolve(null),
   ]);
   if (!config.account || account.id !== config.account || account.country !== "MX") throw new Error("Incorrect Stripe account");
   assertExpectedStripeMode(price, config);
@@ -38,17 +31,6 @@ export async function createCheckout(user: { id: string; email: string | null },
   assertExpectedStripeMode(price.product, config);
   if (!tax.active || !tax.inclusive || tax.percentage !== 16 || tax.country !== "MX") {
     throw new Error("Configure an inclusive Mexico 16 percent tax rate");
-  }
-  if (smokeTestCoupon) {
-    assertExpectedStripeMode(smokeTestCoupon, config);
-    if (smokeTestCoupon.id !== smokeTestCouponId ||
-        !smokeTestCoupon.valid || smokeTestCoupon.name !== LIVE_SMOKE_TEST_COUPON_NAME ||
-        smokeTestCoupon.amount_off !== LIVE_SMOKE_TEST_COUPON_AMOUNT || smokeTestCoupon.currency !== "mxn" ||
-        smokeTestCoupon.duration !== "once" || smokeTestCoupon.percent_off !== null ||
-        smokeTestCoupon.times_redeemed !== 0 ||
-        (smokeTestCoupon.applies_to && !smokeTestCoupon.applies_to.products.includes(price.product.id))) {
-      throw new Error("Unexpected Live smoke test coupon");
-    }
   }
   const db = createAdminClient();
   const { data: existing, error } = await db.from("billing_customers").select("stripe_customer_id").eq("user_id", user.id).maybeSingle();
@@ -81,9 +63,7 @@ export async function createCheckout(user: { id: string; email: string | null },
     if (sessions.has_more) throw new Error("Too many checkout sessions");
     for (const session of sessions.data) {
       assertExpectedStripeMode(session, config);
-      const sessionCouponId = session.metadata?.filmatta_smoke_test_coupon ?? null;
-      if (session.metadata?.filmatta_plan === plan &&
-          sessionCouponId === (smokeTestCoupon?.id ?? null) && session.url) return session.url;
+      if (session.metadata?.filmatta_plan === plan && session.url) return session.url;
       // Reusing a different plan would charge the wrong price. Let it expire.
       throw new Error("An unfinished checkout already exists");
     }
@@ -92,12 +72,9 @@ export async function createCheckout(user: { id: string; email: string | null },
       line_items: [{ price: config.prices[plan], quantity: 1 }], payment_method_types: ["card"],
       billing_address_collection: "required", customer_update: { address: "auto", name: "auto" },
       automatic_tax: { enabled: false }, subscription_data: { default_tax_rates: [config.taxRate] },
-      ...(smokeTestCoupon
-        ? { discounts: [{ coupon: smokeTestCoupon.id }] }
-        : { allow_promotion_codes: false }),
+      allow_promotion_codes: false,
       locale: "es", expires_at: Math.floor(Date.now() / 1000) + 1800,
-      metadata: { filmatta_plan: plan,
-        ...(smokeTestCoupon ? { filmatta_smoke_test_coupon: smokeTestCoupon.id } : {}) },
+      metadata: { filmatta_plan: plan },
       success_url: `${config.origin}/billing/return?source=checkout`,
       cancel_url: `${config.origin}/cuenta/suscripcion?checkout=canceled`,
       custom_text: { submit: { message: config.mode === "test"
@@ -108,17 +85,6 @@ export async function createCheckout(user: { id: string; email: string | null },
     if (!session.url) throw new Error("Checkout unavailable");
     return session.url;
   });
-}
-
-function resolveLiveSmokeTestCouponId(userId: string, plan: BillingPlan, mode: "test" | "live") {
-  if (mode !== "live" || plan !== "plus") return null;
-  const qaUserId = process.env.STRIPE_LIVE_SMOKE_TEST_QA_USER_ID?.trim() ?? "";
-  if (!qaUserId || userId !== qaUserId) return null;
-  const couponId = process.env.STRIPE_LIVE_SMOKE_TEST_COUPON_ID?.trim() ?? "";
-  if (!UUID_PATTERN.test(qaUserId) || !COUPON_ID_PATTERN.test(couponId)) {
-    throw new Error("Invalid Live smoke test discount configuration");
-  }
-  return couponId;
 }
 
 export async function createPortal(userId: string) {
