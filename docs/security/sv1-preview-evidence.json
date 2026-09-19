@@ -1,0 +1,263 @@
+{
+  "preview": "https://app-jjcny9i60-filmatta.vercel.app",
+  "headers": [
+    {
+      "path": "/",
+      "status": 200,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/login",
+      "status": 200,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/admin",
+      "status": 307,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/cursos",
+      "status": 200,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/perfiles",
+      "status": 200,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/locaciones",
+      "status": 200,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/oportunidades",
+      "status": 200,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/jobs",
+      "status": 200,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/marketplace",
+      "status": 200,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/planes",
+      "status": 200,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/tools",
+      "status": 200,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/recuperar-contrasena",
+      "status": 200,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/restablecer-contrasena",
+      "status": 200,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    },
+    {
+      "path": "/api/mux/webhooks",
+      "status": 405,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://src.litix.io https://vercel.live; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://vercel.live; img-src 'self' data: blob: https:; font-src 'self' data: https://vercel.live https://assets.vercel.com; connect-src 'self' https://*.mux.com https://*.litix.io https://storage.googleapis.com https://vercel.live wss://ws-us3.pusher.com https://ezlycwkuzkwcnhrhiruv.supabase.co wss://ezlycwkuzkwcnhrhiruv.supabase.co; media-src 'self' blob: https://*.mux.com; worker-src 'self' blob:; frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://vercel.live; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
+      "hsts": "max-age=63072000; includeSubDomains; preload",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "permissionsPolicy": "camera=(), microphone=(), geolocation=(), payment=()"
+    }
+  ],
+  "cookies": [
+    {
+      "phase": "login",
+      "name": "sb-ezlycwkuzkwcnhrhiruv-auth-token",
+      "attributes": [
+        "Path=/",
+        "Expires=Sun, 24 Oct 2027 02:35:31 GMT",
+        "Max-Age=34560000",
+        "Secure",
+        "SameSite=lax"
+      ]
+    },
+    {
+      "phase": "refresh",
+      "name": "sb-ezlycwkuzkwcnhrhiruv-auth-token",
+      "attributes": [
+        "Path=/",
+        "Expires=Sun, 24 Oct 2027 02:35:41 GMT",
+        "Max-Age=34560000",
+        "Secure",
+        "SameSite=lax"
+      ]
+    },
+    {
+      "phase": "logout",
+      "name": "sb-ezlycwkuzkwcnhrhiruv-auth-token",
+      "attributes": [
+        "Path=/",
+        "Max-Age=0",
+        "Secure",
+        "SameSite=lax"
+      ]
+    },
+    {
+      "phase": "recovery",
+      "name": "sb-ezlycwkuzkwcnhrhiruv-auth-token-flow-fbc21954697c5ac69ffbc5284b3917b8-code-verifier",
+      "attributes": [
+        "Path=/",
+        "Max-Age=0",
+        "Secure",
+        "SameSite=lax"
+      ]
+    },
+    {
+      "phase": "recovery",
+      "name": "sb-ezlycwkuzkwcnhrhiruv-auth-token-flows-code-verifier",
+      "attributes": [
+        "Path=/",
+        "Max-Age=0",
+        "Secure",
+        "SameSite=lax"
+      ]
+    },
+    {
+      "phase": "recovery",
+      "name": "sb-ezlycwkuzkwcnhrhiruv-auth-token-code-verifier",
+      "attributes": [
+        "Path=/",
+        "Expires=Sun, 24 Oct 2027 02:35:44 GMT",
+        "Max-Age=34560000",
+        "Secure",
+        "SameSite=lax"
+      ]
+    },
+    {
+      "phase": "login",
+      "name": "sb-ezlycwkuzkwcnhrhiruv-auth-token",
+      "attributes": [
+        "Path=/",
+        "Expires=Sun, 24 Oct 2027 02:35:50 GMT",
+        "Max-Age=34560000",
+        "Secure",
+        "SameSite=lax"
+      ]
+    },
+    {
+      "phase": "mfa-enroll",
+      "name": "sb-ezlycwkuzkwcnhrhiruv-auth-token-code-verifier",
+      "attributes": [
+        "Path=/",
+        "Max-Age=0",
+        "Secure",
+        "SameSite=lax"
+      ]
+    },
+    {
+      "phase": "mfa-enroll",
+      "name": "sb-ezlycwkuzkwcnhrhiruv-auth-token.0",
+      "attributes": [
+        "Path=/",
+        "Max-Age=0",
+        "Secure",
+        "SameSite=lax"
+      ]
+    },
+    {
+      "phase": "mfa-enroll",
+      "name": "sb-ezlycwkuzkwcnhrhiruv-auth-token.1",
+      "attributes": [
+        "Path=/",
+        "Max-Age=0",
+        "Secure",
+        "SameSite=lax"
+      ]
+    },
+    {
+      "phase": "login",
+      "name": "sb-ezlycwkuzkwcnhrhiruv-auth-token.0",
+      "attributes": [
+        "Path=/",
+        "Expires=Sun, 24 Oct 2027 02:35:56 GMT",
+        "Max-Age=34560000",
+        "Secure",
+        "SameSite=lax"
+      ]
+    },
+    {
+      "phase": "login",
+      "name": "sb-ezlycwkuzkwcnhrhiruv-auth-token.1",
+      "attributes": [
+        "Path=/",
+        "Expires=Sun, 24 Oct 2027 02:35:56 GMT",
+        "Max-Age=34560000",
+        "Secure",
+        "SameSite=lax"
+      ]
+    }
+  ],
+  "checks": [
+    "HTTPS headers/HSTS on fourteen routes",
+    "Unsigned and oversized Mux webhooks rejected before processing",
+    "Primary navigation, catalogs, tools and Billing plans render without runtime errors",
+    "Login creates secure host-only Test session",
+    "Three valid destinations and twelve malicious redirects checked over HTTPS",
+    "Normal user denied admin",
+    "Refresh rotates tokens and rewrites session cookies",
+    "Logout removes all Auth chunks",
+    "Recovery request retains generic response; email delivery not asserted",
+    "Invalid callback stays internal without creating a session",
+    "Admin password-only blocked; real TOTP enrollment grants original admin destination",
+    "Fresh password login requires existing TOTP challenge again",
+    "Existing TOTP challenge grants admin access after fresh login",
+    "Cookie jar sends no Preview Auth cookies to Production (no Production request)"
+  ],
+  "cspViolations": [],
+  "result": "PASS"
+}

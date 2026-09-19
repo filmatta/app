@@ -3,6 +3,7 @@ import { test } from "node:test";
 import load from "./load.mjs";
 
 function loadRoute({ event, signatureError = null }) {
+  class BodyReadError extends Error {}
   const calls = {
     environment: 0,
     uploadRetrieve: 0,
@@ -31,6 +32,11 @@ function loadRoute({ event, signatureError = null }) {
     "app/api/mux/webhooks/route.ts",
     {
       "@/lib/mux/server": { createMuxClient: () => mux },
+      "@/lib/security/bounded-body": {
+        BodyReadError,
+        validateContentLength() {},
+        readBoundedBody: (request) => request.text(),
+      },
       "@/lib/mux/environment": {
         getMuxEnvironmentExpectation: () => ({
           id: "env-production-fixture",
@@ -58,6 +64,7 @@ function request() {
   return new Request("https://example.test/api/mux/webhooks", {
     method: "POST",
     body: "fixture-body",
+    headers: { "mux-signature": "fixture-signature" },
   });
 }
 

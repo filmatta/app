@@ -1,5 +1,9 @@
 # SV1-01 — Auth y redirecciones seguras
 
+Esta sección conserva la revisión inicial de SV1-01. El paquete SV1-04 posterior
+añade `Secure` explícito y valida cookies reales en HTTPS; véanse
+`sv1-04-web-edge.md` y `sv1-final-validation.md` para el estado final.
+
 ## Cookies y sesión revisadas
 
 FILMATTA no sobrescribe actualmente las opciones de cookies de `@supabase/ssr`.

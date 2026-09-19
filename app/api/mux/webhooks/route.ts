@@ -5,15 +5,30 @@ import {
 } from "@/lib/mux/environment";
 import { syncMuxAsset, syncMuxUpload } from "@/lib/mux/sync-asset";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { BodyReadError, readBoundedBody, validateContentLength } from "@/lib/security/bounded-body";
+
+const MAX_WEBHOOK_BYTES = 1024 * 1024;
 
 export const runtime = "nodejs";
 export async function POST(request: Request) {
+  try {
+    validateContentLength(request.headers, MAX_WEBHOOK_BYTES);
+  } catch (error) {
+    return Response.json({ error: "Body inválido." }, { status: error instanceof BodyReadError ? error.status : 400 });
+  }
+  if (!request.headers.get("mux-signature")) {
+    return Response.json({ error: "Firma inválida." }, { status: 400 });
+  }
   const secret = process.env.MUX_WEBHOOK_SECRET;
   if (!secret) return Response.json({ error: "Webhook no configurado." }, { status: 503 });
   let event;
   try {
-    event = await createMuxClient().webhooks.unwrap(await request.text(), request.headers, secret);
-  } catch {
+    const body = await readBoundedBody(request, MAX_WEBHOOK_BYTES);
+    event = await createMuxClient().webhooks.unwrap(body, request.headers, secret);
+  } catch (error) {
+    if (error instanceof BodyReadError) {
+      return Response.json({ error: "Body inválido." }, { status: error.status });
+    }
     console.warn("Mux webhook rejected", { reason: "invalid-signature" });
     return Response.json({ error: "Firma inválida." }, { status: 400 });
   }

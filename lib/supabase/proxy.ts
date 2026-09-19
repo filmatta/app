@@ -1,15 +1,21 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  applyAuthCookiePolicy,
+  getServerAuthCookiePolicy,
+} from "@/lib/supabase/auth-cookie-policy";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
+  const cookiePolicy = getServerAuthCookiePolicy();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      cookieOptions: cookiePolicy,
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -25,7 +31,11 @@ export async function updateSession(request: NextRequest) {
           });
 
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(
+              name,
+              value,
+              applyAuthCookiePolicy(options, cookiePolicy),
+            )
           );
         },
       },

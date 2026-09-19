@@ -28,8 +28,10 @@ export default function load(file, mocks = {}, env = {}) {
       FormData,
       Date,
       setTimeout,
+      clearTimeout,
+      TextDecoder,
       process: { env },
-      console: { error() {} },
+      console: { error() {}, info() {}, warn() {} },
       require(name) {
         if (Object.hasOwn(mocks, name)) return mocks[name];
         if (name === "server-only") return {};
