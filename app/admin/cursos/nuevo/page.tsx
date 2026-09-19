@@ -12,7 +12,7 @@ export default async function NuevoCursoPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const [{ supabase }, params] = await Promise.all([requireAdmin(), searchParams]);
+  const [{ supabase }, params] = await Promise.all([requireAdmin("/admin/cursos/nuevo"), searchParams]);
   const contentTypeSupport = await getContentTypeSupport(supabase);
   const contentTypesAvailable = contentTypeSupport === "available";
 

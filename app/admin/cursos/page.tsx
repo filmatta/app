@@ -15,7 +15,7 @@ export default async function AdminCursosPage({
 }: {
   searchParams: Promise<{ type?: string }>;
 }) {
-  const [{ supabase }, params] = await Promise.all([requireAdmin(), searchParams]);
+  const [{ supabase }, params] = await Promise.all([requireAdmin("/admin/cursos"), searchParams]);
   const activeFilter = getContentFilter(params.type);
   const { data: content, error } = await supabase
     .from("courses")

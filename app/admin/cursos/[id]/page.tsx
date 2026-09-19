@@ -51,7 +51,7 @@ export default async function EditarCursoPage({
   const { id } = await params;
   const query = await searchParams;
 
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireAdmin(`/admin/cursos/${id}`);
 
   const { data: course, error } = await supabase
     .from("courses")

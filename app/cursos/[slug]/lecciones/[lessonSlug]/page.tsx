@@ -7,6 +7,7 @@ import { enrollInCourse } from "@/app/cursos/[slug]/actions";
 import LessonProgressControls from "@/app/cursos/[slug]/lecciones/[lessonSlug]/LessonProgressControls";
 import AuthenticatedHeader from "@/components/student/AuthenticatedHeader";
 import { getViewer } from "@/lib/auth/get-viewer";
+import { requireAdmin } from "@/lib/auth/require-admin";
 import { getLearnContentType } from "@/lib/learn/content-type";
 import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
 import { createClient } from "@/lib/supabase/server";
@@ -68,6 +69,9 @@ export default async function LessonPage({
   ]);
   const viewer = await getViewer();
   const isAdmin = viewer?.role === "admin";
+  if (isAdmin) {
+    await requireAdmin(`/cursos/${slug}/lecciones/${lessonSlug}`);
+  }
   const supabase = await createClient();
 
   let courseQuery = supabase

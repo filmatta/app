@@ -14,7 +14,7 @@ export default async function AdminPlansPage({
 }: {
   searchParams: Promise<{ q?: string; success?: string; error?: string }>;
 }) {
-  await requireAdmin();
+  await requireAdmin("/admin/planes");
   const query = await searchParams;
   const identifier = query.q?.trim() ?? "";
   let context: Awaited<ReturnType<typeof getAdminGrantContext>> = null;
