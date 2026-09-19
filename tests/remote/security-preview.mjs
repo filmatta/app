@@ -13,7 +13,9 @@ const config = testConfiguration();
 const setup = createClient(config.NEXT_PUBLIC_SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const shareFile = process.env.FILMATTA_PREVIEW_SHARE_FILE;
 const bypassCookieFile = process.env.FILMATTA_PREVIEW_BYPASS_COOKIE_FILE;
-assert.ok(shareFile || bypassCookieFile, "Scoped Preview access required");
+const bypassSecret = process.env.FILMATTA_PREVIEW_BYPASS_SECRET ??
+  process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+assert.ok(shareFile || bypassCookieFile || bypassSecret, "Scoped Preview access required");
 const share = shareFile ? JSON.parse(fs.readFileSync(shareFile, "utf8")) : null;
 const secret = share ? Object.entries(share.protectionBypass).find(([, info]) => info.scope === "shareable-link")?.[0] : null;
 const bypassCookie = bypassCookieFile ? JSON.parse(fs.readFileSync(bypassCookieFile, "utf8")) : null;
@@ -30,7 +32,10 @@ const authCookie = c => c.name.startsWith("sb-ezlycwkuzkwcnhrhiruv-auth-token");
 const record = text => { report.checks.push(text); console.log(text); };
 
 async function context() {
-  const ctx = await browser.newContext({ extraHTTPHeaders: { "x-vercel-skip-toolbar": "1" } });
+  const ctx = await browser.newContext({ extraHTTPHeaders: {
+    "x-vercel-skip-toolbar": "1",
+    ...(bypassSecret ? { "x-vercel-protection-bypass": bypassSecret } : {}),
+  } });
   ctx.setDefaultTimeout(20_000);
   ctx.setDefaultNavigationTimeout(25_000);
   if (bypassCookie) {
@@ -87,6 +92,7 @@ try {
     assert.ok(headers["content-security-policy"]?.includes("frame-ancestors 'none'"), path);
     assert.equal(headers["x-content-type-options"], "nosniff");
     assert.ok(headers["strict-transport-security"]?.includes("max-age="));
+    if (path.startsWith("/admin")) assert.match(headers["cache-control"] ?? "", /no-store/);
     report.headers.push({ path, status: response.status(), csp: headers["content-security-policy"], hsts: headers["strict-transport-security"], referrerPolicy: headers["referrer-policy"], permissionsPolicy: headers["permissions-policy"] });
   }
   record("HTTPS headers/HSTS on fourteen routes");
@@ -215,16 +221,44 @@ try {
   assert.equal(new URL(page.url()).pathname, "/verificar-admin");
   assert.equal(await page.getByRole("button", { name: "Configurar 2FA" }).count(), 0);
   record("Fresh password login requires existing TOTP challenge again");
+  stage="mfa-aal1-admin-routes";
+  for (const path of ["/admin", "/admin/cursos", "/admin/cursos/nuevo", "/admin/planes"]) {
+    const direct = await ctx.request.get(base + path, { maxRedirects: 0 });
+    assert.equal(direct.status(), 307);
+    const challenge = new URL(direct.headers().location, base);
+    assert.equal(challenge.pathname, "/verificar-admin");
+    assert.equal(challenge.searchParams.get("next"), path);
+    await page.goto(base + path);
+    await page.waitForURL(url=>url.pathname === "/verificar-admin");
+    assert.equal(new URL(page.url()).searchParams.get("next"), path);
+  }
+  await page.reload();
+  await page.waitForURL(url=>url.pathname === "/verificar-admin");
+  record("AAL1 direct, refresh and nested Admin routes always return to the MFA challenge");
   // Supabase rejects replaying the same TOTP timestep, so use the next code.
   if (totp(seed) === enrollmentCode) await new Promise(resolve => setTimeout(resolve, 31_000 - Date.now() % 30_000));
   stage="mfa-challenge";
   await page.locator("#totp-code").fill(totp(seed));
   await page.getByRole("button", { name: "Verificar identidad", exact: true }).click();
-  await page.waitForURL(url=>url.pathname === "/admin");
-  record("Existing TOTP challenge grants admin access after fresh login");
+  await page.waitForURL(url=>url.pathname === "/admin/planes");
+  record("Existing TOTP challenge grants the original nested Admin destination after fresh login");
   await page.goto(base + "/cuenta#seguridad");
   await page.locator('section[aria-labelledby="seguridad-heading"]').getByText("Activa", { exact: true }).waitFor();
   record("Account security reflects verified factor and current AAL2 session");
+  stage="mfa-aal1-back-button";
+  const cachedAdminPage = await ctx.newPage();
+  await cachedAdminPage.goto(base + "/admin");
+  assert.equal(new URL(cachedAdminPage.url()).pathname, "/admin");
+  await page.goto(base + "/cuenta");
+  await page.locator('section[aria-labelledby="logout-heading"]').getByRole("button", { name: "Cerrar sesión", exact: true }).click();
+  await page.waitForURL(url=>url.pathname === "/");
+  await login(page, admin, "/cuenta");
+  await cachedAdminPage.goto(base + "/cuenta");
+  await cachedAdminPage.goBack({ waitUntil: "domcontentloaded" });
+  await cachedAdminPage.waitForURL(url=>url.pathname === "/verificar-admin");
+  assert.equal(new URL(cachedAdminPage.url()).searchParams.get("next"), "/admin");
+  await cachedAdminPage.close();
+  record("Browser back cannot restore a cached Admin view after a fresh AAL1 login");
   assert.equal((await ctx.cookies("https://app.filmatta.com")).filter(authCookie).length,0);
   record("Cookie jar sends no Preview Auth cookies to Production (no Production request)");
   assert.equal(report.cspViolations.length,0);

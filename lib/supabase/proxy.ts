@@ -6,9 +6,20 @@ import {
 } from "@/lib/supabase/auth-cookie-policy";
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  });
+  const createResponse = () => {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set(
+      "x-filmatta-request-path",
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+    );
+
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
+  };
+  let supabaseResponse = createResponse();
   const cookiePolicy = getServerAuthCookiePolicy();
 
   const supabase = createServerClient(
@@ -26,9 +37,7 @@ export async function updateSession(request: NextRequest) {
             request.cookies.set(name, value)
           );
 
-          supabaseResponse = NextResponse.next({
-            request,
-          });
+          supabaseResponse = createResponse();
 
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(

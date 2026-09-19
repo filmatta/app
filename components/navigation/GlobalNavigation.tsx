@@ -9,10 +9,15 @@ import Disclosure from "./Disclosure";
 import { getAccountNavigation, getPrimaryNavigation, isNavigationActive, publishingNavigation, type NavigationLink } from "@/lib/navigation";
 
 function MenuLinks({ items }: { items: NavigationLink[] }) {
-  return <>{items.map(item => <Link key={item.href} href={item.href} className="nav-menu-link">
-    <span>{item.label}</span>
-    {item.description && <span className="mt-1 block text-xs leading-5 text-white/55">{item.description}</span>}
-  </Link>)}</>;
+  return <>{items.map(item => {
+    const content = <>
+      <span>{item.label}</span>
+      {item.description && <span className="mt-1 block text-xs leading-5 text-white/55">{item.description}</span>}
+    </>;
+    return item.href === "/admin"
+      ? <a key={item.href} href={item.href} className="nav-menu-link">{content}</a>
+      : <Link key={item.href} href={item.href} className="nav-menu-link">{content}</Link>;
+  })}</>;
 }
 
 export function AccountNavigation({ role }: { role: string }) {
@@ -27,7 +32,13 @@ export function AccountNavigation({ role }: { role: string }) {
     const active = item.href.includes("#")
       ? pathname === "/cuenta" && (item.href.endsWith("#mis-cursos") ? hash === "#mis-cursos" : hash !== "#mis-cursos")
       : isNavigationActive(pathname, item.href);
-    return <Link key={item.href} href={item.href} aria-current={active ? (item.href.includes("#") ? "location" : "page") : undefined} className="account-menu-link">{label}</Link>;
+    const attributes = {
+      "aria-current": active ? (item.href.includes("#") ? "location" as const : "page" as const) : undefined,
+      className: "account-menu-link",
+    };
+    return item.href === "/admin"
+      ? <a key={item.href} href={item.href} {...attributes}>{label}</a>
+      : <Link key={item.href} href={item.href} {...attributes}>{label}</Link>;
   };
   return <Disclosure key={pathname} label="Mi cuenta" align="right" panelClassName="account-panel" onOpen={() => setHash(window.location.hash)}>
     <nav aria-label="Menú de cuenta">
