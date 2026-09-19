@@ -34,6 +34,42 @@ export async function login(formData: FormData) {
   redirect(nextPath);
 }
 
+export async function signInWithGoogle(formData: FormData) {
+  const nextPath = getSafePostAuthPath(formData.get("next"));
+  const requestHeaders = await headers();
+  const callbackUrl = getOAuthCallbackUrl(
+    requestHeaders.get("origin"),
+    nextPath,
+  );
+
+  if (!callbackUrl) {
+    redirect(
+      getAuthFeedbackUrl("/login", nextPath, {
+        error: "No pudimos iniciar sesión con Google. Inténtalo de nuevo.",
+      }),
+    );
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: callbackUrl,
+    },
+  });
+
+  if (error || !data.url) {
+    console.error("Error iniciando OAuth con Google:", error);
+    redirect(
+      getAuthFeedbackUrl("/login", nextPath, {
+        error: "No pudimos iniciar sesión con Google. Inténtalo de nuevo.",
+      }),
+    );
+  }
+
+  redirect(data.url);
+}
+
 export async function signUp(formData: FormData) {
   const supabase = await createClient();
   const email = String(formData.get("email") ?? "").trim();
@@ -104,4 +140,18 @@ function getAuthFeedbackUrl(
   }
 
   return `${pathname}?${searchParams.toString()}`;
+}
+
+function getOAuthCallbackUrl(origin: string | null, nextPath: string) {
+  if (!origin) return null;
+
+  try {
+    const url = new URL("/auth/callback", origin);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+
+    url.searchParams.set("next", nextPath);
+    return url.toString();
+  } catch {
+    return null;
+  }
 }

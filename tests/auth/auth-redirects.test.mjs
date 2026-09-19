@@ -20,6 +20,23 @@ test("login, signup and callback sanitize post-auth destinations", () => {
   assert.match(files.callback, /getSafePostAuthPath\(/);
   assert.match(files.login, /getSafePostAuthPath\(params\.next \?\? null\)/);
   assert.match(files.signup, /getSafePostAuthPath\(params\.next \?\? null\)/);
+  assert.match(files.actions, /signInWithGoogle\(formData: FormData\)/);
+  assert.match(
+    files.actions,
+    /getSafePostAuthPath\(formData\.get\("next"\)\)/,
+  );
+});
+
+test("Google OAuth uses the server client and the shared PKCE callback", () => {
+  assert.match(files.actions, /provider: "google"/);
+  assert.match(files.actions, /signInWithOAuth\(/);
+  assert.match(files.actions, /new URL\("\/auth\/callback", origin\)/);
+  assert.match(files.actions, /url\.searchParams\.set\("next", nextPath\)/);
+  assert.match(files.callback, /exchangeCodeForSession\(code\)/);
+
+  for (const page of [files.login, files.signup]) {
+    assert.match(page, /GoogleSignInForm nextPath=\{nextPath\}/);
+  }
 });
 
 test("recovery and password reset sanitize every caller-controlled next", () => {
