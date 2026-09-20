@@ -16,17 +16,20 @@ import ProfileImage from "./ProfileImage";
 import ReelPlayer from "./ReelPlayer";
 import ShareProfile from "./ShareProfile";
 import ProfileBio from "./ProfileBio";
+import ProfileContactDialog from "./ProfileContactDialog";
 import "./profile-public-v2.css";
 
 export default function ProfilePortfolio({
   profile,
   signedIn = false,
+  owner = false,
   preview = false,
   media,
   sectionControls = {},
 }: {
   profile: PublicProfessionalProfile;
   signedIn?: boolean;
+  owner?: boolean;
   preview?: boolean;
   media?: ReactNode;
   sectionControls?: Partial<
@@ -83,9 +86,12 @@ export default function ProfilePortfolio({
             </div>
           </div>
           <div className="p2-actions">
-            <a className="p2-contact-button" href="#contact">
-              Contactar ↗
-            </a>
+            {preview ? null : owner ? (
+              <Link className="p2-contact-button" href="/mi-perfil">Editar perfil</Link>
+            ) : profile.contact_policy === "members_only" ? (
+              signedIn ? <ProfileContactDialog slug={profile.slug} name={name} compact /> :
+                <Link className="p2-contact-button" href={`/login?next=${encodeURIComponent("/perfiles/" + profile.slug + "#contact")}`}>Contactar ↗</Link>
+            ) : null}
             {!preview && <ShareProfile slug={profile.slug} compact />}
           </div>
         </div>
@@ -273,19 +279,10 @@ export default function ProfilePortfolio({
               <>
                 {preview ? (
                   <p>Contactar · acceso con cuenta</p>
+                ) : owner ? (
+                  <><Link className="p2-contact-button" href="/mi-perfil">Editar mi perfil</Link><p>Este es tu perfil público.</p></>
                 ) : signedIn ? (
-                  <>
-                    <button
-                      type="button"
-                      className="p2-contact-button"
-                      disabled
-                    >
-                      Contactar · próximamente
-                    </button>
-                    <p>
-                      Las solicitudes entre perfiles aún no están disponibles.
-                    </p>
-                  </>
+                  <ProfileContactDialog slug={profile.slug} name={name} />
                 ) : (
                   <>
                     <Link
@@ -295,8 +292,7 @@ export default function ProfilePortfolio({
                       Contactar ↗
                     </Link>
                     <p>
-                      Inicia sesión. Las solicitudes entre perfiles estarán
-                      disponibles próximamente.
+                      Inicia sesión para enviar una consulta privada.
                     </p>
                   </>
                 )}

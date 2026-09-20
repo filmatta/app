@@ -129,6 +129,36 @@
   border-color: #ffffff25;
   cursor: default;
 }
+.profile-contact-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  color: #f1efe9;
+  background: #0c0d0e;
+  border: 1px solid #b9dceb55;
+  border-radius: 8px;
+  box-shadow: 0 28px 90px #000c;
+}
+.profile-contact-dialog::backdrop { background: #000b; backdrop-filter: blur(5px); }
+.profile-contact-panel { padding: 28px; }
+.profile-contact-panel header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; border-bottom: 1px solid #ffffff20; padding-bottom: 22px; }
+.profile-contact-panel h2 { margin-top: 8px; font-size: 24px; }
+.profile-contact-close { min-width: 40px; min-height: 40px; border: 1px solid #ffffff25; border-radius: 50%; font-size: 22px; }
+.profile-contact-panel label { display: grid; gap: 9px; margin-top: 22px; color: #cfd2cf; font-size: 12px; }
+.profile-contact-panel :is(select, textarea) { width: 100%; border: 1px solid #ffffff2d; border-radius: 4px; background: #111314; color: #f1efe9; padding: 12px 14px; font-size: 14px; }
+.profile-contact-panel textarea { min-height: 150px; resize: vertical; line-height: 1.6; }
+.profile-contact-panel :is(select, textarea):focus { outline: 2px solid #b9dceb; outline-offset: 2px; }
+.profile-contact-count { display: flex; justify-content: space-between; gap: 16px; margin-top: 7px; color: #8e9696; font-size: 11px; }
+.profile-contact-note { margin: 18px 0; color: #abb0ae; font-size: 12px; line-height: 1.6; }
+.profile-contact-error { margin: 0 0 16px; color: #fecaca; font-size: 13px; line-height: 1.5; }
+@media (max-width: 480px) {
+  .profile-contact-dialog { width: 100%; max-width: none; max-height: 92dvh; margin: auto 0 0; border-radius: 10px 10px 0 0; }
+  .profile-contact-panel { padding: 22px 20px max(24px, env(safe-area-inset-bottom)); }
+  .profile-contact-panel textarea { min-height: 180px; }
+}
+@media (prefers-reduced-motion: reduce) { .profile-contact-dialog::backdrop { backdrop-filter: none; } }
 .p2-share-compact {
   position: relative;
 }

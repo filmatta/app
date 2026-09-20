@@ -33,6 +33,10 @@ export default async function PublicProfilePage({ params }: Props) {
     p_slug: slug,
   });
   if (error) throw new Error("No pudimos cargar el portfolio.");
+  const owned = viewer
+    ? await db.from("professional_profiles").select("user_id")
+        .eq("user_id", viewer.id).eq("slug", slug).maybeSingle()
+    : null;
   return (
     <div className="editorial-page profiles-page">
       <SiteHeader />
@@ -40,6 +44,7 @@ export default async function PublicProfilePage({ params }: Props) {
         <ProfilePortfolio
           profile={profile}
           signedIn={Boolean(viewer)}
+          owner={Boolean(owned?.data)}
           media={
             media === null ? undefined : (
               <PortfolioMedia
