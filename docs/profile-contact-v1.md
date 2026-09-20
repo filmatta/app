@@ -31,3 +31,5 @@ El archivo es individual mediante `sender_archived_at` / `recipient_archived_at`
 ## Migración y release
 
 Migración: `20260922010000_profile_contacts.sql`. Es aditiva, conserva consultas Services/Jobs, mantiene RLS y añade índices/constraints. Se aplica primero en Supabase Test. Para Production: auditar drift, aplicar exactamente esta migración, configurar variables server-side de email, desplegar el commit aprobado y ejecutar smoke con dos cuentas controladas; nunca enviar email Production durante QA.
+
+El Preview de esta rama debe usar variables branch-scoped para `ezlycwkuzkwcnhrhiruv`. El envío de correo permanece desactivado durante QA; no se hereda Supabase Production ni se configura un destinatario real.
