@@ -1,102 +1,96 @@
-[WebServer] (node:6476) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:39556) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:20708) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:27028) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:36516) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:39916) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] ⚠ Slow filesystem detected. The benchmark took 264ms. If \\?\G:\PROYECTOS\filmatta-profiles-talent\.next\dev is a network drive, consider moving it to a local folder.
-[WebServer] See more: https://nextjs.org/docs/app/guides/local-development
-[WebServer] (node:35380) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:38392) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
 
 Running 31 tests using 1 worker
 
-(node:25492) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:39460) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-  ok  1 tests\e2e\account-dropdown.spec.ts:11:7 › account user: desktop panel, shared alignment and screenshots (2.4s)
-  ok  2 tests\e2e\account-dropdown.spec.ts:11:7 › account admin: desktop panel, shared alignment and screenshots (2.0s)
+  ok  1 tests\e2e\account-dropdown.spec.ts:11:7 › account user: desktop panel, shared alignment and screenshots (2.3s)
+  ok  2 tests\e2e\account-dropdown.spec.ts:11:7 › account admin: desktop panel, shared alignment and screenshots (1.9s)
 [WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
 [WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
 [WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
 [WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
 [WebServer] Using the user object as returned from supabase.auth.getSession() or from some supabase.auth.onAuthStateChange() events could be insecure! This value comes directly from the storage medium (usually cookies on the server) and may not be authentic. Use supabase.auth.getUser() instead which authenticates the data by contacting the Supabase Auth server.
-  ok  3 tests\e2e\account-dropdown.spec.ts:56:5 › account click outside, Escape, Tab and route navigation (8.2s)
-  ok  4 tests\e2e\account-dropdown.spec.ts:100:5 › mobile keeps account links in its existing drawer only (696ms)
+  ok  3 tests\e2e\account-dropdown.spec.ts:56:5 › account click outside, Escape, Tab and route navigation (7.9s)
+  ok  4 tests\e2e\account-dropdown.spec.ts:100:5 › mobile keeps account links in its existing drawer only (671ms)
   ok  5 tests\e2e\header-polish.spec.ts:38:5 › desktop panels connect to the header and preserve their editorial widths (2.5s)
-  ok  6 tests\e2e\header-polish.spec.ts:80:5 › desktop dropdown switching, outside click and Escape stay predictable (648ms)
-  ok  7 tests\e2e\header-polish.spec.ts:97:5 › header stays aligned at desktop breakpoints and the mobile drawer keeps its account block (1.2s)
-  ok  8 tests\e2e\navigation.spec.ts:29:5 › desktop dropdown works with keyboard, closes on Escape and restores focus (566ms)
-[WebServer] (node:23456) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+  ok  6 tests\e2e\header-polish.spec.ts:80:5 › desktop dropdown switching, outside click and Escape stay predictable (707ms)
+  ok  7 tests\e2e\header-polish.spec.ts:97:5 › header stays aligned at desktop breakpoints and the mobile drawer keeps its account block (1.3s)
+  ok  8 tests\e2e\navigation.spec.ts:29:5 › desktop dropdown works with keyboard, closes on Escape and restores focus (545ms)
+[WebServer] (node:38828) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-  ok  9 tests\e2e\navigation.spec.ts:49:5 › mobile dialog traps focus, restores it and closes on navigation (1.5s)
-  ok 10 tests\e2e\navigation.spec.ts:74:7 › server session user has direct catalogs and correct account access (560ms)
-  ok 11 tests\e2e\navigation.spec.ts:74:7 › server session admin has direct catalogs and correct account access (554ms)
-[WebServer] (node:4720) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+  ok  9 tests\e2e\navigation.spec.ts:49:5 › mobile dialog traps focus, restores it and closes on navigation (1.4s)
+  ok 10 tests\e2e\navigation.spec.ts:74:7 › server session user has direct catalogs and correct account access (655ms)
+  ok 11 tests\e2e\navigation.spec.ts:74:7 › server session admin has direct catalogs and correct account access (587ms)
+[WebServer] (node:29596) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:26028) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+  ok 12 tests\e2e\navigation.spec.ts:97:7 › landings fit 360px (1.4s)
+[WebServer] (node:14036) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-  ok 12 tests\e2e\navigation.spec.ts:97:7 › landings fit 360px (1.5s)
-[WebServer] (node:11324) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:9744) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:27288) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+  ok 13 tests\e2e\navigation.spec.ts:97:7 › landings fit 390px (1.8s)
+[WebServer] (node:38440) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-  ok 13 tests\e2e\navigation.spec.ts:97:7 › landings fit 390px (1.9s)
-[WebServer] (node:37716) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
-[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:28004) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:26524) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
   ok 14 tests\e2e\navigation.spec.ts:97:7 › landings fit 768px (1.5s)
-[WebServer] (node:36944) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:2724) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-  ok 15 tests\e2e\navigation.spec.ts:97:7 › landings fit 1024px (1.6s)
-[WebServer] (node:23700) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+  ok 15 tests\e2e\navigation.spec.ts:97:7 › landings fit 1024px (1.4s)
+[WebServer] (node:35776) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:35640) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:9556) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-  ok 16 tests\e2e\navigation.spec.ts:97:7 › landings fit 1280px (1.6s)
-[WebServer] (node:11324) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+  ok 16 tests\e2e\navigation.spec.ts:97:7 › landings fit 1280px (1.4s)
+[WebServer] (node:38892) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:3816) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:34420) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
   ok 17 tests\e2e\navigation.spec.ts:97:7 › landings fit 1440px (2.4s)
-[WebServer] (node:25664) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:38548) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:33600) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:33380) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-  ok 18 tests\e2e\navigation.spec.ts:97:7 › landings fit 1920px (1.7s)
-[WebServer] (node:4904) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
-[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ok 18 tests\e2e\navigation.spec.ts:97:7 › landings fit 1920px (1.5s)
 [WebServer] Profile catalog unavailable { code: 'PGRST202', message: 'fixture missing schema' }
 [WebServer] Profile catalog unavailable { code: 'XX000', message: 'fixture transport error' }
-  ok 19 tests\e2e\navigation.spec.ts:130:5 › direct catalogs stay public, distinguish missing schema and support empty searches (4.7s)
-[WebServer] (node:30852) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+  ok 19 tests\e2e\navigation.spec.ts:130:5 › direct catalogs stay public, distinguish missing schema and support empty searches (4.5s)
+[WebServer] (node:37420) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:2820) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:38472) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:37832) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:23472) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:36124) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:39196) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
 [WebServer] [browser] A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
-[WebServer] 
+[WebServer]
 [WebServer] - A server/client branch `if (typeof window !== 'undefined')`.
 [WebServer] - Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
 [WebServer] - Date formatting in a user's locale which doesn't match the server.
 [WebServer] - External changing data without sending a snapshot of it along with the HTML.
 [WebServer] - Invalid HTML tag nesting.
-[WebServer] 
+[WebServer]
 [WebServer] It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
-[WebServer] 
+[WebServer]
 [WebServer] https://react.dev/link/hydration-mismatch
-[WebServer] 
+[WebServer]
 [WebServer]   ...
 [WebServer]     <HTTPAccessFallbackBoundary notFound={undefined} forbidden={undefined} unauthorized={undefined}>
 [WebServer]       <RedirectBoundary>
 [WebServer]         <RedirectErrorBoundary router={{...}}>
-[WebServer]           <InnerLayoutRouter url="/perfiles" tree={[...]} params={{}} cacheNode={{rsc:{...}, ...}} segmentPath={[...]} ...>
-[WebServer]             <SegmentViewNode type="page" pagePath="perfiles/p...">
+[WebServer]           <InnerLayoutRouter url="/talento" tree={[...]} params={{}} cacheNode={{rsc:{...}, ...}} segmentPath={[...]} ...>
+[WebServer]             <SegmentViewNode type="page" pagePath="talento/pa...">
 [WebServer]               <SegmentTrieNode>
-[WebServer]               <ProfilesPage>
+[WebServer]               <TalentPage>
 [WebServer]                 <ProfileCatalog>
 [WebServer]                   <div className="editorial-...">
 [WebServer]                     <GlobalNavigation>
@@ -109,7 +103,7 @@ Running 31 tests using 1 worker
 [WebServer]                           <button>
 [WebServer]                           <div id="_R_155esnelb_" className="profile-fi...">
 [WebServer]                             <CatalogFiltersForm>
-[WebServer]                               <form action="/perfiles" method="get" className="catalog-fi..." aria-label="Filtrar ca...">
+[WebServer]                               <form action="/talento" method="get" className="catalog-fi..." aria-label="Filtrar ca...">
 [WebServer]                                 <div>
 [WebServer]                                 <div className="min-w-0 te...">
 [WebServer]                                   <label>
@@ -127,19 +121,19 @@ Running 31 tests using 1 worker
 [WebServer]                       ...
 [WebServer]             ...
 [WebServer]           ...
-[WebServer]  
+[WebServer]
 [WebServer] [browser] A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
-[WebServer] 
+[WebServer]
 [WebServer] - A server/client branch `if (typeof window !== 'undefined')`.
 [WebServer] - Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
 [WebServer] - Date formatting in a user's locale which doesn't match the server.
 [WebServer] - External changing data without sending a snapshot of it along with the HTML.
 [WebServer] - Invalid HTML tag nesting.
-[WebServer] 
+[WebServer]
 [WebServer] It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
-[WebServer] 
+[WebServer]
 [WebServer] https://react.dev/link/hydration-mismatch
-[WebServer] 
+[WebServer]
 [WebServer]   ...
 [WebServer]     <LoadingBoundary name="locaciones/" loading={[...]}>
 [WebServer]       <Suspense name="locaciones/" fallback={<Fragment>}>
@@ -186,53 +180,108 @@ Running 31 tests using 1 worker
 [WebServer]                         ...
 [WebServer]                 ...
 [WebServer]               ...
-[WebServer]  
-  ok 20 tests\e2e\navigation.spec.ts:164:5 › published catalog cards open shared details; drafts remain inaccessible (8.6s)
-  ok 21 tests\e2e\navigation.spec.ts:208:5 › member can submit a draft through the real server action with local transport (1.9s)
-  ok 22 tests\e2e\navigation.spec.ts:235:5 › authenticated header stays usable at every requested width (3.9s)
-[WebServer] (node:28400) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer]
+[WebServer] [browser] A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
+[WebServer]
+[WebServer] - A server/client branch `if (typeof window !== 'undefined')`.
+[WebServer] - Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+[WebServer] - Date formatting in a user's locale which doesn't match the server.
+[WebServer] - External changing data without sending a snapshot of it along with the HTML.
+[WebServer] - Invalid HTML tag nesting.
+[WebServer]
+[WebServer] It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+[WebServer]
+[WebServer] https://react.dev/link/hydration-mismatch
+[WebServer]
+[WebServer]   ...
+[WebServer]     <HTTPAccessFallbackBoundary notFound={undefined} forbidden={undefined} unauthorized={undefined}>
+[WebServer]       <RedirectBoundary>
+[WebServer]         <RedirectErrorBoundary router={{...}}>
+[WebServer]           <InnerLayoutRouter url="/perfiles" tree={[...]} params={{}} cacheNode={{rsc:{...}, ...}} segmentPath={[...]} ...>
+[WebServer]             <SegmentViewNode type="page" pagePath="perfiles/p...">
+[WebServer]               <SegmentTrieNode>
+[WebServer]               <ProfilesPage>
+[WebServer]                 <ProfileCatalog>
+[WebServer]                   <div className="editorial-...">
+[WebServer]                     <GlobalNavigation>
+[WebServer]                     <main className="editorial-...">
+[WebServer]                       <p>
+[WebServer]                       <div>
+[WebServer]                       <nav>
+[WebServer]                       <ProfileFilters active={0}>
+[WebServer]                         <div className="profile-fi..." data-expanded={false}>
+[WebServer]                           <button>
+[WebServer]                           <div id="_R_155esnelb_" className="profile-fi...">
+[WebServer]                             <CatalogFiltersForm>
+[WebServer]                               <form action="/perfiles" method="get" className="catalog-fi..." aria-label="Filtrar ca...">
+[WebServer]                                 <div>
+[WebServer]                                 <div className="min-w-0 te...">
+[WebServer]                                   <label>
+[WebServer]                                   <input
+[WebServer]                                     id="catalog-city"
+[WebServer]                                     name="city"
+[WebServer]                                     defaultValue=""
+[WebServer]                                     maxLength={80}
+[WebServer]                                     type="text"
+[WebServer]                                     className="catalog-input"
+[WebServer] -                                   style={{caret-color:"transparent"}}
+[WebServer]                                   >
+[WebServer]                                 ...
+[WebServer]                                 ...
+[WebServer]                       ...
+[WebServer]             ...
+[WebServer]           ...
+[WebServer]
+  ok 20 tests\e2e\navigation.spec.ts:164:5 › published catalog cards open shared details; drafts remain inaccessible (9.2s)
+  ok 21 tests\e2e\navigation.spec.ts:208:5 › member can submit a draft through the real server action with local transport (1.8s)
+  ok 22 tests\e2e\navigation.spec.ts:235:5 › authenticated header stays usable at every requested width (4.1s)
+[WebServer] (node:38472) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-  ok 23 tests\e2e\navigation.spec.ts:259:5 › non-admin cannot open admin and another owner editor is not exposed (1.9s)
-  ok 24 tests\e2e\navigation.spec.ts:274:5 › publishing validation preserves the entered draft (680ms)
-  ok 25 tests\e2e\navigation.spec.ts:299:5 › protected owner and admin routes still reject anonymous visitors (1.2s)
-[WebServer] (node:25136) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+  ok 23 tests\e2e\navigation.spec.ts:259:5 › non-admin cannot open admin and another owner editor is not exposed (1.6s)
+  ok 24 tests\e2e\navigation.spec.ts:274:5 › publishing validation preserves the entered draft (798ms)
+  ok 25 tests\e2e\navigation.spec.ts:299:5 › protected owner and admin routes still reject anonymous visitors (1.4s)
+[WebServer] (node:32984) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:8916) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:35600) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:25868) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:39156) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:35404) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:17588) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:36932) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:37968) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:36268) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:26568) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:28496) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:22084) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:21600) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:37400) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:36584) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:29336) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:38544) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:13760) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:38612) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:5236) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:38852) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:29968) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:38560) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:37484) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-  ok 26 tests\e2e\profiles-polish.spec.ts:49:5 › six surfaces at six widths: real layout, no overflow, desktop and mobile evidence (17.0s)
-  ok 27 tests\e2e\profiles-polish.spec.ts:124:5 › Talent filters share profile URLs and preserve relevant data (2.0s)
-[WebServer] (node:39508) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (node:39772) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-  ok 28 tests\e2e\profiles-polish.spec.ts:140:5 › reel is click-to-load and contact is gated without disclosing private data (1.8s)
-[WebServer] (node:38788) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+  ok 26 tests\e2e\profiles-polish.spec.ts:49:5 › six surfaces at six widths: real layout, no overflow, desktop and mobile evidence (16.8s)
+  ok 27 tests\e2e\profiles-polish.spec.ts:124:5 › Talent filters share profile URLs and preserve relevant data (933ms)
+[WebServer] (node:332) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-  ok 29 tests\e2e\profiles-polish.spec.ts:166:5 › editor preview stays private; ordering and publication roundtrip; unpublish removes detail (5.0s)
-[WebServer] (node:28652) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+  ok 28 tests\e2e\profiles-polish.spec.ts:140:5 › reel is click-to-load and contact is gated without disclosing private data (891ms)
+[WebServer] (node:38700) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:33860) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ok 29 tests\e2e\profiles-polish.spec.ts:166:5 › editor preview stays private; ordering and publication roundtrip; unpublish removes detail (5.1s)
+[WebServer] (node:37992) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 [WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
 [WebServer] Profile catalog unavailable { code: 'XX000', message: 'fixture transport error' }
-  ok 30 tests\e2e\profiles-polish.spec.ts:212:5 › empty, error, failed image and reduced motion remain usable (1.6s)
-  ok 31 tests\e2e\profiles-polish.spec.ts:238:5 › mobile filters collapse without hiding active selections (1.2s)
+  ok 30 tests\e2e\profiles-polish.spec.ts:212:5 › empty, error, failed image and reduced motion remain usable (1.3s)
+  ok 31 tests\e2e\profiles-polish.spec.ts:238:5 › mobile filters collapse without hiding active selections (1.1s)
 
-  31 passed (1.5m)
+  31 passed (1.4m)

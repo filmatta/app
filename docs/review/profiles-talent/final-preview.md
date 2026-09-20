@@ -7,10 +7,10 @@ Fecha: 19 de septiembre de 2026 (México). Sin merge, deploy ni migración Produ
 - Rama: `feature/profiles-talent-polish`.
 - Worktree: `G:\PROYECTOS\filmatta-profiles-talent`.
 - HEAD inicial y merge-base inicial: `101a26cf203448e806716d80891da704cfb8c214`.
-- origin/main integrado: `b09684a6dc356d34bcc279e2048b845c641326b1`.
-- Nuevos commits de main: `1452d1b` Google OAuth; `b09684a` recuperación portable de contraseña.
+- origin/main integrado: `1d6c1f6b8ed65bf1c37fa5e03d0df04055aee93a`.
+- Nuevos commits de main: `1452d1b` Google OAuth; `b09684a` recuperación portable de contraseña; `1d6c1f6` MFA en recuperación (llegó durante QA y se integró con otro rebase limpio).
 - Trabajo previo guardado y rebase limpio, sin conflictos. HEAD tras rebase: `915bb1d0963391bcb57a2db82916685b7bb98316`.
-- Código desplegado: `509964df929513ff22c06ba61dae23031c0be60b`. Los commits de cierre agregan pruebas/evidencia; el código de aplicación y SQL es idéntico al Preview.
+- Código desplegado: `c3222a9556874e0daa0aa854550808fdcdb7199e`. Los commits de cierre agregan pruebas/evidencia; el código de aplicación y SQL es idéntico al Preview.
 - La rama queda con commits locales. No se ha hecho push.
 
 ## Migración Test y Production pendiente
@@ -30,9 +30,9 @@ Permisos comprobados con Auth/PostgREST reales: owner puede leer/guardar; non-ow
 
 ## Preview
 
-[https://app-d9ahfbbb8-filmatta.vercel.app](https://app-d9ahfbbb8-filmatta.vercel.app)
+[https://app-t59dennk6-filmatta.vercel.app](https://app-t59dennk6-filmatta.vercel.app)
 
-Deployment `dpl_FX13QsfUCszR9c4tvNpy53z3CYUP`, Ready, target Preview, rama correcta. [Metadatos](deployment.json).
+Deployment `dpl_9uV7XKHoXt5akVs3rMkXPVFv4ooM`, Ready, target Preview, rama correcta. [Metadatos](deployment.json).
 
 Usa Supabase Test; Billing desactivado y modo test. Sólo en este deployment se anularon secretos Stripe, Mux, OpenAI y service role, en build y runtime. No se editaron variables compartidas ni Production. La clave administrativa Test se usó sólo localmente para crear/eliminar usuarios sintéticos; lecturas y mutaciones de perfil se probaron con sesiones normales.
 
@@ -60,7 +60,7 @@ Mi perfil: vista previa privada, alias, guardado mediante Server Action, orden d
 
 | Verificación | Resultado |
 |---|---|
-| Profiles/Talent, catálogo, DB/RLS, navegación, Auth, Security, Billing | 159/159 |
+| Profiles/Talent, catálogo, DB/RLS, navegación, Auth, Security, Billing | 160/160 |
 | Auth/PostgREST real en Supabase Test | 1 suite completa aprobada |
 | Navegador local: navegación/header/cuenta y perfiles | 31/31 |
 | Navegador local: estados loading/empty/error | 1/1 |
@@ -72,6 +72,8 @@ Mi perfil: vista previa privada, alias, guardado mediante Server Action, orden d
 | git diff --check | aprobado |
 
 Evidencia: [regresión](regression.txt), [integración Test](test-integration.txt), [navegador local](local-browser.txt), [estados](states-browser.txt), [Preview](preview-browser.txt), [build](build.txt), [checks](checks.txt).
+
+El log de la suite de navegación local conserva avisos de hidratación causados por el estilo temporal `caret-color: transparent` que Playwright aplica al capturar antes de completar hidratación. La captura específica de estados usa `caret: initial` y evita ese artefacto; no requirió modificar producto.
 
 Auth incluye las regresiones nuevas de main. Billing se valida por su suite; el Preview no ejecuta checkout, pagos ni webhooks. No se usaron secretos Production.
 

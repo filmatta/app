@@ -1,7 +1,7 @@
 
 Running 1 test using 1 worker
 
-(node:36196) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:28084) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
   ok 1 tests\remote\profiles-talent.spec.mjs:10:1 › real Preview: portfolio surfaces, responsive matrix, filters, privacy and editor roundtrip (1.1m)
 

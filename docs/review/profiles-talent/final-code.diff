@@ -1,0 +1,4614 @@
+diff --git a/app/descubre/[vertical]/page.tsx b/app/descubre/[vertical]/page.tsx
+index f7e926d..efba945 100644
+--- a/app/descubre/[vertical]/page.tsx
++++ b/app/descubre/[vertical]/page.tsx
+@@ -5,0 +6 @@ import SiteHeader from "@/components/SiteHeader";
++import ProfilesLanding from "@/components/profiles/ProfilesLanding";
+@@ -20,0 +22 @@ export default async function EditorialLanding({ params }: Props) {
++  if (vertical === "perfiles" || vertical === "talento") return <ProfilesLanding talent={vertical === "talento"} signedIn={Boolean(viewer)} />;
+diff --git a/app/globals.css b/app/globals.css
+index 8085cc7..4416404 100644
+--- a/app/globals.css
++++ b/app/globals.css
+@@ -169,0 +170,240 @@ html {
++
++/* Profiles and Talent: one identity, portfolio-led presentation. */
++.profiles-page { --vertical-accent: #b9dceb; }
++.profiles-page :is(textarea,a,button,input,select):focus-visible { outline: 2px solid #b9dceb; outline-offset: 4px; }
++.profiles-page :is(h1,h2,h3,p,dd,a) { overflow-wrap: anywhere; }
++.profiles-page button:disabled { cursor: not-allowed; opacity: .5; }
++.profiles-landing-hero { display:grid; gap:3rem; padding-block:4rem 5rem; align-items:center; }
++.profiles-hero-copy h1 { max-width:12ch; margin-top:1.6rem; font-size:clamp(3rem,5.2vw,5.8rem); line-height:1.01; letter-spacing:-.055em; font-weight:500; text-wrap:balance; }
++.profiles-hero-copy > p:not(.eyebrow) { max-width:34rem; margin-top:1.5rem; color:#b7b7b2; line-height:1.85; font-size:1.05rem; }
++.profiles-hero-copy > .profiles-hero-note { font-size:.75rem!important; color:#939793!important; margin-top:2rem!important; }
++.profiles-hero-figure { min-width:0; position:relative; }
++.profiles-image-label { display:flex; justify-content:space-between; border-top:1px solid #b9dceb70; padding:.85rem 0; font-size:.62rem; letter-spacing:.15em; color:#b9dceb; }
++.profiles-hero-figure > img { width:100%; height:auto; aspect-ratio:4/3; object-fit:cover; filter:saturate(.5); }
++.profiles-landing-hero--talent .profiles-hero-figure > img { aspect-ratio:4/5; max-height:620px; object-position:50% 38%; }
++.profiles-hero-figure figcaption { display:flex; justify-content:space-between; gap:1rem; margin-top:1rem; color:#a7a8a5; font-size:.62rem; line-height:1.6; }
++.profiles-manifesto { display:grid; gap:2rem; padding-block:5rem; border-top:1px solid #ffffff24; }
++.profiles-manifesto h2,.profiles-identity-story h2,.profiles-share-story h2,.profiles-ecosystem h2 { font-size:clamp(2.2rem,3.8vw,4rem); font-weight:400; letter-spacing:-.045em; line-height:1.12; max-width:23ch; text-wrap:balance; }
++.profiles-manifesto p:not(.eyebrow),.profiles-identity-story p:not(.eyebrow),.profiles-share-story p:not(.eyebrow) { margin-top:1.5rem; max-width:42rem; line-height:1.85; color:#b6b8b5; }
++.profiles-material-index { display:flex; flex-wrap:wrap; gap:1.1rem 2rem; margin-top:3rem; border-top:1px solid #ffffff24; padding-top:1.5rem; color:#b9dceb; font-size:.75rem; }
++.profiles-identity-story { display:grid; gap:3rem; padding-block:3rem 6rem; }
++.profiles-identity-story h2 { margin-top:1.5rem; }
++.profiles-identity-story dl > div { display:flex; gap:1.5rem; border-top:1px solid #ffffff24; padding-block:1.8rem; }
++.profiles-identity-story dl > div > span { color:#b9dceb; font-size:.7rem; padding-top:.4rem; }
++.profiles-identity-story dt { font-size:1.5rem; letter-spacing:-.03em; }
++.profiles-identity-story dd { margin-top:.6rem; line-height:1.7; color:#b6b8b5; }
++.profiles-share-story { padding-block:5rem; background:radial-gradient(ellipse at 85% 80%,#b9dceb08,transparent 65%),#111314; border-block:1px solid #ffffff20; }
++.profiles-share-story h2,.profiles-ecosystem h2 { margin-top:1.5rem; }
++.profiles-url-example { display:flex; align-items:center; flex-wrap:wrap; gap:.65rem; margin-top:2.5rem; max-width:48rem; padding-block:1.3rem; border-block:1px solid #b9dceb50; font-size:clamp(.9rem,2.4vw,1.7rem); letter-spacing:-.03em; color:#a6aaa9; }
++.profiles-url-example strong { font-weight:400; color:#f1efe9; }
++.profiles-url-example > span:last-child { margin-left:auto; color:#b9dceb; }
++.profiles-share-story .profiles-small-print { font-size:.8rem; max-width:40rem; }
++.profiles-share-story .editorial-secondary { margin-top:1.5rem; }
++.profiles-ecosystem { padding-block:5rem; }
++.profiles-ecosystem > div { display:grid; gap:2rem; margin-top:3rem; }
++.profiles-ecosystem a { padding-block:1.5rem; border-top:1px solid #ffffff24; }
++.profiles-ecosystem h3 { display:flex; justify-content:space-between; gap:1rem; font-size:1.4rem; }
++.profiles-ecosystem h3 span { color:#b9dceb; }
++.profiles-ecosystem a p { margin-top:.75rem; color:#aaa; line-height:1.7; font-size:.9rem; }
++.profiles-final { padding-block:2rem 6rem; }
++.profiles-final h2 { max-width:14ch; margin-block:1.5rem 2rem; font-size:clamp(3rem,6vw,6rem); letter-spacing:-.05em; line-height:1.05; font-weight:500; }
++.profile-catalog { padding-block:3.5rem 2rem; }
++.profile-catalog-heading { display:flex; justify-content:space-between; align-items:flex-end; gap:2rem; flex-wrap:wrap; margin-top:1.2rem; }
++.profile-catalog-heading h1 { max-width:14ch; font-size:clamp(3rem,5vw,5.6rem); letter-spacing:-.05em; line-height:1.03; font-weight:500; }
++.profile-catalog-heading p { color:#b4b6b4; max-width:35rem; margin-top:1.4rem; line-height:1.8; }
++.profile-catalog-tabs { display:flex; gap:2rem; margin-top:3.5rem; border-bottom:1px solid #ffffff25; }
++.profile-catalog-tabs a { padding-block:1rem; font-size:.9rem; color:#a0a5a5; }
++.profile-catalog-tabs a[aria-current] { color:#b9dceb; border-bottom:2px solid #b9dceb; }
++.profiles-page .catalog-filters { margin-block:0 2.5rem; border-top:0; gap:1rem; }
++.profiles-page .catalog-input { background:#111313; border-color:#ffffff25; }
++.profile-results { display:flex; justify-content:space-between; flex-wrap:wrap; gap:.65rem; color:#a6aaa9; margin-bottom:1.5rem; font-size:.75rem; }
++.profile-grid { display:grid; gap:2.5rem 1.5rem; grid-template-columns:minmax(0,1fr); }
++.profile-card { display:block; min-width:0; }
++.profile-card-frame { position:relative; aspect-ratio:4/3; overflow:hidden; background:#161a1c; }
++.profile-card--talent .profile-card-frame { aspect-ratio:4/5; }
++.profile-image { position:relative; width:100%; height:100%; overflow:hidden; background:#151a1d; }
++.profile-image-fallback { position:absolute; inset:0; display:grid; place-content:center; font-size:clamp(3rem,8vw,6rem); font-weight:400; letter-spacing:-.04em; color:#b9dceb50; border:1px solid #b9dceb14; background:linear-gradient(135deg,transparent 49.85%,#b9dceb0b 50%,transparent 50.15%); }
++.profile-image img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transition:transform 250ms ease; }
++.profile-card:hover img { transform:scale(1.025); }
++.profile-card-material { position:absolute; left:1rem; bottom:1rem; color:#f1efe9; background:#080808d9; padding:.4rem .7rem; border:1px solid #ffffff25; font-size:.7rem; letter-spacing:.05em; }
++.profile-card-open { position:absolute; right:.8rem; top:.8rem; width:30px; height:30px; display:grid; place-content:center; background:#080808b3; color:#b9dceb; }
++.profile-card-name { display:flex; justify-content:space-between; gap:1rem; margin-top:1.2rem; }
++.profile-card-name h2 { font-size:1.6rem; line-height:1.15; letter-spacing:-.03em; }
++.profile-card-name > span { color:#b9dceb; }
++.profile-card:hover h2 { color:#b9dceb; }
++.profile-card-disciplines { color:#d1d4d1; font-size:.85rem; margin-top:.7rem; line-height:1.6; }
++.profile-card-city,.profile-card-secondary { color:#a6aaa9; font-size:.8rem; margin-top:.35rem; line-height:1.6; }
++.profile-availability { display:inline-flex; align-items:center; gap:.45rem; font-size:.75rem; color:#b6bcbf; margin-top:.65rem; line-height:1.5; }
++.profile-availability::before { content:""; display:block; height:5px; width:5px; flex:none; background:#899295; border-radius:50%; }
++.profile-availability[data-available=true] { color:#b9dceb; }
++.profile-availability[data-available=true]::before { background:#b9dceb; }
++.profile-catalog-footer { display:flex; flex-wrap:wrap; justify-content:space-between; gap:1rem; border-top:1px solid #ffffff25; margin-top:4rem; padding-block:2rem; color:#b5b8b5; }
++.profile-text-link { color:#b9dceb; font-size:.85rem; min-height:44px; display:inline-flex; align-items:center; gap:.5rem; text-decoration:underline; text-underline-offset:5px; text-decoration-color:#b9dceb40; }
++.profile-text-link:hover { text-decoration-color:#b9dceb; }
++.profile-empty { padding-block:3rem 4rem; max-width:48rem; }
++.profile-empty h2 { font-size:clamp(2rem,4vw,3.5rem); letter-spacing:-.045em; line-height:1.15; margin-top:1rem; }
++.profile-empty p:not(.eyebrow) { color:#b4b8b5; line-height:1.8; margin-block:1.5rem; max-width:34rem; }
++.profile-identity { padding-block:3.5rem 2.5rem; display:flex; gap:2rem; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; }
++.profile-identity h1 { font-size:clamp(3.3rem,6vw,7rem); line-height:1; letter-spacing:-.055em; margin-top:1.4rem; font-weight:500; }
++.profile-stage { font-size:1.4rem; color:#b9dceb; margin-top:.75rem; }
++.profile-disciplines { font-size:1rem; color:#d2d4d1; margin-top:1.5rem; line-height:1.6; }
++.profile-meta { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem 1.5rem; margin-top:.8rem; color:#a7afad; font-size:.9rem; }
++.profile-meta .profile-availability { margin-top:0; }
++.profile-feature { display:grid; gap:1.5rem; }
++.profile-portrait { min-width:0; }
++.profile-portrait .profile-image { aspect-ratio:4/5; height:auto; max-height:560px; }
++.profile-portrait figcaption,.profile-feature-still figcaption { color:#9fa6a5; font-size:.7rem; margin-top:.7rem; }
++.profile-feature-still .profile-image { aspect-ratio:16/9; height:auto; }
++.profile-reel-screen { position:relative; aspect-ratio:16/9; background:#14181a; }
++.profile-reel-screen iframe { width:100%; height:100%; border:0; }
++.reel-play { position:absolute; inset:0; display:flex; justify-content:center; align-items:center; gap:1rem; background:#08080845; }
++.reel-play > span:first-child { width:64px; height:64px; border-radius:50%; border:1px solid #b9dceb80; display:grid; place-content:center; background:#080808c7; color:#b9dceb; font-size:1.7rem; }
++.reel-play > span:last-child { text-align:left; color:#fff; text-shadow:0 1px 6px #000; }
++.reel-play small { display:block; font-size:.65rem; margin-top:.25rem; }
++.profile-reel figcaption { display:flex; align-items:flex-start; gap:1rem; justify-content:space-between; padding-block:1.2rem; }
++.profile-reel h2 { font-size:1.35rem; letter-spacing:-.02em; margin-top:.4rem; }
++.profile-reel figcaption p { font-size:.85rem; color:#b4b8b6; margin-top:.5rem; line-height:1.6; }
++.profile-reel figcaption > a { flex:none; }
++.profile-no-reel { min-height:240px; padding:2rem; background:#111619; border-top:1px solid #b9dceb40; display:flex; flex-direction:column; justify-content:center; }
++.profile-no-reel > p:not(.eyebrow) { font-size:clamp(1.5rem,3vw,2.4rem); line-height:1.45; letter-spacing:-.03em; margin-block:1.5rem; }
++.profile-no-reel > span { color:#9ba5a5; font-size:.75rem; }
++.profile-body { display:grid; gap:3rem; padding-block:3rem; }
++.profile-section { border-top:1px solid #ffffff24; padding-block:2rem 3rem; }
++.profile-section h2,.profile-contact h2 { margin-block:.9rem 1.8rem; font-size:clamp(1.8rem,3vw,2.8rem); font-weight:400; line-height:1.15; letter-spacing:-.04em; }
++.profile-bio { white-space:pre-line; font-size:1.2rem; line-height:1.85; color:#c2c5c1; max-width:46rem; }
++.profile-book { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
++.profile-book .profile-image { aspect-ratio:4/3; height:auto; }
++.profile-book--talent .profile-image { aspect-ratio:4/5; }
++.profile-book figcaption { font-size:.75rem; color:#a6afad; line-height:1.6; margin-top:.6rem; }
++.profile-work { margin-top:1.5rem; }
++.profile-work > a { display:grid; grid-template-columns:5rem minmax(0,1fr) auto; gap:1rem; align-items:baseline; padding-block:1.5rem; border-top:1px solid #ffffff24; }
++.profile-work h3 { font-size:1.2rem; }
++.profile-work p,.profile-credits p { font-size:.85rem; color:#aeb5b2; line-height:1.6; margin-top:.5rem; }
++.profile-credits li { display:grid; grid-template-columns:4rem minmax(0,1fr); gap:1.5rem; padding-block:1.3rem; border-top:1px solid #ffffff24; }
++.profile-credits li > span { color:#b9dceb; font-size:.8rem; padding-top:.3rem; }
++.profile-credits h3 { font-size:1.3rem; letter-spacing:-.02em; }
++.profile-capabilities { display:grid; gap:2rem; }
++.profile-capabilities h3 { color:#b9dceb; font-size:.85rem; margin-bottom:1rem; }
++.profile-capabilities li { padding-block:.6rem; border-bottom:1px solid #ffffff12; color:#c6cac7; font-size:.95rem; }
++.profile-contact { border-top:1px solid #b9dceb70; padding-top:1.7rem; align-self:start; }
++.profile-contact h2 { font-size:1.8rem; }
++.profile-contact dl > div { margin-block:1.5rem; }
++.profile-contact dt { font-size:.7rem; color:#a0aba8; margin-bottom:.4rem; }
++.profile-contact dd { font-size:.95rem; line-height:1.7; }
++.profile-contact > p:not(.eyebrow) { font-size:.8rem; line-height:1.8; color:#a8b1ac; margin-top:1rem; }
++.profile-contact .profile-contact-note { font-size:.75rem; }
++.profile-share { border-top:1px solid #ffffff24; padding-top:1rem; margin-top:2rem; display:flex; flex-direction:column; gap:.4rem; align-items:flex-start; }
++.profile-url { color:#b2b9b6; font-size:.75rem; overflow-wrap:anywhere; }
++.profile-signature { display:flex; flex-wrap:wrap; justify-content:space-between; gap:1.5rem; border-top:1px solid #ffffff24; padding-block:2rem; font-size:.75rem; color:#a7afab; }
++.profile-editor-shell { max-width:1152px; padding-block:3rem 5rem; }
++.profile-editor-header h1 { font-size:clamp(2.6rem,5vw,4.5rem); line-height:1.1; letter-spacing:-.045em; margin-top:1rem; }
++.profile-editor-header > p:last-child { color:#aeb7b2; margin-top:1rem; line-height:1.8; }
++.profile-editor-name { display:flex; gap:1rem 2rem; flex-wrap:wrap; justify-content:space-between; align-items:center; padding-block:1.5rem; border-bottom:1px solid #ffffff25; }
++.profile-editor-name p { font-size:.75rem; color:#a6afaa; }
++.profile-editor-name strong { display:block; font-size:1.3rem; font-weight:500; color:#f1efe9; margin-top:.3rem; }
++.profile-editor-overview { display:flex; gap:1.5rem; flex-wrap:wrap; justify-content:space-between; align-items:center; margin-top:2rem; }
++.profile-editor-overview h2 { font-size:1.6rem; letter-spacing:-.03em; margin-top:.5rem; }
++.profile-editor-overview p:not(.eyebrow) { margin-top:.75rem; color:#aeb7b2; line-height:1.7; font-size:.9rem; }
++.profile-completion { padding:1.5rem; border:1px solid #b9dceb26; background:#101416; margin-top:1.5rem; }
++.profile-completion > div:first-child { display:flex; gap:1rem; justify-content:space-between; font-size:.85rem; }
++.profile-completion strong { color:#b9dceb; }
++.profile-completion progress { display:block; width:100%; height:3px; margin-block:1rem; accent-color:#b9dceb; }
++.profile-completion progress::-webkit-progress-bar { background:#ffffff18; }
++.profile-completion progress::-webkit-progress-value { background:#b9dceb; }
++.profile-completion > p { color:#aab4ae; font-size:.75rem; line-height:1.7; }
++.profile-checklist { display:flex; flex-wrap:wrap; gap:.5rem 1.4rem; margin-top:1rem; }
++.profile-checklist a { color:#b2b7b4; font-size:.75rem; padding-block:.35rem; }
++.profile-checklist a[data-complete=true] { color:#b9dceb; }
++.profile-editor-nav { display:flex; flex-wrap:wrap; gap:.5rem 1.5rem; margin-top:2rem; padding-block:.5rem; border-bottom:1px solid #ffffff25; }
++.profile-editor-nav a { font-size:.85rem; min-height:44px; display:flex; align-items:center; color:#b9dceb; }
++.profile-editor-form > section { padding-block:3rem; border-bottom:1px solid #ffffff25; }
++.profile-form-heading { margin-bottom:2rem; }
++.profile-form-heading h2 { font-size:clamp(1.8rem,3vw,2.5rem); line-height:1.15; letter-spacing:-.04em; margin-top:.7rem; }
++.profile-form-heading > p:last-child { max-width:40rem; margin-top:1rem; color:#aeb7b2; line-height:1.8; font-size:.9rem; }
++.profile-form-grid { display:grid; gap:1.25rem; margin-block:1.5rem; }
++.profile-field { min-width:0; }
++.profile-field label { display:block; margin-bottom:.6rem; color:#c5cdc7; font-size:.8rem; }
++.profile-field :is(input,textarea,select) { width:100%; min-height:48px; border:1px solid #ffffff30; background:#111515; color:#f1efe9; padding:.8rem 1rem; border-radius:3px; color-scheme:dark; font-size:.9rem; }
++.profile-field :is(input,textarea)::placeholder { color:#87928d; }
++.profile-field-help { color:#aeb7b2; line-height:1.8; font-size:.8rem; align-self:center; }
++.profile-editor-subheading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem; margin-top:2rem; }
++.profile-editor-subheading h3 { font-size:1.2rem; }
++.profile-editor-empty { padding:2rem; margin-block:1rem; border:1px dashed #b9dceb40; color:#aeb7b2; font-size:.9rem; line-height:1.7; }
++.profile-edit-item { min-width:0; padding:1.25rem; border:1px solid #ffffff24; margin-top:1.5rem; }
++.profile-edit-item legend { padding-inline:.6rem; font-size:.75rem; color:#b9dceb; }
++.profile-edit-item .profile-form-grid { margin-top:0; }
++.profile-item-actions { display:flex; gap:1.5rem; }
++.profile-item-actions button { font-size:.75rem; color:#bcc8c5; min-height:44px; }
++.profile-item-actions button:last-child { margin-left:auto; color:#e4b8b8; }
++.profile-discipline-options { display:grid; gap:.65rem; }
++.profile-discipline-options label { display:flex; gap:.75rem; align-items:center; padding:.85rem; border:1px solid #ffffff25; font-size:.8rem; color:#c3ccc5; }
++.profile-discipline-options label:has(:checked) { border-color:#b9dceb80; background:#b9dceb09; color:#b9dceb; }
++.profile-discipline-options input,.profile-publish-toggle input { accent-color:#b9dceb; width:16px; height:16px; flex:none; }
++.profile-publish-toggle { display:flex; align-items:flex-start; gap:1rem; margin-top:1.5rem; padding:1.5rem; border:1px solid #b9dceb40; }
++.profile-publish-toggle input { margin-top:.3rem; }
++.profile-publish-toggle strong { font-weight:500; }
++.profile-publish-toggle span span { display:block; margin-top:.6rem; color:#aeb7b2; font-size:.85rem; line-height:1.8; }
++.profile-save-bar { position:sticky; bottom:1rem; z-index:10; display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:2rem; padding:1rem 1.25rem; border:1px solid #b9dceb40; background:#111515f5; box-shadow:0 6px 30px #0008; }
++.profile-save-bar p { color:#c1c9c3; font-size:.8rem; }
++.profile-save-bar p span { display:block; color:#96a39c; font-size:.7rem; margin-top:.3rem; }
++.profile-save-bar > div { display:flex; align-items:center; gap:1.5rem; }
++.profile-preview-dialog { position:fixed; inset:0; width:min(1500px,100%); height:100dvh; max-width:100%; max-height:100dvh; margin:auto; padding:0; border:1px solid #ffffff30; background:#080808; color:#f1efe9; }
++.profile-preview-dialog::backdrop { background:#000d; }
++.profile-preview-toolbar { position:sticky; top:0; z-index:20; display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:1rem 1.5rem; background:#161c20; color:#b9dceb; font-size:.75rem; border-bottom:1px solid #b9dceb40; }
++.profile-preview-toolbar button { min-height:44px; padding-inline:1rem; border:1px solid #b9dceb60; }
++.profile-skeleton-title { width:60%; height:70px; background:#b9dceb0b; margin-block:2rem 4rem; }
++.profile-skeleton-image { aspect-ratio:4/3; background:#b9dceb08; border-top:1px solid #b9dceb30; }
++.profile-skeleton-line { height:14px; background:#b9dceb0b; margin-top:1rem; }
++@media(min-width:640px) {
++ .profile-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
++ .profile-form-grid,.profile-capabilities { grid-template-columns:repeat(2,minmax(0,1fr)); }
++ .profile-discipline-options { grid-template-columns:repeat(3,minmax(0,1fr)); }
++ .profiles-ecosystem > div { grid-template-columns:repeat(2,minmax(0,1fr)); }
++}
++@media(min-width:768px) {
++ .profiles-manifesto { grid-template-columns:1fr 2fr; gap:4rem; }
++ .profiles-identity-story { grid-template-columns:1fr 1fr; gap:4rem; }
++ .profile-feature:has(.profile-portrait) { grid-template-columns:minmax(0,1fr) minmax(0,3fr); }
++ .profile-portfolio--talent .profile-feature { grid-template-columns:minmax(0,1fr) minmax(0,1.8fr); align-items:start; }
++}
++@media(min-width:1024px) {
++ .profiles-landing-hero { grid-template-columns:1fr 1fr; gap:4rem; padding-block:5rem 6rem; min-height:740px; }
++ .profiles-landing-hero--talent { grid-template-columns:1.15fr 1fr; }
++ .profiles-landing-hero--talent .profiles-hero-copy h1 { font-size:clamp(3rem,4.7vw,5.1rem); max-width:15ch; }
++ .profile-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
++ .profile-grid--talent { grid-template-columns:repeat(4,minmax(0,1fr)); }
++ .profile-body { grid-template-columns:minmax(0,1fr) 270px; gap:5rem; }
++ .profile-contact { position:sticky; top:2rem; }
++ .profiles-ecosystem > div { grid-template-columns:repeat(4,minmax(0,1fr)); }
++}
++@media(min-width:1600px) { .profile-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
++@media(max-width:639px) {
++ .profiles-landing-hero { padding-top:2.8rem; gap:2.5rem; }
++ .profiles-hero-figure figcaption { flex-direction:column; gap:.4rem; }
++ .profiles-manifesto,.profiles-share-story,.profiles-ecosystem { padding-block:3.5rem; }
++ .profiles-identity-story { padding-block:0 3.5rem; }
++ .profile-catalog-tabs { gap:1.2rem; }
++ .profile-catalog-tabs a { font-size:.8rem; }
++ .profile-catalog { padding-top:2.5rem; }
++ .profile-results > p:last-child { max-width:27ch; line-height:1.7; }
++ .profile-identity { padding-top:2.5rem; }
++ .profile-reel figcaption { flex-direction:column; gap:.25rem; }
++ .profile-work > a { grid-template-columns:1fr auto; }
++ .profile-work > a > .eyebrow { grid-column:1/-1; }
++ .profile-body { padding-top:2rem; }
++ .profile-save-bar { flex-wrap:wrap; bottom:.5rem; padding:.85rem; }
++ .profile-save-bar > div { width:100%; justify-content:space-between; gap:1rem; }
++ .profile-save-bar > p > span { display:inline; margin-left:.5rem; }
++ .profile-discipline-options { grid-template-columns:repeat(2,minmax(0,1fr)); }
++ .profile-discipline-options label { font-size:.75rem; padding:.7rem; }
++ .profile-edit-item { padding:1rem; }
++}
++@media(prefers-reduced-motion:reduce) { .profiles-page * { transition:none!important; animation:none!important; scroll-behavior:auto!important; } }
++
++.profile-filter-toggle { display:none; }
++@media(max-width:639px) {
++ .profile-filter-toggle { display:flex; align-items:center; justify-content:space-between; gap:1rem; width:100%; min-height:52px; padding-block:.8rem; font-size:.85rem; color:#b9dceb; }
++ .profile-filter-disclosure { margin-bottom:1.5rem; border-bottom:1px solid #ffffff25; }
++ .profile-filter-disclosure[data-expanded=false] .profile-filter-content { display:none; }
++ .profiles-page .profile-filter-disclosure .catalog-filters { margin-bottom:.5rem; }
++}
+diff --git a/app/mi-perfil/ProfileEditor.tsx b/app/mi-perfil/ProfileEditor.tsx
+index 65b2146..78db5c4 100644
+--- a/app/mi-perfil/ProfileEditor.tsx
++++ b/app/mi-perfil/ProfileEditor.tsx
+@@ -2,3 +2,5 @@
+-
+-import { useState } from "react";
+-import { saveProfessionalProfile } from "@/app/mi-perfil/actions";
++import { useRef, useState } from "react";
++import { useFormStatus } from "react-dom";
++import { saveProfessionalProfile } from "./actions";
++import ProfilePortfolio from "@/components/profiles/ProfilePortfolio";
++import ShareProfile from "@/components/profiles/ShareProfile";
+@@ -11,0 +14,6 @@ import {
++import {
++  EMPTY_PRESENTATION,
++  isTalent,
++  parsePresentation,
++  profileCompletion,
++} from "@/lib/profiles/presentation";
+@@ -13,2 +20,0 @@ import type {
+-  PortfolioItem,
+-  PortfolioItemKind,
+@@ -15,0 +22 @@ import type {
++  PortfolioItemKind,
+@@ -18,5 +25,23 @@ import type {
+-type EditableProfile = ProfessionalProfile | null;
+-
+-export default function ProfileEditor({ profile }: { profile: EditableProfile }) {
+-  const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>(
+-    profile?.portfolio_items ?? []
++export default function ProfileEditor({
++  profile,
++  displayName,
++}: {
++  profile: ProfessionalProfile | null;
++  displayName: string;
++}) {
++  const [draft, setDraft] = useState<ProfessionalProfile>(
++    profile ?? {
++      slug: "tu-perfil",
++      display_name: displayName,
++      disciplines: [],
++      city: "",
++      bio: "",
++      availability: "not_specified",
++      skills: [],
++      equipment: [],
++      portfolio_items: [],
++      presentation: { ...EMPTY_PRESENTATION },
++      contact_policy: "members_only",
++      is_public: false,
++      updated_at: "",
++    },
+@@ -24,10 +49,12 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-
+-  function addPortfolioItem() {
+-    if (portfolioItems.length >= PROFILE_LIMITS.portfolioItems) {
+-      return;
+-    }
+-
+-    setPortfolioItems((current) => [
+-      ...current,
+-      { kind: "project", title: "", url: "", summary: "" },
+-    ]);
++  const [preview, setPreview] = useState(false);
++  const [dirty, setDirty] = useState(false);
++  const dialog = useRef<HTMLDialogElement>(null);
++  const talent = isTalent(draft.disciplines),
++    p = draft.presentation;
++  const completion = profileCompletion(draft);
++  function update<K extends keyof ProfessionalProfile>(
++    key: K,
++    value: ProfessionalProfile[K],
++  ) {
++    setDraft((d) => ({ ...d, [key]: value }));
++    setDirty(true);
+@@ -35,5 +62,3 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-
+-  function updatePortfolioItem(
+-    index: number,
+-    field: keyof PortfolioItem,
+-    value: string
++  function presentation<K extends keyof typeof p>(
++    key: K,
++    value: (typeof p)[K],
+@@ -41,5 +66 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-    setPortfolioItems((current) =>
+-      current.map((item, itemIndex) =>
+-        itemIndex === index ? { ...item, [field]: value } : item
+-      )
+-    );
++    update("presentation", { ...p, [key]: value });
+@@ -47,5 +68,7 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-
+-  function removePortfolioItem(index: number) {
+-    setPortfolioItems((current) =>
+-      current.filter((_, itemIndex) => itemIndex !== index)
+-    );
++  function reorder<T>(items: T[], index: number, direction: number) {
++    const copy = [...items];
++    [copy[index], copy[index + direction]] = [
++      copy[index + direction],
++      copy[index],
++    ];
++    return copy;
+@@ -53 +76,8 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-
++  function showPreview() {
++    setPreview(true);
++    dialog.current?.showModal();
++  }
++  const previewProfile = {
++    ...draft,
++    presentation: parsePresentation(p) ?? EMPTY_PRESENTATION,
++  };
+@@ -55,64 +85,11 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-    <form action={saveProfessionalProfile} className="mt-10 space-y-14">
+-      <section aria-labelledby="identity-heading" className={sectionClass}>
+-        <SectionHeading
+-          eyebrow="Identidad profesional"
+-          id="identity-heading"
+-          title="Qué haces"
+-          description={`Selecciona hasta ${PROFILE_LIMITS.disciplines} disciplinas. Puedes tener varias dentro del mismo perfil.`}
+-        />
+-
+-        <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+-          <legend className="sr-only">Disciplinas</legend>
+-          {PROFILE_DISCIPLINES.map((discipline) => (
+-            <label
+-              key={discipline}
+-              className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70 transition hover:border-white/20 has-checked:border-white/35 has-checked:bg-white/[0.07] has-checked:text-white"
+-            >
+-              <input
+-                type="checkbox"
+-                name="disciplines"
+-                value={discipline}
+-                defaultChecked={profile?.disciplines.includes(discipline)}
+-                className="size-4 accent-white"
+-              />
+-              {discipline}
+-            </label>
+-          ))}
+-        </fieldset>
+-      </section>
+-
+-      <section aria-labelledby="about-heading" className={sectionClass}>
+-        <SectionHeading
+-          eyebrow="Presentación"
+-          id="about-heading"
+-          title="Sobre ti"
+-          description="Comparte lo necesario para entender tu trabajo. Tu nombre completo, correo y teléfono permanecen privados."
+-        />
+-
+-        <div className="grid gap-6 sm:grid-cols-2">
+-          <Field label="Ciudad" htmlFor="city">
+-            <input
+-              id="city"
+-              name="city"
+-              type="text"
+-              maxLength={PROFILE_LIMITS.city}
+-              defaultValue={profile?.city ?? ""}
+-              placeholder="Ciudad de México"
+-              className={inputClass}
+-            />
+-          </Field>
+-
+-          <Field label="Disponibilidad" htmlFor="availability">
+-            <select
+-              id="availability"
+-              name="availability"
+-              defaultValue={profile?.availability ?? "not_specified"}
+-              className={inputClass}
+-            >
+-              {Object.entries(AVAILABILITY_LABELS).map(([value, label]) => (
+-                <option key={value} value={value} className="bg-[#111]">
+-                  {label}
+-                </option>
+-              ))}
+-            </select>
+-          </Field>
++    <>
++      <div className="profile-editor-overview">
++        <div>
++          <p className="eyebrow">
++            {profile?.is_public ? "Público" : "Borrador privado"}
++            {dirty ? " / Cambios sin guardar" : ""}
++          </p>
++          <h2>Tu trabajo, a tu manera.</h2>
++          <p>
++            Empieza por lo que quieres mostrar. Puedes guardar y seguir después.
++          </p>
+@@ -120,44 +97,12 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-
+-        <Field label="Bio" htmlFor="bio">
+-          <textarea
+-            id="bio"
+-            name="bio"
+-            rows={7}
+-            maxLength={PROFILE_LIMITS.bio}
+-            defaultValue={profile?.bio ?? ""}
+-            placeholder="Cuenta brevemente qué haces, tu enfoque y el tipo de proyectos en los que trabajas."
+-            className={inputClass}
+-          />
+-        </Field>
+-      </section>
+-
+-      <section aria-labelledby="capabilities-heading" className={sectionClass}>
+-        <SectionHeading
+-          eyebrow="Capacidades"
+-          id="capabilities-heading"
+-          title="Skills y equipo"
+-          description="Añade sólo lo relevante para tu práctica. Separa cada elemento con una coma o un salto de línea."
+-        />
+-
+-        <div className="grid gap-6 sm:grid-cols-2">
+-          <Field label="Skills" htmlFor="skills">
+-            <textarea
+-              id="skills"
+-              name="skills"
+-              rows={6}
+-              defaultValue={profile?.skills.join("\n") ?? ""}
+-              placeholder={"DaVinci Resolve\nOperación de gimbal\nInglés"}
+-              className={inputClass}
+-            />
+-          </Field>
+-
+-          <Field label="Equipo o sistemas que dominas" htmlFor="equipment">
+-            <textarea
+-              id="equipment"
+-              name="equipment"
+-              rows={6}
+-              defaultValue={profile?.equipment.join("\n") ?? ""}
+-              placeholder={"ARRI Alexa Mini LF\nSony FX6\nAputure 600D"}
+-              className={inputClass}
+-            />
+-          </Field>
++        <button
++          type="button"
++          className="editorial-secondary"
++          onClick={showPreview}
++        >
++          Vista previa ↗
++        </button>
++      </div>
++      <div className="profile-completion">
++        <div>
++          <span>Completitud de la presentación</span>
++          <strong>{completion.percent}%</strong>
+@@ -165,18 +110,16 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-      </section>
+-
+-      <section aria-labelledby="portfolio-heading" className={sectionClass}>
+-        <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
+-          <SectionHeading
+-            eyebrow="Trabajo"
+-            id="portfolio-heading"
+-            title="Reels y portafolio"
+-            description="Enlaza piezas ya publicadas. FILMATTA no copia ni procesa tus videos en esta versión."
+-          />
+-          <button
+-            type="button"
+-            onClick={addPortfolioItem}
+-            disabled={portfolioItems.length >= PROFILE_LIMITS.portfolioItems}
+-            className="w-fit shrink-0 rounded-full border border-white/15 px-5 py-3 text-sm font-medium transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
+-          >
+-            Añadir enlace
+-          </button>
++        <progress
++          value={completion.percent}
++          max={100}
++          aria-label="Completitud del perfil"
++        />
++        <p>
++          {completion.checks.filter((c) => c.done).length} de{" "}
++          {completion.checks.length} apartados con contenido. No es una
++          valoración de tu trabajo.
++        </p>
++        <div className="profile-checklist">
++          {completion.checks.map((c) => (
++            <a href={c.href} key={c.label} data-complete={c.done}>
++              {c.done ? "✓" : "+"} {c.label}
++            </a>
++          ))}
+@@ -184 +127,16 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-
++      </div>
++      {profile?.is_public && <ShareProfile slug={profile.slug} />}
++      <nav className="profile-editor-nav" aria-label="Secciones del editor">
++        {[
++          ["material", "Material"],
++          ["identity", "Identidad"],
++          ["experience", "Experiencia"],
++          ["capabilities", "Habilidades"],
++          ["publication", "Publicación"],
++        ].map(([id, label]) => (
++          <a key={id} href={`#${id}`}>
++            {label}
++          </a>
++        ))}
++      </nav>
++      <form action={saveProfessionalProfile} className="profile-editor-form">
+@@ -188 +146 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-          value={JSON.stringify(portfolioItems)}
++          value={JSON.stringify(draft.portfolio_items)}
+@@ -190,4 +148,22 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-
+-        {portfolioItems.length === 0 ? (
+-          <div className="rounded-xl border border-dashed border-white/15 px-6 py-10 text-center text-sm text-white/35">
+-            Aún no has añadido reels, proyectos o enlaces.
++        <input type="hidden" name="presentation" value={JSON.stringify(p)} />
++        <section id="material">
++          <Heading
++            number="01"
++            title="Tu material, al frente."
++            description="Añade enlaces a tu reel y a tus imágenes. El primer reel será la pieza principal. Hasta 6 piezas y 6 imágenes de book."
++          />
++          <div className="profile-form-grid">
++            <Field label="Retrato · URL de imagen (https)" id="portrait">
++              <input
++                id="portrait"
++                type="url"
++                value={p.portrait_url}
++                maxLength={500}
++                onChange={(e) => presentation("portrait_url", e.target.value)}
++                placeholder="https://…/retrato.jpg"
++              />
++            </Field>
++            <p className="profile-field-help">
++              Usa un enlace directo y público a una imagen que puedas compartir.
++              Para video, añade la URL de YouTube, Vimeo o tu plataforma.
++            </p>
+@@ -195,8 +171,33 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-        ) : (
+-          <div className="space-y-4">
+-            {portfolioItems.map((item, index) => (
+-              <div
+-                key={index}
+-                className="grid gap-4 rounded-2xl border border-white/10 bg-black/20 p-5 md:grid-cols-[10rem_minmax(0,1fr)_auto]"
+-              >
+-                <Field label="Tipo" htmlFor={`portfolio-kind-${index}`}>
++          <div className="profile-editor-subheading">
++            <h3>Reels y trabajos</h3>
++            <button
++              type="button"
++              className="profile-text-link"
++              disabled={draft.portfolio_items.length >= 6}
++              onClick={() =>
++                update("portfolio_items", [
++                  ...draft.portfolio_items,
++                  { kind: "reel", title: "", url: "", summary: "" },
++                ])
++              }
++            >
++              + Añadir pieza
++            </button>
++          </div>
++          {!draft.portfolio_items.length && (
++            <p className="profile-editor-empty">
++              Empieza con una pieza que muestre tu forma de trabajar.
++            </p>
++          )}
++          {draft.portfolio_items.map((item, index) => (
++            <fieldset className="profile-edit-item" key={index}>
++              <legend>
++                Pieza {index + 1}
++                {item.kind === "reel" &&
++                draft.portfolio_items.findIndex((i) => i.kind === "reel") ===
++                  index
++                  ? " / Reel principal"
++                  : ""}
++              </legend>
++              <div className="profile-form-grid">
++                <Field label="Tipo" id={`kind-${index}`}>
+@@ -204 +205 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-                    id={`portfolio-kind-${index}`}
++                    id={`kind-${index}`}
+@@ -206,5 +207,11 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-                    onChange={(event) =>
+-                      updatePortfolioItem(
+-                        index,
+-                        "kind",
+-                        event.target.value as PortfolioItemKind
++                    onChange={(e) =>
++                      update(
++                        "portfolio_items",
++                        draft.portfolio_items.map((v, i) =>
++                          i === index
++                            ? {
++                                ...v,
++                                kind: e.target.value as PortfolioItemKind,
++                              }
++                            : v,
++                        ),
+@@ -213 +219,0 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-                    className={inputClass}
+@@ -215,7 +221,5 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-                    {Object.entries(PORTFOLIO_KIND_LABELS).map(
+-                      ([value, label]) => (
+-                        <option key={value} value={value} className="bg-[#111]">
+-                          {label}
+-                        </option>
+-                      )
+-                    )}
++                    {Object.entries(PORTFOLIO_KIND_LABELS).map(([v, l]) => (
++                      <option key={v} value={v}>
++                        {l}
++                      </option>
++                    ))}
+@@ -224,3 +228,259 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-
+-                <div className="grid gap-4 sm:grid-cols-2">
+-                  <Field label="Título" htmlFor={`portfolio-title-${index}`}>
++                <Field label="Título" id={`title-${index}`}>
++                  <input
++                    id={`title-${index}`}
++                    required
++                    maxLength={80}
++                    value={item.title}
++                    onChange={(e) =>
++                      update(
++                        "portfolio_items",
++                        draft.portfolio_items.map((v, i) =>
++                          i === index ? { ...v, title: e.target.value } : v,
++                        ),
++                      )
++                    }
++                  />
++                </Field>
++                <Field label="URL del trabajo" id={`url-${index}`}>
++                  <input
++                    id={`url-${index}`}
++                    type="url"
++                    required
++                    maxLength={500}
++                    value={item.url}
++                    onChange={(e) =>
++                      update(
++                        "portfolio_items",
++                        draft.portfolio_items.map((v, i) =>
++                          i === index ? { ...v, url: e.target.value } : v,
++                        ),
++                      )
++                    }
++                    placeholder="https://"
++                  />
++                </Field>
++                <Field
++                  label="Tu participación / contexto"
++                  id={`summary-${index}`}
++                >
++                  <input
++                    id={`summary-${index}`}
++                    maxLength={180}
++                    value={item.summary ?? ""}
++                    onChange={(e) =>
++                      update(
++                        "portfolio_items",
++                        draft.portfolio_items.map((v, i) =>
++                          i === index ? { ...v, summary: e.target.value } : v,
++                        ),
++                      )
++                    }
++                    placeholder="Dirección de fotografía · Cortometraje · 2026"
++                  />
++                </Field>
++              </div>
++              <ItemActions
++                label={`pieza ${index + 1}`}
++                index={index}
++                length={draft.portfolio_items.length}
++                move={(direction) =>
++                  update(
++                    "portfolio_items",
++                    reorder(draft.portfolio_items, index, direction),
++                  )
++                }
++                remove={() =>
++                  update(
++                    "portfolio_items",
++                    draft.portfolio_items.filter((_, i) => i !== index),
++                  )
++                }
++              />
++            </fieldset>
++          ))}
++          <div className="profile-editor-subheading">
++            <h3>{talent ? "Book" : "Imágenes de tu trabajo"}</h3>
++            <button
++              type="button"
++              className="profile-text-link"
++              disabled={p.book.length >= 6}
++              onClick={() =>
++                presentation("book", [...p.book, { url: "", caption: "" }])
++              }
++            >
++              + Añadir imagen
++            </button>
++          </div>
++          {p.book.map((item, index) => (
++            <fieldset className="profile-edit-item" key={index}>
++              <legend>Imagen {index + 1}</legend>
++              <div className="profile-form-grid">
++                <Field label="URL de imagen (https)" id={`book-${index}`}>
++                  <input
++                    id={`book-${index}`}
++                    type="url"
++                    required
++                    maxLength={500}
++                    value={item.url}
++                    onChange={(e) =>
++                      presentation(
++                        "book",
++                        p.book.map((v, i) =>
++                          i === index ? { ...v, url: e.target.value } : v,
++                        ),
++                      )
++                    }
++                  />
++                </Field>
++                <Field
++                  label="Pie de foto / descripción"
++                  id={`caption-${index}`}
++                >
++                  <input
++                    id={`caption-${index}`}
++                    maxLength={120}
++                    value={item.caption}
++                    onChange={(e) =>
++                      presentation(
++                        "book",
++                        p.book.map((v, i) =>
++                          i === index ? { ...v, caption: e.target.value } : v,
++                        ),
++                      )
++                    }
++                  />
++                </Field>
++              </div>
++              <ItemActions
++                label={`imagen ${index + 1}`}
++                index={index}
++                length={p.book.length}
++                move={(direction) =>
++                  presentation("book", reorder(p.book, index, direction))
++                }
++                remove={() =>
++                  presentation(
++                    "book",
++                    p.book.filter((_, i) => i !== index),
++                  )
++                }
++              />
++            </fieldset>
++          ))}
++        </section>
++        <section id="identity">
++          <Heading
++            number="02"
++            title="Una identidad. Varias disciplinas."
++            description="Elige hasta 5 disciplinas. Actuación y Modelaje también muestran tu perfil en Talento."
++          />
++          <fieldset className="profile-discipline-options">
++            <legend className="sr-only">Disciplinas</legend>
++            {Array.from(
++              new Set([...PROFILE_DISCIPLINES, ...draft.disciplines]),
++            ).map((d) => (
++              <label key={d}>
++                <input
++                  name="disciplines"
++                  value={d}
++                  type="checkbox"
++                  checked={draft.disciplines.includes(d)}
++                  disabled={
++                    !draft.disciplines.includes(d) &&
++                    draft.disciplines.length >= 5
++                  }
++                  onChange={(e) =>
++                    update(
++                      "disciplines",
++                      e.target.checked
++                        ? [...draft.disciplines, d]
++                        : draft.disciplines.filter((v) => v !== d),
++                    )
++                  }
++                />
++                {d}
++              </label>
++            ))}
++          </fieldset>
++          <div className="profile-form-grid">
++            <Field label="Alias artístico (opcional)" id="stage-name">
++              <input
++                id="stage-name"
++                value={p.stage_name}
++                maxLength={80}
++                onChange={(e) => presentation("stage_name", e.target.value)}
++              />
++            </Field>
++            <Field label="Ciudad" id="city">
++              <input
++                id="city"
++                name="city"
++                value={draft.city ?? ""}
++                maxLength={80}
++                onChange={(e) => update("city", e.target.value)}
++                placeholder="Guadalajara"
++              />
++            </Field>
++            <Field label="Zona de trabajo aproximada (opcional)" id="work-area">
++              <input
++                id="work-area"
++                value={p.work_area}
++                maxLength={80}
++                onChange={(e) => presentation("work_area", e.target.value)}
++                placeholder="Zona Poniente · No incluyas tu dirección"
++              />
++            </Field>
++            <Field label="Disponibilidad" id="availability">
++              <select
++                id="availability"
++                name="availability"
++                value={draft.availability}
++                onChange={(e) =>
++                  update(
++                    "availability",
++                    e.target.value as ProfessionalProfile["availability"],
++                  )
++                }
++              >
++                {Object.entries(AVAILABILITY_LABELS).map(([v, l]) => (
++                  <option value={v} key={v}>
++                    {l}
++                  </option>
++                ))}
++              </select>
++            </Field>
++          </div>
++          <Field label="Sobre mí" id="bio">
++            <textarea
++              id="bio"
++              name="bio"
++              rows={5}
++              maxLength={PROFILE_LIMITS.bio}
++              value={draft.bio ?? ""}
++              onChange={(e) => update("bio", e.target.value)}
++              placeholder="Tu enfoque, tu práctica y las historias que te interesa contar."
++            />
++          </Field>
++        </section>
++        <section id="experience">
++          <Heading
++            number="03"
++            title="Experiencia con contexto."
++            description="Selecciona hasta 12 créditos. Incluye proyecto, participación y año; no hace falta contar toda tu trayectoria."
++          />
++          {p.credits.map((c, index) => (
++            <fieldset className="profile-edit-item" key={index}>
++              <legend>Crédito {index + 1}</legend>
++              <div className="profile-form-grid">
++                {(["title", "role", "year"] as const).map((key) => (
++                  <Field
++                    key={key}
++                    label={
++                      key === "title"
++                        ? "Proyecto / producción"
++                        : key === "role"
++                          ? "Participación"
++                          : "Año (opcional)"
++                    }
++                    id={`credit-${key}-${index}`}
++                  >
+@@ -228,6 +488,4 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-                      id={`portfolio-title-${index}`}
+-                      value={item.title}
+-                      maxLength={PROFILE_LIMITS.itemTitle}
+-                      required
+-                      onChange={(event) =>
+-                        updatePortfolioItem(index, "title", event.target.value)
++                      id={`credit-${key}-${index}`}
++                      required={key !== "year"}
++                      maxLength={
++                        key === "year" ? 4 : key === "title" ? 100 : 80
+@@ -235,14 +493,10 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-                      className={inputClass}
+-                    />
+-                  </Field>
+-                  <Field label="URL" htmlFor={`portfolio-url-${index}`}>
+-                    <input
+-                      id={`portfolio-url-${index}`}
+-                      value={item.url}
+-                      maxLength={PROFILE_LIMITS.itemUrl}
+-                      type="url"
+-                      inputMode="url"
+-                      required
+-                      placeholder="https://"
+-                      onChange={(event) =>
+-                        updatePortfolioItem(index, "url", event.target.value)
++                      inputMode={key === "year" ? "numeric" : undefined}
++                      pattern={key === "year" ? "(19|20)[0-9]{2}" : undefined}
++                      value={c[key]}
++                      onChange={(e) =>
++                        presentation(
++                          "credits",
++                          p.credits.map((v, i) =>
++                            i === index ? { ...v, [key]: e.target.value } : v,
++                          ),
++                        )
+@@ -250 +503,0 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-                      className={inputClass}
+@@ -253,25 +506 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-                  <div className="sm:col-span-2">
+-                    <Field
+-                      label="Descripción breve (opcional)"
+-                      htmlFor={`portfolio-summary-${index}`}
+-                    >
+-                      <input
+-                        id={`portfolio-summary-${index}`}
+-                        value={item.summary ?? ""}
+-                        maxLength={PROFILE_LIMITS.itemSummary}
+-                        onChange={(event) =>
+-                          updatePortfolioItem(index, "summary", event.target.value)
+-                        }
+-                        className={inputClass}
+-                      />
+-                    </Field>
+-                  </div>
+-                </div>
+-
+-                <button
+-                  type="button"
+-                  onClick={() => removePortfolioItem(index)}
+-                  className="h-fit text-left text-sm text-red-300/70 transition hover:text-red-200 md:mt-9"
+-                >
+-                  Quitar
+-                </button>
++                ))}
+@@ -279,19 +508,26 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-            ))}
+-          </div>
+-        )}
+-      </section>
+-
+-      <section aria-labelledby="privacy-heading" className={sectionClass}>
+-        <SectionHeading
+-          eyebrow="Privacidad"
+-          id="privacy-heading"
+-          title="Publicación y contacto"
+-          description="El perfil público usa tu primer nombre y la inicial de tu último apellido. Nunca muestra tu correo, teléfono ni nombre completo."
+-        />
+-
+-        <Field label="Quién puede solicitar contacto" htmlFor="contact_policy">
+-          <select
+-            id="contact_policy"
+-            name="contact_policy"
+-            defaultValue={profile?.contact_policy ?? "members_only"}
+-            className={inputClass}
++              <ItemActions
++                label={`crédito ${index + 1}`}
++                index={index}
++                length={p.credits.length}
++                move={(direction) =>
++                  presentation("credits", reorder(p.credits, index, direction))
++                }
++                remove={() =>
++                  presentation(
++                    "credits",
++                    p.credits.filter((_, i) => i !== index),
++                  )
++                }
++              />
++            </fieldset>
++          ))}
++          <button
++            type="button"
++            className="profile-text-link"
++            disabled={p.credits.length >= 12}
++            onClick={() =>
++              presentation("credits", [
++                ...p.credits,
++                { title: "", role: "", year: "" },
++              ])
++            }
+@@ -299,14 +535,12 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-            {Object.entries(CONTACT_POLICY_LABELS).map(([value, label]) => (
+-              <option key={value} value={value} className="bg-[#111]">
+-                {label}
+-              </option>
+-            ))}
+-          </select>
+-        </Field>
+-
+-        <label className="flex cursor-pointer gap-4 rounded-2xl border border-white/10 bg-black/20 p-5">
+-          <input
+-            type="checkbox"
+-            name="is_public"
+-            defaultChecked={profile?.is_public ?? false}
+-            className="mt-1 size-4 shrink-0 accent-white"
++            + Añadir crédito
++          </button>
++        </section>
++        <section id="capabilities">
++          <Heading
++            number="04"
++            title={
++              talent
++                ? "Lo que aportas a escena."
++                : "Habilidades y herramientas."
++            }
++            description="Separa cada elemento con una coma. Incluye sólo lo que aporta contexto a tu trabajo."
+@@ -314,5 +548,95 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-          <span>
+-            <span className="block font-medium">Publicar mi perfil</span>
+-            <span className="mt-1 block text-sm leading-6 text-white/40">
+-              Cualquier persona con el enlace podrá ver la versión abreviada y
+-              profesional. Puedes volver a borrador cuando quieras.
++          <div className="profile-form-grid">
++            <Field label="Habilidades (hasta 12)" id="skills">
++              <input
++                id="skills"
++                name="skills"
++                defaultValue={draft.skills.join(", ")}
++                onChange={(e) =>
++                  update(
++                    "skills",
++                    e.target.value
++                      .split(",")
++                      .map((v) => v.trim())
++                      .filter(Boolean),
++                  )
++                }
++                placeholder={
++                  talent
++                    ? "Inglés, danza, improvisación"
++                    : "Iluminación, DaVinci Resolve, inglés"
++                }
++              />
++            </Field>
++            <Field
++              label="Equipo y sistemas (hasta 10, opcional)"
++              id="equipment"
++            >
++              <input
++                id="equipment"
++                name="equipment"
++                defaultValue={draft.equipment.join(", ")}
++                onChange={(e) =>
++                  update(
++                    "equipment",
++                    e.target.value
++                      .split(",")
++                      .map((v) => v.trim())
++                      .filter(Boolean),
++                  )
++                }
++                placeholder="Sony FX6, Aputure 600D"
++              />
++            </Field>
++            <Field label="Rango orientativo (opcional)" id="rate">
++              <input
++                id="rate"
++                maxLength={100}
++                value={p.rate_range}
++                onChange={(e) => presentation("rate_range", e.target.value)}
++                placeholder="MXN 4,000–6,000 / jornada, según proyecto"
++              />
++            </Field>
++          </div>
++        </section>
++        <section id="publication">
++          <Heading
++            number="05"
++            title="Tú eliges cuándo compartir."
++            description="Los campos de este editor serán públicos al publicar. No incluyas correo, teléfono ni dirección exacta en tu bio, enlaces o imágenes."
++          />
++          <Field label="Quién puede solicitar contacto" id="contact-policy">
++            <select
++              id="contact-policy"
++              name="contact_policy"
++              value={draft.contact_policy}
++              onChange={(e) =>
++                update(
++                  "contact_policy",
++                  e.target.value as ProfessionalProfile["contact_policy"],
++                )
++              }
++            >
++              {Object.entries(CONTACT_POLICY_LABELS).map(([v, l]) => (
++                <option value={v} key={v}>
++                  {l}
++                </option>
++              ))}
++            </select>
++          </Field>
++          <p className="profile-field-help">
++            Conservamos tu preferencia. Las solicitudes entre perfiles aún no
++            están habilitadas.
++          </p>
++          <label className="profile-publish-toggle">
++            <input
++              type="checkbox"
++              name="is_public"
++              checked={draft.is_public}
++              onChange={(e) => update("is_public", e.target.checked)}
++            />
++            <span>
++              <strong>Publicar mi perfil</strong>
++              <span>
++                Visible por enlace y en los catálogos. Desactívalo y guarda para
++                volver a borrador.
++              </span>
+@@ -320,16 +644,52 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-          </span>
+-        </label>
+-      </section>
+-
+-      <div className="sticky bottom-4 z-10 flex flex-col items-center justify-between gap-4 rounded-2xl border border-white/15 bg-[#111]/95 p-4 shadow-2xl backdrop-blur sm:flex-row sm:px-6">
+-        <p className="text-sm text-white/45">
+-          {profile ? "Actualiza tu página pública." : "Crea tu primer perfil profesional."}
+-        </p>
+-        <button
+-          type="submit"
+-          className="w-full rounded-full bg-white px-7 py-3.5 font-semibold text-black transition hover:bg-white/85 sm:w-auto"
+-        >
+-          Guardar perfil
+-        </button>
+-      </div>
+-    </form>
++          </label>
++        </section>
++        <div className="profile-save-bar">
++          <p>
++            {dirty
++              ? "Cambios sin guardar"
++              : profile?.is_public
++                ? "Perfil público"
++                : "Borrador privado"}
++            <span>
++              {draft.is_public
++                ? "Se guardará público"
++                : "Se guardará como borrador"}
++            </span>
++          </p>
++          <div>
++            <button
++              type="button"
++              className="profile-text-link"
++              onClick={showPreview}
++            >
++              Vista previa
++            </button>
++            <SaveButton />
++          </div>
++        </div>
++      </form>
++      <dialog
++        ref={dialog}
++        className="profile-preview-dialog"
++        onClose={() => setPreview(false)}
++      >
++        <div className="profile-preview-toolbar">
++          <span>Vista previa privada · cambios sin publicar</span>
++          <button
++            type="button"
++            autoFocus
++            onClick={() => dialog.current?.close()}
++            aria-label="Cerrar vista previa"
++          >
++            Cerrar ✕
++          </button>
++        </div>
++        {preview && (
++          <div className="editorial-page profiles-page">
++            <div className="editorial-container">
++              <ProfilePortfolio profile={previewProfile} preview />
++            </div>
++          </div>
++        )}
++      </dialog>
++    </>
+@@ -338,4 +698,10 @@ export default function ProfileEditor({ profile }: { profile: EditableProfile })
+-
+-function SectionHeading({
+-  eyebrow,
+-  id,
++function SaveButton() {
++  const { pending } = useFormStatus();
++  return (
++    <button type="submit" className="editorial-primary" disabled={pending}>
++      {pending ? "Guardando…" : "Guardar perfil"}
++    </button>
++  );
++}
++function Heading({
++  number,
+@@ -345,2 +711 @@ function SectionHeading({
+-  eyebrow: string;
+-  id: string;
++  number: string;
+@@ -351,8 +716,4 @@ function SectionHeading({
+-    <div className="max-w-2xl">
+-      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/30">
+-        {eyebrow}
+-      </p>
+-      <h2 id={id} className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+-        {title}
+-      </h2>
+-      <p className="mt-3 leading-7 text-white/40">{description}</p>
++    <div className="profile-form-heading">
++      <p className="eyebrow">{number} / Mi perfil</p>
++      <h2>{title}</h2>
++      <p>{description}</p>
+@@ -362 +722,0 @@ function SectionHeading({
+-
+@@ -365 +725 @@ function Field({
+-  htmlFor,
++  id,
+@@ -369 +729 @@ function Field({
+-  htmlFor: string;
++  id: string;
+@@ -373,4 +733,2 @@ function Field({
+-    <div>
+-      <label htmlFor={htmlFor} className="mb-2 block text-sm text-white/60">
+-        {label}
+-      </label>
++    <div className="profile-field">
++      <label htmlFor={id}>{label}</label>
+@@ -381,6 +739,37 @@ function Field({
+-
+-const sectionClass =
+-  "space-y-7 rounded-3xl border border-white/10 bg-white/[0.025] p-6 sm:p-8";
+-
+-const inputClass =
+-  "w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3.5 text-white outline-none transition placeholder:text-white/20 focus:border-white/30";
++function ItemActions({
++  label,
++  index,
++  length,
++  move,
++  remove,
++}: {
++  label: string;
++  index: number;
++  length: number;
++  move: (direction: number) => void;
++  remove: () => void;
++}) {
++  return (
++    <div className="profile-item-actions">
++      <button
++        type="button"
++        disabled={index === 0}
++        aria-label={`Subir ${label}`}
++        onClick={() => move(-1)}
++      >
++        ↑ Subir
++      </button>
++      <button
++        type="button"
++        disabled={index === length - 1}
++        aria-label={`Bajar ${label}`}
++        onClick={() => move(1)}
++      >
++        ↓ Bajar
++      </button>
++      <button type="button" aria-label={`Quitar ${label}`} onClick={remove}>
++        Quitar
++      </button>
++    </div>
++  );
++}
+diff --git a/app/mi-perfil/actions.ts b/app/mi-perfil/actions.ts
+index 623757c..1f61a76 100644
+--- a/app/mi-perfil/actions.ts
++++ b/app/mi-perfil/actions.ts
+@@ -4,0 +5,4 @@ import { redirect } from "next/navigation";
++import {
++  parsePresentation,
++  EMPTY_PRESENTATION,
++} from "@/lib/profiles/presentation";
+@@ -20,4 +24 @@ const availabilityValues = new Set<AvailabilityStatus>([
+-const contactPolicyValues = new Set<ContactPolicy>([
+-  "members_only",
+-  "closed",
+-]);
++const contactPolicyValues = new Set<ContactPolicy>(["members_only", "closed"]);
+@@ -37 +38,6 @@ export async function saveProfessionalProfile(formData: FormData) {
+-    redirect(profileFeedback("error", "Agrega primero tu nombre completo en Mi cuenta"));
++    redirect(
++      profileFeedback(
++        "error",
++        "Agrega primero tu nombre completo en Mi cuenta",
++      ),
++    );
+@@ -48,0 +55,17 @@ export async function saveProfessionalProfile(formData: FormData) {
++  let presentation = null;
++  try {
++    presentation = parsePresentation(
++      JSON.parse(
++        String(
++          formData.get("presentation") ?? JSON.stringify(EMPTY_PRESENTATION),
++        ),
++      ),
++    );
++  } catch {}
++  if (!presentation)
++    redirect(
++      profileFeedback(
++        "error",
++        "Revisa el retrato, book y créditos; usa enlaces https válidos",
++      ),
++    );
+@@ -58,2 +81,2 @@ export async function saveProfessionalProfile(formData: FormData) {
+-        `Elige entre 1 y ${PROFILE_LIMITS.disciplines} disciplinas`
+-      )
++        `Elige entre 1 y ${PROFILE_LIMITS.disciplines} disciplinas`,
++      ),
+@@ -78,2 +101,2 @@ export async function saveProfessionalProfile(formData: FormData) {
+-        `Añade hasta ${PROFILE_LIMITS.skills} skills de 80 caracteres o menos`
+-      )
++        `Añade hasta ${PROFILE_LIMITS.skills} skills de 80 caracteres o menos`,
++      ),
+@@ -90,2 +113,2 @@ export async function saveProfessionalProfile(formData: FormData) {
+-        `Añade hasta ${PROFILE_LIMITS.equipment} equipos o sistemas`
+-      )
++        `Añade hasta ${PROFILE_LIMITS.equipment} equipos o sistemas`,
++      ),
+@@ -100 +123,3 @@ export async function saveProfessionalProfile(formData: FormData) {
+-    redirect(profileFeedback("error", "Selecciona una preferencia de contacto válida"));
++    redirect(
++      profileFeedback("error", "Selecciona una preferencia de contacto válida"),
++    );
+@@ -108 +133 @@ export async function saveProfessionalProfile(formData: FormData) {
+-    "save_my_professional_profile",
++    "save_my_professional_portfolio",
+@@ -109,0 +135 @@ export async function saveProfessionalProfile(formData: FormData) {
++      p_presentation: presentation,
+@@ -119 +145 @@ export async function saveProfessionalProfile(formData: FormData) {
+-    }
++    },
+@@ -127,0 +154 @@ export async function saveProfessionalProfile(formData: FormData) {
++  revalidatePath("/talento");
+@@ -138 +165 @@ function parsePortfolioItems(
+-  value: FormDataEntryValue | null
++  value: FormDataEntryValue | null,
+@@ -180 +207,2 @@ function parsePortfolioItems(
+-        error: "Cada enlace necesita tipo, título y una URL http o https válida",
++        error:
++          "Cada enlace necesita tipo, título y una URL http o https válida",
+diff --git a/app/mi-perfil/error.tsx b/app/mi-perfil/error.tsx
+new file mode 100644
+index 0000000..91d5098
+--- /dev/null
++++ b/app/mi-perfil/error.tsx
+@@ -0,0 +1,24 @@
++"use client";
++export default function ProfileEditorError({ retry }: { retry: () => void }) {
++  return (
++    <main className="editorial-page profiles-page">
++      <section className="editorial-container py-20">
++        <p className="eyebrow">Mi perfil</p>
++        <h1 className="mt-4 text-4xl tracking-tight">
++          No pudimos cargar tu perfil.
++        </h1>
++        <p className="mt-5 max-w-lg leading-7 text-white/70">
++          Tu información guardada se conserva. Intenta cargarla de nuevo para
++          continuar editando.
++        </p>
++        <button
++          type="button"
++          onClick={retry}
++          className="editorial-primary mt-8"
++        >
++          Reintentar
++        </button>
++      </section>
++    </main>
++  );
++}
+diff --git a/app/mi-perfil/page.tsx b/app/mi-perfil/page.tsx
+index 7b82711..eed4b8d 100644
+--- a/app/mi-perfil/page.tsx
++++ b/app/mi-perfil/page.tsx
+@@ -3 +3 @@ import { redirect } from "next/navigation";
+-import ProfileEditor from "@/app/mi-perfil/ProfileEditor";
++import ProfileEditor from "./ProfileEditor";
+@@ -8 +7,0 @@ import { getOwnedProfessionalProfile } from "@/lib/profiles/data";
+-
+@@ -11,0 +11 @@ export const metadata = {
++  robots: { index: false, follow: false },
+@@ -13 +12,0 @@ export const metadata = {
+-
+@@ -20,5 +19 @@ export default async function EditProfessionalProfilePage({
+-
+-  if (!viewer) {
+-    redirect("/login?next=%2Fmi-perfil");
+-  }
+-
++  if (!viewer) redirect("/login?next=%2Fmi-perfil");
+@@ -29,2 +24 @@ export default async function EditProfessionalProfilePage({
+-  const publicDisplayName = getPublicDisplayName(viewer.fullName);
+-
++  const displayName = getPublicDisplayName(viewer.fullName);
+@@ -32,28 +26,10 @@ export default async function EditProfessionalProfilePage({
+-    <main className="min-h-screen bg-[#080808] text-white">
+-      <SiteHeader contextLink={{ href: "/cuenta", label: "Mi cuenta" }} />
+-
+-      <section className="mx-auto max-w-5xl px-6 py-14 lg:px-8 lg:py-20">
+-        <div className="flex flex-col justify-between gap-8 border-b border-white/10 pb-10 sm:flex-row sm:items-end">
+-          <div>
+-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
+-              FILMATTA Profiles
+-            </p>
+-            <h1 className="mt-4 text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">
+-              Tu perfil profesional
+-            </h1>
+-            <p className="mt-5 max-w-2xl leading-7 text-white/45">
+-              Una página pública, clara y compartible para presentar tu trabajo
+-              audiovisual.
+-            </p>
+-          </div>
+-
+-          {profile?.is_public && (
+-            <Link
+-              href={`/perfiles/${profile.slug}`}
+-              className="w-fit shrink-0 rounded-full border border-white/15 px-5 py-3 text-sm font-medium transition hover:bg-white/[0.06]"
+-            >
+-              Ver perfil público →
+-            </Link>
+-          )}
+-        </div>
+-
++    <div className="editorial-page profiles-page">
++      <SiteHeader />
++      <main className="editorial-container profile-editor-shell">
++        <header className="profile-editor-header">
++          <p className="eyebrow">FILMATTA / Mi perfil</p>
++          <h1>Tu perfil profesional.</h1>
++          <p>
++            Reel, trabajo y experiencia. Una página para presentar lo que haces.
++          </p>
++        </header>
+@@ -63 +39 @@ export default async function EditProfessionalProfilePage({
+-            className="mt-8 rounded-xl border border-green-400/20 bg-green-400/[0.06] px-5 py-4 text-sm text-green-100"
++            className="mt-6 border border-[#B9DCEB]/30 bg-[#B9DCEB]/5 p-4 text-sm text-[#B9DCEB]"
+@@ -70 +45,0 @@ export default async function EditProfessionalProfilePage({
+-
+@@ -74 +49 @@ export default async function EditProfessionalProfilePage({
+-            className="mt-8 rounded-xl border border-red-500/20 bg-red-500/[0.06] px-5 py-4 text-sm text-red-200"
++            className="mt-6 border border-red-300/30 p-4 text-sm text-red-200"
+@@ -79,13 +54,6 @@ export default async function EditProfessionalProfilePage({
+-
+-        <aside className="mt-8 grid gap-5 rounded-2xl border border-white/10 bg-white/[0.025] p-6 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+-          <div className="flex size-14 items-center justify-center rounded-full bg-[#8f1736] text-xl font-semibold">
+-            {Array.from(publicDisplayName)[0]}
+-          </div>
+-          <div>
+-            <p className="text-sm text-white/35">Así se mostrará tu nombre</p>
+-            <p className="mt-1 text-xl font-semibold">{publicDisplayName}</p>
+-          </div>
+-          <Link
+-            href="/cuenta#perfil"
+-            className="text-sm text-white/50 transition hover:text-white"
+-          >
++        <div className="profile-editor-name">
++          <p>
++            Tu identidad pública
++            <strong>{profile?.display_name || displayName}</strong>
++          </p>
++          <Link href="/cuenta#perfil" className="profile-text-link">
+@@ -94,5 +62,16 @@ export default async function EditProfessionalProfilePage({
+-        </aside>
+-
+-        <ProfileEditor profile={profile} />
+-      </section>
+-    </main>
++          {profile?.is_public && (
++            <Link
++              href={`/perfiles/${profile.slug}`}
++              className="profile-text-link"
++            >
++              Ver perfil público ↗
++            </Link>
++          )}
++        </div>
++        <ProfileEditor
++          key={profile?.updated_at ?? "new"}
++          profile={profile}
++          displayName={displayName}
++        />
++      </main>
++    </div>
+diff --git a/app/perfiles/[slug]/page.tsx b/app/perfiles/[slug]/page.tsx
+index dba51bb..5d2f1d3 100644
+--- a/app/perfiles/[slug]/page.tsx
++++ b/app/perfiles/[slug]/page.tsx
+@@ -2 +1,0 @@ import type { Metadata } from "next";
+-import Link from "next/link";
+@@ -4,0 +4 @@ import SiteHeader from "@/components/SiteHeader";
++import ProfilePortfolio from "@/components/profiles/ProfilePortfolio";
+@@ -6,4 +5,0 @@ import { getViewer } from "@/lib/auth/get-viewer";
+-import {
+-  AVAILABILITY_LABELS,
+-  PORTFOLIO_KIND_LABELS,
+-} from "@/lib/profiles/constants";
+@@ -11,18 +7,5 @@ import { getPublicProfessionalProfile } from "@/lib/profiles/data";
+-import { getProfileInitial } from "@/lib/profiles/display-name";
+-
+-type ProfilePageProps = {
+-  params: Promise<{ slug: string }>;
+-};
+-
+-export async function generateMetadata({
+-  params,
+-}: ProfilePageProps): Promise<Metadata> {
+-  const { slug } = await params;
+-  const profile = await getPublicProfessionalProfile(slug);
+-
+-  if (!profile) {
+-    return { title: "Perfil no disponible" };
+-  }
+-
+-  const disciplineSummary = profile.disciplines.slice(0, 2).join(" · ");
+-
++type Props = { params: Promise<{ slug: string }> };
++export async function generateMetadata({ params }: Props): Promise<Metadata> {
++  const profile = await getPublicProfessionalProfile((await params).slug);
++  if (!profile)
++    return { title: "Perfil no disponible", robots: { index: false } };
+@@ -33 +16 @@ export async function generateMetadata({
+-      `${profile.display_name} — ${disciplineSummary} en FILMATTA.`,
++      `${profile.display_name} — ${profile.disciplines.join(" · ")} en FILMATTA.`,
+@@ -36,2 +19 @@ export async function generateMetadata({
+-
+-export default async function PublicProfilePage({ params }: ProfilePageProps) {
++export default async function PublicProfilePage({ params }: Props) {
+@@ -43,194 +25 @@ export default async function PublicProfilePage({ params }: ProfilePageProps) {
+-
+-  if (!profile) {
+-    notFound();
+-  }
+-
+-  const contactEnabled = profile.contact_policy === "members_only";
+-  const loginHref = `/login?next=${encodeURIComponent(`/perfiles/${slug}`)}`;
+-
+-  return (
+-    <main className="min-h-screen bg-[#080808] text-white">
+-      <SiteHeader contextLink={{ href: "/perfiles", label: "Profiles" }} />
+-
+-      <article>
+-        <header className="border-b border-white/10">
+-          <div className="mx-auto grid max-w-6xl gap-10 px-6 py-16 md:grid-cols-[10rem_minmax(0,1fr)] lg:px-8 lg:py-24">
+-            <div
+-              aria-hidden="true"
+-              className="flex size-32 items-center justify-center rounded-full bg-[#8f1736] text-5xl font-semibold shadow-[0_0_70px_rgba(143,23,54,0.18)] md:size-40"
+-            >
+-              {getProfileInitial(profile.display_name)}
+-            </div>
+-
+-            <div className="min-w-0">
+-              <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-start">
+-                <div>
+-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/30">
+-                    Perfil profesional
+-                  </p>
+-                  <h1 className="mt-4 text-5xl font-semibold tracking-[-0.045em] sm:text-7xl">
+-                    {profile.display_name}
+-                  </h1>
+-                </div>
+-                <AvailabilityBadge value={profile.availability} />
+-              </div>
+-
+-              <div className="mt-7 flex flex-wrap items-center gap-x-3 gap-y-2 text-white/50">
+-                <span>{profile.disciplines.join(" · ")}</span>
+-                {profile.city && (
+-                  <>
+-                    <span aria-hidden="true" className="text-white/20">
+-                      /
+-                    </span>
+-                    <span>{profile.city}</span>
+-                  </>
+-                )}
+-              </div>
+-            </div>
+-          </div>
+-        </header>
+-
+-        <div className="mx-auto grid max-w-6xl gap-16 px-6 py-14 lg:grid-cols-[minmax(0,1fr)_18rem] lg:px-8 lg:py-20">
+-          <div className="space-y-20">
+-            {profile.bio && (
+-              <ProfileSection eyebrow="Sobre mí" title="Perfil">
+-                <p className="max-w-3xl whitespace-pre-line text-xl leading-9 text-white/65 sm:text-2xl sm:leading-10">
+-                  {profile.bio}
+-                </p>
+-              </ProfileSection>
+-            )}
+-
+-            {profile.portfolio_items.length > 0 && (
+-              <ProfileSection eyebrow="Trabajo seleccionado" title="Reels y portafolio">
+-                <div className="grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-2">
+-                  {profile.portfolio_items.map((item, index) => (
+-                    <a
+-                      key={`${item.url}-${index}`}
+-                      href={item.url}
+-                      target="_blank"
+-                      rel="noreferrer"
+-                      className="group flex min-h-52 flex-col bg-[#0b0b0b] p-6 transition hover:bg-[#111]"
+-                    >
+-                      <p className="text-xs uppercase tracking-[0.22em] text-[#d75a7a]">
+-                        {PORTFOLIO_KIND_LABELS[item.kind]}
+-                      </p>
+-                      <h3 className="mt-5 text-2xl font-semibold tracking-tight">
+-                        {item.title}
+-                      </h3>
+-                      {item.summary && (
+-                        <p className="mt-3 leading-6 text-white/40">
+-                          {item.summary}
+-                        </p>
+-                      )}
+-                      <span className="mt-auto pt-8 text-sm font-medium text-white/55 transition group-hover:text-white">
+-                        Abrir enlace ↗
+-                      </span>
+-                    </a>
+-                  ))}
+-                </div>
+-              </ProfileSection>
+-            )}
+-
+-            {profile.skills.length > 0 && (
+-              <ProfileSection eyebrow="Experiencia" title="Skills">
+-                <TagList items={profile.skills} />
+-              </ProfileSection>
+-            )}
+-
+-            {profile.equipment.length > 0 && (
+-              <ProfileSection eyebrow="Herramientas" title="Equipo y sistemas">
+-                <TagList items={profile.equipment} />
+-              </ProfileSection>
+-            )}
+-          </div>
+-
+-          <aside className="h-fit border-t border-white/10 pt-8 lg:sticky lg:top-8">
+-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/30">
+-              Contacto
+-            </p>
+-            {contactEnabled ? (
+-              <>
+-                <p className="mt-4 text-sm leading-6 text-white/45">
+-                  Los datos personales no son públicos. Las solicitudes de
+-                  contacto se gestionarán dentro de FILMATTA.
+-                </p>
+-                {viewer ? (
+-                  <button
+-                    type="button"
+-                    disabled
+-                    className="mt-6 w-full cursor-not-allowed rounded-full border border-white/15 px-5 py-3 text-sm font-medium text-white/40"
+-                  >
+-                    Solicitudes próximamente
+-                  </button>
+-                ) : (
+-                  <Link
+-                    href={loginHref}
+-                    className="mt-6 block rounded-full bg-white px-5 py-3 text-center text-sm font-semibold text-black transition hover:bg-white/85"
+-                  >
+-                    Inicia sesión para contactar
+-                  </Link>
+-                )}
+-              </>
+-            ) : (
+-              <p className="mt-4 text-sm leading-6 text-white/45">
+-                Esta persona no recibe solicitudes por ahora.
+-              </p>
+-            )}
+-
+-            <div className="mt-8 border-t border-white/10 pt-6 text-xs leading-5 text-white/25">
+-              FILMATTA muestra una identidad abreviada y nunca publica correo o
+-              teléfono en el perfil.
+-            </div>
+-          </aside>
+-        </div>
+-      </article>
+-    </main>
+-  );
+-}
+-
+-function AvailabilityBadge({
+-  value,
+-}: {
+-  value: keyof typeof AVAILABILITY_LABELS;
+-}) {
+-  const isAvailable = value === "available";
+-
+-  return (
+-    <span
+-      className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
+-        isAvailable
+-          ? "border-green-400/20 text-green-200"
+-          : "border-white/10 text-white/45"
+-      }`}
+-    >
+-      <span
+-        className={`size-1.5 rounded-full ${
+-          isAvailable ? "bg-green-300" : "bg-white/30"
+-        }`}
+-      />
+-      {AVAILABILITY_LABELS[value]}
+-    </span>
+-  );
+-}
+-
+-function ProfileSection({
+-  eyebrow,
+-  title,
+-  children,
+-}: {
+-  eyebrow: string;
+-  title: string;
+-  children: React.ReactNode;
+-}) {
+-  return (
+-    <section>
+-      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/30">
+-        {eyebrow}
+-      </p>
+-      <h2 className="mt-2 mb-7 text-3xl font-semibold tracking-tight">{title}</h2>
+-      {children}
+-    </section>
+-  );
+-}
+-
+-function TagList({ items }: { items: string[] }) {
++  if (!profile) notFound();
+@@ -238,10 +27,6 @@ function TagList({ items }: { items: string[] }) {
+-    <ul className="flex flex-wrap gap-2">
+-      {items.map((item) => (
+-        <li
+-          key={item}
+-          className="rounded-full border border-white/10 bg-white/[0.025] px-4 py-2 text-sm text-white/55"
+-        >
+-          {item}
+-        </li>
+-      ))}
+-    </ul>
++    <div className="editorial-page profiles-page">
++      <SiteHeader />
++      <main className="editorial-container">
++        <ProfilePortfolio profile={profile} signedIn={Boolean(viewer)} />
++      </main>
++    </div>
+diff --git a/app/perfiles/loading.tsx b/app/perfiles/loading.tsx
+index 8875061..021e4e1 100644
+--- a/app/perfiles/loading.tsx
++++ b/app/perfiles/loading.tsx
+@@ -1 +1 @@
+-export { default } from "@/components/catalogs/CatalogLoading";
++export { default } from "@/components/profiles/ProfileCatalogLoading";
+diff --git a/app/talento/loading.tsx b/app/talento/loading.tsx
+index 8875061..021e4e1 100644
+--- a/app/talento/loading.tsx
++++ b/app/talento/loading.tsx
+@@ -1 +1 @@
+-export { default } from "@/components/catalogs/CatalogLoading";
++export { default } from "@/components/profiles/ProfileCatalogLoading";
+diff --git a/components/catalogs/ProfileCatalog.tsx b/components/catalogs/ProfileCatalog.tsx
+index e02ec08..bf0cc18 100644
+--- a/components/catalogs/ProfileCatalog.tsx
++++ b/components/catalogs/ProfileCatalog.tsx
+@@ -2,0 +3,2 @@ import SiteHeader from "@/components/SiteHeader";
++import ProfileFilters from "@/components/profiles/ProfileFilters";
++import ProfileCard from "@/components/profiles/ProfileCard";
+@@ -14 +15,0 @@ import {
+-
+@@ -25,0 +27,6 @@ export default async function ProfileCatalog({
++  const filtered = Boolean(
++    filters.discipline ||
++    filters.city ||
++    filters.availability ||
++    filters.page > 1,
++  );
+@@ -27 +34 @@ export default async function ProfileCatalog({
+-    <div className="editorial-page">
++    <div className="editorial-page profiles-page">
+@@ -29 +36 @@ export default async function ProfileCatalog({
+-      <main className="editorial-container py-14 sm:py-20">
++      <main className="editorial-container profile-catalog">
+@@ -31 +38 @@ export default async function ProfileCatalog({
+-        <div className="mt-5 flex flex-wrap items-end justify-between gap-6">
++        <div className="profile-catalog-heading">
+@@ -33 +40 @@ export default async function ProfileCatalog({
+-            <h1 className="text-4xl font-semibold tracking-[-.04em] sm:text-6xl">
++            <h1>
+@@ -35,2 +42,2 @@ export default async function ProfileCatalog({
+-                ? "Talento frente a cámara."
+-                : "Profesionales del audiovisual."}
++                ? "Presencia. Carácter. Talento."
++                : "Personas que hacen cine."}
+@@ -38 +45 @@ export default async function ProfileCatalog({
+-            <p className="mt-5 max-w-2xl leading-7 text-white/65">
++            <p>
+@@ -40,2 +47,2 @@ export default async function ProfileCatalog({
+-                ? "Actuación y modelaje, desde la misma identidad profesional de FILMATTA."
+-                : "Explora perfiles publicados por disciplina, ciudad y disponibilidad declarada."}
++                ? "Actuación y modelaje. Conoce su material, su experiencia y su forma de estar frente a cámara."
++                : "Una mirada, un oficio, una forma de crear. Encuentra a quienes pueden darle vida a tu próximo proyecto."}
+@@ -48,19 +55,36 @@ export default async function ProfileCatalog({
+-        <CatalogFiltersForm
+-          path={path}
+-          filters={filters}
+-          fields={[
+-            {
+-              name: "discipline",
+-              label: "Disciplina",
+-              options: disciplines.map((value) => ({ value, label: value })),
+-            },
+-            { name: "city", label: "Ciudad" },
+-            {
+-              name: "availability",
+-              label: "Disponibilidad",
+-              options: Object.entries(AVAILABILITY_LABELS).map(
+-                ([value, label]) => ({ value, label }),
+-              ),
+-            },
+-          ]}
+-        />
++        <nav className="profile-catalog-tabs" aria-label="Explorar perfiles">
++          <Link href="/perfiles" aria-current={!talent ? "page" : undefined}>
++            Profesionales
++          </Link>
++          <Link href="/talento" aria-current={talent ? "page" : undefined}>
++            Talento frente a cámara
++          </Link>
++        </nav>
++        <ProfileFilters
++          key={JSON.stringify(filters)}
++          active={
++            [filters.discipline, filters.city, filters.availability].filter(
++              Boolean,
++            ).length
++          }
++        >
++          <CatalogFiltersForm
++            path={path}
++            filters={filters}
++            fields={[
++              {
++                name: "discipline",
++                label: "Disciplina",
++                options: disciplines.map((value) => ({ value, label: value })),
++              },
++              { name: "city", label: "Ciudad" },
++              {
++                name: "availability",
++                label: "Disponibilidad",
++                options: Object.entries(AVAILABILITY_LABELS).map(
++                  ([value, label]) => ({ value, label }),
++                ),
++              },
++            ]}
++          />
++        </ProfileFilters>
+@@ -72,3 +96,10 @@ export default async function ProfileCatalog({
+-              <div className="border-y border-white/15 py-12">
+-                <h2 className="text-2xl font-medium">
+-                  No hay perfiles para esta selección.
++              <section className="profile-empty">
++                <p className="eyebrow">
++                  {filtered ? "Otra mirada" : "El comienzo de algo propio"}
++                </p>
++                <h2>
++                  {filtered
++                    ? "No hay perfiles para esta selección."
++                    : talent
++                      ? "El próximo rostro puede ser el tuyo."
++                      : "Tu trabajo puede abrir esta escena."}
+@@ -76,3 +107,4 @@ export default async function ProfileCatalog({
+-                <p className="mt-3 text-white/65">
+-                  Prueba otra disciplina o ciudad, o vuelve al catálogo
+-                  completo.
++                <p>
++                  {filtered
++                    ? "Prueba otra disciplina o ciudad, o vuelve al catálogo completo."
++                    : "Estamos reuniendo a la comunidad audiovisual. Crea tu perfil, selecciona tu mejor material y comparte tu trabajo."}
+@@ -80,2 +112,5 @@ export default async function ProfileCatalog({
+-                <Link className="editorial-secondary mt-4" href={path}>
+-                  Ver todos
++                <Link
++                  className="editorial-secondary"
++                  href={filtered ? path : "/mi-perfil"}
++                >
++                  {filtered ? "Ver todos" : "Crear mi perfil"} ↗
+@@ -83 +118 @@ export default async function ProfileCatalog({
+-              </div>
++              </section>
+@@ -85,26 +120,32 @@ export default async function ProfileCatalog({
+-              <div className="grid gap-x-8 md:grid-cols-2 lg:grid-cols-3">
+-                {result.profiles.map((profile) => (
+-                  <Link
+-                    key={profile.slug}
+-                    href={`/perfiles/${profile.slug}`}
+-                    className="group border-t border-white/20 py-8 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#B9DCEB]"
+-                  >
+-                    <p className="eyebrow">{profile.disciplines.join(" / ")}</p>
+-                    <h2 className="mt-5 text-3xl font-medium tracking-tight group-hover:text-[#B9DCEB]">
+-                      {profile.display_name}
+-                    </h2>
+-                    <p className="mt-3 text-sm text-white/65">
+-                      {profile.city || "Ciudad no indicada"} ·{" "}
+-                      {AVAILABILITY_LABELS[profile.availability]}
+-                    </p>
+-                    {profile.bio && (
+-                      <p className="mt-5 line-clamp-3 leading-7 text-white/65">
+-                        {profile.bio}
+-                      </p>
+-                    )}
+-                    <span className="mt-7 inline-block text-sm text-[#B9DCEB]">
+-                      Ver trabajo y experiencia ↗
+-                    </span>
+-                  </Link>
+-                ))}
+-              </div>
++              <>
++                <div className="profile-results">
++                  <p>
++                    {result.profiles.length}
++                    {result.hasNext ? "+" : ""}{" "}
++                    {result.profiles.length === 1
++                      ? "perfil en esta página"
++                      : "perfiles en esta página"}
++                  </p>
++                  <p>
++                    Material y disponibilidad declarados por cada profesional
++                  </p>
++                </div>
++                <div
++                  className={`profile-grid ${talent ? "profile-grid--talent" : ""}`}
++                >
++                  {result.profiles.map((profile) => (
++                    <ProfileCard
++                      key={profile.slug}
++                      profile={profile}
++                      talent={talent}
++                    />
++                  ))}
++                </div>
++              </>
++            )}
++            {(result.profiles.length > 0 || filters.page > 1) && (
++              <CatalogPagination
++                path={path}
++                filters={filters}
++                hasNext={result.hasNext}
++              />
+@@ -112,5 +152,0 @@ export default async function ProfileCatalog({
+-            <CatalogPagination
+-              path={path}
+-              filters={filters}
+-              hasNext={result.hasNext}
+-            />
+@@ -118,0 +155,6 @@ export default async function ProfileCatalog({
++        <footer className="profile-catalog-footer">
++          <p>Tu trabajo también tiene un lugar aquí.</p>
++          <Link href="/mi-perfil" className="profile-text-link">
++            Presenta tu perfil ↗
++          </Link>
++        </footer>
+diff --git a/components/profiles/ProfileCard.tsx b/components/profiles/ProfileCard.tsx
+new file mode 100644
+index 0000000..540b6e1
+--- /dev/null
++++ b/components/profiles/ProfileCard.tsx
+@@ -0,0 +1,63 @@
++import Link from "next/link";
++import type { ProfileSummary } from "@/lib/profiles/catalog";
++import { AVAILABILITY_LABELS } from "@/lib/profiles/constants";
++import { leadReel, reelSource } from "@/lib/profiles/presentation";
++import ProfileImage from "./ProfileImage";
++export default function ProfileCard({
++  profile,
++  talent = false,
++}: {
++  profile: ProfileSummary;
++  talent?: boolean;
++}) {
++  const reel = leadReel(profile.portfolio_items),
++    p = profile.presentation;
++  const image = talent
++    ? p.portrait_url || p.book[0]?.url
++    : p.book[0]?.url ||
++      (reel ? reelSource(reel.url)?.thumbnail : null) ||
++      p.portrait_url;
++  return (
++    <Link
++      href={`/perfiles/${profile.slug}`}
++      className={`profile-card ${talent ? "profile-card--talent" : ""}`}
++    >
++      <div className="profile-card-frame">
++        <ProfileImage
++          src={image}
++          alt=""
++          fallback={profile.display_name.slice(0, 1)}
++        />
++        {(reel || p.book.length > 0) && (
++          <span className="profile-card-material">
++            {reel ? "▷ Reel" : "Book"}
++            {reel && p.book.length > 0 ? " / Book" : ""}
++          </span>
++        )}
++        <span className="profile-card-open" aria-hidden="true">
++          ↗
++        </span>
++      </div>
++      <div className="profile-card-name">
++        <h2>{p.stage_name || profile.display_name}</h2>
++        <span aria-hidden="true">↗</span>
++      </div>
++      {p.stage_name && (
++        <p className="profile-card-secondary">{profile.display_name}</p>
++      )}
++      <p className="profile-card-disciplines">
++        {profile.disciplines.join(" · ")}
++      </p>
++      <p className="profile-card-city">
++        {[profile.city, p.work_area].filter(Boolean).join(" · ") ||
++          "Ciudad por confirmar"}
++      </p>
++      <p
++        className="profile-availability"
++        data-available={profile.availability === "available"}
++      >
++        {AVAILABILITY_LABELS[profile.availability]}
++      </p>
++    </Link>
++  );
++}
+diff --git a/components/profiles/ProfileCatalogLoading.tsx b/components/profiles/ProfileCatalogLoading.tsx
+new file mode 100644
+index 0000000..0a05775
+--- /dev/null
++++ b/components/profiles/ProfileCatalogLoading.tsx
+@@ -0,0 +1,21 @@
++export default function ProfileCatalogLoading() {
++  return (
++    <main className="editorial-page profiles-page" aria-busy="true">
++      <div className="editorial-container py-20">
++        <p role="status" className="eyebrow">
++          Cargando perfiles…
++        </p>
++        <div aria-hidden="true" className="profile-skeleton-title" />
++        <div className="profile-grid" aria-hidden="true">
++          {[1, 2, 3, 4].map((i) => (
++            <div key={i}>
++              <div className="profile-skeleton-image" />
++              <div className="profile-skeleton-line" />
++              <div className="profile-skeleton-line w-2/3" />
++            </div>
++          ))}
++        </div>
++      </div>
++    </main>
++  );
++}
+diff --git a/components/profiles/ProfileFilters.tsx b/components/profiles/ProfileFilters.tsx
+new file mode 100644
+index 0000000..193ecb1
+--- /dev/null
++++ b/components/profiles/ProfileFilters.tsx
+@@ -0,0 +1,29 @@
++"use client";
++import { useId, useState } from "react";
++export default function ProfileFilters({
++  active,
++  children,
++}: {
++  active: number;
++  children: React.ReactNode;
++}) {
++  const [expanded, setExpanded] = useState(active > 0);
++  const id = useId();
++  return (
++    <div className="profile-filter-disclosure" data-expanded={expanded}>
++      <button
++        type="button"
++        className="profile-filter-toggle"
++        aria-expanded={expanded}
++        aria-controls={id}
++        onClick={() => setExpanded((v) => !v)}
++      >
++        Filtros {active > 0 ? `· ${active} activos` : ""}
++        <span aria-hidden="true">{expanded ? "−" : "+"}</span>
++      </button>
++      <div id={id} className="profile-filter-content">
++        {children}
++      </div>
++    </div>
++  );
++}
+diff --git a/components/profiles/ProfileImage.tsx b/components/profiles/ProfileImage.tsx
+new file mode 100644
+index 0000000..fe8085c
+--- /dev/null
++++ b/components/profiles/ProfileImage.tsx
+@@ -0,0 +1,36 @@
++"use client";
++import { useState } from "react";
++// User-supplied HTTPS images stay in the browser, never in a server image proxy.
++export default function ProfileImage({
++  src,
++  alt,
++  className = "",
++  eager = false,
++  fallback = "F",
++}: {
++  src?: string | null;
++  alt: string;
++  className?: string;
++  eager?: boolean;
++  fallback?: string;
++}) {
++  const [failedSource, setFailedSource] = useState<string | null>(null);
++  return (
++    <div className={`profile-image ${className}`}>
++      <span aria-hidden="true" className="profile-image-fallback">
++        {fallback}
++      </span>
++      {src && src !== failedSource && (
++        // eslint-disable-next-line @next/next/no-img-element
++        <img
++          src={src}
++          alt={alt}
++          loading={eager ? "eager" : "lazy"}
++          decoding="async"
++          referrerPolicy="no-referrer"
++          onError={() => setFailedSource(src)}
++        />
++      )}
++    </div>
++  );
++}
+diff --git a/components/profiles/ProfilePortfolio.tsx b/components/profiles/ProfilePortfolio.tsx
+new file mode 100644
+index 0000000..8c8aefa
+--- /dev/null
++++ b/components/profiles/ProfilePortfolio.tsx
+@@ -0,0 +1,286 @@
++import Link from "next/link";
++import {
++  AVAILABILITY_LABELS,
++  PORTFOLIO_KIND_LABELS,
++} from "@/lib/profiles/constants";
++import {
++  isTalent,
++  leadReel,
++  portfolioWebUrl,
++  reelSource,
++} from "@/lib/profiles/presentation";
++import type { PublicProfessionalProfile } from "@/lib/profiles/types";
++import ProfileImage from "./ProfileImage";
++import ReelPlayer from "./ReelPlayer";
++import ShareProfile from "./ShareProfile";
++export default function ProfilePortfolio({
++  profile,
++  signedIn = false,
++  preview = false,
++}: {
++  profile: PublicProfessionalProfile;
++  signedIn?: boolean;
++  preview?: boolean;
++}) {
++  const talent = isTalent(profile.disciplines),
++    p = profile.presentation;
++  const reel = leadReel(profile.portfolio_items);
++  const work = profile.portfolio_items.filter(
++    (item) => item !== reel && portfolioWebUrl(item.url),
++  );
++  const location = [profile.city, p.work_area].filter(Boolean).join(" · ");
++  return (
++    <article
++      className={`profile-portfolio ${talent ? "profile-portfolio--talent" : ""}`}
++    >
++      <header className="profile-identity">
++        <div>
++          <p className="eyebrow">
++            FILMATTA / {talent ? "Talento" : "Profesional audiovisual"}
++          </p>
++          <h1>{profile.display_name}</h1>
++          {p.stage_name && <p className="profile-stage">{p.stage_name}</p>}
++          <p className="profile-disciplines">
++            {profile.disciplines.join(" · ")}
++          </p>
++          <div className="profile-meta">
++            <span>{location || "Ciudad por confirmar"}</span>
++            <span
++              className="profile-availability"
++              data-available={profile.availability === "available"}
++            >
++              {AVAILABILITY_LABELS[profile.availability]}
++            </span>
++          </div>
++        </div>
++        <a className="editorial-secondary" href="#contact">
++          Contactar ↗
++        </a>
++      </header>
++      <div className="profile-feature">
++        {(talent || p.portrait_url) && (
++          <figure className="profile-portrait">
++            <ProfileImage
++              src={p.portrait_url}
++              alt={`Retrato de ${profile.display_name}`}
++              eager
++              fallback={profile.display_name.slice(0, 1)}
++            />
++            {talent && (
++              <figcaption>Retrato / {profile.display_name}</figcaption>
++            )}
++          </figure>
++        )}
++        <div className="min-w-0">
++          {reel ? (
++            <ReelPlayer
++              item={reel}
++              poster={
++                reelSource(reel.url)?.thumbnail
++                  ? undefined
++                  : p.book.find((item) => item.url !== p.portrait_url)?.url ||
++                    p.portrait_url
++              }
++            />
++          ) : p.book.length ? (
++            <figure className="profile-feature-still">
++              <ProfileImage
++                src={p.book[0].url}
++                alt={p.book[0].caption || "Trabajo seleccionado"}
++                eager
++              />
++              <figcaption>
++                {p.book[0].caption || "Trabajo seleccionado"}
++              </figcaption>
++            </figure>
++          ) : (
++            <div className="profile-no-reel">
++              <p className="eyebrow">Presentación profesional</p>
++              <p>
++                {profile.bio || "Cada trayectoria tiene una forma de mirar."}
++              </p>
++              <span>El reel aún no está disponible.</span>
++            </div>
++          )}
++        </div>
++      </div>
++      <div className="profile-body">
++        <div className="min-w-0">
++          {profile.bio && (
++            <section className="profile-section">
++              <p className="eyebrow">01 / Sobre mí</p>
++              <h2>Una forma de {talent ? "interpretar." : "hacer."}</h2>
++              <p className="profile-bio">{profile.bio}</p>
++            </section>
++          )}
++          {(p.book.length > 0 || work.length > 0) && (
++            <section className="profile-section">
++              <p className="eyebrow">02 / Trabajo seleccionado</p>
++              <h2>
++                {talent ? "Book y material." : "El trabajo, en imágenes."}
++              </h2>
++              {p.book.length > 0 && (
++                <div
++                  className={`profile-book ${talent ? "profile-book--talent" : ""}`}
++                >
++                  {p.book.map((item, i) => (
++                    <figure key={i}>
++                      <a
++                        href={item.url}
++                        target="_blank"
++                        rel="noopener noreferrer"
++                        aria-label={`Abrir imagen: ${item.caption || i + 1}`}
++                      >
++                        <ProfileImage
++                          src={item.url}
++                          alt={
++                            item.caption ||
++                            `Book de ${profile.display_name}, imagen ${i + 1}`
++                          }
++                        />
++                      </a>
++                      <figcaption>{item.caption}</figcaption>
++                    </figure>
++                  ))}
++                </div>
++              )}
++              <div className="profile-work">
++                {work.map((item, i) => (
++                  <a
++                    href={portfolioWebUrl(item.url)!}
++                    key={i}
++                    target="_blank"
++                    rel="noopener noreferrer"
++                  >
++                    <span className="eyebrow">
++                      {PORTFOLIO_KIND_LABELS[item.kind]}
++                    </span>
++                    <div>
++                      <h3>{item.title}</h3>
++                      {item.summary && <p>{item.summary}</p>}
++                    </div>
++                    <span aria-hidden="true">↗</span>
++                  </a>
++                ))}
++              </div>
++            </section>
++          )}
++          {p.credits.length > 0 && (
++            <section className="profile-section">
++              <p className="eyebrow">03 / Experiencia</p>
++              <h2>Detrás de cada crédito.</h2>
++              <ul className="profile-credits">
++                {p.credits.map((c, i) => (
++                  <li key={i}>
++                    <span>{c.year || "—"}</span>
++                    <div>
++                      <h3>{c.title}</h3>
++                      <p>{c.role}</p>
++                    </div>
++                  </li>
++                ))}
++              </ul>
++            </section>
++          )}
++          {(profile.skills.length > 0 || profile.equipment.length > 0) && (
++            <section className="profile-section">
++              <p className="eyebrow">04 / Capacidades</p>
++              <h2>
++                {talent ? "Lo que aporto a escena." : "Oficio y herramientas."}
++              </h2>
++              <div className="profile-capabilities">
++                {profile.skills.length > 0 && (
++                  <div>
++                    <h3>Habilidades</h3>
++                    <ul>
++                      {profile.skills.map((s) => (
++                        <li key={s}>{s}</li>
++                      ))}
++                    </ul>
++                  </div>
++                )}
++                {profile.equipment.length > 0 && (
++                  <div>
++                    <h3>Equipo y sistemas</h3>
++                    <ul>
++                      {profile.equipment.map((s) => (
++                        <li key={s}>{s}</li>
++                      ))}
++                    </ul>
++                  </div>
++                )}
++              </div>
++            </section>
++          )}
++        </div>
++        <aside className="profile-contact" id="contact">
++          <p className="eyebrow">El próximo proyecto</p>
++          <h2>Hablemos de trabajo.</h2>
++          <dl>
++            <div>
++              <dt>Base / zona de trabajo</dt>
++              <dd>{location || "Por confirmar"}</dd>
++            </div>
++            <div>
++              <dt>Disponibilidad</dt>
++              <dd>{AVAILABILITY_LABELS[profile.availability]}</dd>
++            </div>
++            {p.rate_range && (
++              <div>
++                <dt>Rango orientativo</dt>
++                <dd>{p.rate_range}</dd>
++              </div>
++            )}
++          </dl>
++          {profile.contact_policy === "closed" ? (
++            <p>No recibe solicitudes por ahora.</p>
++          ) : (
++            <>
++              {preview ? (
++                <span className="profile-contact-note">
++                  Contactar · acceso con cuenta
++                </span>
++              ) : signedIn ? (
++                <>
++                  <button
++                    type="button"
++                    className="editorial-secondary"
++                    disabled
++                  >
++                    Contactar · próximamente
++                  </button>
++                  <p>
++                    Las solicitudes entre perfiles aún no están disponibles.
++                  </p>
++                </>
++              ) : (
++                <>
++                  <Link
++                    className="editorial-primary"
++                    href={`/login?next=${encodeURIComponent("/perfiles/" + profile.slug + "#contact")}`}
++                  >
++                    Contactar ↗
++                  </Link>
++                  <p>
++                    Inicia sesión. Las solicitudes entre perfiles estarán
++                    disponibles próximamente.
++                  </p>
++                </>
++              )}
++              <p className="profile-contact-note">
++                Tu correo y teléfono no se muestran en esta página.
++              </p>
++            </>
++          )}
++          {!preview && <ShareProfile slug={profile.slug} />}
++        </aside>
++      </div>
++      <footer className="profile-signature">
++        <Link href={talent ? "/talento" : "/perfiles"}>
++          ← {talent ? "Explorar talento" : "Explorar profesionales"}
++        </Link>
++        <span>Una identidad. Todo tu trabajo. / FILMATTA</span>
++      </footer>
++    </article>
++  );
++}
+diff --git a/components/profiles/ProfilesLanding.tsx b/components/profiles/ProfilesLanding.tsx
+new file mode 100644
+index 0000000..8dccd64
+--- /dev/null
++++ b/components/profiles/ProfilesLanding.tsx
+@@ -0,0 +1,223 @@
++import Image from "next/image";
++import Link from "next/link";
++import SiteHeader from "@/components/SiteHeader";
++import { landings, landingActionHref } from "@/content/landings";
++export default function ProfilesLanding({
++  talent,
++  signedIn,
++}: {
++  talent: boolean;
++  signedIn: boolean;
++}) {
++  const landing = landings[talent ? "talento" : "perfiles"];
++  const createHref = landingActionHref("/mi-perfil", signedIn);
++  return (
++    <div className="editorial-page profiles-page">
++      <SiteHeader />
++      <main>
++        <section
++          className={`editorial-container profiles-landing-hero ${talent ? "profiles-landing-hero--talent" : ""}`}
++        >
++          <div className="profiles-hero-copy">
++            <p className="eyebrow">FILMATTA / {landing.name}</p>
++            <h1>{landing.title}</h1>
++            <p>{landing.description}</p>
++            <div className="editorial-actions">
++              <Link href={createHref} className="editorial-primary">
++                {landing.primary.label} ↗
++              </Link>
++              <Link
++                href={landing.secondary.href}
++                className="editorial-secondary"
++              >
++                {landing.secondary.label} →
++              </Link>
++            </div>
++            <p className="profiles-hero-note">
++              Una identidad profesional. Todas tus disciplinas.
++            </p>
++          </div>
++          <figure className="profiles-hero-figure">
++            <div className="profiles-image-label">
++              <span>{talent ? "ENCUADRE / 01" : "PORTAFOLIO / 01"}</span>
++              <span>FILMATTA</span>
++            </div>
++            <Image
++              src={
++                talent
++                  ? "/images/editorial/talent-portrait-13306757.webp"
++                  : "/images/editorial/monitor.webp"
++              }
++              alt={
++                talent
++                  ? "Retrato editorial en blanco y negro"
++                  : "Equipo audiovisual revisando una escena en un monitor"
++              }
++              width={talent ? 1200 : 1800}
++              height={talent ? 1500 : 1200}
++              sizes="(min-width: 1024px) 50vw, 100vw"
++              priority
++            />
++            <figcaption>
++              <span>
++                {talent
++                  ? "Presencia / Expresión / Interpretación"
++                  : "Mirada / Oficio / Experiencia"}
++              </span>
++              <span>Imagen editorial · no es un perfil de FILMATTA</span>
++            </figcaption>
++          </figure>
++        </section>
++        <section className="editorial-container profiles-manifesto">
++          <p className="eyebrow">
++            01 / {talent ? "Material que habla por ti" : "Primero, tu trabajo"}
++          </p>
++          <div>
++            <h2>
++              {talent
++                ? "Una imagen abre la conversación. Tu reel la continúa."
++                : "Antes de leer lo que haces, que puedan verlo."}
++            </h2>
++            <p>
++              {talent
++                ? "Un retrato actual, un book cuidado y escenas que muestran tu registro. El material al frente; tu experiencia, justo donde aporta contexto."
++                : "Tu luz. Tu montaje. Tu forma de contar. Selecciona un reel y las piezas que mejor presentan tu oficio. Cada proyecto tiene espacio para explicar tu participación."}
++            </p>
++            <div className="profiles-material-index">
++              <span>01 — {talent ? "Retrato / Book" : "Demo reel"}</span>
++              <span>
++                02 — {talent ? "Reel / Escenas" : "Trabajo seleccionado"}
++              </span>
++              <span>03 — Experiencia</span>
++            </div>
++          </div>
++        </section>
++        <section className="editorial-container profiles-identity-story">
++          <div>
++            <p className="eyebrow">02 / Una identidad profesional</p>
++            <h2>
++              {talent
++                ? "Tu experiencia, en contexto."
++                : "Tu oficio no cabe en una sola etiqueta."}
++            </h2>
++            <p>
++              {talent
++                ? "Actuación, modelaje y otras disciplinas pueden convivir en una misma página. Presenta tus créditos y habilidades sin perder el centro: tu trabajo frente a cámara."
++                : "Dirección y fotografía. Actuación y guion. Reúne tus disciplinas, experiencia, habilidades y equipo en un perfil que crece contigo."}
++            </p>
++          </div>
++          <dl>
++            {[
++              [
++                talent ? "Experiencia" : "Disciplinas",
++                talent
++                  ? "Producción, participación y año. Cada crédito con su contexto."
++                  : "Varias formas de crear. Una misma identidad.",
++              ],
++              [
++                "Ciudad y disponibilidad",
++                "Dónde trabajas y cuándo puedes sumarte a un proyecto.",
++              ],
++              [
++                talent ? "Habilidades" : "Habilidades y equipo",
++                talent
++                  ? "Idiomas, movimiento y recursos para la interpretación."
++                  : "Tu práctica, tus herramientas y lo que puedes aportar.",
++              ],
++            ].map(([title, text], i) => (
++              <div key={title}>
++                <span aria-hidden="true">0{i + 1}</span>
++                <div>
++                  <dt>{title}</dt>
++                  <dd>{text}</dd>
++                </div>
++              </div>
++            ))}
++          </dl>
++        </section>
++        <section className="profiles-share-story">
++          <div className="editorial-container">
++            <p className="eyebrow">03 / Tu trabajo, donde te encuentren</p>
++            <h2>Comparte tu perfil FILMATTA.</h2>
++            <p>
++              Un enlace para tu próxima conversación, tu firma de correo o una
++              convocatoria. Publica cuando estés listo y vuelve a borrador
++              cuando lo necesites.
++            </p>
++            <div className="profiles-url-example">
++              <span>app.filmatta.com / perfiles /</span>
++              <strong>tu-nombre</strong>
++              <span aria-hidden="true">↗</span>
++            </div>
++            <p className="profiles-small-print">
++              URL ilustrativa. Tu correo y teléfono permanecen privados. El
++              contacto entre perfiles requerirá una cuenta cuando esté
++              disponible.
++            </p>
++            <Link className="editorial-secondary" href={createHref}>
++              Preparar mi perfil →
++            </Link>
++          </div>
++        </section>
++        <section className="editorial-container profiles-ecosystem">
++          <p className="eyebrow">04 / Parte de FILMATTA</p>
++          <h2>
++            {talent
++              ? "Listo para la próxima convocatoria."
++              : "Tu trabajo es el punto de partida."}
++          </h2>
++          <div>
++            {(talent
++              ? [
++                  [
++                    "Castings y oportunidades",
++                    "Consulta requisitos y condiciones.",
++                    "/oportunidades",
++                  ],
++                  ["Learn", "Sigue construyendo tu oficio.", "/cursos"],
++                ]
++              : [
++                  [
++                    "Oportunidades",
++                    "Descubre convocatorias para tu disciplina.",
++                    "/oportunidades",
++                  ],
++                  ["Jobs", "Explora encargos audiovisuales.", "/jobs"],
++                  [
++                    "Servicios",
++                    "Conoce recursos para producir.",
++                    "/marketplace",
++                  ],
++                  ["Learn", "Sigue construyendo tu oficio.", "/cursos"],
++                ]
++            ).map(([title, text, href]) => (
++              <Link href={href} key={title}>
++                <h3>
++                  {title}
++                  <span aria-hidden="true">↗</span>
++                </h3>
++                <p>{text}</p>
++              </Link>
++            ))}
++          </div>
++        </section>
++        <section className="editorial-container profiles-final">
++          <p className="eyebrow">Empieza con tu mejor trabajo</p>
++          <h2>
++            {talent
++              ? "Que te vean como te presentas."
++              : "Dale a tu trabajo su propio espacio."}
++          </h2>
++          <Link className="editorial-primary" href={createHref}>
++            {landing.primary.label} ↗
++          </Link>
++        </section>
++      </main>
++      <footer className="editorial-container editorial-footer">
++        <Link href="/">FILMATTA</Link>
++        <span>Personas, espacios y conocimiento para producir.</span>
++        <Link href="/perfiles">Explorar perfiles</Link>
++      </footer>
++    </div>
++  );
++}
+diff --git a/components/profiles/ReelPlayer.tsx b/components/profiles/ReelPlayer.tsx
+new file mode 100644
+index 0000000..a1991fb
+--- /dev/null
++++ b/components/profiles/ReelPlayer.tsx
+@@ -0,0 +1,81 @@
++"use client";
++import { useState } from "react";
++import type { PortfolioItem } from "@/lib/profiles/types";
++import { portfolioWebUrl, reelSource } from "@/lib/profiles/presentation";
++import ProfileImage from "./ProfileImage";
++export default function ReelPlayer({
++  item,
++  poster,
++}: {
++  item: PortfolioItem;
++  poster?: string;
++}) {
++  const [playing, setPlaying] = useState(false);
++  const source = reelSource(item.url);
++  const url = portfolioWebUrl(item.url);
++  if (!url) return null;
++  return (
++    <figure className="profile-reel">
++      <div className="profile-reel-screen">
++        {playing && source ? (
++          <iframe
++            title={item.title}
++            src={source.embed}
++            loading="lazy"
++            allow="fullscreen; picture-in-picture; encrypted-media"
++            referrerPolicy="strict-origin-when-cross-origin"
++            allowFullScreen
++          />
++        ) : (
++          <>
++            <ProfileImage
++              src={poster || source?.thumbnail}
++              alt=""
++              fallback="REEL"
++            />
++            {source ? (
++              <button
++                type="button"
++                className="reel-play"
++                onClick={() => setPlaying(true)}
++                aria-label={`Cargar reel: ${item.title}`}
++              >
++                <span aria-hidden="true">▷</span>
++                <span>
++                  Ver reel <small>{source.provider}</small>
++                </span>
++              </button>
++            ) : (
++              <a
++                className="reel-play"
++                href={url}
++                target="_blank"
++                rel="noopener noreferrer"
++              >
++                <span aria-hidden="true">↗</span>
++                <span>
++                  Ver reel <small>Abrir sitio original</small>
++                </span>
++              </a>
++            )}
++          </>
++        )}
++      </div>
++      <figcaption>
++        <div>
++          <span className="eyebrow">Reel seleccionado</span>
++          <h2>{item.title}</h2>
++          {item.summary && <p>{item.summary}</p>}
++        </div>
++        <a
++          href={url}
++          target="_blank"
++          rel="noopener noreferrer"
++          className="profile-text-link"
++        >
++          Abrir original ↗
++        </a>
++      </figcaption>
++    </figure>
++  );
++}
+diff --git a/components/profiles/ShareProfile.tsx b/components/profiles/ShareProfile.tsx
+new file mode 100644
+index 0000000..2273634
+--- /dev/null
++++ b/components/profiles/ShareProfile.tsx
+@@ -0,0 +1,33 @@
++"use client";
++import { useState } from "react";
++export default function ShareProfile({ slug }: { slug: string }) {
++  const [message, setMessage] = useState("");
++  const path = `/perfiles/${encodeURIComponent(slug)}`;
++  async function share() {
++    const url = new URL(path, window.location.origin).href;
++    try {
++      if (navigator.share)
++        await navigator.share({ title: "Mi perfil FILMATTA", url });
++      else {
++        await navigator.clipboard.writeText(url);
++        setMessage("Enlace copiado.");
++      }
++    } catch (error) {
++      if (error instanceof Error && error.name === "AbortError") return;
++      setMessage("Copia la dirección del enlace de tu perfil.");
++    }
++  }
++  return (
++    <div className="profile-share">
++      <button type="button" onClick={share} className="profile-text-link">
++        Comparte tu perfil FILMATTA ↗
++      </button>
++      <a href={path} className="profile-url">
++        /perfiles/{slug}
++      </a>
++      <span role="status" className="text-sm text-[#B9DCEB]">
++        {message}
++      </span>
++    </div>
++  );
++}
+diff --git a/content/image-sources.json b/content/image-sources.json
+index e613646..7789dcc 100644
+--- a/content/image-sources.json
++++ b/content/image-sources.json
+@@ -42,0 +43,13 @@
++    },
++    {
++      "file": "/images/editorial/talent-portrait-13306757.webp",
++      "source": "https://www.pexels.com/photo/black-and-white-photo-of-woman-s-face-13306757/",
++      "author": "Pexels contributor (see source)",
++      "obtained": "2026-09-19",
++      "width": 1200,
++      "height": 1500,
++      "focalPoint": "50% 38%",
++      "landings": [
++        "talento"
++      ],
++      "use": "Editorial illustration only; never a real FILMATTA member. Also used in clearly labeled local test fixtures."
+diff --git a/lib/profiles/catalog.ts b/lib/profiles/catalog.ts
+index 951c0e6..cddb449 100644
+--- a/lib/profiles/catalog.ts
++++ b/lib/profiles/catalog.ts
+@@ -7 +7,6 @@ import {
+-import type { AvailabilityStatus } from "./types";
++import type { AvailabilityStatus, PortfolioItem } from "./types";
++import {
++  EMPTY_PRESENTATION,
++  parsePresentation,
++  type ProfilePresentation,
++} from "./presentation";
+@@ -16,0 +22,2 @@ export type ProfileSummary = {
++  portfolio_items: PortfolioItem[];
++  presentation: ProfilePresentation;
+@@ -24 +31 @@ export async function getProfileCatalog(
+-    "list_public_professional_profiles",
++    "list_public_professional_portfolios",
+@@ -37 +44,7 @@ export async function getProfileCatalog(
+-  const rows = (data ?? []) as ProfileSummary[];
++  const rows = ((data ?? []) as ProfileSummary[]).map((row) => ({
++    ...row,
++    portfolio_items: Array.isArray(row.portfolio_items)
++      ? row.portfolio_items
++      : [],
++    presentation: parsePresentation(row.presentation) ?? EMPTY_PRESENTATION,
++  }));
+diff --git a/lib/profiles/data.ts b/lib/profiles/data.ts
+index fee90dc..4d82c1d 100644
+--- a/lib/profiles/data.ts
++++ b/lib/profiles/data.ts
+@@ -1,0 +2,5 @@ import { cache } from "react";
++import {
++  EMPTY_PRESENTATION,
++  parsePresentation,
++  portfolioWebUrl,
++} from "./presentation";
+@@ -10 +15 @@ const profileColumns =
+-  "slug, display_name, disciplines, city, bio, availability, skills, equipment, portfolio_items, contact_policy, is_public, updated_at";
++  "slug, display_name, disciplines, city, bio, availability, skills, equipment, portfolio_items, contact_policy, is_public, updated_at, presentation";
+@@ -22 +27 @@ export async function getOwnedProfessionalProfile(userId: string) {
+-    return null;
++    throw new Error("No pudimos cargar tu perfil. Inténtalo de nuevo.");
+@@ -35,2 +40,2 @@ export const getPublicProfessionalProfile = cache(async (slug: string) => {
+-    "get_public_professional_profile",
+-    { p_slug: slug }
++    "get_public_professional_portfolio",
++    { p_slug: slug },
+@@ -41 +46 @@ export const getPublicProfessionalProfile = cache(async (slug: string) => {
+-    return null;
++    throw new Error("No pudimos cargar este perfil.");
+@@ -47 +52 @@ export const getPublicProfessionalProfile = cache(async (slug: string) => {
+-  if (!profile) {
++  if (!profile || !profile.is_public) {
+@@ -60,0 +66 @@ export const getPublicProfessionalProfile = cache(async (slug: string) => {
++    presentation: profile.presentation,
+@@ -66 +72,3 @@ export const getPublicProfessionalProfile = cache(async (slug: string) => {
+-function normalizeProfessionalProfile(value: unknown): ProfessionalProfile | null {
++function normalizeProfessionalProfile(
++  value: unknown,
++): ProfessionalProfile | null {
+@@ -89,0 +98 @@ function normalizeProfessionalProfile(value: unknown): ProfessionalProfile | nul
++    presentation: parsePresentation(value.presentation) ?? EMPTY_PRESENTATION,
+@@ -113,0 +123 @@ function normalizePortfolioItems(value: unknown): PortfolioItem[] {
++      !portfolioWebUrl(url) ||
+@@ -121 +131,3 @@ function normalizePortfolioItems(value: unknown): PortfolioItem[] {
+-    return [{ kind: normalizedKind, title, url, ...(summary ? { summary } : {}) }];
++    return [
++      { kind: normalizedKind, title, url, ...(summary ? { summary } : {}) },
++    ];
+@@ -136 +148,2 @@ function asStringArray(value: unknown) {
+-        (item): item is string => typeof item === "string" && item.trim() !== ""
++        (item): item is string =>
++          typeof item === "string" && item.trim() !== "",
+@@ -141 +154,3 @@ function asStringArray(value: unknown) {
+-function isAvailability(value: unknown): value is ProfessionalProfile["availability"] {
++function isAvailability(
++  value: unknown,
++): value is ProfessionalProfile["availability"] {
+diff --git a/lib/profiles/presentation.ts b/lib/profiles/presentation.ts
+new file mode 100644
+index 0000000..92853e9
+--- /dev/null
++++ b/lib/profiles/presentation.ts
+@@ -0,0 +1,215 @@
++import type { PortfolioItem, ProfessionalProfile } from "./types";
++
++export type ProfileCredit = { title: string; role: string; year: string };
++export type ProfilePresentation = {
++  portrait_url: string;
++  stage_name: string;
++  work_area: string;
++  rate_range: string;
++  book: { url: string; caption: string }[];
++  credits: ProfileCredit[];
++};
++export const EMPTY_PRESENTATION: ProfilePresentation = {
++  portrait_url: "",
++  stage_name: "",
++  work_area: "",
++  rate_range: "",
++  book: [],
++  credits: [],
++};
++export function isSafeHttpsUrl(value: string) {
++  try {
++    const url = new URL(value);
++    return url.protocol === "https:" && !url.username && !url.password;
++  } catch {
++    return false;
++  }
++}
++export function parsePresentation(value: unknown): ProfilePresentation | null {
++  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
++  const p = value as Record<string, unknown>;
++  const text = (key: string, max: number) =>
++    typeof p[key] === "string" && p[key].length <= max ? p[key].trim() : null;
++  const portrait = text("portrait_url", 500),
++    stage = text("stage_name", 80);
++  const area = text("work_area", 80),
++    rate = text("rate_range", 100);
++  if (
++    [portrait, stage, area, rate].some((v) => v === null) ||
++    (portrait && !isSafeHttpsUrl(portrait))
++  )
++    return null;
++  if (
++    !Array.isArray(p.book) ||
++    p.book.length > 6 ||
++    !Array.isArray(p.credits) ||
++    p.credits.length > 12
++  )
++    return null;
++  const book: ProfilePresentation["book"] = [];
++  for (const item of p.book) {
++    if (
++      !item ||
++      typeof item.url !== "string" ||
++      item.url.length > 500 ||
++      !isSafeHttpsUrl(item.url) ||
++      typeof item.caption !== "string" ||
++      item.caption.length > 120
++    )
++      return null;
++    book.push({ url: item.url.trim(), caption: item.caption.trim() });
++  }
++  const credits: ProfileCredit[] = [];
++  for (const item of p.credits) {
++    if (
++      !item ||
++      typeof item.title !== "string" ||
++      !item.title.trim() ||
++      item.title.length > 100 ||
++      typeof item.role !== "string" ||
++      !item.role.trim() ||
++      item.role.length > 80 ||
++      typeof item.year !== "string" ||
++      !/^(|19\d{2}|20\d{2})$/.test(item.year)
++    )
++      return null;
++    credits.push({
++      title: item.title.trim(),
++      role: item.role.trim(),
++      year: item.year,
++    });
++  }
++  return {
++    portrait_url: portrait!,
++    stage_name: stage!,
++    work_area: area!,
++    rate_range: rate!,
++    book,
++    credits,
++  };
++}
++export function isTalent(disciplines: readonly string[]) {
++  return disciplines.some((d) => d === "Actuación" || d === "Modelaje");
++}
++export function reelSource(value: string) {
++  try {
++    const url = new URL(value);
++    if (
++      !["http:", "https:"].includes(url.protocol) ||
++      url.username ||
++      url.password
++    )
++      return null;
++    const host = url.hostname.toLowerCase();
++    const id =
++      host === "youtu.be"
++        ? url.pathname.slice(1)
++        : ["youtube.com", "www.youtube.com", "m.youtube.com"].includes(host)
++          ? url.pathname === "/watch"
++            ? url.searchParams.get("v")
++            : url.pathname.match(/^\/(?:embed|shorts)\/([^/]+)$/)?.[1]
++          : null;
++    if (id && /^[\w-]{11}$/.test(id))
++      return {
++        embed: `https://www.youtube-nocookie.com/embed/${id}?rel=0`,
++        thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
++        provider: "YouTube",
++      };
++    if (["vimeo.com", "www.vimeo.com", "player.vimeo.com"].includes(host)) {
++      const match = url.pathname.match(
++        /^\/(?:video\/)?(\d+)(?:\/([a-zA-Z0-9]+))?\/?$/,
++      );
++      if (match) {
++        const hash = match[2] || url.searchParams.get("h");
++        return {
++          embed: `https://player.vimeo.com/video/${match[1]}${hash && /^[a-zA-Z0-9]+$/.test(hash) ? "?h=" + hash : ""}`,
++          thumbnail: null,
++          provider: "Vimeo",
++        };
++      }
++    }
++  } catch {}
++  return null;
++}
++export function portfolioWebUrl(value: string) {
++  try {
++    const u = new URL(value);
++    return ["http:", "https:"].includes(u.protocol) &&
++      !u.username &&
++      !u.password
++      ? u.href
++      : null;
++  } catch {
++    return null;
++  }
++}
++export function leadReel(items: PortfolioItem[]) {
++  return items.find(
++    (item) => item.kind === "reel" && portfolioWebUrl(item.url),
++  );
++}
++export function profileCompletion(
++  profile: Pick<
++    ProfessionalProfile,
++    | "disciplines"
++    | "city"
++    | "availability"
++    | "bio"
++    | "portfolio_items"
++    | "skills"
++  > & { presentation?: ProfilePresentation },
++) {
++  const p = profile.presentation ?? EMPTY_PRESENTATION;
++  const checks = [
++    {
++      label: "Disciplinas",
++      done: profile.disciplines.length > 0,
++      href: "#identity",
++    },
++    { label: "Ciudad", done: Boolean(profile.city?.trim()), href: "#identity" },
++    {
++      label: "Disponibilidad",
++      done: profile.availability !== "not_specified",
++      href: "#identity",
++    },
++    {
++      label: "Presentación",
++      done: Boolean(profile.bio?.trim()),
++      href: "#identity",
++    },
++    {
++      label: "Retrato",
++      done: isSafeHttpsUrl(p.portrait_url),
++      href: "#material",
++    },
++    {
++      label: "Reel o trabajo",
++      done: profile.portfolio_items.some((i) =>
++        Boolean(i.title.trim() && portfolioWebUrl(i.url)),
++      ),
++      href: "#material",
++    },
++    {
++      label: "Experiencia",
++      done: p.credits.some((c) =>
++        Boolean(
++          c.title.trim() &&
++          c.role.trim() &&
++          /^(|19\d{2}|20\d{2})$/.test(c.year),
++        ),
++      ),
++      href: "#experience",
++    },
++    {
++      label: "Habilidades",
++      done: profile.skills.length > 0,
++      href: "#capabilities",
++    },
++  ];
++  return {
++    checks,
++    percent: Math.round(
++      (checks.filter((c) => c.done).length / checks.length) * 100,
++    ),
++  };
++}
+diff --git a/lib/profiles/types.ts b/lib/profiles/types.ts
+index 7048917..8a017d8 100644
+--- a/lib/profiles/types.ts
++++ b/lib/profiles/types.ts
+@@ -0,0 +1,2 @@
++import type { ProfilePresentation } from "./presentation";
++
+@@ -2,4 +4 @@ export type AvailabilityStatus =
+-  | "available"
+-  | "limited"
+-  | "unavailable"
+-  | "not_specified";
++  "available" | "limited" | "unavailable" | "not_specified";
+@@ -27,0 +27 @@ export type ProfessionalProfile = {
++  presentation: ProfilePresentation;
+@@ -33,4 +33 @@ export type ProfessionalProfile = {
+-export type PublicProfessionalProfile = Omit<
+-  ProfessionalProfile,
+-  "is_public"
+->;
++export type PublicProfessionalProfile = Omit<ProfessionalProfile, "is_public">;
+diff --git a/public/images/editorial/talent-portrait-13306757.webp b/public/images/editorial/talent-portrait-13306757.webp
+new file mode 100644
+index 0000000..b4c087d
+Binary files /dev/null and b/public/images/editorial/talent-portrait-13306757.webp differ
+diff --git a/supabase/migrations/20260920010000_profile_presentation.sql b/supabase/migrations/20260920010000_profile_presentation.sql
+new file mode 100644
+index 0000000..7931a51
+--- /dev/null
++++ b/supabase/migrations/20260920010000_profile_presentation.sql
+@@ -0,0 +1,80 @@
++-- Additive presentation on the existing identity. Existing RLS is unchanged.
++begin;
++alter table public.professional_profiles add column presentation jsonb not null default
++  '{"portrait_url":"","stage_name":"","work_area":"","rate_range":"","book":[],"credits":[]}';
++
++create function private.profile_presentation_is_valid(p jsonb)
++returns boolean language plpgsql immutable set search_path = '' as $$
++declare item jsonb; k text;
++begin
++  if jsonb_typeof(p) is distinct from 'object' then return false; end if;
++  if exists(select 1 from jsonb_object_keys(p) key where key not in ('portrait_url','stage_name','work_area','rate_range','book','credits')) then return false; end if;
++  foreach k in array array['portrait_url','stage_name','work_area','rate_range'] loop
++    if jsonb_typeof(p->k) is distinct from 'string' then return false; end if;
++  end loop;
++  if length(p->>'portrait_url') > 500 or length(p->>'stage_name') > 80
++     or length(p->>'work_area') > 80 or length(p->>'rate_range') > 100 then return false; end if;
++  if p->>'portrait_url' <> '' and p->>'portrait_url' !~ '^https://[^/@[:space:]]+([/?#]|$)' then return false; end if;
++  if jsonb_typeof(p->'book') is distinct from 'array' or jsonb_typeof(p->'credits') is distinct from 'array' then return false; end if;
++  if jsonb_array_length(p->'book') > 6 or jsonb_array_length(p->'credits') > 12 then return false; end if;
++  for item in select value from jsonb_array_elements(p->'book') loop
++    if jsonb_typeof(item) is distinct from 'object' then return false; end if;
++    if exists(select 1 from jsonb_object_keys(item) key where key not in ('url','caption')) then return false; end if;
++    if jsonb_typeof(item->'url') is distinct from 'string' or jsonb_typeof(item->'caption') is distinct from 'string' then return false; end if;
++    if length(item->>'url') > 500 or item->>'url' !~ '^https://[^/@[:space:]]+([/?#]|$)' or length(item->>'caption') > 120 then return false; end if;
++  end loop;
++  for item in select value from jsonb_array_elements(p->'credits') loop
++    if jsonb_typeof(item) is distinct from 'object' then return false; end if;
++    if exists(select 1 from jsonb_object_keys(item) key where key not in ('title','role','year')) then return false; end if;
++    if jsonb_typeof(item->'title') is distinct from 'string' or jsonb_typeof(item->'role') is distinct from 'string' or jsonb_typeof(item->'year') is distinct from 'string' then return false; end if;
++    if length(btrim(item->>'title')) not between 1 and 100 or length(btrim(item->>'role')) not between 1 and 80 or item->>'year' !~ '^(|19[0-9]{2}|20[0-9]{2})$' then return false; end if;
++  end loop;
++  return true;
++end $$;
++alter table public.professional_profiles add constraint professional_profiles_presentation_check check(private.profile_presentation_is_valid(presentation));
++revoke all on function private.profile_presentation_is_valid(jsonb) from public,anon,authenticated;
++
++-- Atomic wrapper reuses the existing save implementation, identity and validation.
++create function public.save_my_professional_portfolio(
++  p_disciplines text[], p_city text, p_bio text, p_availability text,
++  p_skills text[], p_equipment text[], p_portfolio_items jsonb,
++  p_is_public boolean, p_contact_policy text, p_presentation jsonb
++) returns text language plpgsql security definer set search_path = '' as $$
++declare result text;
++begin
++  if (select auth.uid()) is null then raise exception 'Authentication required' using errcode='42501'; end if;
++  if not private.profile_presentation_is_valid(p_presentation) then raise exception 'Invalid presentation' using errcode='22023'; end if;
++  result := public.save_my_professional_profile(p_disciplines,p_city,p_bio,p_availability,p_skills,p_equipment,p_portfolio_items,p_is_public,p_contact_policy);
++  update public.professional_profiles set presentation=p_presentation where user_id=(select auth.uid());
++  return result;
++end $$;
++revoke all on function public.save_my_professional_portfolio(text[],text,text,text,text[],text[],jsonb,boolean,text,jsonb) from public,anon,authenticated;
++grant execute on function public.save_my_professional_portfolio(text[],text,text,text,text[],text[],jsonb,boolean,text,jsonb) to authenticated;
++
++-- Keep previous RPC contracts intact for existing consumers.
++create function public.get_public_professional_portfolio(p_slug text)
++returns table(slug text,display_name text,disciplines text[],city text,bio text,availability text,
++  skills text[],equipment text[],portfolio_items jsonb,contact_policy text,is_public boolean,updated_at timestamptz,presentation jsonb)
++language sql stable security definer set search_path='' as $$
++  select p.slug,p.display_name,p.disciplines,p.city,p.bio,p.availability,p.skills,p.equipment,
++    p.portfolio_items,p.contact_policy,p.is_public,p.updated_at,p.presentation
++  from public.professional_profiles p where p.slug=p_slug and p.is_public limit 1;
++$$;
++revoke all on function public.get_public_professional_portfolio(text) from public,anon,authenticated;
++grant execute on function public.get_public_professional_portfolio(text) to anon,authenticated;
++
++create function public.list_public_professional_portfolios(
++  p_page integer default 1,p_discipline text default '',p_city text default '',
++  p_availability text default '',p_talent boolean default false)
++returns table(slug text,display_name text,disciplines text[],city text,bio text,availability text,updated_at timestamptz,portfolio_items jsonb,presentation jsonb)
++language sql stable security definer set search_path='' as $$
++  select p.slug,p.display_name,p.disciplines,p.city,p.bio,p.availability,p.updated_at,
++    p.portfolio_items,jsonb_build_object('portrait_url',p.presentation->'portrait_url','stage_name',p.presentation->'stage_name',
++      'work_area',p.presentation->'work_area','rate_range','','book',p.presentation->'book','credits','[]'::jsonb)
++  from public.list_public_professional_profiles(p_page,p_discipline,p_city,p_availability,p_talent) summary
++  join public.professional_profiles p on p.slug=summary.slug and p.is_public
++  order by p.updated_at desc,p.slug asc;
++$$;
++revoke all on function public.list_public_professional_portfolios(integer,text,text,text,boolean) from public,anon,authenticated;
++grant execute on function public.list_public_professional_portfolios(integer,text,text,text,boolean) to anon,authenticated;
++commit;
+diff --git a/tests/catalogs/catalogs.test.mjs b/tests/catalogs/catalogs.test.mjs
+index 86f8e53..b6c7ab9 100644
+--- a/tests/catalogs/catalogs.test.mjs
++++ b/tests/catalogs/catalogs.test.mjs
+@@ -134 +134 @@ test("missing schema is distinguished from network failure and empty catalog", a
+-    assert.equal(f.calls[0][1], "list_public_professional_profiles");
++    assert.equal(f.calls[0][1], "list_public_professional_portfolios");
+diff --git a/tests/e2e/mock-supabase.mjs b/tests/e2e/mock-supabase.mjs
+index 7ca93e1..6dbb976 100644
+--- a/tests/e2e/mock-supabase.mjs
++++ b/tests/e2e/mock-supabase.mjs
+@@ -3,0 +4 @@ import http from "node:http";
++import {profileFixture,resetProfileFixture} from "./profiles-fixture.mjs";
+@@ -5,0 +7 @@ let scenario = "empty";
++let profileDelayMs = 0;
+@@ -70,0 +73,2 @@ http
++      profileDelayMs = Math.min(5000, Math.max(0, Number(url.searchParams.get("delay")) || 0));
++      if (scenario === "profiles-polish") resetProfileFixture();
+@@ -95,0 +100,2 @@ http
++    if (profileDelayMs && url.pathname.endsWith("/list_public_professional_portfolios")) await new Promise(resolve => setTimeout(resolve, profileDelayMs));
++    if (scenario === "profiles-polish" && await profileFixture(req,res,url,token)) return;
+@@ -115 +121 @@ http
+-      if (url.pathname.endsWith("list_public_professional_profiles"))
++      if (url.pathname.endsWith("list_public_professional_portfolios"))
+@@ -119 +125 @@ http
+-      if (url.pathname.endsWith("get_public_professional_profile"))
++      if (url.pathname.endsWith("get_public_professional_portfolio"))
+diff --git a/tests/e2e/profile-states.spec.ts b/tests/e2e/profile-states.spec.ts
+new file mode 100644
+index 0000000..2fcab49
+--- /dev/null
++++ b/tests/e2e/profile-states.spec.ts
+@@ -0,0 +1,60 @@
++import { test, expect } from "@playwright/test";
++test("visual loading, empty and error states at desktop and mobile", async ({
++  page,
++  request,
++}) => {
++  for (const width of [390, 1440]) {
++    await page.setViewportSize({ width, height: 1000 });
++    await request.get(
++      "http://127.0.0.1:54329/__scenario?value=profiles-polish&delay=5000",
++    );
++    await page.goto("/perfiles", { waitUntil: "commit" });
++    await expect(
++      page.getByRole("status").filter({ hasText: "Cargando perfiles" }),
++    ).toBeVisible();
++    await page.addStyleTag({
++      content: "nextjs-portal { display:none !important; }",
++    });
++    await page.screenshot({
++      caret: "initial",
++      path: `docs/review/profiles-talent/states/loading-${width}.png`,
++      animations: "disabled",
++    });
++    await expect(
++      page.locator("main").getByRole("heading", { level: 1 }),
++    ).toBeVisible();
++    await request.get("http://127.0.0.1:54329/__scenario?value=empty");
++    await page.goto("/talento");
++    await expect(
++      page.getByRole("heading", {
++        name: "El próximo rostro puede ser el tuyo.",
++      }),
++    ).toBeVisible();
++    await page.addStyleTag({
++      content: "nextjs-portal { display:none !important; }",
++    });
++    await page.screenshot({
++      caret: "initial",
++      path: `docs/review/profiles-talent/states/empty-${width}.png`,
++      fullPage: true,
++    });
++    await request.get("http://127.0.0.1:54329/__scenario?value=failure");
++    await page.goto("/perfiles");
++    await expect(
++      page.getByText("No pudimos cargar el catálogo."),
++    ).toBeVisible();
++    await page.addStyleTag({
++      content: "nextjs-portal { display:none !important; }",
++    });
++    await page.screenshot({
++      caret: "initial",
++      path: `docs/review/profiles-talent/states/error-${width}.png`,
++      fullPage: true,
++    });
++    expect(
++      await page.evaluate(
++        () => document.documentElement.scrollWidth <= innerWidth,
++      ),
++    ).toBe(true);
++  }
++});
+diff --git a/tests/e2e/profiles-fixture.mjs b/tests/e2e/profiles-fixture.mjs
+new file mode 100644
+index 0000000..77c997f
+--- /dev/null
++++ b/tests/e2e/profiles-fixture.mjs
+@@ -0,0 +1,180 @@
++// Fictional local review fixtures. No remote accounts or user data.
++const blank = {
++  portrait_url: "",
++  stage_name: "",
++  work_area: "",
++  rate_range: "",
++  book: [],
++  credits: [],
++};
++const image = "https://profiles-fixture.invalid/";
++const base = {
++  availability: "available",
++  city: "Guadalajara",
++  bio: "Perfil ficticio para revisión visual. Trabajo con historias íntimas, luz natural y personajes que encuentran su propia voz.",
++  skills: ["Inglés", "Improvisación", "Danza contemporánea"],
++  equipment: [],
++  is_public: true,
++  contact_policy: "members_only",
++  updated_at: "2026-09-19T00:00:00Z",
++  portfolio_items: [
++    {
++      kind: "reel",
++      title: "Escenas seleccionadas · 2026",
++      url: "https://vimeo.com/123456789",
++      summary: "Cine independiente · Drama · Interpretación",
++    },
++    {
++      kind: "project",
++      title: "La última luz",
++      url: "https://example.invalid/proyecto",
++      summary: "Cortometraje · Personaje principal · 2025",
++    },
++  ],
++  presentation: {
++    ...blank,
++    portrait_url: image + "portrait",
++    work_area: "Zona Poniente",
++    book: [
++      {
++        url: image + "portrait",
++        caption: "Retrato editorial · Imagen de stock para esta prueba",
++      },
++      {
++        url: image + "monitor",
++        caption: "En set · Imagen editorial de prueba",
++      },
++    ],
++    credits: [
++      {
++        title: "La última luz",
++        role: "Personaje principal · Cortometraje",
++        year: "2025",
++      },
++      {
++        title: "Días de verano",
++        role: "Reparto · Serie independiente",
++        year: "2024",
++      },
++    ],
++  },
++};
++let owned;
++let rows;
++export function resetProfileFixture() {
++  rows = [
++    {
++      ...base,
++      slug: "elena-demo",
++      display_name: "Elena R.",
++      disciplines: ["Actuación", "Modelaje"],
++    },
++    {
++      ...base,
++      slug: "mateo-demo",
++      display_name: "Mateo C.",
++      disciplines: ["Dirección de fotografía", "Dirección"],
++      equipment: ["Sony FX6", "DaVinci Resolve"],
++      skills: ["Iluminación", "Color"],
++      presentation: {
++        ...base.presentation,
++        portrait_url: "",
++        book: [
++          {
++            url: image + "monitor",
++            caption: "Luz y encuadre · Imagen editorial de prueba",
++          },
++        ],
++      },
++    },
++    {
++      ...base,
++      slug: "sofia-demo",
++      display_name: "Sofía M.",
++      disciplines: ["Actuación"],
++      availability: "limited",
++      presentation: { ...blank },
++    },
++    {
++      ...base,
++      slug: "daniel-demo",
++      display_name: "Daniel A.",
++      disciplines: ["Sonido"],
++      availability: "unavailable",
++      portfolio_items: [],
++      presentation: { ...blank },
++    },
++  ];
++  owned = structuredClone(rows[0]);
++  owned.slug = "perfil-propio-demo";
++  owned.is_public = false;
++}
++resetProfileFixture();
++export async function profileFixture(req, res, url, token) {
++  const body =
++    req.method === "POST"
++      ? JSON.parse(
++          await new Promise((resolve) => {
++            let value = "";
++            req.on("data", (chunk) => (value += chunk));
++            req.on("end", () => resolve(value || "{}"));
++          }),
++        )
++      : {};
++  if (url.pathname === "/rest/v1/professional_profiles") {
++    res.end(JSON.stringify(token.includes(".") ? owned : null));
++    return true;
++  }
++  if (url.pathname.endsWith("save_my_professional_portfolio")) {
++    if (!token.includes(".")) {
++      res.statusCode = 403;
++      res.end("{}");
++      return true;
++    }
++    owned = {
++      ...owned,
++      updated_at: new Date().toISOString(),
++      disciplines: body.p_disciplines,
++      city: body.p_city,
++      bio: body.p_bio,
++      availability: body.p_availability,
++      skills: body.p_skills,
++      equipment: body.p_equipment,
++      portfolio_items: body.p_portfolio_items,
++      presentation: body.p_presentation,
++      is_public: body.p_is_public,
++      contact_policy: body.p_contact_policy,
++    };
++    rows = rows.some(p => p.slug === owned.slug) ? rows.map(p => p.slug === owned.slug ? owned : p) : [...rows, owned];
++    res.end(JSON.stringify(owned.slug));
++    return true;
++  }
++  if (url.pathname.endsWith("get_public_professional_portfolio")) {
++    res.end(
++      JSON.stringify(rows.filter((p) => p.slug === body.p_slug && p.is_public)),
++    );
++    return true;
++  }
++  if (url.pathname.endsWith("list_public_professional_portfolios")) {
++    const filtered = rows.filter(
++      (p) =>
++        p.is_public &&
++        (!body.p_talent ||
++          p.disciplines.some((d) => ["Actuación", "Modelaje"].includes(d))) &&
++        (!body.p_discipline || p.disciplines.includes(body.p_discipline)) &&
++        (!body.p_city ||
++          p.city.toLowerCase().includes(body.p_city.toLowerCase())) &&
++        (!body.p_availability || p.availability === body.p_availability),
++    );
++    res.end(
++      JSON.stringify(
++        filtered.slice(
++          ((body.p_page || 1) - 1) * 24,
++          (body.p_page || 1) * 24 + 1,
++        ),
++      ),
++    );
++    return true;
++  }
++  return false;
++}
+diff --git a/tests/e2e/profiles-polish.spec.ts b/tests/e2e/profiles-polish.spec.ts
+new file mode 100644
+index 0000000..06d7bdd
+--- /dev/null
++++ b/tests/e2e/profiles-polish.spec.ts
+@@ -0,0 +1,258 @@
++import { test, expect, type BrowserContext } from "@playwright/test";
++import fs from "node:fs";
++import path from "node:path";
++const evidence = "docs/review/profiles-talent";
++async function session(context: BrowserContext) {
++  const b64 = (v: object) =>
++    Buffer.from(JSON.stringify(v)).toString("base64url");
++  const token = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ sub: "11111111-1111-4111-8111-111111111111", exp: 4102444800, role: "authenticated" })}.local-signature`;
++  await context.addCookies([
++    {
++      name: "sb-127-auth-token",
++      value:
++        "base64-" +
++        b64({
++          access_token: token,
++          refresh_token: "local-refresh",
++          expires_at: 4102444800,
++          token_type: "bearer",
++          user: { id: "11111111-1111-4111-8111-111111111111" },
++        }),
++      domain: "127.0.0.1",
++      path: "/",
++    },
++  ]);
++}
++test.beforeEach(async ({ request, page }) => {
++  await request.get("http://127.0.0.1:54329/__scenario?value=profiles-polish");
++  await page.route("https://profiles-fixture.invalid/**", (route) =>
++    route.fulfill({
++      contentType: "image/webp",
++      body: fs.readFileSync(
++        path.resolve(
++          "public/images/editorial/" +
++            (route.request().url().endsWith("portrait")
++              ? "talent-portrait-13306757"
++              : "monitor") +
++            ".webp",
++        ),
++      ),
++    }),
++  );
++  await page.route("https://i.ytimg.com/**", (route) =>
++    route.fulfill({
++      contentType: "image/webp",
++      body: fs.readFileSync("public/images/editorial/monitor.webp"),
++    }),
++  );
++});
++test("six surfaces at six widths: real layout, no overflow, desktop and mobile evidence", async ({
++  page,
++  context,
++}) => {
++  test.setTimeout(240000);
++  fs.mkdirSync(evidence, { recursive: true });
++  const errors: string[] = [];
++  page.on("pageerror", (e) => errors.push(e.message));
++  for (const width of [390, 768, 1024, 1280, 1440, 1920]) {
++    await context.clearCookies();
++    await page.setViewportSize({ width, height: 1000 });
++    for (const [route, name] of [
++      ["/descubre/perfiles", "landing-perfiles"],
++      ["/descubre/talento", "landing-talento"],
++      ["/perfiles", "catalogo-perfiles"],
++      ["/talento", "catalogo-talento"],
++      ["/perfiles/elena-demo", "perfil-talento"],
++      ["/perfiles/mateo-demo", "perfil-profesional"],
++      ["/mi-perfil", "mi-perfil"],
++    ]) {
++      if (route === "/mi-perfil") await session(context);
++      await page.goto(route);
++      await expect(
++        page.locator("main").getByRole("heading", { level: 1 }),
++      ).toBeVisible();
++      await page.evaluate(() => document.fonts.ready);
++      await page.locator("main").evaluate(async (element) => {
++        await Promise.all(
++          Array.from(element.querySelectorAll("img"))
++            .filter((i) => i.loading !== "lazy")
++            .map((i) => i.decode().catch(() => {})),
++        );
++      });
++      expect(
++        await page.evaluate(
++          () => document.documentElement.scrollWidth <= innerWidth,
++        ),
++        route + " at " + width,
++      ).toBe(true);
++      if (width === 390 || width === 1440) {
++        await page
++          .locator("main img")
++          .evaluateAll((images) =>
++            images.forEach((image) => image.setAttribute("loading", "eager")),
++          );
++        await page.locator("main").evaluate(async (element) => {
++          await Promise.all(
++            Array.from(element.querySelectorAll("img")).map((img) =>
++              img.decode().catch(() => {}),
++            ),
++          );
++        });
++        await page.addStyleTag({
++          content: "nextjs-portal { display:none !important; }",
++        });
++        await page.evaluate(() => {
++          const b = document.createElement("div");
++          b.id = "review-label";
++          b.textContent =
++            "REVISIÓN LOCAL · PERFILES FICTICIOS · STOCK EDITORIAL";
++          b.style.cssText =
++            "position:fixed;bottom:0;left:0;z-index:9999;background:#142027;color:#b9dceb;font:10px Arial;padding:5px 10px;pointer-events:none";
++          document.body.append(b);
++        });
++        await page.screenshot({ path: `${evidence}/${name}-${width}-viewport.png`, animations: "disabled" });
++        await page.screenshot({
++          path: `${evidence}/${name}-${width}.png`,
++          fullPage: true,
++          animations: "disabled",
++        });
++      }
++    }
++  }
++  expect(errors).toEqual([]);
++});
++test("Talent filters share profile URLs and preserve relevant data", async ({
++  page,
++}) => {
++  await page.goto("/talento");
++  await expect(page.locator(".profile-card")).toHaveCount(2);
++  await expect(page.getByRole("link", { name: /Mateo C/ })).toHaveCount(0);
++  await page.getByLabel("Disciplina", { exact: true }).selectOption("Modelaje");
++  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
++  await expect(page.locator(".profile-card")).toHaveCount(1);
++  await page.locator(".profile-card").click();
++  await expect(page).toHaveURL(/\/perfiles\/elena-demo/);
++  await expect(page.locator(".profile-portrait")).toBeVisible();
++  await expect(
++    page.getByRole("heading", { name: "Detrás de cada crédito." }),
++  ).toBeVisible();
++});
++test("reel is click-to-load and contact is gated without disclosing private data", async ({
++  page,
++}) => {
++  await page.goto("/perfiles/elena-demo");
++  await expect(page.locator("iframe")).toHaveCount(0);
++
++  await expect(
++    page.locator('a[href^="/login?next="]').filter({ hasText: "Contactar" }),
++  ).toHaveAttribute("href", /next=.*perfiles.*elena-demo/);
++  await page.route("https://player.vimeo.com/**", (route) =>
++    route.fulfill({
++      contentType: "text/html",
++      body: "<html><body>Local video provider fixture</body></html>",
++    }),
++  );
++  await page.getByRole("button", { name: /Cargar reel/ }).click();
++  await expect(page.locator("iframe")).toHaveAttribute(
++    "src",
++    "https://player.vimeo.com/video/123456789",
++  );
++  expect(await page.locator("main").innerText()).not.toContain(
++    "preview@example.invalid",
++  );
++  await page.goto("/perfiles/draft-only");
++  await expect(page.getByRole("heading", { name: "Elena R." })).toHaveCount(0);
++});
++test("editor preview stays private; ordering and publication roundtrip; unpublish removes detail", async ({
++  page,
++  context,
++}) => {
++  await session(context);
++  await page.goto("/mi-perfil");
++  await expect(
++    page.getByText("Borrador privado", { exact: false }).first(),
++  ).toBeVisible();
++  await page.getByLabel("Alias artístico (opcional)").fill("Elena · Escena");
++  await page
++    .getByRole("button", { name: "Bajar pieza 1", exact: true })
++    .click();
++  await expect(page.locator("#title-0")).toHaveValue("La última luz");
++  await page.getByRole("button", { name: "Vista previa ↗" }).click();
++  await expect(page.getByRole("dialog")).toBeVisible();
++  await expect(
++    page.getByRole("dialog").getByText("Elena · Escena", { exact: true }),
++  ).toBeVisible();
++  await page.keyboard.press("Escape");
++  await expect(page.getByRole("dialog")).not.toBeVisible();
++  await page.getByLabel("Publicar mi perfil", { exact: false }).check();
++  await page
++    .getByRole("button", { name: "Guardar perfil", exact: true })
++    .click();
++  await expect(
++    page.getByRole("status").filter({ hasText: "Perfil guardado" }),
++  ).toHaveText("Perfil guardado y publicado.");
++  await expect(page.locator("#title-0")).toHaveValue("La última luz");
++  await page.getByRole("link", { name: "Ver perfil público ↗" }).click();
++  await expect(page.getByText("Elena · Escena", { exact: true })).toBeVisible();
++  await expect(
++    page.getByRole("button", { name: "Contactar · próximamente" }),
++  ).toBeDisabled();
++  await page.goto("/mi-perfil");
++  await page.getByLabel("Publicar mi perfil", { exact: false }).uncheck();
++  await page
++    .getByRole("button", { name: "Guardar perfil", exact: true })
++    .click();
++  await expect(
++    page.getByRole("status").filter({ hasText: "Perfil guardado" }),
++  ).toHaveText("Perfil guardado como borrador.");
++  await context.clearCookies();
++  await page.goto("/perfiles/perfil-propio-demo");
++  await expect(page.getByRole("heading", { name: "Elena R." })).toHaveCount(0);
++});
++test("empty, error, failed image and reduced motion remain usable", async ({
++  page,
++  request,
++}) => {
++  await page.emulateMedia({ reducedMotion: "reduce" });
++  await page.goto("/perfiles?city=Sin+resultados");
++  await expect(
++    page.getByRole("heading", { name: "No hay perfiles para esta selección." }),
++  ).toBeVisible();
++  await request.get("http://127.0.0.1:54329/__scenario?value=failure");
++  await page.goto("/talento");
++  await expect(page.getByText("No pudimos cargar el catálogo.")).toBeVisible();
++  await request.get("http://127.0.0.1:54329/__scenario?value=profiles-polish");
++  await page.route("https://profiles-fixture.invalid/**", (route) =>
++    route.abort(),
++  );
++  await page.goto("/talento");
++  await expect(page.locator(".profile-card").first()).toBeVisible();
++  await expect(page.locator(".profile-image-fallback").first()).toBeVisible();
++  const duration = await page
++    .locator(".profile-card")
++    .first()
++    .evaluate((e) => getComputedStyle(e).transitionDuration);
++  expect(duration).toBe("0s");
++});
++
++test("mobile filters collapse without hiding active selections", async ({
++  page,
++}) => {
++  await page.setViewportSize({ width: 390, height: 844 });
++  await page.goto("/talento");
++  const toggle = page.getByRole("button", { name: /Filtros/ });
++  await expect(toggle).toHaveAttribute("aria-expanded", "false");
++  await toggle.click();
++  await page.getByLabel("Disciplina", { exact: true }).selectOption("Modelaje");
++  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
++  await expect(page.getByRole("button", { name: /Filtros/ })).toHaveAttribute(
++    "aria-expanded",
++    "true",
++  );
++  await expect(page.locator(".profile-card")).toHaveCount(1);
++  await page.getByRole("link", { name: "Limpiar", exact: true }).click();
++  await expect(page.getByRole("button", { name: /Filtros/ })).toHaveAttribute(
++    "aria-expanded",
++    "false",
++  );
++});
+diff --git a/tests/integration/profile-presentation.test.mjs b/tests/integration/profile-presentation.test.mjs
+new file mode 100644
+index 0000000..2398dae
+--- /dev/null
++++ b/tests/integration/profile-presentation.test.mjs
+@@ -0,0 +1,168 @@
++import assert from "node:assert/strict";
++import { test } from "node:test";
++import { withTestUsers, checked, testSql, TEST_REF } from "./test-project.mjs";
++test(
++  "Test: presentation migration, owner/stranger/anon, publication, filters and legacy compatibility",
++  { skip: process.env.FILMATTA_RUN_REMOTE_TESTS !== TEST_REF },
++  async () =>
++    withTestUsers(async ({ owner, stranger, anon, prefix }) => {
++      const city = "QA " + prefix.slice(-8);
++      const presentation = {
++        portrait_url: "https://example.com/qa.jpg",
++        stage_name: "QA Artist",
++        work_area: "Zona Poniente",
++        rate_range: "MXN 3000",
++        book: [{ url: "https://example.com/book.jpg", caption: "QA" }],
++        credits: [{ title: "QA Film", role: "Actuación", year: "2026" }],
++      };
++      const args = {
++        p_disciplines: ["Actuación", "Dirección"],
++        p_city: city,
++        p_bio: "Synthetic QA profile.",
++        p_availability: "available",
++        p_skills: ["Inglés"],
++        p_equipment: [],
++        p_portfolio_items: [
++          { kind: "reel", title: "QA Reel", url: "https://vimeo.com/76979871" },
++        ],
++        p_is_public: false,
++        p_contact_policy: "members_only",
++        p_presentation: presentation,
++      };
++      const save = (client = owner.client, patch = {}) =>
++        client.rpc("save_my_professional_portfolio", { ...args, ...patch });
++      const detail = (client, slug) =>
++        client.rpc("get_public_professional_portfolio", { p_slug: slug });
++      const list = (client, patch = {}) =>
++        client.rpc("list_public_professional_portfolios", {
++          p_city: city,
++          ...patch,
++        });
++      const slug = checked(await save());
++      assert.deepEqual(checked(await detail(anon, slug)), []);
++      assert.deepEqual(checked(await detail(stranger.client, slug)), []);
++      assert.deepEqual(checked(await list(anon)), []);
++      const own = checked(
++        await owner.client
++          .from("professional_profiles")
++          .select("*")
++          .eq("user_id", owner.id)
++          .single(),
++      );
++      assert.deepEqual(own.presentation, presentation);
++      assert.deepEqual(
++        checked(
++          await stranger.client
++            .from("professional_profiles")
++            .select("*")
++            .eq("user_id", owner.id),
++        ),
++        [],
++      );
++      assert.ok((await anon.from("professional_profiles").select("*")).error);
++      assert.ok((await save(anon)).error);
++      assert.ok(
++        (
++          await stranger.client
++            .from("professional_profiles")
++            .update({ is_public: true })
++            .eq("user_id", owner.id)
++        ).error,
++      );
++      assert.ok(
++        (
++          await owner.client
++            .from("professional_profiles")
++            .update({ presentation })
++            .eq("user_id", owner.id)
++        ).error,
++      );
++      checked(await save(owner.client, { p_is_public: true }));
++      const pub = checked(await detail(anon, slug))[0];
++      assert.deepEqual(pub.presentation, presentation);
++      assert.equal(pub.user_id, undefined);
++      assert.doesNotMatch(
++        JSON.stringify(pub),
++        /PrivateSurname|@example.invalid|raw_user_meta_data|email|phone/,
++      );
++      assert.deepEqual(
++        checked(await list(anon, { p_talent: true })).map((x) => x.slug),
++        [slug],
++      );
++      assert.equal(
++        checked(await list(anon, { p_discipline: "Modelaje" })).length,
++        0,
++      );
++      assert.equal(
++        checked(await list(anon, { p_availability: "unavailable" })).length,
++        0,
++      );
++      assert.equal(
++        checked(await list(anon, { p_city: "absent-" + prefix })).length,
++        0,
++      );
++      assert.equal(checked(await list(anon, { p_page: 2 })).length, 0);
++      assert.equal(checked(await list(anon))[0].presentation.rate_range, "");
++      for (const patch of [
++        { private_email: "forbidden" },
++        { portrait_url: "javascript:alert(1)" },
++        { book: [{ url: "https://example.com/x", caption: "", hidden: "no" }] },
++      ]) {
++        assert.ok(
++          (
++            await save(owner.client, {
++              p_is_public: false,
++              p_presentation: { ...presentation, ...patch },
++            })
++          ).error,
++        );
++      }
++      assert.equal(checked(await detail(anon, slug))[0].is_public, true);
++      const legacy = Object.fromEntries(
++        Object.entries(args).filter(([key]) => key !== "p_presentation"),
++      );
++      assert.equal(
++        checked(
++          await owner.client.rpc("save_my_professional_profile", {
++            ...legacy,
++            p_is_public: true,
++          }),
++        ),
++        slug,
++      );
++      assert.deepEqual(
++        checked(await detail(anon, slug))[0].presentation,
++        presentation,
++      );
++      assert.equal(
++        checked(
++          await anon.rpc("get_public_professional_profile", { p_slug: slug }),
++        )[0].slug,
++        slug,
++      );
++      assert.equal(
++        checked(
++          await anon.rpc("list_public_professional_profiles", { p_city: city }),
++        )[0].slug,
++        slug,
++      );
++      checked(
++        await save(stranger.client, {
++          p_disciplines: ["Edición"],
++          p_is_public: true,
++        }),
++      );
++      assert.equal(checked(await list(anon)).length, 2);
++      assert.deepEqual(
++        checked(await list(anon, { p_talent: true })).map((x) => x.slug),
++        [slug],
++      );
++      checked(await save(owner.client, { p_is_public: false }));
++      assert.deepEqual(checked(await detail(anon, slug)), []);
++      assert.equal(checked(await list(anon, { p_talent: true })).length, 0);
++      const schema = testSql(
++        "select relrowsecurity from pg_class where oid='public.professional_profiles'::regclass;",
++      );
++      assert.equal(schema[0].relrowsecurity, true);
++    }),
++);
+diff --git a/tests/profiles/actions.test.mjs b/tests/profiles/actions.test.mjs
+new file mode 100644
+index 0000000..92db6be
+--- /dev/null
++++ b/tests/profiles/actions.test.mjs
+@@ -0,0 +1,30 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import load from "../load.mjs";
++const presentation=load("lib/profiles/presentation.ts"),constants=load("lib/profiles/constants.ts");
++function fixture(signedIn=true,rpcError=null) {
++ const calls=[],revalidated=[];
++ const actions=load("app/mi-perfil/actions.ts",{
++  "next/cache":{revalidatePath:p=>revalidated.push(p)},
++  "next/navigation":{redirect:url=>{throw new Error("REDIRECT "+url);}},
++  "@/lib/profiles/constants":constants,"@/lib/profiles/presentation":presentation,
++  "@/lib/supabase/server":{createClient:async()=>({auth:{getUser:async()=>({data:{user:signedIn?{id:"owner",user_metadata:{full_name:"Private Name"}}:null},error:null})},rpc:async(name,args)=>{calls.push({name,args});return {data:"public-slug",error:rpcError};}})},
++ });
++ const form=new FormData();
++ for(const [key,value] of Object.entries({disciplines:"Actuación",availability:"available",contact_policy:"members_only",portfolio_items:"[]",presentation:JSON.stringify(presentation.EMPTY_PRESENTATION)}))form.set(key,value);
++ return {calls,revalidated,form,actions};
++}
++test("anonymous profile save never reaches the mutation",async()=>{
++ const f=fixture(false);await assert.rejects(f.actions.saveProfessionalProfile(f.form),/REDIRECT \/login/);assert.equal(f.calls.length,0);
++});
++test("save ignores forged ownership and revalidates both catalogs",async()=>{
++ const f=fixture();f.form.set("user_id","another");f.form.set("slug","another");f.form.set("is_public","on");
++ await assert.rejects(f.actions.saveProfessionalProfile(f.form),/saved=published/);
++ assert.equal(f.calls[0].name,"save_my_professional_portfolio");assert.equal(f.calls[0].args.user_id,undefined);assert.equal(f.calls[0].args.slug,undefined);
++ assert.deepEqual(f.revalidated,["/perfiles","/talento","/mi-perfil","/perfiles/public-slug"]);
++});
++test("invalid media cannot mutate; failed writes never claim success",async()=>{
++ const f=fixture();f.form.set("presentation",JSON.stringify({...presentation.EMPTY_PRESENTATION,portrait_url:"javascript:alert(1)"}));
++ await assert.rejects(f.actions.saveProfessionalProfile(f.form),/error=/);assert.equal(f.calls.length,0);
++ const failed=fixture(true,{message:"internal database details"});await assert.rejects(failed.actions.saveProfessionalProfile(failed.form),e=>e.message.includes("error=")&&!e.message.includes("internal"));assert.equal(failed.revalidated.length,0);
++});
+diff --git a/tests/profiles/data.test.mjs b/tests/profiles/data.test.mjs
+new file mode 100644
+index 0000000..039277d
+--- /dev/null
++++ b/tests/profiles/data.test.mjs
+@@ -0,0 +1,18 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import load from "../load.mjs";
++const helpers=load("lib/profiles/presentation.ts");
++function fixture(data,error=null){
++ return load("lib/profiles/data.ts",{react:{cache:fn=>fn},"./presentation":helpers,
++ "@/lib/supabase/server":{createClient:async()=>({rpc:async()=>({data,error}),from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data,error})})})})})}});
++}
++test("public normalization removes private keys and unsafe portfolio links",async()=>{
++ const p=await fixture([{slug:"public",display_name:"Public P.",disciplines:["Actuación"],is_public:true,email:"private@example.invalid",user_id:"secret",portfolio_items:[{kind:"reel",title:"Unsafe",url:"javascript:alert(1)"}],presentation:helpers.EMPTY_PRESENTATION}]).getPublicProfessionalProfile("public");
++ assert.equal(p.email,undefined);assert.equal(p.user_id,undefined);assert.equal(p.portfolio_items.length,0);
++});
++test("drafts stay private and transport errors cannot become blank editable profiles",async()=>{
++ assert.equal(await fixture([{slug:"draft",display_name:"Draft D.",is_public:false}]).getPublicProfessionalProfile("draft"),null);
++ assert.equal(await fixture([],new Error("not called")).getPublicProfessionalProfile("../invalid"),null);
++ await assert.rejects(fixture(null,{code:"XX000"}).getOwnedProfessionalProfile("owner"),/No pudimos cargar/);
++ await assert.rejects(fixture(null,{code:"XX000"}).getPublicProfessionalProfile("public"),/No pudimos cargar/);
++});
+diff --git a/tests/profiles/presentation.test.mjs b/tests/profiles/presentation.test.mjs
+new file mode 100644
+index 0000000..b09ec85
+--- /dev/null
++++ b/tests/profiles/presentation.test.mjs
+@@ -0,0 +1,87 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import load from "../load.mjs";
++const p = load("lib/profiles/presentation.ts");
++test("Talent is a specialization, including hybrid disciplines", () => {
++  assert.equal(p.isTalent(["Actuación", "Dirección"]), true);
++  assert.equal(p.isTalent(["Modelaje"]), true);
++  assert.equal(p.isTalent(["Fotografía"]), false);
++  assert.equal(p.isTalent(["Actor"]), false);
++});
++test("reels accept known providers, preserve Vimeo privacy hash and never autoplay", () => {
++  assert.match(
++    p.reelSource("https://youtu.be/abcdefghijk").embed,
++    /youtube-nocookie/,
++  );
++  assert.equal(
++    p.reelSource("https://vimeo.com/12345/abcdef").embed,
++    "https://player.vimeo.com/video/12345?h=abcdef",
++  );
++  assert.equal(
++    p.reelSource("https://youtube.com.evil.test/watch?v=abcdefghijk"),
++    null,
++  );
++  assert.equal(p.reelSource("javascript:alert(1)"), null);
++  assert.equal(
++    p.reelSource("https://user:pass@youtube.com/watch?v=abcdefghijk"),
++    null,
++  );
++  assert.doesNotMatch(
++    p.reelSource("https://youtube.com/watch?v=abcdefghijk&autoplay=1").embed,
++    /autoplay/,
++  );
++  assert.equal(p.portfolioWebUrl("javascript:alert(1)"), null);
++});
++test("presentation strips extra keys and rejects unsafe media, oversized or invalid credits", () => {
++  const value = {
++    ...p.EMPTY_PRESENTATION,
++    stage_name: "  Artista  ",
++    user_id: "private",
++    portrait_url: "https://example.com/photo.jpg",
++  };
++  assert.equal(p.parsePresentation(value).stage_name, "Artista");
++  assert.equal(p.parsePresentation(value).user_id, undefined);
++  for (const patch of [
++    { portrait_url: "http://example.com/a" },
++    { portrait_url: "javascript:x" },
++    { credits: [{ title: "Film", role: "Actor", year: "tomorrow" }] },
++    { book: Array(7).fill({ url: "https://example.com/a", caption: "" }) },
++  ])
++    assert.equal(p.parsePresentation({ ...value, ...patch }), null);
++});
++test("completion has explicit criteria; equipment and optional rate do not penalize talent", () => {
++  const profile = {
++    disciplines: [],
++    city: "",
++    availability: "not_specified",
++    bio: "",
++    portfolio_items: [],
++    skills: [],
++    presentation: p.EMPTY_PRESENTATION,
++  };
++  assert.equal(p.profileCompletion(profile).percent, 0);
++  const complete = {
++    ...profile,
++    disciplines: ["Actuación"],
++    city: "México",
++    availability: "unavailable",
++    bio: "Bio",
++    skills: ["Inglés"],
++    portfolio_items: [
++      { kind: "reel", title: "Reel", url: "https://vimeo.com/123" },
++    ],
++    presentation: {
++      ...p.EMPTY_PRESENTATION,
++      portrait_url: "https://example.com/p.jpg",
++      credits: [{ title: "Film", role: "Actor", year: "" }],
++    },
++  };
++  assert.equal(p.profileCompletion(complete).percent, 100);
++  assert.equal(
++    p.profileCompletion({
++      ...complete,
++      portfolio_items: [{ title: "", url: "https://example.com" }],
++    }).percent,
++    88,
++  );
++});
+diff --git a/tests/profiles/privacy.test.mjs b/tests/profiles/privacy.test.mjs
+new file mode 100644
+index 0000000..86c547d
+--- /dev/null
++++ b/tests/profiles/privacy.test.mjs
+@@ -0,0 +1,143 @@
++import assert from "node:assert/strict";
++import { before, after, test } from "node:test";
++import fs from "node:fs";
++import { PGlite } from "@electric-sql/pglite";
++const db = new PGlite(),
++  owner = "11111111-1111-4111-8111-111111111111",
++  other = "22222222-2222-4222-8222-222222222222";
++async function as(role, id = "") {
++  await db.exec("reset role");
++  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [id]);
++  if (role !== "postgres") await db.exec(`set role ${role}`);
++}
++const presentation = {
++  portrait_url: "https://example.com/portrait.jpg",
++  stage_name: "Artista",
++  work_area: "Zona Poniente",
++  rate_range: "MXN 3,000 / jornada",
++  book: [{ url: "https://example.com/book.jpg", caption: "Retrato" }],
++  credits: [{ title: "Proyecto", role: "Actriz", year: "2026" }],
++};
++before(async () => {
++  await db.exec(`create role anon;create role authenticated;create schema auth;
++ create table auth.users(id uuid primary key,raw_user_meta_data jsonb);
++ create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
++ grant usage on schema public,auth to anon,authenticated;`);
++  for (const name of [
++    "20260910120000_create_professional_profiles.sql",
++    "20260916010000_public_profile_catalog.sql",
++    "20260920010000_profile_presentation.sql",
++  ])
++    await db.exec(fs.readFileSync("supabase/migrations/" + name, "utf8"));
++  await db.query("insert into auth.users values ($1,$3),($2,$4)", [
++    owner,
++    other,
++    { full_name: "Elena Privada", email: "secret@example.invalid" },
++    { full_name: "Otro Privado" },
++  ]);
++});
++after(() => db.close());
++async function save(pub = true, p = presentation) {
++  return db.query(
++    "select save_my_professional_portfolio(array['Actuación','Dirección'],'Guadalajara','Bio','available',array['Inglés'],'{}','[]',$1,'members_only',$2) as slug",
++    [pub, p],
++  );
++}
++test("atomic owner save; public projections contain presentation but never private identity", async () => {
++  await as("authenticated", owner);
++  const { rows } = await save();
++  const slug = rows[0].slug;
++  await as("anon");
++  const detail = (
++    await db.query("select * from get_public_professional_portfolio($1)", [
++      slug,
++    ])
++  ).rows[0];
++  assert.equal(detail.presentation.stage_name, "Artista");
++  assert.equal(detail.display_name, "Elena P.");
++  assert.equal(detail.user_id, undefined);
++  assert.doesNotMatch(
++    JSON.stringify(detail),
++    /secret@|raw_user_meta_data|Elena Privada/,
++  );
++  const catalog = (
++    await db.query(
++      "select * from list_public_professional_portfolios(1,'','Guadalajara','available',true)",
++    )
++  ).rows;
++  assert.equal(catalog.length, 1);
++  assert.equal(catalog[0].presentation.rate_range, "");
++  assert.equal(
++    (
++      await db.query(
++        "select * from list_public_professional_portfolios(1,'Modelaje','','',true)",
++      )
++    ).rows.length,
++    0,
++  );
++  await assert.rejects(
++    db.query("select * from professional_profiles"),
++    /permission denied/,
++  );
++  await assert.rejects(save(), /permission denied/);
++});
++test("draft unpublication removes detail and all catalogs; other member cannot read or mutate it", async () => {
++  await as("authenticated", owner);
++  const slug = (await save(false)).rows[0].slug;
++  await as("anon");
++  assert.equal(
++    (
++      await db.query("select * from get_public_professional_portfolio($1)", [
++        slug,
++      ])
++    ).rows.length,
++    0,
++  );
++  assert.equal(
++    (await db.query("select * from list_public_professional_portfolios()")).rows
++      .length,
++    0,
++  );
++  await as("authenticated", other);
++  assert.equal(
++    (await db.query("select * from professional_profiles")).rows.length,
++    0,
++  );
++  await assert.rejects(
++    db.query("update professional_profiles set is_public=true"),
++    /permission denied/,
++  );
++  await save();
++  await as("postgres");
++  const original = (
++    await db.query("select * from professional_profiles where user_id=$1", [
++      owner,
++    ])
++  ).rows[0];
++  assert.equal(original.is_public, false);
++  assert.deepEqual(original.presentation, presentation);
++});
++test("invalid presentation rolls back existing profile and publication changes", async () => {
++  await as("authenticated", owner);
++  for (const patch of [
++    { portrait_url: "javascript:alert(1)" },
++    { credits: [{ title: "", role: "X", year: "2026" }] },
++    { private_email: "hidden" },
++    {
++      book: [{ url: "https://example.com/a", caption: "", private: "hidden" }],
++    },
++  ])
++    await assert.rejects(
++      save(true, { ...presentation, ...patch }),
++      /Invalid presentation/,
++    );
++  await as("postgres");
++  const row = (
++    await db.query(
++      "select is_public,presentation from professional_profiles where user_id=$1",
++      [owner],
++    )
++  ).rows[0];
++  assert.equal(row.is_public, false);
++  assert.deepEqual(row.presentation, presentation);
++});
+diff --git a/tests/remote/profiles-talent.spec.mjs b/tests/remote/profiles-talent.spec.mjs
+new file mode 100644
+index 0000000..a66c885
+--- /dev/null
++++ b/tests/remote/profiles-talent.spec.mjs
+@@ -0,0 +1,322 @@
++import { test, expect } from "@playwright/test";
++import fs from "node:fs";
++import { withTestUsers, checked } from "../integration/test-project.mjs";
++import {
++  previewAccess,
++  previewBase,
++  signedPreviewContext,
++} from "./preview-access.mjs";
++const evidence = "docs/review/profiles-talent/preview";
++test("real Preview: portfolio surfaces, responsive matrix, filters, privacy and editor roundtrip", async ({
++  browser,
++  page,
++  context,
++}) =>
++  withTestUsers(async ({ owner, stranger, outsider, anon, prefix }) => {
++    fs.mkdirSync(evidence, { recursive: true });
++    await previewAccess(context);
++    const city = "QA " + prefix.slice(-8);
++    const presentation = {
++      portrait_url:
++        previewBase + "/images/editorial/talent-portrait-13306757.webp",
++      stage_name: "Artista QA · referencia editorial",
++      work_area: "Zona Poniente",
++      rate_range: "MXN 3,000 por jornada",
++      book: [
++        {
++          url: previewBase + "/images/editorial/talent-portrait-13306757.webp",
++          caption: "Stock editorial · perfil sintético",
++        },
++        {
++          url: previewBase + "/images/editorial/monitor.webp",
++          caption: "Referencia visual de QA",
++        },
++      ],
++      credits: [
++        {
++          title: "La última luz · ejemplo QA",
++          role: "Protagonista",
++          year: "2026",
++        },
++        { title: "Retratos · ejemplo QA", role: "Intérprete", year: "2025" },
++      ],
++    };
++    const args = {
++      p_disciplines: ["Actuación", "Modelaje"],
++      p_city: city,
++      p_bio:
++        "Perfil sintético para revisión de FILMATTA. Las imágenes son referencias editoriales y no representan a un miembro real.",
++      p_availability: "available",
++      p_skills: ["Inglés", "Expresión corporal"],
++      p_equipment: [],
++      p_portfolio_items: [
++        {
++          kind: "reel",
++          title: "Reel · referencia audiovisual",
++          url: "https://vimeo.com/76979871",
++          summary:
++            "Video de referencia para QA; no trabajo de una persona real.",
++        },
++        {
++          kind: "project",
++          title: "Proyecto · ejemplo QA",
++          url: "https://example.com",
++          summary: "Ejemplo de presentación de trabajo.",
++        },
++      ],
++      p_is_public: true,
++      p_contact_policy: "members_only",
++      p_presentation: presentation,
++    };
++    const talent = checked(
++      await owner.client.rpc("save_my_professional_portfolio", args),
++    );
++    const professional = checked(
++      await stranger.client.rpc("save_my_professional_portfolio", {
++        ...args,
++        p_disciplines: ["Dirección de fotografía", "Dirección"],
++        p_equipment: ["Cámara y óptica"],
++        p_presentation: {
++          ...presentation,
++          portrait_url: "",
++          book: [
++            {
++              url: previewBase + "/images/editorial/monitor.webp",
++              caption: "Trabajo audiovisual · referencia editorial",
++            },
++          ],
++          stage_name: "Dirección de fotografía · QA",
++          credits: [
++            {
++              title: "La última luz · ejemplo QA",
++              role: "Fotografía",
++              year: "2026",
++            },
++          ],
++        },
++      }),
++    );
++    const draft = checked(
++      await outsider.client.rpc("save_my_professional_portfolio", {
++        ...args,
++        p_is_public: false,
++      }),
++    );
++    const owned = await signedPreviewContext(browser, owner),
++      editor = await owned.newPage();
++    const errors = [];
++    page.on("pageerror", (e) => errors.push(e.message));
++    editor.on("pageerror", (e) => errors.push(e.message));
++    const matrix = [];
++    async function settled(p) {
++      await expect(
++        p.locator("main:visible").getByRole("heading", { level: 1 }),
++      ).toBeVisible();
++      await p.evaluate(() => document.fonts.ready);
++      for (const img of await p.locator("main img").all()) {
++        await img.scrollIntoViewIfNeeded();
++        await expect
++          .poll(() => img.evaluate((e) => e.complete && e.naturalWidth > 0))
++          .toBe(true);
++      }
++      await p.evaluate(() => scrollTo(0, 0));
++      expect(
++        await p.evaluate(
++          () => document.documentElement.scrollWidth <= innerWidth,
++        ),
++      ).toBe(true);
++      await expect(p.locator("main:visible")).not.toContainText(
++        /PrivateSurname|@example.invalid|No pudimos cargar|Application error/,
++      );
++    }
++    try {
++      for (const width of [390, 768, 1024, 1280, 1440, 1920]) {
++        for (const [route, name, p] of [
++          ["/descubre/perfiles", "landing-perfiles", page],
++          ["/descubre/talento", "landing-talento", page],
++          [
++            "/perfiles?city=" + encodeURIComponent(city),
++            "catalogo-perfiles",
++            page,
++          ],
++          [
++            "/talento?city=" + encodeURIComponent(city),
++            "catalogo-talento",
++            page,
++          ],
++          ["/perfiles/" + talent, "perfil-talento", page],
++          ["/perfiles/" + professional, "perfil-profesional", page],
++          ["/mi-perfil", "mi-perfil", editor],
++        ]) {
++          await p.setViewportSize({ width, height: 1000 });
++          await p.goto(route);
++          await settled(p);
++          await p.evaluate(() => {
++            const label = document.createElement("div");
++            label.textContent = "PREVIEW REAL · QA SINTÉTICO · STOCK EDITORIAL";
++            label.style.cssText =
++              "position:fixed;bottom:0;left:0;z-index:9999;background:#142027;color:#b9dceb;font:10px Arial;padding:5px 10px;pointer-events:none";
++            document.body.append(label);
++          });
++          await p.screenshot({
++            path: evidence + "/" + name + "-" + width + "-viewport.png",
++            animations: "disabled",
++          });
++          if (width === 390 || width === 1440)
++            await p.screenshot({
++              path: evidence + "/" + name + "-" + width + ".png",
++              fullPage: true,
++              animations: "disabled",
++            });
++          matrix.push({
++            route: route.split("?")[0],
++            width,
++            overflow: false,
++            images: "loaded",
++          });
++        }
++      }
++      await page.setViewportSize({ width: 390, height: 1000 });
++      await page.goto("/talento");
++      await expect(
++        page.getByRole("button", { name: /Filtros/ }),
++      ).toHaveAttribute("aria-expanded", "false");
++      await page.getByRole("button", { name: /Filtros/ }).click();
++      await page.getByLabel("Ciudad", { exact: true }).fill(city);
++      await page
++        .getByLabel("Disciplina", { exact: true })
++        .selectOption("Modelaje");
++      await page.getByRole("button", { name: "Filtrar", exact: true }).click();
++      await expect(page.locator(".profile-card")).toHaveCount(1);
++      await expect(page.locator(".profile-card")).toHaveAttribute(
++        "href",
++        "/perfiles/" + talent,
++      );
++      await page.locator(".profile-card").click();
++      await expect(page.locator(".profile-portrait")).toBeVisible();
++      await expect(page.locator("iframe")).toHaveCount(0);
++      await expect(
++        page
++          .locator('a[href^="/login?next="]')
++          .filter({ hasText: "Contactar" }),
++      ).toBeVisible();
++      await page.getByRole("button", { name: /Cargar reel/ }).click();
++      await expect(page.locator("iframe")).toHaveAttribute(
++        "src",
++        "https://player.vimeo.com/video/76979871",
++      );
++      await page.goto("/perfiles/" + draft);
++      await expect(page.getByRole("heading", { name: /404/ })).toBeVisible();
++      await page.goto("/mi-perfil");
++      await expect(page).toHaveURL(/login/);
++      await page.goto("/perfiles?city=absent-" + prefix);
++      await expect(
++        page.getByRole("heading", {
++          name: "No hay perfiles para esta selección.",
++        }),
++      ).toBeVisible();
++      await page.screenshot({
++        path: evidence + "/empty-390.png",
++        fullPage: true,
++      });
++      await editor.setViewportSize({ width: 390, height: 1000 });
++      await editor.goto("/mi-perfil");
++      await editor
++        .getByLabel("Alias artístico (opcional)")
++        .fill("Alias revisado QA");
++      await editor
++        .getByRole("button", { name: "Bajar pieza 1", exact: true })
++        .click();
++      await editor.getByRole("button", { name: "Vista previa ↗" }).click();
++      await expect(
++        editor
++          .getByRole("dialog")
++          .getByText("Alias revisado QA", { exact: true }),
++      ).toBeVisible();
++      await editor.keyboard.press("Escape");
++      await editor
++        .getByRole("button", { name: "Guardar perfil", exact: true })
++        .click();
++      await expect(
++        editor.getByRole("status").filter({ hasText: "Perfil guardado" }),
++      ).toHaveText("Perfil guardado y publicado.");
++      const saved = checked(
++        await owner.client
++          .from("professional_profiles")
++          .select("presentation,portfolio_items")
++          .eq("user_id", owner.id)
++          .single(),
++      );
++      expect(saved.presentation.stage_name).toBe("Alias revisado QA");
++      expect(saved.portfolio_items[0].kind).toBe("project");
++      await page.goto("/perfiles/" + talent);
++      await expect(
++        page.getByText("Alias revisado QA", { exact: true }),
++      ).toBeVisible();
++      await editor.getByLabel("Publicar mi perfil", { exact: false }).uncheck();
++      await editor
++        .getByRole("button", { name: "Guardar perfil", exact: true })
++        .click();
++      await expect(
++        editor.getByRole("status").filter({ hasText: "Perfil guardado" }),
++      ).toHaveText("Perfil guardado como borrador.");
++      expect(
++        checked(
++          await anon.rpc("get_public_professional_portfolio", {
++            p_slug: talent,
++          }),
++        ),
++      ).toEqual([]);
++      await page.goto("/perfiles/" + talent);
++      await expect(page.getByRole("heading", { name: /404/ })).toBeVisible();
++      await page.goto("/talento?city=" + encodeURIComponent(city));
++      await expect(page.locator(".profile-card")).toHaveCount(0);
++      await editor.getByLabel("Publicar mi perfil", { exact: false }).check();
++      await editor
++        .getByRole("button", { name: "Guardar perfil", exact: true })
++        .click();
++      await expect(
++        editor.getByRole("status").filter({ hasText: "Perfil guardado" }),
++      ).toHaveText("Perfil guardado y publicado.");
++      await page.goto("/perfiles/" + talent);
++      await expect(
++        page.getByText("Alias revisado QA", { exact: true }),
++      ).toBeVisible();
++      await page.emulateMedia({ reducedMotion: "reduce" });
++      await page.goto("/talento?city=" + encodeURIComponent(city));
++      expect(
++        await page
++          .locator(".profile-card")
++          .first()
++          .evaluate((e) => getComputedStyle(e).transitionDuration),
++      ).toBe("0s");
++      expect(errors).toEqual([]);
++      fs.writeFileSync(
++        evidence + "/matrix.json",
++        JSON.stringify(
++          {
++            preview: previewBase,
++            matrix,
++            scenarios: [
++              "filters",
++              "contact gate",
++              "lazy reel",
++              "draft 404",
++              "private preview",
++              "real server-action save",
++              "reorder",
++              "unpublish",
++              "republish",
++              "empty",
++              "reduced motion",
++            ],
++            pageErrors: errors,
++          },
++          null,
++          2,
++        ),
++      );
++    } finally {
++      await owned.close();
++    }
++  }));
