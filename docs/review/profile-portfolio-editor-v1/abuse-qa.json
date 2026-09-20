@@ -1,0 +1,12 @@
+{
+  "checks": [
+    "declared >5GB rejected before reservation",
+    "third concurrent pending upload rejected",
+    "abandoned real Mux upload cancelled by cleanup",
+    "expired pending items reach terminal deleted state",
+    "daily quota counts failed and deleted attempts",
+    "30-day quota blocks attempt 31"
+  ],
+  "cleaned": true,
+  "testEnvironment": "kospfo"
+}

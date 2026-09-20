@@ -119,8 +119,12 @@ export async function vercel(path, init = {}) {
       signal: AbortSignal.timeout(20000),
     },
   );
-  if (!r.ok) throw new Error(`Vercel request failed (${r.status})`);
-  return r.json();
+  if (!r.ok) {
+    const failure = await r.json().catch(() => ({}));
+    const code = typeof failure.error?.code === "string" && /^[a-zA-Z0-9_-]+$/.test(failure.error.code) ? failure.error.code : "unknown";
+    throw new Error(`Vercel request failed (${r.status}, ${code})`);
+  }
+  return r.status === 204 ? null : r.json();
 }
 if (process.argv[2] === "inspect") {
   try {

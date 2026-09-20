@@ -1,6 +1,6 @@
 # Portfolio Editor V1 — revisión
 
-Estado: implementación y QA local/Test completos; cierre E2E del Preview pendiente. Sin merge, push a main ni deploy Production. Ningún ledger modificado.
+Estado: implementación y QA E2E de Test/Preview completos; listo para revisión de Production. Sin merge, push a main ni deploy Production. Ningún ledger modificado.
 
 1. **Rama/worktree:** `feature/profile-portfolio-editor-v1`, `G:\PROYECTOS\filmatta-profile-portfolio-editor`. Base `e235099fe3e9776440c6183462918d6f4de93d16`.
 2. **Preview:** despliegue de revisión Vercel sobre Supabase Test `ezlycwkuzkwcnhrhiruv` y Mux development `kospfo`. URL final en el reporte de entrega. Sin secretos de Production.
@@ -19,8 +19,8 @@ Estado: implementación y QA local/Test completos; cierre E2E del Preview pendie
 15. **Seguridad:** CRUD normal mediante Auth + RLS; anon/non-owner rechazados; drafts privados; proyección sin email/teléfono ni auth metadata. Infraestructura privilegiada sólo para verificación/cleanup/webhook. URLs de imagen 60 s, playback 5 min: tokens ya emitidos no se revocan instantáneamente al ocultar.
 16. **Lifecycle:** canonicalización del asset/upload y firma; processing/ready/errored/rejected/deleted; rechazo y borrado seguro de policy pública, pista ausente o master detectado; expiración de intentos 2 h; archivo retiene hasta 30 días y cron de limpieza diario preparado. Endpoint cleanup comprobado con asset real de Test; `CRON_SECRET` pendiente de configuración antes de release.
 17. **Capturas:** 22 PNG junto a este reporte; desktop 1440 y mobile 390 para vacío, portfolio, selector, embed, upload imagen/video, progreso real, procesamiento, reordenación, perfil público y book. Fixtures explícitamente ficticios; retrato editorial existente y sample técnico de Mux.
-18. **Tests:** 199/199 (Profiles, Talent/catálogos, portfolio, DB/RLS, Auth, Security, Navigation, Billing y Mux). TypeScript/lint focalizado/build/diff correctos. QA real Test: 41 checks, `test-qa.json`, cleanup confirmado. Playback firmado Preview completó el video sin extraer claves. El webhook de la suite local usa firma de fixture y el asset real; no se presenta como entrega del proveedor al Preview.
-19. **Pendiente/deuda:** autorización temporal del bypass de Vercel, webhook Mux Test y validación autenticada en Preview. Subidas nuevas pausadas allí hasta configurar el callback. Contacto operativo, Follow, Boost/Talent+, analytics, reanudación tras cerrar navegador, derivados optimizados de imágenes y actualización de indicadores de catálogo para nuevos uploads quedan fuera del bloque o para seguimiento. No cambiar configuración Production todavía.
+18. **Tests:** 199/199 (Profiles, Talent/catálogos, portfolio, DB/RLS, Auth, Security, Navigation, Billing y Mux). TypeScript/lint focalizado/build/diff correctos. QA real Test: 41 checks, `test-qa.json`, cleanup confirmado. Playback firmado Preview completó el video sin extraer claves. También se verificó entrega real de Mux al Preview con HTTP 200 para asset-created y asset-ready, estado processing → ready y playback firmado completo.
+19. **Pendiente/deuda:** Sin bloqueos de QA. Antes de release: revisar la migración y configurar webhook permanente/CRON_SECRET del entorno correcto. Las subidas nuevas quedan pausadas en el Preview de revisión tras retirar el webhook temporal. Contacto operativo, Follow, Boost/Talent+, analytics, reanudación tras cerrar navegador, derivados optimizados de imágenes y actualización de indicadores de catálogo para nuevos uploads quedan fuera del bloque o para seguimiento. No cambiar configuración Production todavía.
 
 ## Evidencia visual
 
@@ -29,6 +29,14 @@ Estado: implementación y QA local/Test completos; cierre E2E del Preview pendie
 - [Progreso real desktop](video-progress-1440.png) / [mobile](video-progress-390.png)
 - [Book desktop](talent-book-1440.png) / [mobile](talent-book-390.png)
 
-## Gate pendiente
+## Cierre E2E del Preview
 
-La protección de Vercel impide que Mux entregue eventos al Preview. Se solicitó permiso para un token temporal de bypass, usado únicamente en el webhook de este Preview y retirado al terminar. No se desactivó la protección general ni se obtuvo un token existente. Sin esa autorización no se declara validado el E2E del Preview.
+- QA real: `https://app-k7p3jfavl-filmatta.vercel.app` (retirado después de validar, para eliminar sus secretos de runtime).
+- Preview limpio de revisión: `https://app-nuo6ym22d-filmatta.vercel.app`.
+- Mux Test `kospfo`: credencial dedicada con `system:read`/`system:write`, revocada al terminar. Video read/write usó credenciales Test existentes, verificadas por entorno.
+- Login real, upload desde el editor, firma válida/inválida, HTTP 200 del proveedor, idempotencia, processing → ready y reproducción completa comprobados.
+- Publicación y regreso a borrador desde UI, lectura anónima sólo pública y rechazo de escritura non-owner comprobados.
+- Cuotas diaria/mensual, máximo de dos pendientes, cancelación real de upload abandonado y >5 GB declarado: correctos; `abuse-qa.json`.
+- Webhook, bypass, dos variables temporales, asset, usuarios/perfiles y archivo descargado eliminados. Se retiraron los deployments temporales de QA. Protección general conservada.
+- Evidencia saneada: `preview-qa.json`. No contiene credenciales ni direcciones con bypass.
+- 199/199 pruebas focalizadas y 8/8 de herramientas; TypeScript, lint y build correctos. Un glob inicial incluyó integraciones remotas ajenas que se negaron a ejecutarse por falta de opt-in; no realizaron operaciones. La suite focalizada se volvió a ejecutar completa y pasó.

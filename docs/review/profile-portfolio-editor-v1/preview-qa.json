@@ -1,0 +1,89 @@
+{
+  "checks": [
+    "dedicated credential is Test System read/write only",
+    "temporary Test webhook created, disabled until Preview is ready",
+    "new branch Preview is Ready",
+    "Preview rejects invalid webhook signature after protection bypass",
+    "signed idempotent replay 1 returns 200",
+    "signed idempotent replay 2 returns 200",
+    "duplicate delivery preserves ready item",
+    "non-owner mutation rejected",
+    "anonymous cannot read draft",
+    "declared video over 5GB rejected by database",
+    "temporary Mux webhook deleted",
+    "revoked bypass cannot access Preview webhook",
+    "temporary Preview webhook and cron variables removed",
+    "QA asset removed",
+    "QA users and profile fixtures removed",
+    "downloaded QA credential file removed"
+  ],
+  "states": [
+    "a251d0ce-024f-436d-b2c1-199d04a5470e:processing",
+    "a251d0ce-024f-436d-b2c1-199d04a5470e:ready"
+  ],
+  "environment": "kospfo",
+  "productionTouched": false,
+  "preview": "https://app-k7p3jfavl-filmatta.vercel.app",
+  "deployment": "dpl_GHzmswcbgsCC72tREPkBwQ7s2MGu",
+  "webhookDeliveries": [
+    {
+      "event": "video.asset.ready",
+      "status": 200,
+      "accepted": true
+    },
+    {
+      "event": "video.asset.created",
+      "status": 200,
+      "accepted": true
+    },
+    {
+      "event": "video.upload.asset_created",
+      "status": 200,
+      "accepted": true
+    },
+    {
+      "event": "video.upload.created",
+      "status": 200,
+      "accepted": true
+    }
+  ],
+  "temporaryVariablesAbsent": true,
+  "muxSystemTokenRevoked": true,
+  "playback": {
+    "verifiedInBrowser": true,
+    "durationSeconds": 16,
+    "completed": true
+  },
+  "publicLifecycle": {
+    "publishedViaUI": true,
+    "anonymousPublicMedia": true,
+    "privateFieldsExposed": false,
+    "returnedToDraftViaUI": true
+  },
+  "tests": {
+    "focused": 199,
+    "passed": 199,
+    "tools": 8
+  },
+  "notes": [
+    "An initial overbroad integration glob was refused by the Test opt-in guards; no remote operations occurred. Focused suite rerun passed."
+  ],
+  "qaDeploymentsDeleted": [
+    "dpl_GHzmswcbgsCC72tREPkBwQ7s2MGu",
+    "dpl_7Ftx88zVUNGwyEb8e4jr1c5XZd53"
+  ],
+  "cleanPreview": "https://app-nuo6ym22d-filmatta.vercel.app",
+  "cleanPreviewDeployment": "dpl_35WWrqraBXD3dTmqTeopEMsRq2pz",
+  "finalVerification": {
+    "deployment": "dpl_35WWrqraBXD3dTmqTeopEMsRq2pz",
+    "ready": "READY",
+    "target": null,
+    "withoutBypass": 302,
+    "qaUsersRemaining": 0,
+    "qaMediaRemaining": 0,
+    "credentialFileRemoved": true,
+    "temporarySecretNamesInEnvironment": 0,
+    "protectionVerified": true,
+    "authRedirect": true
+  }
+}

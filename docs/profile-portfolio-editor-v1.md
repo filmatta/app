@@ -66,7 +66,9 @@ Capturas y reporte: `docs/review/profile-portfolio-editor-v1/`. Las personas/med
 
 Reproducción firmada verificada visualmente en Preview: el sample técnico llegó a 0:16 / 0:16. No se extrajeron claves privadas. El fixture y su asset fueron eliminados. QA remoto: 41 comprobaciones y 22 capturas; incluye limpieza real de un asset archivado. Regresiones: 199 tests, TypeScript, lint focalizado y build correctos.
 
-Pendiente: entrega automática Mux → Preview protegido y QA autenticado en ese mismo despliegue. Requiere resolver la autorización del token temporal de bypass de Vercel (alcance técnico de proyecto) y configurar un webhook específico de Test. Las pruebas de login/CRUD/upload realizadas contra Supabase/Mux Test desde el servidor local no sustituyen esa verificación. Las nuevas subidas directas permanecen pausadas en el Preview final hasta disponer del webhook; imágenes y embeds siguen disponibles.
+QA Mux → Preview protegido completado: Direct Upload real desde UI, eventos `video.upload.asset_created`, `video.asset.created` y `video.asset.ready` con HTTP 200, firma inválida rechazada, repetición idempotente y estado processing → ready. Playback firmado completo y publicación/borrador mediante Auth + RLS normales.
+
+Todos los recursos temporales se retiraron: webhook, bypass, variables, credencial dedicada, archivo descargado, assets, usuarios y deployments de QA. El Preview limpio mantiene nuevas subidas directas pausadas porque el webhook temporal ya no existe; imágenes y embeds siguen disponibles. Antes de activar Direct Upload en release hay que configurar su webhook permanente y secreto de cleanup. Production permanece intacto.
 
 ## Fuera de alcance
 
