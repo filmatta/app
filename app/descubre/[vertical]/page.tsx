@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import SiteHeader from "@/components/SiteHeader";
+import ProfilesLanding from "@/components/profiles/ProfilesLanding";
 import LandingVisual from "@/components/editorial/LandingVisual";
 import { getLanding, landingActionHref } from "@/content/landings";
 import { getViewer } from "@/lib/auth/get-viewer";
@@ -18,6 +19,7 @@ export default async function EditorialLanding({ params }: Props) {
   const landing = getLanding(vertical);
   if (!landing) notFound();
   const viewer = await getViewer();
+  if (vertical === "perfiles" || vertical === "talento") return <ProfilesLanding talent={vertical === "talento"} signedIn={Boolean(viewer)} />;
   const href = (path: string) => landingActionHref(path, Boolean(viewer));
   return <div className="editorial-page" style={{ "--vertical-accent": landing.accent } as CSSProperties}>
     <SiteHeader />

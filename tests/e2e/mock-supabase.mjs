@@ -1,6 +1,7 @@
 // Local transport fixture only. This does NOT test PostgreSQL RLS.
 // No production credentials or remote database access.
 import http from "node:http";
+import {profileFixture,resetProfileFixture} from "./profiles-fixture.mjs";
 const id = "11111111-1111-4111-8111-111111111111";
 let scenario = "empty";
 const profile = {
@@ -68,6 +69,7 @@ http
     if (url.pathname === "/health") return res.end("{}");
     if (url.pathname === "/__scenario") {
       scenario = url.searchParams.get("value") ?? "empty";
+      if (scenario === "profiles-polish") resetProfileFixture();
       return res.end("{}");
     }
     if (url.pathname === "/auth/v1/user") {
@@ -93,6 +95,7 @@ http
       res.statusCode = 405;
       return res.end("{}");
     }
+    if (scenario === "profiles-polish" && await profileFixture(req,res,url,token)) return;
     if (scenario === "unconfigured") {
       res.statusCode = 404;
       return res.end('{"code":"PGRST202","message":"fixture missing schema"}');
@@ -112,11 +115,11 @@ http
               }),
             )
           : {};
-      if (url.pathname.endsWith("list_public_professional_profiles"))
+      if (url.pathname.endsWith("list_public_professional_portfolios"))
         return res.end(
           JSON.stringify(body.p_city === "Sin resultados" ? [] : [profile]),
         );
-      if (url.pathname.endsWith("get_public_professional_profile"))
+      if (url.pathname.endsWith("get_public_professional_portfolio"))
         return res.end(
           JSON.stringify(body.p_slug === profile.slug ? [profile] : []),
         );

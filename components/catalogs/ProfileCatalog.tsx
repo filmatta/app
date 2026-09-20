@@ -1,5 +1,7 @@
 import Link from "next/link";
 import SiteHeader from "@/components/SiteHeader";
+import ProfileFilters from "@/components/profiles/ProfileFilters";
+import ProfileCard from "@/components/profiles/ProfileCard";
 import { getProfileCatalog } from "@/lib/profiles/catalog";
 import {
   AVAILABILITY_LABELS,
@@ -11,7 +13,6 @@ import {
   CatalogFiltersForm,
   CatalogPagination,
 } from "./CatalogControls";
-
 export default async function ProfileCatalog({
   searchParams,
   talent = false,
@@ -23,99 +24,140 @@ export default async function ProfileCatalog({
   const result = await getProfileCatalog(filters, talent);
   const path = talent ? "/talento" : "/perfiles";
   const disciplines = talent ? ["Actuación", "Modelaje"] : PROFILE_DISCIPLINES;
+  const filtered = Boolean(
+    filters.discipline ||
+    filters.city ||
+    filters.availability ||
+    filters.page > 1,
+  );
   return (
-    <div className="editorial-page">
+    <div className="editorial-page profiles-page">
       <SiteHeader />
-      <main className="editorial-container py-14 sm:py-20">
+      <main className="editorial-container profile-catalog">
         <p className="eyebrow">FILMATTA / {talent ? "Talento" : "Perfiles"}</p>
-        <div className="mt-5 flex flex-wrap items-end justify-between gap-6">
+        <div className="profile-catalog-heading">
           <div>
-            <h1 className="text-4xl font-semibold tracking-[-.04em] sm:text-6xl">
+            <h1>
               {talent
-                ? "Talento frente a cámara."
-                : "Profesionales del audiovisual."}
+                ? "Presencia. Carácter. Talento."
+                : "Personas que hacen cine."}
             </h1>
-            <p className="mt-5 max-w-2xl leading-7 text-white/65">
+            <p>
               {talent
-                ? "Actuación y modelaje, desde la misma identidad profesional de FILMATTA."
-                : "Explora perfiles publicados por disciplina, ciudad y disponibilidad declarada."}
+                ? "Actuación y modelaje. Conoce su material, su experiencia y su forma de estar frente a cámara."
+                : "Una mirada, un oficio, una forma de crear. Encuentra a quienes pueden darle vida a tu próximo proyecto."}
             </p>
           </div>
           <Link className="editorial-secondary" href="/mi-perfil">
             Crear o editar mi perfil ↗
           </Link>
         </div>
-        <CatalogFiltersForm
-          path={path}
-          filters={filters}
-          fields={[
-            {
-              name: "discipline",
-              label: "Disciplina",
-              options: disciplines.map((value) => ({ value, label: value })),
-            },
-            { name: "city", label: "Ciudad" },
-            {
-              name: "availability",
-              label: "Disponibilidad",
-              options: Object.entries(AVAILABILITY_LABELS).map(
-                ([value, label]) => ({ value, label }),
-              ),
-            },
-          ]}
-        />
+        <nav className="profile-catalog-tabs" aria-label="Explorar perfiles">
+          <Link href="/perfiles" aria-current={!talent ? "page" : undefined}>
+            Profesionales
+          </Link>
+          <Link href="/talento" aria-current={talent ? "page" : undefined}>
+            Talento frente a cámara
+          </Link>
+        </nav>
+        <ProfileFilters
+          key={JSON.stringify(filters)}
+          active={
+            [filters.discipline, filters.city, filters.availability].filter(
+              Boolean,
+            ).length
+          }
+        >
+          <CatalogFiltersForm
+            path={path}
+            filters={filters}
+            fields={[
+              {
+                name: "discipline",
+                label: "Disciplina",
+                options: disciplines.map((value) => ({ value, label: value })),
+              },
+              { name: "city", label: "Ciudad" },
+              {
+                name: "availability",
+                label: "Disponibilidad",
+                options: Object.entries(AVAILABILITY_LABELS).map(
+                  ([value, label]) => ({ value, label }),
+                ),
+              },
+            ]}
+          />
+        </ProfileFilters>
         {!result.ok ? (
           <CatalogFailure kind={result.kind} />
         ) : (
           <>
             {result.profiles.length === 0 ? (
-              <div className="border-y border-white/15 py-12">
-                <h2 className="text-2xl font-medium">
-                  No hay perfiles para esta selección.
-                </h2>
-                <p className="mt-3 text-white/65">
-                  Prueba otra disciplina o ciudad, o vuelve al catálogo
-                  completo.
+              <section className="profile-empty">
+                <p className="eyebrow">
+                  {filtered ? "Otra mirada" : "El comienzo de algo propio"}
                 </p>
-                <Link className="editorial-secondary mt-4" href={path}>
-                  Ver todos
+                <h2>
+                  {filtered
+                    ? "No hay perfiles para esta selección."
+                    : talent
+                      ? "El próximo rostro puede ser el tuyo."
+                      : "Tu trabajo puede abrir esta escena."}
+                </h2>
+                <p>
+                  {filtered
+                    ? "Prueba otra disciplina o ciudad, o vuelve al catálogo completo."
+                    : "Estamos reuniendo a la comunidad audiovisual. Crea tu perfil, selecciona tu mejor material y comparte tu trabajo."}
+                </p>
+                <Link
+                  className="editorial-secondary"
+                  href={filtered ? path : "/mi-perfil"}
+                >
+                  {filtered ? "Ver todos" : "Crear mi perfil"} ↗
                 </Link>
-              </div>
+              </section>
             ) : (
-              <div className="grid gap-x-8 md:grid-cols-2 lg:grid-cols-3">
-                {result.profiles.map((profile) => (
-                  <Link
-                    key={profile.slug}
-                    href={`/perfiles/${profile.slug}`}
-                    className="group border-t border-white/20 py-8 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#B9DCEB]"
-                  >
-                    <p className="eyebrow">{profile.disciplines.join(" / ")}</p>
-                    <h2 className="mt-5 text-3xl font-medium tracking-tight group-hover:text-[#B9DCEB]">
-                      {profile.display_name}
-                    </h2>
-                    <p className="mt-3 text-sm text-white/65">
-                      {profile.city || "Ciudad no indicada"} ·{" "}
-                      {AVAILABILITY_LABELS[profile.availability]}
-                    </p>
-                    {profile.bio && (
-                      <p className="mt-5 line-clamp-3 leading-7 text-white/65">
-                        {profile.bio}
-                      </p>
-                    )}
-                    <span className="mt-7 inline-block text-sm text-[#B9DCEB]">
-                      Ver trabajo y experiencia ↗
-                    </span>
-                  </Link>
-                ))}
-              </div>
+              <>
+                <div className="profile-results">
+                  <p>
+                    {result.profiles.length}
+                    {result.hasNext ? "+" : ""}{" "}
+                    {result.profiles.length === 1
+                      ? "perfil en esta página"
+                      : "perfiles en esta página"}
+                  </p>
+                  <p>
+                    Material y disponibilidad declarados por cada profesional
+                  </p>
+                </div>
+                <div
+                  className={`profile-grid ${talent ? "profile-grid--talent" : ""}`}
+                >
+                  {result.profiles.map((profile) => (
+                    <ProfileCard
+                      key={profile.slug}
+                      profile={profile}
+                      talent={talent}
+                    />
+                  ))}
+                </div>
+              </>
             )}
-            <CatalogPagination
-              path={path}
-              filters={filters}
-              hasNext={result.hasNext}
-            />
+            {(result.profiles.length > 0 || filters.page > 1) && (
+              <CatalogPagination
+                path={path}
+                filters={filters}
+                hasNext={result.hasNext}
+              />
+            )}
           </>
         )}
+        <footer className="profile-catalog-footer">
+          <p>Tu trabajo también tiene un lugar aquí.</p>
+          <Link href="/mi-perfil" className="profile-text-link">
+            Presenta tu perfil ↗
+          </Link>
+        </footer>
       </main>
     </div>
   );

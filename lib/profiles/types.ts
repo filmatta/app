@@ -1,8 +1,7 @@
+import type { ProfilePresentation } from "./presentation";
+
 export type AvailabilityStatus =
-  | "available"
-  | "limited"
-  | "unavailable"
-  | "not_specified";
+  "available" | "limited" | "unavailable" | "not_specified";
 
 export type ContactPolicy = "members_only" | "closed";
 
@@ -25,12 +24,10 @@ export type ProfessionalProfile = {
   skills: string[];
   equipment: string[];
   portfolio_items: PortfolioItem[];
+  presentation: ProfilePresentation;
   contact_policy: ContactPolicy;
   is_public: boolean;
   updated_at: string;
 };
 
-export type PublicProfessionalProfile = Omit<
-  ProfessionalProfile,
-  "is_public"
->;
+export type PublicProfessionalProfile = Omit<ProfessionalProfile, "is_public">;

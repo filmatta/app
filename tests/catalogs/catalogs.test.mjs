@@ -131,7 +131,7 @@ test("missing schema is distinguished from network failure and empty catalog", a
     );
     assert.equal(result.ok, kind === null);
     if (kind) assert.equal(result.kind, kind);
-    assert.equal(f.calls[0][1], "list_public_professional_profiles");
+    assert.equal(f.calls[0][1], "list_public_professional_portfolios");
     assert.equal(f.calls[0][2].p_talent, true);
     assert.equal(Object.hasOwn(f.calls[0][2], "user_id"), false);
   }

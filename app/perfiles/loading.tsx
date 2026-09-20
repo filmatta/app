@@ -1,1 +1,1 @@
-export { default } from "@/components/catalogs/CatalogLoading";
+export { default } from "@/components/profiles/ProfileCatalogLoading";

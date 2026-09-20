@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  parsePresentation,
+  EMPTY_PRESENTATION,
+} from "@/lib/profiles/presentation";
 import { PROFILE_LIMITS } from "@/lib/profiles/constants";
 import type {
   AvailabilityStatus,
@@ -17,10 +21,7 @@ const availabilityValues = new Set<AvailabilityStatus>([
   "not_specified",
 ]);
 
-const contactPolicyValues = new Set<ContactPolicy>([
-  "members_only",
-  "closed",
-]);
+const contactPolicyValues = new Set<ContactPolicy>(["members_only", "closed"]);
 
 export async function saveProfessionalProfile(formData: FormData) {
   const supabase = await createClient();
@@ -34,7 +35,12 @@ export async function saveProfessionalProfile(formData: FormData) {
   const fullName = readFullName(user.user_metadata);
 
   if (!fullName) {
-    redirect(profileFeedback("error", "Agrega primero tu nombre completo en Mi cuenta"));
+    redirect(
+      profileFeedback(
+        "error",
+        "Agrega primero tu nombre completo en Mi cuenta",
+      ),
+    );
   }
 
   const disciplines = uniqueStrings(formData.getAll("disciplines"));
@@ -46,6 +52,23 @@ export async function saveProfessionalProfile(formData: FormData) {
   const contactPolicy = String(formData.get("contact_policy") ?? "");
   const isPublic = formData.get("is_public") === "on";
   const portfolioResult = parsePortfolioItems(formData.get("portfolio_items"));
+  let presentation = null;
+  try {
+    presentation = parsePresentation(
+      JSON.parse(
+        String(
+          formData.get("presentation") ?? JSON.stringify(EMPTY_PRESENTATION),
+        ),
+      ),
+    );
+  } catch {}
+  if (!presentation)
+    redirect(
+      profileFeedback(
+        "error",
+        "Revisa el retrato, book y créditos; usa enlaces https válidos",
+      ),
+    );
 
   if (
     disciplines.length === 0 ||
@@ -55,8 +78,8 @@ export async function saveProfessionalProfile(formData: FormData) {
     redirect(
       profileFeedback(
         "error",
-        `Elige entre 1 y ${PROFILE_LIMITS.disciplines} disciplinas`
-      )
+        `Elige entre 1 y ${PROFILE_LIMITS.disciplines} disciplinas`,
+      ),
     );
   }
 
@@ -75,8 +98,8 @@ export async function saveProfessionalProfile(formData: FormData) {
     redirect(
       profileFeedback(
         "error",
-        `Añade hasta ${PROFILE_LIMITS.skills} skills de 80 caracteres o menos`
-      )
+        `Añade hasta ${PROFILE_LIMITS.skills} skills de 80 caracteres o menos`,
+      ),
     );
   }
 
@@ -87,8 +110,8 @@ export async function saveProfessionalProfile(formData: FormData) {
     redirect(
       profileFeedback(
         "error",
-        `Añade hasta ${PROFILE_LIMITS.equipment} equipos o sistemas`
-      )
+        `Añade hasta ${PROFILE_LIMITS.equipment} equipos o sistemas`,
+      ),
     );
   }
 
@@ -97,7 +120,9 @@ export async function saveProfessionalProfile(formData: FormData) {
   }
 
   if (!contactPolicyValues.has(contactPolicy as ContactPolicy)) {
-    redirect(profileFeedback("error", "Selecciona una preferencia de contacto válida"));
+    redirect(
+      profileFeedback("error", "Selecciona una preferencia de contacto válida"),
+    );
   }
 
   if (!portfolioResult.ok) {
@@ -105,8 +130,9 @@ export async function saveProfessionalProfile(formData: FormData) {
   }
 
   const { data: slug, error } = await supabase.rpc(
-    "save_my_professional_profile",
+    "save_my_professional_portfolio",
     {
+      p_presentation: presentation,
       p_disciplines: disciplines,
       p_city: city,
       p_bio: bio,
@@ -116,7 +142,7 @@ export async function saveProfessionalProfile(formData: FormData) {
       p_portfolio_items: portfolioResult.items,
       p_is_public: isPublic,
       p_contact_policy: contactPolicy,
-    }
+    },
   );
 
   if (error) {
@@ -125,6 +151,7 @@ export async function saveProfessionalProfile(formData: FormData) {
   }
 
   revalidatePath("/perfiles");
+  revalidatePath("/talento");
   revalidatePath("/mi-perfil");
 
   if (typeof slug === "string" && slug) {
@@ -135,7 +162,7 @@ export async function saveProfessionalProfile(formData: FormData) {
 }
 
 function parsePortfolioItems(
-  value: FormDataEntryValue | null
+  value: FormDataEntryValue | null,
 ): { ok: true; items: PortfolioItem[] } | { ok: false; error: string } {
   if (typeof value !== "string" || !value.trim()) {
     return { ok: true, items: [] };
@@ -177,7 +204,8 @@ function parsePortfolioItems(
     ) {
       return {
         ok: false,
-        error: "Cada enlace necesita tipo, título y una URL http o https válida",
+        error:
+          "Cada enlace necesita tipo, título y una URL http o https válida",
       };
     }
 

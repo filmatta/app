@@ -1,4 +1,9 @@
 import { cache } from "react";
+import {
+  EMPTY_PRESENTATION,
+  parsePresentation,
+  portfolioWebUrl,
+} from "./presentation";
 import { createClient } from "@/lib/supabase/server";
 import type {
   PortfolioItem,
@@ -7,7 +12,7 @@ import type {
 } from "@/lib/profiles/types";
 
 const profileColumns =
-  "slug, display_name, disciplines, city, bio, availability, skills, equipment, portfolio_items, contact_policy, is_public, updated_at";
+  "slug, display_name, disciplines, city, bio, availability, skills, equipment, portfolio_items, contact_policy, is_public, updated_at, presentation";
 
 export async function getOwnedProfessionalProfile(userId: string) {
   const supabase = await createClient();
@@ -19,7 +24,7 @@ export async function getOwnedProfessionalProfile(userId: string) {
 
   if (error) {
     console.error("Error cargando el perfil profesional propio:", error);
-    return null;
+    throw new Error("No pudimos cargar tu perfil. Inténtalo de nuevo.");
   }
 
   return normalizeProfessionalProfile(data);
@@ -32,19 +37,19 @@ export const getPublicProfessionalProfile = cache(async (slug: string) => {
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc(
-    "get_public_professional_profile",
-    { p_slug: slug }
+    "get_public_professional_portfolio",
+    { p_slug: slug },
   );
 
   if (error) {
     console.error("Error cargando el perfil profesional público:", error);
-    return null;
+    throw new Error("No pudimos cargar este perfil.");
   }
 
   const row = Array.isArray(data) ? data[0] : data;
   const profile = normalizeProfessionalProfile(row);
 
-  if (!profile) {
+  if (!profile || !profile.is_public) {
     return null;
   }
 
@@ -58,12 +63,15 @@ export const getPublicProfessionalProfile = cache(async (slug: string) => {
     skills: profile.skills,
     equipment: profile.equipment,
     portfolio_items: profile.portfolio_items,
+    presentation: profile.presentation,
     contact_policy: profile.contact_policy,
     updated_at: profile.updated_at,
   } satisfies PublicProfessionalProfile;
 });
 
-function normalizeProfessionalProfile(value: unknown): ProfessionalProfile | null {
+function normalizeProfessionalProfile(
+  value: unknown,
+): ProfessionalProfile | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -87,6 +95,7 @@ function normalizeProfessionalProfile(value: unknown): ProfessionalProfile | nul
     skills: asStringArray(value.skills),
     equipment: asStringArray(value.equipment),
     portfolio_items: normalizePortfolioItems(value.portfolio_items),
+    presentation: parsePresentation(value.presentation) ?? EMPTY_PRESENTATION,
     contact_policy:
       value.contact_policy === "closed" ? "closed" : "members_only",
     is_public: value.is_public === true,
@@ -111,6 +120,7 @@ function normalizePortfolioItems(value: unknown): PortfolioItem[] {
     if (
       !title ||
       !url ||
+      !portfolioWebUrl(url) ||
       (kind !== "reel" && kind !== "project" && kind !== "link")
     ) {
       return [];
@@ -118,7 +128,9 @@ function normalizePortfolioItems(value: unknown): PortfolioItem[] {
 
     const normalizedKind: PortfolioItem["kind"] = kind;
     const summary = asNullableString(item.summary);
-    return [{ kind: normalizedKind, title, url, ...(summary ? { summary } : {}) }];
+    return [
+      { kind: normalizedKind, title, url, ...(summary ? { summary } : {}) },
+    ];
   });
 }
 
@@ -133,12 +145,15 @@ function asNullableString(value: unknown) {
 function asStringArray(value: unknown) {
   return Array.isArray(value)
     ? value.filter(
-        (item): item is string => typeof item === "string" && item.trim() !== ""
+        (item): item is string =>
+          typeof item === "string" && item.trim() !== "",
       )
     : [];
 }
 
-function isAvailability(value: unknown): value is ProfessionalProfile["availability"] {
+function isAvailability(
+  value: unknown,
+): value is ProfessionalProfile["availability"] {
   return (
     value === "available" ||
     value === "limited" ||

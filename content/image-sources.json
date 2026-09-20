@@ -40,6 +40,19 @@
       "landings": [
         "locaciones"
       ]
+    },
+    {
+      "file": "/images/editorial/talent-portrait-13306757.webp",
+      "source": "https://www.pexels.com/photo/black-and-white-photo-of-woman-s-face-13306757/",
+      "author": "Pexels contributor (see source)",
+      "obtained": "2026-09-19",
+      "width": 1200,
+      "height": 1500,
+      "focalPoint": "50% 38%",
+      "landings": [
+        "talento"
+      ],
+      "use": "Editorial illustration only; never a real FILMATTA member. Also used in clearly labeled local test fixtures."
     }
   ]
 }

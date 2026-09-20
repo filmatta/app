@@ -4,7 +4,12 @@ import {
   PAGE_SIZE,
   type CatalogFilters,
 } from "@/lib/catalogs/filters";
-import type { AvailabilityStatus } from "./types";
+import type { AvailabilityStatus, PortfolioItem } from "./types";
+import {
+  EMPTY_PRESENTATION,
+  parsePresentation,
+  type ProfilePresentation,
+} from "./presentation";
 
 export type ProfileSummary = {
   slug: string;
@@ -14,6 +19,8 @@ export type ProfileSummary = {
   bio: string | null;
   availability: AvailabilityStatus;
   updated_at: string;
+  portfolio_items: PortfolioItem[];
+  presentation: ProfilePresentation;
 };
 export async function getProfileCatalog(
   filters: CatalogFilters,
@@ -21,7 +28,7 @@ export async function getProfileCatalog(
 ) {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc(
-    "list_public_professional_profiles",
+    "list_public_professional_portfolios",
     {
       p_page: filters.page,
       p_discipline: filters.discipline,
@@ -34,7 +41,13 @@ export async function getProfileCatalog(
     console.error("Profile catalog unavailable", error);
     return { ok: false as const, kind: catalogErrorKind(error) };
   }
-  const rows = (data ?? []) as ProfileSummary[];
+  const rows = ((data ?? []) as ProfileSummary[]).map((row) => ({
+    ...row,
+    portfolio_items: Array.isArray(row.portfolio_items)
+      ? row.portfolio_items
+      : [],
+    presentation: parsePresentation(row.presentation) ?? EMPTY_PRESENTATION,
+  }));
   return {
     ok: true as const,
     profiles: rows.slice(0, PAGE_SIZE),
