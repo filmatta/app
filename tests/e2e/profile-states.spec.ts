@@ -17,7 +17,7 @@ test("visual loading, empty and error states at desktop and mobile", async ({
     });
     await page.screenshot({
       caret: "initial",
-      path: `docs/review/profiles-talent/states/loading-${width}.png`,
+      path: `docs/review/profile-public-ui-v2/states/loading-${width}.png`,
       animations: "disabled",
     });
     await expect(
@@ -35,7 +35,7 @@ test("visual loading, empty and error states at desktop and mobile", async ({
     });
     await page.screenshot({
       caret: "initial",
-      path: `docs/review/profiles-talent/states/empty-${width}.png`,
+      path: `docs/review/profile-public-ui-v2/states/empty-${width}.png`,
       fullPage: true,
     });
     await request.get("http://127.0.0.1:54329/__scenario?value=failure");
@@ -48,7 +48,7 @@ test("visual loading, empty and error states at desktop and mobile", async ({
     });
     await page.screenshot({
       caret: "initial",
-      path: `docs/review/profiles-talent/states/error-${width}.png`,
+      path: `docs/review/profile-public-ui-v2/states/error-${width}.png`,
       fullPage: true,
     });
     expect(

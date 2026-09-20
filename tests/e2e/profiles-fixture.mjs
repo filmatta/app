@@ -73,12 +73,33 @@ export function resetProfileFixture() {
       ...base,
       slug: "mateo-demo",
       display_name: "Mateo C.",
+      bio:
+        "Perfil ficticio para revisión visual. " +
+        "Trabajo con luz natural y equipos de cine independientes. Cada proyecto reúne una mirada distinta, desde la preparación hasta el último plano. ".repeat(
+          7,
+        ),
+      portfolio_items: [
+        ...base.portfolio_items,
+        {
+          kind: "reel",
+          title: "Luz del norte",
+          url: "https://vimeo.com/123456788",
+          summary: "Fotografía · 2025",
+        },
+        {
+          kind: "project",
+          title: "Entre escenas",
+          url: "https://vimeo.com/123456787",
+          summary: "Dirección · 2024",
+        },
+      ],
       disciplines: ["Dirección de fotografía", "Dirección"],
       equipment: ["Sony FX6", "DaVinci Resolve"],
       skills: ["Iluminación", "Color"],
       presentation: {
         ...base.presentation,
-        portrait_url: "",
+        portrait_url: image + "portrait",
+        stage_name: "Mateo Campos",
         book: [
           {
             url: image + "monitor",
@@ -93,12 +114,16 @@ export function resetProfileFixture() {
       display_name: "Sofía M.",
       disciplines: ["Actuación"],
       availability: "limited",
-      presentation: { ...blank },
+      portfolio_items: [],
+      presentation: { ...base.presentation },
     },
     {
       ...base,
       slug: "daniel-demo",
       display_name: "Daniel A.",
+      bio: "",
+      skills: [],
+      equipment: [],
       disciplines: ["Sonido"],
       availability: "unavailable",
       portfolio_items: [],
@@ -145,7 +170,9 @@ export async function profileFixture(req, res, url, token) {
       is_public: body.p_is_public,
       contact_policy: body.p_contact_policy,
     };
-    rows = rows.some(p => p.slug === owned.slug) ? rows.map(p => p.slug === owned.slug ? owned : p) : [...rows, owned];
+    rows = rows.some((p) => p.slug === owned.slug)
+      ? rows.map((p) => (p.slug === owned.slug ? owned : p))
+      : [...rows, owned];
     res.end(JSON.stringify(owned.slug));
     return true;
   }

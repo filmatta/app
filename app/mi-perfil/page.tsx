@@ -51,23 +51,14 @@ export default async function EditProfessionalProfilePage({
             {feedback.error}.
           </p>
         )}
-        <div className="profile-editor-name">
-          <p>
-            Tu identidad pública
-            <strong>{profile?.display_name || displayName}</strong>
-          </p>
-          <Link href="/cuenta#perfil" className="profile-text-link">
-            Editar nombre privado
+        {profile?.is_public && (
+          <Link
+            href={`/perfiles/${profile.slug}`}
+            className="profile-text-link"
+          >
+            Ver perfil público ↗
           </Link>
-          {profile?.is_public && (
-            <Link
-              href={`/perfiles/${profile.slug}`}
-              className="profile-text-link"
-            >
-              Ver perfil público ↗
-            </Link>
-          )}
-        </div>
+        )}
         <ProfileEditor
           key={profile?.updated_at ?? "new"}
           profile={profile}

@@ -1,3 +1,4 @@
+import { professionalName } from "@/lib/profiles/presentation";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import SiteHeader from "@/components/SiteHeader";
@@ -10,10 +11,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!profile)
     return { title: "Perfil no disponible", robots: { index: false } };
   return {
-    title: profile.display_name,
+    title: professionalName(profile),
     description:
       profile.bio?.slice(0, 155) ||
-      `${profile.display_name} — ${profile.disciplines.join(" · ")} en FILMATTA.`,
+      `${professionalName(profile)} — ${profile.disciplines.join(" · ")} en FILMATTA.`,
   };
 }
 export default async function PublicProfilePage({ params }: Props) {

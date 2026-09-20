@@ -1,7 +1,7 @@
 import { test, expect, type BrowserContext } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-const evidence = "docs/review/profiles-talent";
+const evidence = "docs/review/profile-public-ui-v2/local";
 async function session(context: BrowserContext) {
   const b64 = (v: object) =>
     Buffer.from(JSON.stringify(v)).toString("base64url");
@@ -110,7 +110,10 @@ test("six surfaces at six widths: real layout, no overflow, desktop and mobile e
             "position:fixed;bottom:0;left:0;z-index:9999;background:#142027;color:#b9dceb;font:10px Arial;padding:5px 10px;pointer-events:none";
           document.body.append(b);
         });
-        await page.screenshot({ path: `${evidence}/${name}-${width}-viewport.png`, animations: "disabled" });
+        await page.screenshot({
+          path: `${evidence}/${name}-${width}-viewport.png`,
+          animations: "disabled",
+        });
         await page.screenshot({
           path: `${evidence}/${name}-${width}.png`,
           fullPage: true,
@@ -134,7 +137,7 @@ test("Talent filters share profile URLs and preserve relevant data", async ({
   await expect(page).toHaveURL(/\/perfiles\/elena-demo/);
   await expect(page.locator(".profile-portrait")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Detrás de cada crédito." }),
+    page.getByRole("heading", { name: "Créditos seleccionados" }),
   ).toBeVisible();
 });
 test("reel is click-to-load and contact is gated without disclosing private data", async ({
@@ -172,7 +175,7 @@ test("editor preview stays private; ordering and publication roundtrip; unpublis
   await expect(
     page.getByText("Borrador privado", { exact: false }).first(),
   ).toBeVisible();
-  await page.getByLabel("Alias artístico (opcional)").fill("Elena · Escena");
+  await page.getByLabel("Nombre profesional").fill("Elena · Escena");
   await page
     .getByRole("button", { name: "Bajar pieza 1", exact: true })
     .click();
@@ -255,4 +258,45 @@ test("mobile filters collapse without hiding active selections", async ({
     "aria-expanded",
     "false",
   );
+});
+
+test("V2: compact bio, one identity, no public score, little content and no reel", async ({
+  page,
+}) => {
+  await page.goto("/perfiles/mateo-demo");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Mateo Campos",
+  );
+  await expect(page.locator("main")).not.toContainText("Mateo C.");
+  await expect(page.locator("main")).not.toContainText(
+    /completitud|Alias artístico/i,
+  );
+  const bio = page.locator(".p2-bio p");
+  expect(await bio.evaluate((e) => e.clientHeight)).toBeLessThanOrEqual(94);
+  await page.getByRole("button", { name: "Ver más", exact: true }).click();
+  expect(await bio.evaluate((e) => e.clientHeight)).toBeGreaterThan(94);
+  await page.getByRole("button", { name: "Ver menos", exact: true }).click();
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    for (const [slug, name] of [
+      ["mateo-demo", "mucho-contenido"],
+      ["daniel-demo", "poco-contenido"],
+      ["sofia-demo", "sin-reel-book"],
+    ]) {
+      await page.goto("/perfiles/" + slug);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      if (slug !== "mateo-demo")
+        await expect(page.locator(".profile-reel")).toHaveCount(0);
+      if (slug === "sofia-demo")
+        await expect(page.locator(".p2-gallery")).toBeVisible();
+      await page.screenshot({
+        path: `${evidence}/${name}-${width}.png`,
+        fullPage: true,
+      });
+    }
+  }
 });

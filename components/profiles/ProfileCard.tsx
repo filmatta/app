@@ -26,7 +26,7 @@ export default function ProfileCard({
         <ProfileImage
           src={image}
           alt=""
-          fallback={profile.display_name.slice(0, 1)}
+          fallback={(p.stage_name || profile.display_name).slice(0, 1)}
         />
         {(reel || p.book.length > 0) && (
           <span className="profile-card-material">
@@ -42,9 +42,7 @@ export default function ProfileCard({
         <h2>{p.stage_name || profile.display_name}</h2>
         <span aria-hidden="true">↗</span>
       </div>
-      {p.stage_name && (
-        <p className="profile-card-secondary">{profile.display_name}</p>
-      )}
+
       <p className="profile-card-disciplines">
         {profile.disciplines.join(" · ")}
       </p>

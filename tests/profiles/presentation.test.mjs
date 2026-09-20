@@ -85,3 +85,23 @@ test("completion has explicit criteria; equipment and optional rate do not penal
     88,
   );
 });
+
+test("one chosen public identity, preserving legacy values and safe fallback", () => {
+  assert.equal(
+    p.professionalName({
+      display_name: "Private P.",
+      presentation: {
+        ...p.EMPTY_PRESENTATION,
+        stage_name: "  Sofía Navarro  ",
+      },
+    }),
+    "Sofía Navarro",
+  );
+  assert.equal(
+    p.professionalName({
+      display_name: "Sofía N.",
+      presentation: p.EMPTY_PRESENTATION,
+    }),
+    "Sofía N.",
+  );
+});

@@ -213,3 +213,10 @@ export function profileCompletion(
     ),
   };
 }
+
+/** The legacy storage key holds the one name explicitly chosen for public use. */
+export function professionalName(
+  profile: Pick<ProfessionalProfile, "display_name" | "presentation">,
+) {
+  return profile.presentation.stage_name.trim() || profile.display_name;
+}

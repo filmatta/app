@@ -16,6 +16,7 @@ import {
   isTalent,
   parsePresentation,
   profileCompletion,
+  professionalName,
 } from "@/lib/profiles/presentation";
 import type {
   ProfessionalProfile,
@@ -30,21 +31,29 @@ export default function ProfileEditor({
   displayName: string;
 }) {
   const [draft, setDraft] = useState<ProfessionalProfile>(
-    profile ?? {
-      slug: "tu-perfil",
-      display_name: displayName,
-      disciplines: [],
-      city: "",
-      bio: "",
-      availability: "not_specified",
-      skills: [],
-      equipment: [],
-      portfolio_items: [],
-      presentation: { ...EMPTY_PRESENTATION },
-      contact_policy: "members_only",
-      is_public: false,
-      updated_at: "",
-    },
+    profile
+      ? {
+          ...profile,
+          presentation: {
+            ...profile.presentation,
+            stage_name: professionalName(profile),
+          },
+        }
+      : {
+          slug: "tu-perfil",
+          display_name: displayName,
+          disciplines: [],
+          city: "",
+          bio: "",
+          availability: "not_specified",
+          skills: [],
+          equipment: [],
+          portfolio_items: [],
+          presentation: { ...EMPTY_PRESENTATION, stage_name: displayName },
+          contact_policy: "members_only",
+          is_public: false,
+          updated_at: "",
+        },
   );
   const [preview, setPreview] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -104,7 +113,7 @@ export default function ProfileEditor({
       </div>
       <div className="profile-completion">
         <div>
-          <span>Completitud de la presentación</span>
+          <span>Tu perfil está {completion.percent}% completo</span>
           <strong>{completion.percent}%</strong>
         </div>
         <progress
@@ -128,8 +137,9 @@ export default function ProfileEditor({
       {profile?.is_public && <ShareProfile slug={profile.slug} />}
       <nav className="profile-editor-nav" aria-label="Secciones del editor">
         {[
-          ["material", "Material"],
           ["identity", "Identidad"],
+          ["material", "Material"],
+          ["about-editor", "Bio"],
           ["experience", "Experiencia"],
           ["capabilities", "Habilidades"],
           ["publication", "Publicación"],
@@ -146,9 +156,99 @@ export default function ProfileEditor({
           value={JSON.stringify(draft.portfolio_items)}
         />
         <input type="hidden" name="presentation" value={JSON.stringify(p)} />
-        <section id="material">
+        <section id="identity">
           <Heading
             number="01"
+            title="Una identidad. Varias disciplinas."
+            description="Elige hasta 5 disciplinas. Actuación y Modelaje también muestran tu perfil en Talento."
+          />
+          <Field label="Nombre profesional" id="professional-name">
+            <input
+              id="professional-name"
+              value={p.stage_name}
+              maxLength={80}
+              required
+              autoComplete="off"
+              aria-describedby="professional-name-help"
+              onChange={(e) => presentation("stage_name", e.target.value)}
+            />
+          </Field>
+          <p id="professional-name-help" className="profile-field-help">
+            El nombre que quieres mostrar públicamente. Puede ser tu nombre
+            completo o profesional.
+          </p>
+          <fieldset className="profile-discipline-options">
+            <legend className="sr-only">Disciplinas</legend>
+            {Array.from(
+              new Set([...PROFILE_DISCIPLINES, ...draft.disciplines]),
+            ).map((d) => (
+              <label key={d}>
+                <input
+                  name="disciplines"
+                  value={d}
+                  type="checkbox"
+                  checked={draft.disciplines.includes(d)}
+                  disabled={
+                    !draft.disciplines.includes(d) &&
+                    draft.disciplines.length >= 5
+                  }
+                  onChange={(e) =>
+                    update(
+                      "disciplines",
+                      e.target.checked
+                        ? [...draft.disciplines, d]
+                        : draft.disciplines.filter((v) => v !== d),
+                    )
+                  }
+                />
+                {d}
+              </label>
+            ))}
+          </fieldset>
+          <div className="profile-form-grid">
+            <Field label="Ciudad" id="city">
+              <input
+                id="city"
+                name="city"
+                value={draft.city ?? ""}
+                maxLength={80}
+                onChange={(e) => update("city", e.target.value)}
+                placeholder="Guadalajara"
+              />
+            </Field>
+            <Field label="Zona de trabajo aproximada (opcional)" id="work-area">
+              <input
+                id="work-area"
+                value={p.work_area}
+                maxLength={80}
+                onChange={(e) => presentation("work_area", e.target.value)}
+                placeholder="Zona Poniente · No incluyas tu dirección"
+              />
+            </Field>
+            <Field label="Disponibilidad" id="availability">
+              <select
+                id="availability"
+                name="availability"
+                value={draft.availability}
+                onChange={(e) =>
+                  update(
+                    "availability",
+                    e.target.value as ProfessionalProfile["availability"],
+                  )
+                }
+              >
+                {Object.entries(AVAILABILITY_LABELS).map(([v, l]) => (
+                  <option value={v} key={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        </section>
+        <section id="material">
+          <Heading
+            number="02"
             title="Tu material, al frente."
             description="Añade enlaces a tu reel y a tus imágenes. El primer reel será la pieza principal. Hasta 6 piezas y 6 imágenes de book."
           />
@@ -368,93 +468,12 @@ export default function ProfileEditor({
             </fieldset>
           ))}
         </section>
-        <section id="identity">
-          <Heading
-            number="02"
-            title="Una identidad. Varias disciplinas."
-            description="Elige hasta 5 disciplinas. Actuación y Modelaje también muestran tu perfil en Talento."
-          />
-          <fieldset className="profile-discipline-options">
-            <legend className="sr-only">Disciplinas</legend>
-            {Array.from(
-              new Set([...PROFILE_DISCIPLINES, ...draft.disciplines]),
-            ).map((d) => (
-              <label key={d}>
-                <input
-                  name="disciplines"
-                  value={d}
-                  type="checkbox"
-                  checked={draft.disciplines.includes(d)}
-                  disabled={
-                    !draft.disciplines.includes(d) &&
-                    draft.disciplines.length >= 5
-                  }
-                  onChange={(e) =>
-                    update(
-                      "disciplines",
-                      e.target.checked
-                        ? [...draft.disciplines, d]
-                        : draft.disciplines.filter((v) => v !== d),
-                    )
-                  }
-                />
-                {d}
-              </label>
-            ))}
-          </fieldset>
-          <div className="profile-form-grid">
-            <Field label="Alias artístico (opcional)" id="stage-name">
-              <input
-                id="stage-name"
-                value={p.stage_name}
-                maxLength={80}
-                onChange={(e) => presentation("stage_name", e.target.value)}
-              />
-            </Field>
-            <Field label="Ciudad" id="city">
-              <input
-                id="city"
-                name="city"
-                value={draft.city ?? ""}
-                maxLength={80}
-                onChange={(e) => update("city", e.target.value)}
-                placeholder="Guadalajara"
-              />
-            </Field>
-            <Field label="Zona de trabajo aproximada (opcional)" id="work-area">
-              <input
-                id="work-area"
-                value={p.work_area}
-                maxLength={80}
-                onChange={(e) => presentation("work_area", e.target.value)}
-                placeholder="Zona Poniente · No incluyas tu dirección"
-              />
-            </Field>
-            <Field label="Disponibilidad" id="availability">
-              <select
-                id="availability"
-                name="availability"
-                value={draft.availability}
-                onChange={(e) =>
-                  update(
-                    "availability",
-                    e.target.value as ProfessionalProfile["availability"],
-                  )
-                }
-              >
-                {Object.entries(AVAILABILITY_LABELS).map(([v, l]) => (
-                  <option value={v} key={v}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
+        <section id="about-editor">
           <Field label="Sobre mí" id="bio">
             <textarea
               id="bio"
               name="bio"
-              rows={5}
+              rows={3}
               maxLength={PROFILE_LIMITS.bio}
               value={draft.bio ?? ""}
               onChange={(e) => update("bio", e.target.value)}

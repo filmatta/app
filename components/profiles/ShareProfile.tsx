@@ -1,6 +1,12 @@
 "use client";
 import { useState } from "react";
-export default function ShareProfile({ slug }: { slug: string }) {
+export default function ShareProfile({
+  slug,
+  compact = false,
+}: {
+  slug: string;
+  compact?: boolean;
+}) {
   const [message, setMessage] = useState("");
   const path = `/perfiles/${encodeURIComponent(slug)}`;
   async function share() {
@@ -18,11 +24,11 @@ export default function ShareProfile({ slug }: { slug: string }) {
     }
   }
   return (
-    <div className="profile-share">
+    <div className={compact ? "p2-share-compact" : "profile-share"}>
       <button type="button" onClick={share} className="profile-text-link">
-        Comparte tu perfil FILMATTA ↗
+        {compact ? "Compartir perfil ↗" : "Comparte tu perfil FILMATTA ↗"}
       </button>
-      <a href={path} className="profile-url">
+      <a href={path} className={compact ? "sr-only" : "profile-url"}>
         /perfiles/{slug}
       </a>
       <span role="status" className="text-sm text-[#B9DCEB]">

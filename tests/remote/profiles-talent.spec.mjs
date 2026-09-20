@@ -222,7 +222,7 @@ test("real Preview: portfolio surfaces, responsive matrix, filters, privacy and 
       await editor.setViewportSize({ width: 390, height: 1000 });
       await editor.goto("/mi-perfil");
       await editor
-        .getByLabel("Alias artístico (opcional)")
+        .getByLabel("Nombre profesional")
         .fill("Alias revisado QA");
       await editor
         .getByRole("button", { name: "Bajar pieza 1", exact: true })

@@ -7,12 +7,16 @@ import {
   isTalent,
   leadReel,
   portfolioWebUrl,
+  professionalName,
   reelSource,
 } from "@/lib/profiles/presentation";
 import type { PublicProfessionalProfile } from "@/lib/profiles/types";
 import ProfileImage from "./ProfileImage";
 import ReelPlayer from "./ReelPlayer";
 import ShareProfile from "./ShareProfile";
+import ProfileBio from "./ProfileBio";
+import "./profile-public-v2.css";
+
 export default function ProfilePortfolio({
   profile,
   signedIn = false,
@@ -24,262 +28,278 @@ export default function ProfilePortfolio({
 }) {
   const talent = isTalent(profile.disciplines),
     p = profile.presentation;
+  const name = professionalName(profile);
   const reel = leadReel(profile.portfolio_items);
   const work = profile.portfolio_items.filter(
     (item) => item !== reel && portfolioWebUrl(item.url),
   );
+  const secondary = work
+    .filter((item) => item.kind !== "link" && reelSource(item.url))
+    .slice(0, 2);
+  const remaining = work.filter((item) => !secondary.includes(item));
   const location = [profile.city, p.work_area].filter(Boolean).join(" · ");
+  const cover =
+    p.book.find((item) => item.url !== p.portrait_url)?.url ||
+    (reel ? reelSource(reel.url)?.thumbnail : undefined);
+  const visual = Boolean(reel || p.book.length);
   return (
-    <article
-      className={`profile-portfolio ${talent ? "profile-portfolio--talent" : ""}`}
-    >
-      <header className="profile-identity">
-        <div>
-          <p className="eyebrow">
-            FILMATTA / {talent ? "Talento" : "Profesional audiovisual"}
-          </p>
-          <h1>{profile.display_name}</h1>
-          {p.stage_name && <p className="profile-stage">{p.stage_name}</p>}
-          <p className="profile-disciplines">
-            {profile.disciplines.join(" · ")}
-          </p>
-          <div className="profile-meta">
-            <span>{location || "Ciudad por confirmar"}</span>
-            <span
-              className="profile-availability"
-              data-available={profile.availability === "available"}
-            >
-              {AVAILABILITY_LABELS[profile.availability]}
-            </span>
+    <article className={`profile-public-v2 ${talent ? "p2-talent" : ""}`}>
+      <header className={`p2-hero ${cover ? "p2-hero--image" : ""}`}>
+        {cover && (
+          <div className="p2-cover" aria-hidden="true">
+            <ProfileImage src={cover} alt="" eager />
           </div>
-        </div>
-        <a className="editorial-secondary" href="#contact">
-          Contactar ↗
-        </a>
-      </header>
-      <div className="profile-feature">
-        {(talent || p.portrait_url) && (
-          <figure className="profile-portrait">
-            <ProfileImage
-              src={p.portrait_url}
-              alt={`Retrato de ${profile.display_name}`}
-              eager
-              fallback={profile.display_name.slice(0, 1)}
-            />
-            {talent && (
-              <figcaption>Retrato / {profile.display_name}</figcaption>
-            )}
-          </figure>
         )}
-        <div className="min-w-0">
-          {reel ? (
-            <ReelPlayer
-              item={reel}
-              poster={
-                reelSource(reel.url)?.thumbnail
-                  ? undefined
-                  : p.book.find((item) => item.url !== p.portrait_url)?.url ||
-                    p.portrait_url
-              }
-            />
-          ) : p.book.length ? (
-            <figure className="profile-feature-still">
+        <p className="eyebrow">FILMATTA / {talent ? "Talento" : "Perfiles"}</p>
+        <div className="p2-identity">
+          {p.portrait_url && (
+            <div className="p2-portrait profile-portrait">
               <ProfileImage
-                src={p.book[0].url}
-                alt={p.book[0].caption || "Trabajo seleccionado"}
+                src={p.portrait_url}
+                alt={`Retrato de ${name}`}
                 eager
+                fallback={name.slice(0, 1)}
               />
-              <figcaption>
-                {p.book[0].caption || "Trabajo seleccionado"}
-              </figcaption>
-            </figure>
-          ) : (
-            <div className="profile-no-reel">
-              <p className="eyebrow">Presentación profesional</p>
-              <p>
-                {profile.bio || "Cada trayectoria tiene una forma de mirar."}
-              </p>
-              <span>El reel aún no está disponible.</span>
             </div>
           )}
+          <div className="p2-name">
+            <h1>{name}</h1>
+            <p>{profile.disciplines.join(" · ")}</p>
+            <div className="p2-meta">
+              {location && <span>{location}</span>}
+              <span
+                className="profile-availability"
+                data-available={profile.availability === "available"}
+              >
+                {AVAILABILITY_LABELS[profile.availability]}
+              </span>
+            </div>
+          </div>
+          <div className="p2-actions">
+            <a className="p2-contact-button" href="#contact">
+              Contactar ↗
+            </a>
+            {!preview && <ShareProfile slug={profile.slug} compact />}
+          </div>
         </div>
-      </div>
-      <div className="profile-body">
-        <div className="min-w-0">
-          {profile.bio && (
-            <section className="profile-section">
-              <p className="eyebrow">01 / Sobre mí</p>
-              <h2>Una forma de {talent ? "interpretar." : "hacer."}</h2>
-              <p className="profile-bio">{profile.bio}</p>
-            </section>
-          )}
-          {(p.book.length > 0 || work.length > 0) && (
-            <section className="profile-section">
-              <p className="eyebrow">02 / Trabajo seleccionado</p>
-              <h2>
-                {talent ? "Book y material." : "El trabajo, en imágenes."}
-              </h2>
-              {p.book.length > 0 && (
+      </header>
+      <div className="p2-layout">
+        <div className="p2-main">
+          <nav className="p2-nav" aria-label="Secciones del perfil">
+            {visual && <a href="#portfolio">Portfolio</a>}
+            {profile.bio && <a href="#about">Sobre mí</a>}
+            {p.credits.length > 0 && <a href="#credits">Créditos</a>}
+            <a href="#contact">Contacto</a>
+          </nav>
+          {visual && (
+            <section className="p2-portfolio" id="portfolio">
+              <div className="p2-section-heading">
+                <h2>
+                  {reel
+                    ? "Trabajo destacado"
+                    : talent
+                      ? "Book"
+                      : "Trabajo seleccionado"}
+                </h2>
+                {reel && <span>Reel principal</span>}
+              </div>
+              {reel && (
                 <div
-                  className={`profile-book ${talent ? "profile-book--talent" : ""}`}
+                  className={`p2-feature ${secondary.length ? "p2-feature--multiple" : ""}`}
                 >
-                  {p.book.map((item, i) => (
-                    <figure key={i}>
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        aria-label={`Abrir imagen: ${item.caption || i + 1}`}
-                      >
-                        <ProfileImage
-                          src={item.url}
-                          alt={
-                            item.caption ||
-                            `Book de ${profile.display_name}, imagen ${i + 1}`
+                  <ReelPlayer
+                    item={reel}
+                    poster={
+                      reelSource(reel.url)?.thumbnail
+                        ? undefined
+                        : cover || p.portrait_url
+                    }
+                  />
+                  {secondary.length > 0 && (
+                    <div className="p2-secondary">
+                      {secondary.map((item, i) => (
+                        <ReelPlayer
+                          key={i}
+                          item={item}
+                          poster={
+                            reelSource(item.url)?.thumbnail
+                              ? undefined
+                              : p.book[i + 1]?.url || cover || undefined
                           }
                         />
-                      </a>
-                      <figcaption>{item.caption}</figcaption>
-                    </figure>
-                  ))}
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-              <div className="profile-work">
-                {work.map((item, i) => (
-                  <a
-                    href={portfolioWebUrl(item.url)!}
-                    key={i}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <span className="eyebrow">
-                      {PORTFOLIO_KIND_LABELS[item.kind]}
-                    </span>
-                    <div>
-                      <h3>{item.title}</h3>
-                      {item.summary && <p>{item.summary}</p>}
+              {p.book.length > 0 && (
+                <section className="p2-gallery-section">
+                  {reel && (
+                    <div className="p2-section-heading">
+                      <h2>{talent ? "Book" : "Imágenes de mi trabajo"}</h2>
+                      <span>
+                        {p.book.length}{" "}
+                        {p.book.length === 1 ? "imagen" : "imágenes"}
+                      </span>
                     </div>
-                    <span aria-hidden="true">↗</span>
-                  </a>
-                ))}
-              </div>
+                  )}
+                  <div
+                    className={`p2-gallery ${talent ? "p2-gallery--talent" : ""} ${!reel ? "p2-gallery--lead" : ""}`}
+                  >
+                    {p.book.map((item, i) => (
+                      <figure key={i}>
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Abrir imagen: ${item.caption || i + 1}`}
+                        >
+                          <ProfileImage
+                            src={item.url}
+                            alt={
+                              item.caption || `Book de ${name}, imagen ${i + 1}`
+                            }
+                            eager={!reel && i === 0}
+                          />
+                        </a>
+                        {item.caption && (
+                          <figcaption>{item.caption}</figcaption>
+                        )}
+                      </figure>
+                    ))}
+                  </div>
+                </section>
+              )}
             </section>
           )}
+          {remaining.length > 0 && (
+            <section className="p2-work">
+              <h2>Trabajos y enlaces</h2>
+              {remaining.map((item, i) => (
+                <a
+                  key={i}
+                  href={portfolioWebUrl(item.url)!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <div>
+                    <span>{PORTFOLIO_KIND_LABELS[item.kind]}</span>
+                    <h3>{item.title}</h3>
+                    {item.summary && <p>{item.summary}</p>}
+                  </div>
+                  <span aria-hidden="true">↗</span>
+                </a>
+              ))}
+            </section>
+          )}
+          {profile.bio && <ProfileBio text={profile.bio} />}
           {p.credits.length > 0 && (
-            <section className="profile-section">
-              <p className="eyebrow">03 / Experiencia</p>
-              <h2>Detrás de cada crédito.</h2>
-              <ul className="profile-credits">
-                {p.credits.map((c, i) => (
+            <section className="p2-credits" id="credits">
+              <h2>Créditos seleccionados</h2>
+              <ul>
+                {p.credits.map((credit, i) => (
                   <li key={i}>
-                    <span>{c.year || "—"}</span>
-                    <div>
-                      <h3>{c.title}</h3>
-                      <p>{c.role}</p>
-                    </div>
+                    <h3>{credit.title}</h3>
+                    <p>
+                      {[credit.role, credit.year].filter(Boolean).join(" · ")}
+                    </p>
                   </li>
                 ))}
               </ul>
             </section>
           )}
-          {(profile.skills.length > 0 || profile.equipment.length > 0) && (
-            <section className="profile-section">
-              <p className="eyebrow">04 / Capacidades</p>
-              <h2>
-                {talent ? "Lo que aporto a escena." : "Oficio y herramientas."}
-              </h2>
-              <div className="profile-capabilities">
-                {profile.skills.length > 0 && (
-                  <div>
-                    <h3>Habilidades</h3>
-                    <ul>
-                      {profile.skills.map((s) => (
-                        <li key={s}>{s}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {profile.equipment.length > 0 && (
-                  <div>
-                    <h3>Equipo y sistemas</h3>
-                    <ul>
-                      {profile.equipment.map((s) => (
-                        <li key={s}>{s}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-        </div>
-        <aside className="profile-contact" id="contact">
-          <p className="eyebrow">El próximo proyecto</p>
-          <h2>Hablemos de trabajo.</h2>
-          <dl>
-            <div>
-              <dt>Base / zona de trabajo</dt>
-              <dd>{location || "Por confirmar"}</dd>
-            </div>
-            <div>
-              <dt>Disponibilidad</dt>
-              <dd>{AVAILABILITY_LABELS[profile.availability]}</dd>
-            </div>
-            {p.rate_range && (
-              <div>
-                <dt>Rango orientativo</dt>
-                <dd>{p.rate_range}</dd>
-              </div>
+          {!visual &&
+            !profile.bio &&
+            !p.credits.length &&
+            !remaining.length && (
+              <p className="p2-empty">El portfolio aún está en preparación.</p>
             )}
-          </dl>
-          {profile.contact_policy === "closed" ? (
-            <p>No recibe solicitudes por ahora.</p>
-          ) : (
-            <>
-              {preview ? (
-                <span className="profile-contact-note">
-                  Contactar · acceso con cuenta
-                </span>
-              ) : signedIn ? (
-                <>
-                  <button
-                    type="button"
-                    className="editorial-secondary"
-                    disabled
-                  >
-                    Contactar · próximamente
-                  </button>
-                  <p>
-                    Las solicitudes entre perfiles aún no están disponibles.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <Link
-                    className="editorial-primary"
-                    href={`/login?next=${encodeURIComponent("/perfiles/" + profile.slug + "#contact")}`}
-                  >
-                    Contactar ↗
-                  </Link>
-                  <p>
-                    Inicia sesión. Las solicitudes entre perfiles estarán
-                    disponibles próximamente.
-                  </p>
-                </>
+        </div>
+        <aside className="p2-aside">
+          <section className="p2-information">
+            <h2>Información profesional</h2>
+            <dl>
+              {location && (
+                <div>
+                  <dt>Ciudad / zona</dt>
+                  <dd>{location}</dd>
+                </div>
               )}
-              <p className="profile-contact-note">
-                Tu correo y teléfono no se muestran en esta página.
-              </p>
-            </>
-          )}
+              <div>
+                <dt>Disciplinas</dt>
+                <dd>{profile.disciplines.join(" · ")}</dd>
+              </div>
+              <div>
+                <dt>Disponibilidad</dt>
+                <dd>{AVAILABILITY_LABELS[profile.availability]}</dd>
+              </div>
+              {profile.skills.length > 0 && (
+                <div>
+                  <dt>{talent ? "Habilidades en escena" : "Habilidades"}</dt>
+                  <dd>{profile.skills.join(" · ")}</dd>
+                </div>
+              )}
+              {profile.equipment.length > 0 && (
+                <div>
+                  <dt>Equipo / herramientas</dt>
+                  <dd>{profile.equipment.join(" · ")}</dd>
+                </div>
+              )}
+              {p.rate_range && (
+                <div>
+                  <dt>Rango orientativo</dt>
+                  <dd>{p.rate_range}</dd>
+                </div>
+              )}
+            </dl>
+          </section>
+          <section className="p2-contact" id="contact">
+            <h2>Contacto protegido</h2>
+            {profile.contact_policy === "closed" ? (
+              <p>No recibe solicitudes por ahora.</p>
+            ) : (
+              <>
+                {preview ? (
+                  <p>Contactar · acceso con cuenta</p>
+                ) : signedIn ? (
+                  <>
+                    <button
+                      type="button"
+                      className="p2-contact-button"
+                      disabled
+                    >
+                      Contactar · próximamente
+                    </button>
+                    <p>
+                      Las solicitudes entre perfiles aún no están disponibles.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      className="p2-contact-button"
+                      href={`/login?next=${encodeURIComponent("/perfiles/" + profile.slug + "#contact")}`}
+                    >
+                      Contactar ↗
+                    </Link>
+                    <p>
+                      Inicia sesión. Las solicitudes entre perfiles estarán
+                      disponibles próximamente.
+                    </p>
+                  </>
+                )}
+                <p>El correo y teléfono no se muestran en esta página.</p>
+              </>
+            )}
+          </section>
           {!preview && <ShareProfile slug={profile.slug} />}
         </aside>
       </div>
-      <footer className="profile-signature">
+      <footer className="p2-footer">
         <Link href={talent ? "/talento" : "/perfiles"}>
           ← {talent ? "Explorar talento" : "Explorar profesionales"}
         </Link>
-        <span>Una identidad. Todo tu trabajo. / FILMATTA</span>
+        <span>FILMATTA / Portfolio profesional</span>
       </footer>
     </article>
   );

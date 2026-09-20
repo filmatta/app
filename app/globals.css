@@ -408,3 +408,13 @@ html {
  .profile-filter-disclosure[data-expanded=false] .profile-filter-content { display:none; }
  .profiles-page .profile-filter-disclosure .catalog-filters { margin-bottom:.5rem; }
 }
+
+/* V2 editor follows the public reading order; completion stays owner-only. */
+.profile-editor-header h1 { font-size:clamp(2rem,4vw,3rem); }
+.profile-editor-overview h2 { font-size:1.25rem; }
+.profile-editor-form > section { padding-block:2rem; }
+.profile-form-heading h2 { font-size:1.5rem; }
+.profile-form-heading { margin-bottom:1.25rem; }
+.profile-editor-form #about-editor { max-width:48rem; }
+.profile-editor-form #identity > .profile-field { max-width:32rem; margin-block:1rem; }
+.profile-discipline-options { margin-top:1.5rem; }
