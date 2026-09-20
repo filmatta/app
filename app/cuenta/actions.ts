@@ -152,6 +152,14 @@ export async function updateRecoveredPassword(formData: FormData) {
 
   if (error) {
     console.error("Error actualizando la contraseña:", error);
+    if (error.code === "insufficient_aal") {
+      redirect(
+        passwordFeedback(
+          nextPath,
+          "Verifica tu identidad con MFA antes de actualizar la contraseña",
+        ),
+      );
+    }
     redirect(passwordFeedback(nextPath, "No pudimos actualizar la contraseña"));
   }
 

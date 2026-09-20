@@ -56,6 +56,9 @@ test("recovery and password reset sanitize every caller-controlled next", () => 
     files.reset,
     /getSafeNextPath\(params\.next \?\? null, "\/cuenta"\)/,
   );
+  assert.match(files.reset, /getAuthenticatorAssuranceLevel\(\)/);
+  assert.match(files.reset, /<MfaTotpManager/);
+  assert.match(files.reset, /next=\$\{encodeURIComponent\(nextPath\)\}/);
 });
 
 test("the callback resolves only the sanitized path", () => {

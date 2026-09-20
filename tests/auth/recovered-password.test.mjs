@@ -80,3 +80,23 @@ test("recovered password update is allowed with a valid session", async () => {
   assert.equal(updates.length, 1);
   assert.equal(updates[0].password, "secure-password");
 });
+
+test("recovered password update routes MFA accounts to verification", async () => {
+  const actions = actionsWith({
+    auth: {
+      async getUser() {
+        return { data: { user: { id: "user-id" } }, error: null };
+      },
+      async updateUser() {
+        return { error: { code: "insufficient_aal" } };
+      },
+    },
+  });
+
+  await assert.rejects(
+    actions.updateRecoveredPassword(passwordForm()),
+    (error) =>
+      error.destination ===
+      "/restablecer-contrasena?next=%2Fcuenta&error=Verifica+tu+identidad+con+MFA+antes+de+actualizar+la+contrase%C3%B1a",
+  );
+});

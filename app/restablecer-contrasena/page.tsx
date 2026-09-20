@@ -1,5 +1,10 @@
 import Link from "next/link";
 import { updateRecoveredPassword } from "@/app/cuenta/actions";
+import MfaTotpManager from "@/components/auth/MfaTotpManager";
+import {
+  buildMfaSnapshot,
+  type MfaSnapshot,
+} from "@/lib/auth/mfa-state";
 import { getSafeNextPath } from "@/lib/auth/safe-next-path";
 import { createClient } from "@/lib/supabase/server";
 import LoadingButton from "@/components/ui/LoadingButton";
@@ -14,6 +19,22 @@ export default async function ResetPasswordPage({
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   const hasSession = Boolean(data?.claims?.sub);
+  let mfaSnapshot: MfaSnapshot | null = null;
+
+  if (hasSession) {
+    const [factors, assurance] = await Promise.all([
+      supabase.auth.mfa.listFactors(),
+      supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+    ]);
+    mfaSnapshot = buildMfaSnapshot(factors, assurance);
+  }
+
+  const needsMfa = Boolean(
+    mfaSnapshot?.available &&
+      mfaSnapshot.currentLevel !== "aal2" &&
+      mfaSnapshot.nextLevel === "aal2",
+  );
+  const resetPath = `/restablecer-contrasena?next=${encodeURIComponent(nextPath)}`;
 
   return (
     <main className="min-h-screen bg-[#080808] text-white">
@@ -36,7 +57,25 @@ export default async function ResetPasswordPage({
           Nueva contraseña
         </h1>
 
-        {hasSession ? (
+        {hasSession && needsMfa && mfaSnapshot ? (
+          <>
+            <p className="mt-4 leading-7 text-white/45">
+              Verifica tu identidad con tu aplicación de autenticación antes de
+              cambiar la contraseña.
+            </p>
+            {params.error && (
+              <p className="mt-5 text-sm text-amber-200" role="alert">
+                {params.error}
+              </p>
+            )}
+            <div className="mt-9">
+              <MfaTotpManager
+                initialSnapshot={mfaSnapshot}
+                next={resetPath}
+              />
+            </div>
+          </>
+        ) : hasSession ? (
           <>
             <p className="mt-4 leading-7 text-white/45">
               Elige una contraseña nueva de al menos 8 caracteres.
