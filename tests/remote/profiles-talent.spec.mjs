@@ -6,7 +6,7 @@ import {
   previewBase,
   signedPreviewContext,
 } from "./preview-access.mjs";
-const evidence = "docs/review/profiles-talent/preview";
+const evidence = "docs/review/profile-public-ui-v2/preview";
 test("real Preview: portfolio surfaces, responsive matrix, filters, privacy and editor roundtrip", async ({
   browser,
   page,

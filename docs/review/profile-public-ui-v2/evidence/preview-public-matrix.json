@@ -1,0 +1,246 @@
+{
+  "method": "CUA DOM measurements in normal authenticated Vercel browser session; transcribed from remoteMatrixV2",
+  "deployment": "app-lg0nuiccy-filmatta.vercel.app",
+  "results": [
+    {
+      "width": 390,
+      "url": "/perfiles/ui-p",
+      "name": "QA · Portfolio cinematográfico",
+      "reels": 3,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 390,
+      "url": "/perfiles/ui-t",
+      "name": "QA · Talento editorial",
+      "reels": 1,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 390,
+      "url": "/perfiles/ui-n",
+      "name": "QA · Talento editorial",
+      "reels": 0,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 390,
+      "url": "/perfiles/ui-m",
+      "name": "QA · Perfil inicial",
+      "reels": 0,
+      "book": 0,
+      "bioHeight": null,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 768,
+      "url": "/perfiles/ui-p",
+      "name": "QA · Portfolio cinematográfico",
+      "reels": 3,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 768,
+      "url": "/perfiles/ui-t",
+      "name": "QA · Talento editorial",
+      "reels": 1,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 768,
+      "url": "/perfiles/ui-n",
+      "name": "QA · Talento editorial",
+      "reels": 0,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 768,
+      "url": "/perfiles/ui-m",
+      "name": "QA · Perfil inicial",
+      "reels": 0,
+      "book": 0,
+      "bioHeight": null,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1024,
+      "url": "/perfiles/ui-p",
+      "name": "QA · Portfolio cinematográfico",
+      "reels": 3,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1024,
+      "url": "/perfiles/ui-t",
+      "name": "QA · Talento editorial",
+      "reels": 1,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1024,
+      "url": "/perfiles/ui-n",
+      "name": "QA · Talento editorial",
+      "reels": 0,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1024,
+      "url": "/perfiles/ui-m",
+      "name": "QA · Perfil inicial",
+      "reels": 0,
+      "book": 0,
+      "bioHeight": null,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1280,
+      "url": "/perfiles/ui-p",
+      "name": "QA · Portfolio cinematográfico",
+      "reels": 3,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1280,
+      "url": "/perfiles/ui-t",
+      "name": "QA · Talento editorial",
+      "reels": 1,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1280,
+      "url": "/perfiles/ui-n",
+      "name": "QA · Talento editorial",
+      "reels": 0,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1280,
+      "url": "/perfiles/ui-m",
+      "name": "QA · Perfil inicial",
+      "reels": 0,
+      "book": 0,
+      "bioHeight": null,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1440,
+      "url": "/perfiles/ui-p",
+      "name": "QA · Portfolio cinematográfico",
+      "reels": 3,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1440,
+      "url": "/perfiles/ui-t",
+      "name": "QA · Talento editorial",
+      "reels": 1,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1440,
+      "url": "/perfiles/ui-n",
+      "name": "QA · Talento editorial",
+      "reels": 0,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1440,
+      "url": "/perfiles/ui-m",
+      "name": "QA · Perfil inicial",
+      "reels": 0,
+      "book": 0,
+      "bioHeight": null,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1920,
+      "url": "/perfiles/ui-p",
+      "name": "QA · Portfolio cinematográfico",
+      "reels": 3,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1920,
+      "url": "/perfiles/ui-t",
+      "name": "QA · Talento editorial",
+      "reels": 1,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1920,
+      "url": "/perfiles/ui-n",
+      "name": "QA · Talento editorial",
+      "reels": 0,
+      "book": 2,
+      "bioHeight": 92,
+      "overflow": false,
+      "publicProgress": 0
+    },
+    {
+      "width": 1920,
+      "url": "/perfiles/ui-m",
+      "name": "QA · Perfil inicial",
+      "reels": 0,
+      "book": 0,
+      "bioHeight": null,
+      "overflow": false,
+      "publicProgress": 0
+    }
+  ]
+}

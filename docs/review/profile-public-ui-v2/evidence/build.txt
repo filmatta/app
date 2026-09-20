@@ -1,0 +1,82 @@
+
+> filmatta@0.1.0 build
+> next build
+
+▲ Next.js 16.3.4 (Turbopack)
+✓ Running next.config.ts took 37ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 9.1s
+  Running TypeScript ...
+  Finished TypeScript in 6.5s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/37) ...
+  Generating static pages using 11 workers (9/37)
+  Generating static pages using 11 workers (18/37)
+  Generating static pages using 11 workers (27/37)
+✓ Generating static pages using 11 workers (37/37) in 444ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /acceso
+├ ƒ /admin
+├ ƒ /admin/cursos
+├ ƒ /admin/cursos/[id]
+├ ƒ /admin/cursos/nuevo
+├ ƒ /admin/planes
+├ ƒ /api/billing/status
+├ ƒ /api/mux/webhooks
+├ ƒ /api/stripe/webhooks
+├ ƒ /auth/callback
+├ ƒ /billing/portal-return
+├ ƒ /billing/return
+├ ○ /comunidad
+├ ƒ /cuenta
+├ ƒ /cuenta/suscripcion
+├ ƒ /cuenta/suscripcion/cambiar-a-plus
+├ ƒ /cursos
+├ ƒ /cursos/[slug]
+├ ƒ /cursos/[slug]/lecciones/[lessonSlug]
+├ ƒ /descubre/[vertical]
+├ ƒ /jobs
+├ ƒ /locaciones
+├ ƒ /locaciones/[slug]
+├ ƒ /login
+├ ƒ /marketplace
+├ ƒ /marketplace/[slug]
+├ ƒ /mi-perfil
+├ ƒ /mis-locaciones
+├ ƒ /mis-locaciones/[id]/editar
+├ ƒ /mis-locaciones/nueva
+├ ƒ /mis-oportunidades
+├ ƒ /mis-oportunidades/[id]/editar
+├ ƒ /mis-oportunidades/nueva
+├ ƒ /mis-servicios
+├ ƒ /mis-servicios/[id]/editar
+├ ƒ /mis-servicios/consultas
+├ ƒ /mis-servicios/nuevo
+├ ƒ /oportunidades
+├ ƒ /oportunidades/[slug]
+├ ƒ /perfiles
+├ ƒ /perfiles/[slug]
+├ ƒ /planes
+├ ○ /privacidad
+├ ƒ /recuperar-contrasena
+├ ƒ /registro
+├ ƒ /restablecer-contrasena
+├ ƒ /talento
+├ ○ /terminos
+├ ƒ /tools
+├ ƒ /tools/production-assistant
+├ ƒ /tools/utilidades
+├ ƒ /tools/utilidades/[slug]
+├ ƒ /tools/writer
+└ ƒ /verificar-admin
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
