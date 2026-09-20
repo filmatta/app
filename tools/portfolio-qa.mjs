@@ -187,7 +187,7 @@ try {
     MUX_TOKEN_SECRET: c.muxTokenSecret,
     MUX_EXPECTED_ENVIRONMENT_ID: c.muxEnv,
     MUX_EXPECTED_ENVIRONMENT_TYPE: "development",
-    MUX_PORTFOLIO_WEBHOOK_SECRET: webhookSecret,
+    MUX_WEBHOOK_SECRET: webhookSecret,
     CRON_SECRET: cronSecret,
     PORTFOLIO_DIRECT_UPLOADS_ENABLED: "true",
     BILLING_ENABLED: "false",
@@ -401,7 +401,7 @@ try {
   const signature = createHmac("sha256", webhookSecret)
     .update(`${time}.${event}`)
     .digest("hex");
-  const webhook = await fetch(base + "/api/portfolio/mux-webhook", {
+  const webhook = await fetch(base + "/api/mux/webhooks", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

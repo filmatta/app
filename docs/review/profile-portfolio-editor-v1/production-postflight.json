@@ -1,0 +1,528 @@
+{
+  "migration": "20260921010000_profile_media.sql",
+  "project": "ihryubbegljbwmuyazbn",
+  "success": true,
+  "differences": [],
+  "dataPreserved": true,
+  "preserved": {
+    "digest": "fb7123ab49a88e777c8258eb2ba336f9",
+    "legacy_unmodified": true,
+    "public": 1,
+    "total": 1
+  },
+  "schema": {
+    "bucket": {
+      "limit": 20000000,
+      "mime": [
+        "image/jpeg",
+        "image/png",
+        "image/webp"
+      ],
+      "private": true
+    },
+    "columns": [
+      {
+        "default": "gen_random_uuid()",
+        "name": "id",
+        "notnull": true,
+        "type": "uuid"
+      },
+      {
+        "default": null,
+        "name": "owner_id",
+        "notnull": true,
+        "type": "uuid"
+      },
+      {
+        "default": null,
+        "name": "category",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "title",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": "''::text",
+        "name": "role",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": "''::text",
+        "name": "year",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": "''::text",
+        "name": "description",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "media_type",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "source",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": "''::text",
+        "name": "url",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "provider",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "external_video_id",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "thumbnail_id",
+        "notnull": false,
+        "type": "uuid"
+      },
+      {
+        "default": "false",
+        "name": "featured",
+        "notnull": true,
+        "type": "boolean"
+      },
+      {
+        "default": "0",
+        "name": "sort_order",
+        "notnull": true,
+        "type": "integer"
+      },
+      {
+        "default": "'visible'::text",
+        "name": "visibility",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": "'ready'::text",
+        "name": "status",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "storage_path",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "expected_size_bytes",
+        "notnull": false,
+        "type": "bigint"
+      },
+      {
+        "default": null,
+        "name": "mime_type",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "mux_upload_id",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "mux_asset_id",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "mux_playback_id",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "mux_environment_id",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "mux_environment_type",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "expires_at",
+        "notnull": false,
+        "type": "timestamp with time zone"
+      },
+      {
+        "default": null,
+        "name": "cleanup_after",
+        "notnull": false,
+        "type": "timestamp with time zone"
+      },
+      {
+        "default": "now()",
+        "name": "created_at",
+        "notnull": true,
+        "type": "timestamp with time zone"
+      },
+      {
+        "default": "now()",
+        "name": "updated_at",
+        "notnull": true,
+        "type": "timestamp with time zone"
+      }
+    ],
+    "constraints": [
+      {
+        "definition": "CHECK ((category = ANY (ARRAY['work'::text, 'reel'::text, 'book'::text])))",
+        "name": "profile_media_category_check"
+      },
+      {
+        "definition": "CHECK (((source <> 'mux'::text) OR (media_type = 'video'::text)))",
+        "name": "profile_media_check"
+      },
+      {
+        "definition": "CHECK (((source <> 'storage'::text) OR (media_type = 'image'::text)))",
+        "name": "profile_media_check1"
+      },
+      {
+        "definition": "CHECK ((length(description) <= 240))",
+        "name": "profile_media_description_check"
+      },
+      {
+        "definition": "CHECK ((expected_size_bytes > 0))",
+        "name": "profile_media_expected_size_bytes_check"
+      },
+      {
+        "definition": "CHECK ((media_type = ANY (ARRAY['image'::text, 'video'::text, 'link'::text])))",
+        "name": "profile_media_media_type_check"
+      },
+      {
+        "definition": "UNIQUE (mux_asset_id)",
+        "name": "profile_media_mux_asset_id_key"
+      },
+      {
+        "definition": "UNIQUE (mux_upload_id)",
+        "name": "profile_media_mux_upload_id_key"
+      },
+      {
+        "definition": "FOREIGN KEY (owner_id) REFERENCES professional_profiles(user_id) ON DELETE CASCADE",
+        "name": "profile_media_owner_id_fkey"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
+        "name": "profile_media_pkey"
+      },
+      {
+        "definition": "CHECK ((provider = ANY (ARRAY['youtube'::text, 'vimeo'::text])))",
+        "name": "profile_media_provider_check"
+      },
+      {
+        "definition": "CHECK ((length(role) <= 80))",
+        "name": "profile_media_role_check"
+      },
+      {
+        "definition": "CHECK ((sort_order >= 0))",
+        "name": "profile_media_sort_order_check"
+      },
+      {
+        "definition": "CHECK ((source = ANY (ARRAY['external'::text, 'storage'::text, 'mux'::text])))",
+        "name": "profile_media_source_check"
+      },
+      {
+        "definition": "CHECK ((status = ANY (ARRAY['uploading'::text, 'processing'::text, 'ready'::text, 'errored'::text, 'rejected'::text, 'deleted'::text])))",
+        "name": "profile_media_status_check"
+      },
+      {
+        "definition": "UNIQUE (storage_path)",
+        "name": "profile_media_storage_path_key"
+      },
+      {
+        "definition": "FOREIGN KEY (thumbnail_id) REFERENCES profile_media(id) ON DELETE SET NULL",
+        "name": "profile_media_thumbnail_id_fkey"
+      },
+      {
+        "definition": "CHECK (((length(btrim(title)) >= 1) AND (length(btrim(title)) <= 100)))",
+        "name": "profile_media_title_check"
+      },
+      {
+        "definition": "CHECK ((length(url) <= 500))",
+        "name": "profile_media_url_check"
+      },
+      {
+        "definition": "CHECK ((visibility = ANY (ARRAY['visible'::text, 'hidden'::text, 'archived'::text])))",
+        "name": "profile_media_visibility_check"
+      },
+      {
+        "definition": "CHECK ((year ~ '^(|19[0-9]{2}|20[0-9]{2})$'::text))",
+        "name": "profile_media_year_check"
+      }
+    ],
+    "functions": [
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.profile_visible_links(p_owner uuid)\n RETURNS jsonb\n LANGUAGE sql\n STABLE\n SET search_path TO ''\nAS $function$\n select coalesce(jsonb_agg(jsonb_build_object('kind',case when category='reel' then 'reel' else 'project' end,'title',title,'url',url,'summary',description) order by featured desc,sort_order,id),'[]'::jsonb)\n from public.profile_media where owner_id=p_owner and visibility='visible' and status='ready' and source='external' and media_type<>'image';\n$function$\n",
+        "name": "private.profile_visible_links",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.profile_visible_presentation(p professional_profiles)\n RETURNS jsonb\n LANGUAGE sql\n STABLE\n SET search_path TO ''\nAS $function$\n select case when p.media_initialized then jsonb_set(p.presentation,'{book}',coalesce((select jsonb_agg(jsonb_build_object('url',url,'caption',title) order by featured desc,sort_order,id) from public.profile_media where owner_id=p.user_id and category='book' and source='external' and visibility='visible' and status='ready'),'[]'::jsonb)) else p.presentation end;\n$function$\n",
+        "name": "private.profile_visible_presentation",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.bind_my_profile_upload(p_id uuid, p_upload text, p_environment text, p_environment_type text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n update public.profile_media set mux_upload_id=p_upload,mux_environment_id=p_environment,mux_environment_type=p_environment_type\n where id=p_id and owner_id=auth.uid() and source='mux' and status='uploading' and mux_upload_id is null;\n if not found then raise exception 'Not allowed' using errcode='42501'; end if;\nend $function$\n",
+        "name": "public.bind_my_profile_upload",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "anon=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.can_read_profile_image(p_path text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select exists(select 1 from public.profile_media m join public.professional_profiles p on p.user_id=m.owner_id where m.storage_path=p_path and\n (m.owner_id=auth.uid() or (p.is_public and m.visibility='visible' and m.status='ready')));\n$function$\n",
+        "name": "public.can_read_profile_image",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "anon=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.get_profile_media(p_slug text)\n RETURNS jsonb\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select case when p.media_initialized then coalesce((select jsonb_agg(jsonb_build_object(\n 'id',m.id,'category',m.category,'title',m.title,'role',m.role,'year',m.year,'description',m.description,\n 'media_type',m.media_type,'source',m.source,'url',m.url,'provider',m.provider,'external_video_id',m.external_video_id,\n 'thumbnail_id',m.thumbnail_id,'featured',m.featured,'sort_order',m.sort_order,'visibility',m.visibility,'status',m.status,\n 'created_at',m.created_at,'updated_at',m.updated_at) order by m.sort_order,m.id)\n from public.profile_media m where m.owner_id=p.user_id and (p.user_id=auth.uid() or (m.visibility='visible' and m.status='ready'))),'[]'::jsonb) else null end\n from public.professional_profiles p where p.slug=p_slug and (p.is_public or p.user_id=auth.uid());\n$function$\n",
+        "name": "public.get_profile_media",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "anon=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.get_profile_media_resource(p_id uuid)\n RETURNS jsonb\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select jsonb_build_object('storage_path',m.storage_path,'source',m.source,'url',m.url,'mux_playback_id',m.mux_playback_id,'mux_environment_id',m.mux_environment_id,'mux_environment_type',m.mux_environment_type)\n from public.profile_media m join public.professional_profiles p on p.user_id=m.owner_id\n where m.id=p_id and m.status='ready' and m.visibility<>'archived' and (p.user_id=auth.uid() or (p.is_public and m.visibility='visible'));\n$function$\n",
+        "name": "public.get_profile_media_resource",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.initialize_my_profile_media()\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare p public.professional_profiles; item jsonb; n integer:=0;\nbegin\n  if auth.uid() is null then raise exception 'Authentication required' using errcode='42501'; end if;\n  select * into p from public.professional_profiles where user_id=auth.uid() for update;\n  if not found then raise exception 'Save profile identity first' using errcode='22023'; end if;\n  if p.media_initialized then return; end if;\n  for item in select value from jsonb_array_elements(p.portfolio_items) loop\n    insert into public.profile_media(owner_id,category,title,description,media_type,source,url,sort_order)\n    values(p.user_id,case when item->>'kind'='reel' then 'reel' else 'work' end,item->>'title',coalesce(item->>'summary',''),'link','external',item->>'url',n);\n    n:=n+1;\n  end loop;\n  n:=0;\n  for item in select value from jsonb_array_elements(p.presentation->'book') loop\n    insert into public.profile_media(owner_id,category,title,media_type,source,url,sort_order)\n    values(p.user_id,'book',coalesce(nullif(item->>'caption',''),'Book'),'image','external',item->>'url',n);\n    n:=n+1;\n  end loop;\n  update public.professional_profiles set media_initialized=true where user_id=p.user_id;\nend $function$\n",
+        "name": "public.initialize_my_profile_media",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.manage_my_profile_media(p_id uuid, p_action text, p_target uuid DEFAULT NULL::uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare m public.profile_media; neighbor public.profile_media;\nbegin\n  perform public.initialize_my_profile_media();\n  select * into m from public.profile_media where id=p_id and owner_id=auth.uid() for update;\n  if not found or m.status='deleted' then raise exception 'Not allowed' using errcode='42501'; end if;\n  if p_action in ('up','down') then\n    -- Normalize under the parent lock so legacy/import ties cannot lose order.\n    with positions as(select id,row_number() over(order by sort_order,id)-1 n from public.profile_media where owner_id=auth.uid() and category=m.category and visibility<>'archived')\n    update public.profile_media t set sort_order=positions.n from positions where t.id=positions.id;\n    select * into m from public.profile_media where id=p_id;\n    select * into neighbor from public.profile_media where owner_id=auth.uid() and category=m.category and visibility<>'archived' and sort_order=m.sort_order+case when p_action='up' then -1 else 1 end;\n    if found then update public.profile_media set sort_order=case when id=m.id then neighbor.sort_order else m.sort_order end where id in(m.id,neighbor.id); end if;\n  elsif p_action='feature' then\n    update public.profile_media set featured=false where owner_id=auth.uid() and category=m.category and featured;\n    update public.profile_media set featured=not m.featured,visibility='visible' where id=p_id;\n  elsif p_action in ('hide','show','archive','restore') then\n    update public.profile_media set visibility=case p_action when 'show' then 'visible' when 'restore' then 'hidden' when 'hide' then 'hidden' else 'archived' end,\n      featured=false,cleanup_after=case when p_action='archive' then now()+interval '30 days' else null end where id=p_id;\n  elsif p_action='thumbnail' then\n    if p_target is not null and not exists(select 1 from public.profile_media where id=p_target and owner_id=auth.uid() and media_type='image' and status='ready' and visibility<>'archived') then raise exception 'Invalid thumbnail' using errcode='42501'; end if;\n    update public.profile_media set thumbnail_id=p_target where id=p_id;\n  else raise exception 'Invalid action' using errcode='22023'; end if;\nend $function$\n",
+        "name": "public.manage_my_profile_media",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.reserve_my_profile_upload(p_data jsonb, p_size bigint, p_mime text, p_extension text)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare result uuid:=gen_random_uuid(); src text:=p_data->>'source'; kind text:=p_data->>'media_type'; cat text:=p_data->>'category';\nbegin\n perform public.initialize_my_profile_media();\n if src not in ('mux','storage') or (src='mux' and kind<>'video') or (src='storage' and kind<>'image') or cat not in ('work','reel','book') or (cat='reel' and kind<>'video') or (cat='book' and kind<>'image') then raise exception 'Invalid upload'; end if;\n if p_size is null or p_size<=0 or p_size>(case when src='mux' then 5000000000 else 20000000 end) then raise exception 'File too large or invalid'; end if;\n if p_mime is null or p_extension is null or not ((src='mux' and ((p_mime='video/mp4' and p_extension='mp4') or (p_mime='video/quicktime' and p_extension='mov'))) or\n (src='storage' and ((p_mime='image/jpeg' and p_extension in('jpg','jpeg')) or (p_mime='image/png' and p_extension='png') or (p_mime='image/webp' and p_extension='webp')))) then raise exception 'Invalid file type'; end if;\n update public.profile_media set status='errored',cleanup_after=now() where owner_id=auth.uid() and status in('uploading','processing') and expires_at<now();\n if (select count(*) from public.profile_media where owner_id=auth.uid() and status in('uploading','processing'))>=2 then raise exception 'Pending upload limit'; end if;\n if (select count(*) from public.profile_media where owner_id=auth.uid() and source=src and created_at>now()-interval '1 day')>=(case when src='mux' then 10 else 30 end) then raise exception 'Daily upload limit'; end if;\n if (select count(*) from public.profile_media where owner_id=auth.uid() and source=src and created_at>now()-interval '30 days')>=(case when src='mux' then 30 else 100 end) then raise exception 'Monthly upload limit'; end if;\n if (select count(*) from public.profile_media where owner_id=auth.uid() and visibility<>'archived')>=100 then raise exception 'Portfolio limit'; end if;\n if cat='work' and coalesce(p_data->>'role','')='' then raise exception 'Role required'; end if;\n insert into public.profile_media(id,owner_id,category,title,role,year,description,media_type,source,status,expected_size_bytes,mime_type,storage_path,expires_at,sort_order)\n values(result,auth.uid(),cat,p_data->>'title',coalesce(p_data->>'role',''),coalesce(p_data->>'year',''),coalesce(p_data->>'description',''),kind,src,'uploading',p_size,p_mime,\n case when src='storage' then auth.uid()::text||'/'||result::text||'/original.'||p_extension else null end,now()+interval '2 hours',\n coalesce((select max(sort_order)+1 from public.profile_media where owner_id=auth.uid() and category=cat),0));\n return result;\nend $function$\n",
+        "name": "public.reserve_my_profile_upload",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.save_my_profile_media(p_id uuid, p_data jsonb)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare m public.profile_media; result uuid; category_value text; video_id text; provider_value text; target_url text;\nbegin\n  perform public.initialize_my_profile_media();\n  if p_id is not null then\n    select * into m from public.profile_media where id=p_id and owner_id=auth.uid() for update;\n    if not found then raise exception 'Not allowed' using errcode='42501'; end if;\n  end if;\n  category_value:=p_data->>'category'; target_url:=coalesce(p_data->>'url','');\n  if category_value not in ('reel','work','book') or jsonb_typeof(p_data->'featured') is distinct from 'boolean' then raise exception 'Invalid metadata' using errcode='22023'; end if;\n  if p_id is null then\n    if p_data->>'source'<>'external' or p_data->>'media_type'<>'video' or category_value='book' then raise exception 'Reserve upload first' using errcode='22023'; end if;\n    if (select count(*) from public.profile_media where owner_id=auth.uid() and visibility<>'archived')>=100 then raise exception 'Portfolio limit reached'; end if;\n  elsif p_data->>'source' is distinct from m.source or p_data->>'media_type' is distinct from m.media_type or category_value is distinct from m.category then\n    raise exception 'Media source is immutable' using errcode='22023';\n  end if;\n  if p_id is null or (m.media_type='video' and m.source='external') then\n    if target_url ~ '^https://www\\.youtube\\.com/watch\\?v=[A-Za-z0-9_-]{11}$' then provider_value:='youtube'; video_id:=split_part(target_url,'=',2);\n    elsif target_url ~ '^https://vimeo\\.com/[0-9]{1,15}(/[A-Za-z0-9]{1,64})?$' then provider_value:='vimeo'; video_id:=split_part(target_url,'/',4);\n    else raise exception 'Invalid provider' using errcode='22023'; end if;\n  elsif target_url is distinct from m.url then raise exception 'Media URL is immutable' using errcode='22023'; end if;\n  if coalesce(p_data->>'role','')='' and category_value='work' and (p_id is null or m.source<>'external') then raise exception 'Role required'; end if;\n  if (p_data->>'featured')::boolean then update public.profile_media set featured=false where owner_id=auth.uid() and category=category_value and featured; end if;\n  if p_id is null then\n    insert into public.profile_media(owner_id,category,title,role,year,description,media_type,source,url,provider,external_video_id,featured,sort_order)\n    values(auth.uid(),category_value,p_data->>'title',coalesce(p_data->>'role',''),coalesce(p_data->>'year',''),coalesce(p_data->>'description',''),'video','external',target_url,provider_value,video_id,(p_data->>'featured')::boolean,\n      coalesce((select max(sort_order)+1 from public.profile_media where owner_id=auth.uid() and category=category_value),0)) returning id into result;\n  else\n    update public.profile_media set title=p_data->>'title',role=coalesce(p_data->>'role',''),year=coalesce(p_data->>'year',''),description=coalesce(p_data->>'description',''),url=target_url,\n      provider=coalesce(provider_value,provider),external_video_id=coalesce(video_id,external_video_id),featured=(p_data->>'featured')::boolean where id=p_id returning id into result;\n  end if;\n  return result;\nend $function$\n",
+        "name": "public.save_my_profile_media",
+        "owner": "postgres"
+      }
+    ],
+    "grants": [
+      {
+        "grantee": "authenticated",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "DELETE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "INSERT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "UPDATE"
+      }
+    ],
+    "indexes": [
+      {
+        "indexdef": "CREATE INDEX profile_media_cleanup ON public.profile_media USING btree (cleanup_after) WHERE (cleanup_after IS NOT NULL)",
+        "indexname": "profile_media_cleanup",
+        "schemaname": "public",
+        "tablename": "profile_media",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE UNIQUE INDEX profile_media_mux_asset_id_key ON public.profile_media USING btree (mux_asset_id)",
+        "indexname": "profile_media_mux_asset_id_key",
+        "schemaname": "public",
+        "tablename": "profile_media",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE UNIQUE INDEX profile_media_mux_upload_id_key ON public.profile_media USING btree (mux_upload_id)",
+        "indexname": "profile_media_mux_upload_id_key",
+        "schemaname": "public",
+        "tablename": "profile_media",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE UNIQUE INDEX profile_media_one_feature ON public.profile_media USING btree (owner_id, category) WHERE (featured AND (visibility = 'visible'::text))",
+        "indexname": "profile_media_one_feature",
+        "schemaname": "public",
+        "tablename": "profile_media",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE INDEX profile_media_owner_order ON public.profile_media USING btree (owner_id, category, sort_order, id)",
+        "indexname": "profile_media_owner_order",
+        "schemaname": "public",
+        "tablename": "profile_media",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE UNIQUE INDEX profile_media_pkey ON public.profile_media USING btree (id)",
+        "indexname": "profile_media_pkey",
+        "schemaname": "public",
+        "tablename": "profile_media",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE UNIQUE INDEX profile_media_storage_path_key ON public.profile_media USING btree (storage_path)",
+        "indexname": "profile_media_storage_path_key",
+        "schemaname": "public",
+        "tablename": "profile_media",
+        "tablespace": null
+      }
+    ],
+    "policies": [
+      {
+        "cmd": "INSERT",
+        "permissive": "PERMISSIVE",
+        "policyname": "profile_media_image_insert",
+        "qual": null,
+        "roles": [
+          "authenticated"
+        ],
+        "schemaname": "storage",
+        "tablename": "objects",
+        "with_check": "((bucket_id = 'profile-media'::text) AND (EXISTS ( SELECT 1\n   FROM profile_media m\n  WHERE ((m.owner_id = auth.uid()) AND (m.storage_path = objects.name) AND (m.source = 'storage'::text) AND (m.status = 'uploading'::text) AND (m.expires_at > now())))))"
+      },
+      {
+        "cmd": "SELECT",
+        "permissive": "PERMISSIVE",
+        "policyname": "profile_media_image_read",
+        "qual": "((bucket_id = 'profile-media'::text) AND can_read_profile_image(name))",
+        "roles": [
+          "anon",
+          "authenticated"
+        ],
+        "schemaname": "storage",
+        "tablename": "objects",
+        "with_check": null
+      },
+      {
+        "cmd": "SELECT",
+        "permissive": "PERMISSIVE",
+        "policyname": "profile_media_owner_read",
+        "qual": "(owner_id = ( SELECT auth.uid() AS uid))",
+        "roles": [
+          "authenticated"
+        ],
+        "schemaname": "public",
+        "tablename": "profile_media",
+        "with_check": null
+      }
+    ],
+    "rls": true,
+    "triggers": [
+      "CREATE TRIGGER profile_media_updated BEFORE UPDATE ON public.profile_media FOR EACH ROW EXECUTE FUNCTION private.set_professional_profiles_updated_at()"
+    ]
+  },
+  "ledgerTouched": false
+}

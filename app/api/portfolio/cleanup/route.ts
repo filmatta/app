@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
-import { cleanPortfolioMedia } from "@/lib/profiles/mux-media";
+import { cleanPortfolioMedia, cleanPortfolioOrphans } from "@/lib/profiles/mux-media";
 export const runtime = "nodejs";
+export const maxDuration = 300;
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
   const supplied = request.headers.get("authorization") ?? "";
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
   )
     return new Response(null, { status: 401 });
   try {
-    return Response.json({ cleaned: await cleanPortfolioMedia() });
+    return Response.json({ cleaned: await cleanPortfolioMedia(), orphans: await cleanPortfolioOrphans() });
   } catch {
     return Response.json(
       { error: "Cleanup pendiente de reintento." },

@@ -44,6 +44,7 @@ export async function syncPortfolioAsset(assetId: string) {
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
+  // An absent reference is handled conservatively by the daily orphan sweep.
   if (!row || row.source !== "mux") return;
   // A very early webhook may race binding. Return retryable failure, never acknowledge loss.
   if (!row.mux_upload_id) throw new Error("Upload binding pending");
@@ -60,8 +61,7 @@ export async function syncPortfolioAsset(assetId: string) {
   )
     return;
   if (row.mux_asset_id && row.mux_asset_id !== asset.id) return;
-  if (row.status === "deleted") return;
-  if (row.status === "rejected") {
+  if (row.status === "deleted" || row.status === "rejected") {
     await mux.video.assets.delete(asset.id).catch((e) => {
       if (!isMuxNotFoundError(e)) throw e;
     });
@@ -113,7 +113,9 @@ export async function cleanPortfolioMedia() {
     .from("profile_media")
     .select("*")
     .lte("cleanup_after", now)
-    .neq("status", "deleted")
+    // A terminal row retains cleanup_after until external deletion succeeds.
+    // Include it after a crash; never lose a claimed cleanup job.
+    .order("cleanup_after")
     .limit(50);
   if (error) throw error;
   let count = 0;
@@ -149,22 +151,84 @@ export async function cleanPortfolioMedia() {
         } else if (upload.status === "waiting")
           await mux.video.uploads.cancel(upload.id);
       } else if (row.source === "storage" && row.storage_path) {
+        if (!row.storage_path.startsWith(`${row.owner_id}/${row.id}/`))
+          throw new Error("Wrong storage association");
         const removed = await db.storage
           .from("profile-media")
           .remove([row.storage_path]);
         if (removed.error) throw removed.error;
       }
-      count++;
     } catch (error) {
       if (!isMuxNotFoundError(error)) {
-        await db
-          .from("profile_media")
-          .update({ status: "errored", cleanup_after: now })
-          .eq("id", row.id)
-          .eq("status", "deleted");
+        // Keep the tombstone and due date: safe retries cannot restore playback.
         throw error;
       }
     }
+    const finished = await db.from("profile_media")
+      .update({ cleanup_after: null, mux_playback_id: null })
+      .eq("id", row.id).eq("status", "deleted");
+    if (finished.error) throw finished.error;
+    count++;
   }
   return count;
+}
+
+export async function syncPortfolioUpload(uploadId: string) {
+  const { mux, environment } = await createValidatedMuxContext();
+  const upload = await mux.video.uploads.retrieve(uploadId);
+  const id = portfolioId(upload.new_asset_settings?.passthrough);
+  if (!id) return;
+  if (upload.asset_id) return syncPortfolioAsset(upload.asset_id);
+  if (!["cancelled", "timed_out", "errored"].includes(upload.status)) return;
+  const updated = await createAdminClient().from("profile_media")
+    .update({ status: "errored", cleanup_after: new Date().toISOString() })
+    .eq("id", id).eq("mux_upload_id", upload.id)
+    .eq("mux_environment_id", environment.id).eq("mux_environment_type", environment.type)
+    .in("status", ["uploading", "processing"]);
+  if (updated.error) throw updated.error;
+}
+
+export async function markPortfolioAssetDeleted(assetId: string, environment: { id: string; type: string }) {
+  // The signed event's environment is checked by the shared webhook first.
+  const result = await createAdminClient().from("profile_media")
+    .update({ status: "deleted", visibility: "archived", featured: false, mux_playback_id: null, cleanup_after: null })
+    .eq("source", "mux").eq("mux_asset_id", assetId)
+    .eq("mux_environment_id", environment.id).eq("mux_environment_type", environment.type);
+  if (result.error) throw result.error;
+}
+
+export async function cleanPortfolioOrphans() {
+  const { mux } = await createValidatedMuxContext();
+  const db = createAdminClient();
+  let cleaned = 0;
+  // SDK pagination traverses the inventory; Learn assets are never queried or changed.
+  for await (const asset of mux.video.assets.list({ limit: 100 })) {
+    const id = portfolioId(asset.passthrough);
+    if (
+      !id || !asset.upload_id ||
+      !/^[A-Za-z0-9]+$/.test(asset.id) ||
+      !/^[A-Za-z0-9]+$/.test(asset.upload_id) ||
+      asset.meta?.external_id !== id ||
+      !/^[0-9a-f-]{36}$/i.test(asset.meta?.creator_id ?? "")
+    ) continue;
+    const created = Number(asset.created_at) * 1000;
+    if (!Number.isFinite(created) || created > Date.now() - 2 * 60 * 60 * 1000) continue;
+    const refs = await db.from("profile_media").select("id")
+      .or(`id.eq.${id},mux_asset_id.eq.${asset.id},mux_upload_id.eq.${asset.upload_id}`);
+    if (refs.error) throw refs.error;
+    if (refs.data?.length) continue;
+    const upload = await mux.video.uploads.retrieve(asset.upload_id);
+    if (
+      upload.asset_id !== asset.id ||
+      portfolioId(upload.new_asset_settings?.passthrough) !== id ||
+      upload.new_asset_settings?.meta?.external_id !== id ||
+      upload.new_asset_settings?.meta?.creator_id !== asset.meta.creator_id
+    ) continue;
+    // Both independent Mux records agree and no current portfolio reference exists.
+    await mux.video.assets.delete(asset.id).catch(error => {
+      if (!isMuxNotFoundError(error)) throw error;
+    });
+    cleaned++;
+  }
+  return cleaned;
 }

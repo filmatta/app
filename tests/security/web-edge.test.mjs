@@ -41,9 +41,10 @@ test("Mux verifies exact signed bytes; rejects oversize/signature and preserves 
       assertMuxEnvironment: async () => {},
     },
     "@/lib/mux/sync-asset": {},
+    "@/lib/profiles/mux-media": {},
     "@/lib/supabase/admin": { createAdminClient: () => { privileged++; throw Error("Unexpected DB"); } },
   }, { MUX_WEBHOOK_SECRET: secret });
-  const body = JSON.stringify({ id: "test", type: "video.asset.deleted", environment: { id: "env-test" }, data: { id: "test" } });
+  const body = JSON.stringify({ id: "test", type: "video.upload.created", environment: { id: "env-test" }, data: { id: "test" } });
   const timestamp = Math.floor(Date.now() / 1000);
   const signature = `t=${timestamp},v1=${createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex")}`;
   for (let i = 0; i < 2; i++) assert.equal((await POST(request(body, { "mux-signature": signature }))).status, 200);

@@ -53,7 +53,7 @@ Los embeds externos y los enlaces externos históricos dependen también de la p
 - Supabase URL/public key y service role del mismo proyecto. Service role permanece sólo en runtime de servidor para rate limits existentes e infraestructura de media.
 - `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET`, `MUX_EXPECTED_ENVIRONMENT_ID`, `MUX_EXPECTED_ENVIRONMENT_TYPE` con procedencia comprobada. Preview debe ser development/Test.
 - `MUX_SIGNING_KEY`, `MUX_PRIVATE_KEY` sólo server-side para reproducción firmada.
-- Webhook específico a `/api/portfolio/mux-webhook`, con `MUX_PORTFOLIO_WEBHOOK_SECRET` server-side. No reutilizar autorización premium de Learn.
+- Un webhook común `/api/mux/webhooks` con el `MUX_WEBHOOK_SECRET` existente. Routing por namespace `filmatta:portfolio:` frente a `filmatta:lesson:`; no se reutiliza autorización premium ni se cambia playback de Learn.
 - `PORTFOLIO_DIRECT_UPLOADS_ENABLED` y `CRON_SECRET`.
 
 La protección de Vercel Preview puede impedir entregas externas de Mux. No desactivar protección general ni reutilizar tokens existentes sin autorización. La validación de entrega directa al Preview requiere una ruta autorizada para ese webhook.
@@ -73,3 +73,25 @@ Todos los recursos temporales se retiraron: webhook, bypass, variables, credenci
 ## Fuera de alcance
 
 Follow, contacto operativo, Boost/Talent+, analytics, comentarios, reviews, temas, constructor libre y biblioteca global. Las URLs externas históricas se mantienen compatibles. No hay staged publishing ni reanudación de transferencia después de cerrar el navegador.
+
+## Preparación Production — 20 septiembre 2026
+
+La migración `20260921010000_profile_media.sql` se aplicó a `ihryubbegljbwmuyazbn` tras comparar esquema/dependencias con Test. Postflight sin diferencias: constraints, índices, policies, grants y funciones iguales a Test. Hash del perfil existente preservado, `media_initialized=false`, bucket privado y RLS activos. Ledger histórico intacto. Ver `production-preflight.json` y `production-postflight.json`.
+
+El webhook Production existente en Mux `f5gakr` es `https://app.filmatta.com/api/mux/webhooks`, activo y único. No se crea otro ni se cambia su secreto. Mux envía todos los eventos del entorno; la aplicación selecciona los relevantes. El endpoint separado del QA anterior fue retirado del código de release.
+
+### Lifecycle y limpieza exactos
+
+- Reserva: `uploading`, tamaño declarado persistido, Direct Upload expira en una hora. Tras transferencia y estado canónico Mux: `processing`, después `ready`, `errored` o `rejected`.
+- Webhooks `asset.created/ready/errored`, `upload.asset_created/cancelled/errored` y `asset.deleted`. Timeout de upload es un estado canónico; no se presupone un evento `video.upload.timed_out` inexistente. El cron recoge intentos vencidos a las dos horas.
+- Archivar oculta inmediatamente; se conserva hasta 30 días y se puede restaurar como oculto antes de iniciar limpieza. No hay hard delete de piezas desde el cliente.
+- Cron diario a las 06:00 UTC, endpoint protegido por `CRON_SECRET`, máximo 300 segundos. Procesa 50 piezas vencidas por ejecución y comprueba entorno, upload, passthrough y asset antes de borrar. Las imágenes verifican prefijo owner/item.
+- Antes de borrar en el proveedor, el registro pasa a `deleted`; retiene `cleanup_after` hasta completar el borrado. Si hay fallo o interrupción, sigue pendiente y se reintenta sin restaurar playback. Un 404 verificado del proveedor se considera ya eliminado.
+- Asset tardío de una pieza terminal: verifica asociación y lo elimina; no resucita el estado.
+- Sweep diario paginado de assets: sólo namespace portfolio, metadata item/creator coincidente en asset y upload, antigüedad superior a dos horas y cero referencias por item/asset/upload. Nunca borra Learn. Metadata insuficiente queda para revisión manual.
+- El escaneo de huérfanos es apropiado al volumen V1; si crece hasta agotar el tiempo de cron se necesitará cursor persistente/cola y monitorización de backlog.
+- El límite 5 GB sigue siendo de producto/UI y declaración previa; Mux no impone max-bytes en su URL. Se mantienen cuotas, pendientes y flag de apagado.
+
+### Estado de release
+
+208 tests focalizados, TypeScript y production build correctos; cleanup real reforzado revalidado en Test. Pendientes configuración permanente mínima, merge/deploy y smoke Production. La revisión automática bloqueó el controlador que leería service_role Production y prepararía fixtures; se pidió autorización específica. No se crearon usuarios ni assets QA en Production y no hubo merge/deploy.

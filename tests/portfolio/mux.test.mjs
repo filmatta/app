@@ -126,4 +126,5 @@ test("webhook races remain retryable; terminal deletion cannot resurrect playbac
   const deleted = harness({ row: { status: "deleted" } });
   await deleted.module.syncPortfolioAsset("asset");
   assert.equal(deleted.writes.length, 0);
+  assert.deepEqual(deleted.deleted, ["asset"]);
 });

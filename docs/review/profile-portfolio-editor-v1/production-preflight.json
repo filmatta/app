@@ -1,0 +1,783 @@
+{
+  "production": {
+    "bucket_exists": false,
+    "columns": [
+      {
+        "default": null,
+        "name": "user_id",
+        "notnull": true,
+        "type": "uuid"
+      },
+      {
+        "default": null,
+        "name": "slug",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "display_name",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": "'{}'::text[]",
+        "name": "disciplines",
+        "notnull": true,
+        "type": "text[]"
+      },
+      {
+        "default": null,
+        "name": "city",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "bio",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": "'not_specified'::text",
+        "name": "availability",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": "'{}'::text[]",
+        "name": "skills",
+        "notnull": true,
+        "type": "text[]"
+      },
+      {
+        "default": "'{}'::text[]",
+        "name": "equipment",
+        "notnull": true,
+        "type": "text[]"
+      },
+      {
+        "default": "'[]'::jsonb",
+        "name": "portfolio_items",
+        "notnull": true,
+        "type": "jsonb"
+      },
+      {
+        "default": "false",
+        "name": "is_public",
+        "notnull": true,
+        "type": "boolean"
+      },
+      {
+        "default": "'members_only'::text",
+        "name": "contact_policy",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": "now()",
+        "name": "created_at",
+        "notnull": true,
+        "type": "timestamp with time zone"
+      },
+      {
+        "default": "now()",
+        "name": "updated_at",
+        "notnull": true,
+        "type": "timestamp with time zone"
+      },
+      {
+        "default": "'{\"book\": [], \"credits\": [], \"work_area\": \"\", \"rate_range\": \"\", \"stage_name\": \"\", \"portrait_url\": \"\"}'::jsonb",
+        "name": "presentation",
+        "notnull": true,
+        "type": "jsonb"
+      }
+    ],
+    "constraints": [
+      {
+        "definition": "CHECK ((availability = ANY (ARRAY['available'::text, 'limited'::text, 'unavailable'::text, 'not_specified'::text])))",
+        "name": "professional_profiles_availability_check"
+      },
+      {
+        "definition": "CHECK (((bio IS NULL) OR ((char_length(bio) >= 1) AND (char_length(bio) <= 1200))))",
+        "name": "professional_profiles_bio_check"
+      },
+      {
+        "definition": "CHECK (((city IS NULL) OR ((city = btrim(city)) AND ((char_length(city) >= 1) AND (char_length(city) <= 80)))))",
+        "name": "professional_profiles_city_check"
+      },
+      {
+        "definition": "CHECK ((contact_policy = ANY (ARRAY['members_only'::text, 'closed'::text])))",
+        "name": "professional_profiles_contact_policy_check"
+      },
+      {
+        "definition": "CHECK (((cardinality(disciplines) >= 1) AND (cardinality(disciplines) <= 5)))",
+        "name": "professional_profiles_disciplines_check"
+      },
+      {
+        "definition": "CHECK (((display_name = btrim(display_name)) AND ((char_length(display_name) >= 1) AND (char_length(display_name) <= 90))))",
+        "name": "professional_profiles_display_name_check"
+      },
+      {
+        "definition": "CHECK ((cardinality(equipment) <= 10))",
+        "name": "professional_profiles_equipment_check"
+      },
+      {
+        "definition": "PRIMARY KEY (user_id)",
+        "name": "professional_profiles_pkey"
+      },
+      {
+        "definition": "CHECK (((jsonb_typeof(portfolio_items) = 'array'::text) AND (jsonb_array_length(portfolio_items) <= 6)))",
+        "name": "professional_profiles_portfolio_array_check"
+      },
+      {
+        "definition": "CHECK (private.professional_profile_items_are_valid(portfolio_items))",
+        "name": "professional_profiles_portfolio_items_check"
+      },
+      {
+        "definition": "CHECK (private.profile_presentation_is_valid(presentation))",
+        "name": "professional_profiles_presentation_check"
+      },
+      {
+        "definition": "CHECK ((cardinality(skills) <= 12))",
+        "name": "professional_profiles_skills_check"
+      },
+      {
+        "definition": "CHECK ((((char_length(slug) >= 3) AND (char_length(slug) <= 120)) AND (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'::text)))",
+        "name": "professional_profiles_slug_check"
+      },
+      {
+        "definition": "UNIQUE (slug)",
+        "name": "professional_profiles_slug_key"
+      },
+      {
+        "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON UPDATE RESTRICT ON DELETE CASCADE",
+        "name": "professional_profiles_user_fk"
+      }
+    ],
+    "counts": {
+      "digest": "fb7123ab49a88e777c8258eb2ba336f9",
+      "public": 1,
+      "total": 1
+    },
+    "functions": [
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.professional_profile_items_are_valid(p_items jsonb)\n RETURNS boolean\n LANGUAGE sql\n IMMUTABLE STRICT\n SET search_path TO ''\nAS $function$\r\n  select\r\n    jsonb_typeof(p_items) = 'array'\r\n    and jsonb_array_length(p_items) <= 6\r\n    and not exists (\r\n      select 1\r\n      from jsonb_array_elements(p_items) as item\r\n      where jsonb_typeof(item) <> 'object'\r\n        or item->>'kind' not in (\r\n          'reel',\r\n          'project',\r\n          'link'\r\n        )\r\n        or coalesce(\r\n          char_length(btrim(item->>'title')),\r\n          0\r\n        ) not between 1 and 80\r\n        or coalesce(\r\n          char_length(btrim(item->>'url')),\r\n          0\r\n        ) not between 1 and 500\r\n        or coalesce(\r\n          item->>'url',\r\n          ''\r\n        ) !~ '^https?://'\r\n        or char_length(\r\n          coalesce(item->>'summary', '')\r\n        ) > 180\r\n    );\r\n$function$\n",
+        "identity": "p_items jsonb",
+        "name": "private.professional_profile_items_are_valid",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.professional_profile_public_display_name(p_full_name text)\n RETURNS text\n LANGUAGE plpgsql\n IMMUTABLE STRICT\n SET search_path TO ''\nAS $function$\r\ndeclare\r\n  clean_name text := regexp_replace(\r\n    btrim(p_full_name),\r\n    '\\s+',\r\n    ' ',\r\n    'g'\r\n  );\r\n  name_parts text[];\r\nbegin\r\n  name_parts := string_to_array(clean_name, ' ');\r\n\r\n  if cardinality(name_parts) = 1 then\r\n    return name_parts[1];\r\n  end if;\r\n\r\n  return\r\n    name_parts[1]\r\n    || ' '\r\n    || upper(left(name_parts[2], 1))\r\n    || '.';\r\nend;\r\n$function$\n",
+        "identity": "p_full_name text",
+        "name": "private.professional_profile_public_display_name",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.professional_profile_slug_base(p_display_name text)\n RETURNS text\n LANGUAGE sql\n IMMUTABLE STRICT\n SET search_path TO ''\nAS $function$\r\n  select coalesce(\r\n    nullif(\r\n      trim(\r\n        both '-'\r\n        from regexp_replace(\r\n          lower(btrim(p_display_name)),\r\n          '[^a-z0-9]+',\r\n          '-',\r\n          'g'\r\n        )\r\n      ),\r\n      ''\r\n    ),\r\n    'perfil'\r\n  );\r\n$function$\n",
+        "identity": "p_display_name text",
+        "name": "private.professional_profile_slug_base",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.profile_presentation_is_valid(p jsonb)\n RETURNS boolean\n LANGUAGE plpgsql\n IMMUTABLE\n SET search_path TO ''\nAS $function$\r\ndeclare item jsonb; k text;\r\nbegin\r\n  if jsonb_typeof(p) is distinct from 'object' then return false; end if;\r\n  if exists(select 1 from jsonb_object_keys(p) key where key not in ('portrait_url','stage_name','work_area','rate_range','book','credits')) then return false; end if;\r\n  foreach k in array array['portrait_url','stage_name','work_area','rate_range'] loop\r\n    if jsonb_typeof(p->k) is distinct from 'string' then return false; end if;\r\n  end loop;\r\n  if length(p->>'portrait_url') > 500 or length(p->>'stage_name') > 80\r\n     or length(p->>'work_area') > 80 or length(p->>'rate_range') > 100 then return false; end if;\r\n  if p->>'portrait_url' <> '' and p->>'portrait_url' !~ '^https://[^/@[:space:]]+([/?#]|$)' then return false; end if;\r\n  if jsonb_typeof(p->'book') is distinct from 'array' or jsonb_typeof(p->'credits') is distinct from 'array' then return false; end if;\r\n  if jsonb_array_length(p->'book') > 6 or jsonb_array_length(p->'credits') > 12 then return false; end if;\r\n  for item in select value from jsonb_array_elements(p->'book') loop\r\n    if jsonb_typeof(item) is distinct from 'object' then return false; end if;\r\n    if exists(select 1 from jsonb_object_keys(item) key where key not in ('url','caption')) then return false; end if;\r\n    if jsonb_typeof(item->'url') is distinct from 'string' or jsonb_typeof(item->'caption') is distinct from 'string' then return false; end if;\r\n    if length(item->>'url') > 500 or item->>'url' !~ '^https://[^/@[:space:]]+([/?#]|$)' or length(item->>'caption') > 120 then return false; end if;\r\n  end loop;\r\n  for item in select value from jsonb_array_elements(p->'credits') loop\r\n    if jsonb_typeof(item) is distinct from 'object' then return false; end if;\r\n    if exists(select 1 from jsonb_object_keys(item) key where key not in ('title','role','year')) then return false; end if;\r\n    if jsonb_typeof(item->'title') is distinct from 'string' or jsonb_typeof(item->'role') is distinct from 'string' or jsonb_typeof(item->'year') is distinct from 'string' then return false; end if;\r\n    if length(btrim(item->>'title')) not between 1 and 100 or length(btrim(item->>'role')) not between 1 and 80 or item->>'year' !~ '^(|19[0-9]{2}|20[0-9]{2})$' then return false; end if;\r\n  end loop;\r\n  return true;\r\nend $function$\n",
+        "identity": "p jsonb",
+        "name": "private.profile_presentation_is_valid",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.set_professional_profiles_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\r\nbegin\r\n  new.updated_at := now();\r\n  return new;\r\nend;\r\n$function$\n",
+        "identity": "",
+        "name": "private.set_professional_profiles_updated_at",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.sync_professional_profile_display_name()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare\r\n  new_full_name text :=\r\n    nullif(\r\n      btrim(\r\n        coalesce(\r\n          new.raw_user_meta_data->>'full_name',\r\n          new.raw_user_meta_data->>'name'\r\n        )\r\n      ),\r\n      ''\r\n    );\r\nbegin\r\n\r\n  if new_full_name is not null\r\n     and char_length(new_full_name) <= 80\r\n  then\r\n    update public.professional_profiles\r\n    set display_name =\r\n      private.professional_profile_public_display_name(\r\n        new_full_name\r\n      )\r\n    where user_id = new.id;\r\n  end if;\r\n\r\n  return new;\r\n\r\nend;\r\n$function$\n",
+        "identity": "",
+        "name": "private.sync_professional_profile_display_name",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "anon=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.get_public_professional_portfolio(p_slug text)\n RETURNS TABLE(slug text, display_name text, disciplines text[], city text, bio text, availability text, skills text[], equipment text[], portfolio_items jsonb, contact_policy text, is_public boolean, updated_at timestamp with time zone, presentation jsonb)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  select p.slug,p.display_name,p.disciplines,p.city,p.bio,p.availability,p.skills,p.equipment,\r\n    p.portfolio_items,p.contact_policy,p.is_public,p.updated_at,p.presentation\r\n  from public.professional_profiles p where p.slug=p_slug and p.is_public limit 1;\r\n$function$\n",
+        "identity": "p_slug text",
+        "name": "public.get_public_professional_portfolio",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "anon=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.get_public_professional_profile(p_slug text)\n RETURNS TABLE(slug text, display_name text, disciplines text[], city text, bio text, availability text, skills text[], equipment text[], portfolio_items jsonb, contact_policy text, is_public boolean, updated_at timestamp with time zone)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  select\r\n    profile.slug,\r\n    profile.display_name,\r\n    profile.disciplines,\r\n    profile.city,\r\n    profile.bio,\r\n    profile.availability,\r\n    profile.skills,\r\n    profile.equipment,\r\n    profile.portfolio_items,\r\n    profile.contact_policy,\r\n    profile.is_public,\r\n    profile.updated_at\r\n  from public.professional_profiles as profile\r\n  where profile.slug = p_slug\r\n    and profile.is_public\r\n  limit 1;\r\n$function$\n",
+        "identity": "p_slug text",
+        "name": "public.get_public_professional_profile",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "anon=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.list_public_professional_portfolios(p_page integer DEFAULT 1, p_discipline text DEFAULT ''::text, p_city text DEFAULT ''::text, p_availability text DEFAULT ''::text, p_talent boolean DEFAULT false)\n RETURNS TABLE(slug text, display_name text, disciplines text[], city text, bio text, availability text, updated_at timestamp with time zone, portfolio_items jsonb, presentation jsonb)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  select p.slug,p.display_name,p.disciplines,p.city,p.bio,p.availability,p.updated_at,\r\n    p.portfolio_items,jsonb_build_object('portrait_url',p.presentation->'portrait_url','stage_name',p.presentation->'stage_name',\r\n      'work_area',p.presentation->'work_area','rate_range','','book',p.presentation->'book','credits','[]'::jsonb)\r\n  from public.list_public_professional_profiles(p_page,p_discipline,p_city,p_availability,p_talent) summary\r\n  join public.professional_profiles p on p.slug=summary.slug and p.is_public\r\n  order by p.updated_at desc,p.slug asc;\r\n$function$\n",
+        "identity": "p_page integer, p_discipline text, p_city text, p_availability text, p_talent boolean",
+        "name": "public.list_public_professional_portfolios",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "anon=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.list_public_professional_profiles(p_page integer DEFAULT 1, p_discipline text DEFAULT ''::text, p_city text DEFAULT ''::text, p_availability text DEFAULT ''::text, p_talent boolean DEFAULT false)\n RETURNS TABLE(slug text, display_name text, disciplines text[], city text, bio text, availability text, updated_at timestamp with time zone)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select p.slug, p.display_name, p.disciplines, p.city, p.bio, p.availability, p.updated_at\n  from public.professional_profiles p\n  where p.is_public\n    and (coalesce(p_discipline, '') = '' or left(p_discipline, 80) = any(p.disciplines))\n    and (coalesce(p_city, '') = '' or position(lower(left(p_city, 80)) in lower(p.city)) > 0)\n    and (coalesce(p_availability, '') = '' or p.availability = p_availability)\n    and (not coalesce(p_talent, false) or p.disciplines && array['Actuación', 'Modelaje']::text[])\n  order by p.updated_at desc, p.slug asc\n  limit 25 offset ((greatest(1, least(coalesce(p_page, 1), 1000)) - 1) * 24);\n$function$\n",
+        "identity": "p_page integer, p_discipline text, p_city text, p_availability text, p_talent boolean",
+        "name": "public.list_public_professional_profiles",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.save_my_professional_portfolio(p_disciplines text[], p_city text, p_bio text, p_availability text, p_skills text[], p_equipment text[], p_portfolio_items jsonb, p_is_public boolean, p_contact_policy text, p_presentation jsonb)\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare result text;\r\nbegin\r\n  if (select auth.uid()) is null then raise exception 'Authentication required' using errcode='42501'; end if;\r\n  if not private.profile_presentation_is_valid(p_presentation) then raise exception 'Invalid presentation' using errcode='22023'; end if;\r\n  result := public.save_my_professional_profile(p_disciplines,p_city,p_bio,p_availability,p_skills,p_equipment,p_portfolio_items,p_is_public,p_contact_policy);\r\n  update public.professional_profiles set presentation=p_presentation where user_id=(select auth.uid());\r\n  return result;\r\nend $function$\n",
+        "identity": "p_disciplines text[], p_city text, p_bio text, p_availability text, p_skills text[], p_equipment text[], p_portfolio_items jsonb, p_is_public boolean, p_contact_policy text, p_presentation jsonb",
+        "name": "public.save_my_professional_portfolio",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.save_my_professional_profile(p_disciplines text[], p_city text, p_bio text, p_availability text, p_skills text[], p_equipment text[], p_portfolio_items jsonb, p_is_public boolean, p_contact_policy text)\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare\r\n  current_user_id uuid := (select auth.uid());\r\n  private_full_name text;\r\n  public_display_name text;\r\n  profile_slug text;\r\n  slug_base text;\r\n  slug_candidate text;\r\n  slug_suffix integer := 1;\r\n\r\n  clean_disciplines text[];\r\n  clean_skills text[];\r\n  clean_equipment text[];\r\n\r\n  clean_city text := nullif(btrim(p_city), '');\r\n  clean_bio text := nullif(btrim(p_bio), '');\r\n  clean_portfolio_items jsonb :=\r\n    coalesce(p_portfolio_items, '[]'::jsonb);\r\n\r\nbegin\r\n\r\n  if current_user_id is null then\r\n    raise exception 'Authentication required'\r\n      using errcode = '42501';\r\n  end if;\r\n\r\n\r\n  select\r\n    nullif(\r\n      btrim(\r\n        coalesce(\r\n          app_user.raw_user_meta_data->>'full_name',\r\n          app_user.raw_user_meta_data->>'name'\r\n        )\r\n      ),\r\n      ''\r\n    )\r\n  into private_full_name\r\n  from auth.users as app_user\r\n  where app_user.id = current_user_id;\r\n\r\n\r\n  if private_full_name is null\r\n     or char_length(private_full_name) > 80\r\n  then\r\n    raise exception 'A valid private full name is required'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  public_display_name :=\r\n    private.professional_profile_public_display_name(\r\n      private_full_name\r\n    );\r\n\r\n\r\n  select coalesce(\r\n    array_agg(clean_value order by item_order),\r\n    '{}'::text[]\r\n  )\r\n  into clean_disciplines\r\n  from (\r\n    select\r\n      btrim(value) as clean_value,\r\n      item_order\r\n    from unnest(\r\n      coalesce(p_disciplines, '{}'::text[])\r\n    )\r\n    with ordinality as item(value, item_order)\r\n    where btrim(value) <> ''\r\n  ) as cleaned;\r\n\r\n\r\n  select coalesce(\r\n    array_agg(clean_value order by item_order),\r\n    '{}'::text[]\r\n  )\r\n  into clean_skills\r\n  from (\r\n    select\r\n      btrim(value) as clean_value,\r\n      item_order\r\n    from unnest(\r\n      coalesce(p_skills, '{}'::text[])\r\n    )\r\n    with ordinality as item(value, item_order)\r\n    where btrim(value) <> ''\r\n  ) as cleaned;\r\n\r\n\r\n  select coalesce(\r\n    array_agg(clean_value order by item_order),\r\n    '{}'::text[]\r\n  )\r\n  into clean_equipment\r\n  from (\r\n    select\r\n      btrim(value) as clean_value,\r\n      item_order\r\n    from unnest(\r\n      coalesce(p_equipment, '{}'::text[])\r\n    )\r\n    with ordinality as item(value, item_order)\r\n    where btrim(value) <> ''\r\n  ) as cleaned;\r\n\r\n\r\n  if cardinality(clean_disciplines) not between 1 and 5\r\n     or exists (\r\n       select 1\r\n       from unnest(clean_disciplines) as value\r\n       where char_length(value) > 80\r\n     )\r\n  then\r\n    raise exception 'Use between 1 and 5 valid disciplines'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if clean_city is not null\r\n     and char_length(clean_city) > 80\r\n  then\r\n    raise exception 'City is too long'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if clean_bio is not null\r\n     and char_length(clean_bio) > 1200\r\n  then\r\n    raise exception 'Bio is too long'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if p_availability is null\r\n     or p_availability not in (\r\n       'available',\r\n       'limited',\r\n       'unavailable',\r\n       'not_specified'\r\n     )\r\n  then\r\n    raise exception 'Invalid availability'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if cardinality(clean_skills) > 12\r\n     or exists (\r\n       select 1\r\n       from unnest(clean_skills) as value\r\n       where char_length(value) > 80\r\n     )\r\n  then\r\n    raise exception 'Invalid skills'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if cardinality(clean_equipment) > 10\r\n     or exists (\r\n       select 1\r\n       from unnest(clean_equipment) as value\r\n       where char_length(value) > 100\r\n     )\r\n  then\r\n    raise exception 'Invalid equipment'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if not private.professional_profile_items_are_valid(\r\n    clean_portfolio_items\r\n  )\r\n  then\r\n    raise exception 'Invalid portfolio items'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if p_is_public is null then\r\n    raise exception 'Profile visibility is required'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if p_contact_policy is null\r\n     or p_contact_policy not in (\r\n       'members_only',\r\n       'closed'\r\n     )\r\n  then\r\n    raise exception 'Invalid contact policy'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  -- Keep an existing nice slug.\r\n  select existing.slug\r\n  into profile_slug\r\n  from public.professional_profiles as existing\r\n  where existing.user_id = current_user_id;\r\n\r\n\r\n  -- Replace the old UUID-style slug or create a new one.\r\n  if profile_slug is null\r\n     or profile_slug ~ '-[0-9a-f]{32}$'\r\n  then\r\n\r\n    slug_base :=\r\n      private.professional_profile_slug_base(\r\n        public_display_name\r\n      );\r\n\r\n    slug_candidate := slug_base;\r\n    slug_suffix := 1;\r\n\r\n    while exists (\r\n      select 1\r\n      from public.professional_profiles as existing\r\n      where existing.slug = slug_candidate\r\n        and existing.user_id <> current_user_id\r\n    )\r\n    loop\r\n      slug_suffix := slug_suffix + 1;\r\n      slug_candidate :=\r\n        slug_base || '-' || slug_suffix::text;\r\n    end loop;\r\n\r\n    profile_slug := slug_candidate;\r\n\r\n  end if;\r\n\r\n\r\n  insert into public.professional_profiles (\r\n    user_id,\r\n    slug,\r\n    display_name,\r\n    disciplines,\r\n    city,\r\n    bio,\r\n    availability,\r\n    skills,\r\n    equipment,\r\n    portfolio_items,\r\n    is_public,\r\n    contact_policy\r\n  )\r\n  values (\r\n    current_user_id,\r\n    profile_slug,\r\n    public_display_name,\r\n    clean_disciplines,\r\n    clean_city,\r\n    clean_bio,\r\n    p_availability,\r\n    clean_skills,\r\n    clean_equipment,\r\n    clean_portfolio_items,\r\n    p_is_public,\r\n    p_contact_policy\r\n  )\r\n  on conflict (user_id)\r\n  do update set\r\n    slug = excluded.slug,\r\n    display_name = excluded.display_name,\r\n    disciplines = excluded.disciplines,\r\n    city = excluded.city,\r\n    bio = excluded.bio,\r\n    availability = excluded.availability,\r\n    skills = excluded.skills,\r\n    equipment = excluded.equipment,\r\n    portfolio_items = excluded.portfolio_items,\r\n    is_public = excluded.is_public,\r\n    contact_policy = excluded.contact_policy;\r\n\r\n\r\n  return profile_slug;\r\n\r\nend;\r\n$function$\n",
+        "identity": "p_disciplines text[], p_city text, p_bio text, p_availability text, p_skills text[], p_equipment text[], p_portfolio_items jsonb, p_is_public boolean, p_contact_policy text",
+        "name": "public.save_my_professional_profile",
+        "owner": "postgres"
+      }
+    ],
+    "indexes": [
+      {
+        "indexdef": "CREATE UNIQUE INDEX professional_profiles_pkey ON public.professional_profiles USING btree (user_id)",
+        "indexname": "professional_profiles_pkey",
+        "schemaname": "public",
+        "tablename": "professional_profiles",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE INDEX professional_profiles_public_catalog_order_idx ON public.professional_profiles USING btree (updated_at DESC, slug) WHERE is_public",
+        "indexname": "professional_profiles_public_catalog_order_idx",
+        "schemaname": "public",
+        "tablename": "professional_profiles",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE INDEX professional_profiles_public_disciplines_idx ON public.professional_profiles USING gin (disciplines) WHERE is_public",
+        "indexname": "professional_profiles_public_disciplines_idx",
+        "schemaname": "public",
+        "tablename": "professional_profiles",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE INDEX professional_profiles_public_updated_idx ON public.professional_profiles USING btree (updated_at DESC) WHERE is_public",
+        "indexname": "professional_profiles_public_updated_idx",
+        "schemaname": "public",
+        "tablename": "professional_profiles",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE UNIQUE INDEX professional_profiles_slug_key ON public.professional_profiles USING btree (slug)",
+        "indexname": "professional_profiles_slug_key",
+        "schemaname": "public",
+        "tablename": "professional_profiles",
+        "tablespace": null
+      }
+    ],
+    "media_exists": false,
+    "policies": [
+      {
+        "cmd": "SELECT",
+        "permissive": "PERMISSIVE",
+        "policyname": "professional_profiles_owner_read",
+        "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+        "roles": [
+          "authenticated"
+        ],
+        "schemaname": "public",
+        "tablename": "professional_profiles",
+        "with_check": null
+      }
+    ],
+    "rls": true,
+    "triggers": [
+      {
+        "definition": "CREATE TRIGGER professional_profiles_set_updated_at BEFORE UPDATE ON public.professional_profiles FOR EACH ROW EXECUTE FUNCTION private.set_professional_profiles_updated_at()",
+        "name": "professional_profiles_set_updated_at"
+      }
+    ]
+  },
+  "test": {
+    "bucket_exists": true,
+    "columns": [
+      {
+        "default": null,
+        "name": "user_id",
+        "notnull": true,
+        "type": "uuid"
+      },
+      {
+        "default": null,
+        "name": "slug",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "display_name",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": "'{}'::text[]",
+        "name": "disciplines",
+        "notnull": true,
+        "type": "text[]"
+      },
+      {
+        "default": null,
+        "name": "city",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": null,
+        "name": "bio",
+        "notnull": false,
+        "type": "text"
+      },
+      {
+        "default": "'not_specified'::text",
+        "name": "availability",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": "'{}'::text[]",
+        "name": "skills",
+        "notnull": true,
+        "type": "text[]"
+      },
+      {
+        "default": "'{}'::text[]",
+        "name": "equipment",
+        "notnull": true,
+        "type": "text[]"
+      },
+      {
+        "default": "'[]'::jsonb",
+        "name": "portfolio_items",
+        "notnull": true,
+        "type": "jsonb"
+      },
+      {
+        "default": "false",
+        "name": "is_public",
+        "notnull": true,
+        "type": "boolean"
+      },
+      {
+        "default": "'members_only'::text",
+        "name": "contact_policy",
+        "notnull": true,
+        "type": "text"
+      },
+      {
+        "default": "now()",
+        "name": "created_at",
+        "notnull": true,
+        "type": "timestamp with time zone"
+      },
+      {
+        "default": "now()",
+        "name": "updated_at",
+        "notnull": true,
+        "type": "timestamp with time zone"
+      },
+      {
+        "default": "'{\"book\": [], \"credits\": [], \"work_area\": \"\", \"rate_range\": \"\", \"stage_name\": \"\", \"portrait_url\": \"\"}'::jsonb",
+        "name": "presentation",
+        "notnull": true,
+        "type": "jsonb"
+      },
+      {
+        "default": "false",
+        "name": "media_initialized",
+        "notnull": true,
+        "type": "boolean"
+      }
+    ],
+    "constraints": [
+      {
+        "definition": "CHECK ((availability = ANY (ARRAY['available'::text, 'limited'::text, 'unavailable'::text, 'not_specified'::text])))",
+        "name": "professional_profiles_availability_check"
+      },
+      {
+        "definition": "CHECK (((bio IS NULL) OR ((char_length(bio) >= 1) AND (char_length(bio) <= 1200))))",
+        "name": "professional_profiles_bio_check"
+      },
+      {
+        "definition": "CHECK (((city IS NULL) OR ((city = btrim(city)) AND ((char_length(city) >= 1) AND (char_length(city) <= 80)))))",
+        "name": "professional_profiles_city_check"
+      },
+      {
+        "definition": "CHECK ((contact_policy = ANY (ARRAY['members_only'::text, 'closed'::text])))",
+        "name": "professional_profiles_contact_policy_check"
+      },
+      {
+        "definition": "CHECK (((cardinality(disciplines) >= 1) AND (cardinality(disciplines) <= 5)))",
+        "name": "professional_profiles_disciplines_check"
+      },
+      {
+        "definition": "CHECK (((display_name = btrim(display_name)) AND ((char_length(display_name) >= 1) AND (char_length(display_name) <= 90))))",
+        "name": "professional_profiles_display_name_check"
+      },
+      {
+        "definition": "CHECK ((cardinality(equipment) <= 10))",
+        "name": "professional_profiles_equipment_check"
+      },
+      {
+        "definition": "PRIMARY KEY (user_id)",
+        "name": "professional_profiles_pkey"
+      },
+      {
+        "definition": "CHECK (((jsonb_typeof(portfolio_items) = 'array'::text) AND (jsonb_array_length(portfolio_items) <= 6)))",
+        "name": "professional_profiles_portfolio_array_check"
+      },
+      {
+        "definition": "CHECK (private.professional_profile_items_are_valid(portfolio_items))",
+        "name": "professional_profiles_portfolio_items_check"
+      },
+      {
+        "definition": "CHECK (private.profile_presentation_is_valid(presentation))",
+        "name": "professional_profiles_presentation_check"
+      },
+      {
+        "definition": "CHECK ((cardinality(skills) <= 12))",
+        "name": "professional_profiles_skills_check"
+      },
+      {
+        "definition": "CHECK ((((char_length(slug) >= 3) AND (char_length(slug) <= 120)) AND (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'::text)))",
+        "name": "professional_profiles_slug_check"
+      },
+      {
+        "definition": "UNIQUE (slug)",
+        "name": "professional_profiles_slug_key"
+      },
+      {
+        "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON UPDATE RESTRICT ON DELETE CASCADE",
+        "name": "professional_profiles_user_fk"
+      }
+    ],
+    "counts": {
+      "digest": "f0902b0c87063b29951a429119cfd999",
+      "public": 1,
+      "total": 1
+    },
+    "functions": [
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.professional_profile_items_are_valid(p_items jsonb)\n RETURNS boolean\n LANGUAGE sql\n IMMUTABLE STRICT\n SET search_path TO ''\nAS $function$\n  select\n    jsonb_typeof(p_items) = 'array'\n    and jsonb_array_length(p_items) <= 6\n    and not exists (\n      select 1\n      from jsonb_array_elements(p_items) as item\n      where jsonb_typeof(item) <> 'object'\n        or item->>'kind' not in (\n          'reel',\n          'project',\n          'link'\n        )\n        or coalesce(\n          char_length(btrim(item->>'title')),\n          0\n        ) not between 1 and 80\n        or coalesce(\n          char_length(btrim(item->>'url')),\n          0\n        ) not between 1 and 500\n        or coalesce(\n          item->>'url',\n          ''\n        ) !~ '^https?://'\n        or char_length(\n          coalesce(item->>'summary', '')\n        ) > 180\n    );\n$function$\n",
+        "identity": "p_items jsonb",
+        "name": "private.professional_profile_items_are_valid",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.professional_profile_public_display_name(p_full_name text)\n RETURNS text\n LANGUAGE plpgsql\n IMMUTABLE STRICT\n SET search_path TO ''\nAS $function$\ndeclare\n  clean_name text := regexp_replace(\n    btrim(p_full_name),\n    '\\s+',\n    ' ',\n    'g'\n  );\n  name_parts text[];\nbegin\n  name_parts := string_to_array(clean_name, ' ');\n\n  if cardinality(name_parts) = 1 then\n    return name_parts[1];\n  end if;\n\n  return\n    name_parts[1]\n    || ' '\n    || upper(left(name_parts[2], 1))\n    || '.';\nend;\n$function$\n",
+        "identity": "p_full_name text",
+        "name": "private.professional_profile_public_display_name",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.professional_profile_slug_base(p_display_name text)\n RETURNS text\n LANGUAGE sql\n IMMUTABLE STRICT\n SET search_path TO ''\nAS $function$\r\n  select coalesce(\r\n    nullif(\r\n      trim(\r\n        both '-'\r\n        from regexp_replace(\r\n          lower(btrim(p_display_name)),\r\n          '[^a-z0-9]+',\r\n          '-',\r\n          'g'\r\n        )\r\n      ),\r\n      ''\r\n    ),\r\n    'perfil'\r\n  );\r\n$function$\n",
+        "identity": "p_display_name text",
+        "name": "private.professional_profile_slug_base",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.profile_presentation_is_valid(p jsonb)\n RETURNS boolean\n LANGUAGE plpgsql\n IMMUTABLE\n SET search_path TO ''\nAS $function$\r\ndeclare item jsonb; k text;\r\nbegin\r\n  if jsonb_typeof(p) is distinct from 'object' then return false; end if;\r\n  if exists(select 1 from jsonb_object_keys(p) key where key not in ('portrait_url','stage_name','work_area','rate_range','book','credits')) then return false; end if;\r\n  foreach k in array array['portrait_url','stage_name','work_area','rate_range'] loop\r\n    if jsonb_typeof(p->k) is distinct from 'string' then return false; end if;\r\n  end loop;\r\n  if length(p->>'portrait_url') > 500 or length(p->>'stage_name') > 80\r\n     or length(p->>'work_area') > 80 or length(p->>'rate_range') > 100 then return false; end if;\r\n  if p->>'portrait_url' <> '' and p->>'portrait_url' !~ '^https://[^/@[:space:]]+([/?#]|$)' then return false; end if;\r\n  if jsonb_typeof(p->'book') is distinct from 'array' or jsonb_typeof(p->'credits') is distinct from 'array' then return false; end if;\r\n  if jsonb_array_length(p->'book') > 6 or jsonb_array_length(p->'credits') > 12 then return false; end if;\r\n  for item in select value from jsonb_array_elements(p->'book') loop\r\n    if jsonb_typeof(item) is distinct from 'object' then return false; end if;\r\n    if exists(select 1 from jsonb_object_keys(item) key where key not in ('url','caption')) then return false; end if;\r\n    if jsonb_typeof(item->'url') is distinct from 'string' or jsonb_typeof(item->'caption') is distinct from 'string' then return false; end if;\r\n    if length(item->>'url') > 500 or item->>'url' !~ '^https://[^/@[:space:]]+([/?#]|$)' or length(item->>'caption') > 120 then return false; end if;\r\n  end loop;\r\n  for item in select value from jsonb_array_elements(p->'credits') loop\r\n    if jsonb_typeof(item) is distinct from 'object' then return false; end if;\r\n    if exists(select 1 from jsonb_object_keys(item) key where key not in ('title','role','year')) then return false; end if;\r\n    if jsonb_typeof(item->'title') is distinct from 'string' or jsonb_typeof(item->'role') is distinct from 'string' or jsonb_typeof(item->'year') is distinct from 'string' then return false; end if;\r\n    if length(btrim(item->>'title')) not between 1 and 100 or length(btrim(item->>'role')) not between 1 and 80 or item->>'year' !~ '^(|19[0-9]{2}|20[0-9]{2})$' then return false; end if;\r\n  end loop;\r\n  return true;\r\nend $function$\n",
+        "identity": "p jsonb",
+        "name": "private.profile_presentation_is_valid",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.profile_visible_presentation(p professional_profiles)\n RETURNS jsonb\n LANGUAGE sql\n STABLE\n SET search_path TO ''\nAS $function$\n select case when p.media_initialized then jsonb_set(p.presentation,'{book}',coalesce((select jsonb_agg(jsonb_build_object('url',url,'caption',title) order by featured desc,sort_order,id) from public.profile_media where owner_id=p.user_id and category='book' and source='external' and visibility='visible' and status='ready'),'[]'::jsonb)) else p.presentation end;\n$function$\n",
+        "identity": "p professional_profiles",
+        "name": "private.profile_visible_presentation",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.set_professional_profiles_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at := now();\n  return new;\nend;\n$function$\n",
+        "identity": "",
+        "name": "private.set_professional_profiles_updated_at",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION private.sync_professional_profile_display_name()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  new_full_name text :=\n    nullif(\n      btrim(\n        coalesce(\n          new.raw_user_meta_data->>'full_name',\n          new.raw_user_meta_data->>'name'\n        )\n      ),\n      ''\n    );\nbegin\n\n  if new_full_name is not null\n     and char_length(new_full_name) <= 80\n  then\n    update public.professional_profiles\n    set display_name =\n      private.professional_profile_public_display_name(\n        new_full_name\n      )\n    where user_id = new.id;\n  end if;\n\n  return new;\n\nend;\n$function$\n",
+        "identity": "",
+        "name": "private.sync_professional_profile_display_name",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "anon=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.get_public_professional_portfolio(p_slug text)\n RETURNS TABLE(slug text, display_name text, disciplines text[], city text, bio text, availability text, skills text[], equipment text[], portfolio_items jsonb, contact_policy text, is_public boolean, updated_at timestamp with time zone, presentation jsonb)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select p.slug,p.display_name,p.disciplines,p.city,p.bio,p.availability,p.skills,p.equipment,\n case when p.media_initialized then private.profile_visible_links(p.user_id) else p.portfolio_items end,p.contact_policy,p.is_public,p.updated_at,private.profile_visible_presentation(p)\n from public.professional_profiles p where p.slug=p_slug and p.is_public limit 1;\n$function$\n",
+        "identity": "p_slug text",
+        "name": "public.get_public_professional_portfolio",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "anon=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.get_public_professional_profile(p_slug text)\n RETURNS TABLE(slug text, display_name text, disciplines text[], city text, bio text, availability text, skills text[], equipment text[], portfolio_items jsonb, contact_policy text, is_public boolean, updated_at timestamp with time zone)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select p.slug,p.display_name,p.disciplines,p.city,p.bio,p.availability,p.skills,p.equipment,\n case when p.media_initialized then private.profile_visible_links(p.user_id) else p.portfolio_items end,p.contact_policy,p.is_public,p.updated_at\n from public.professional_profiles p where p.slug=p_slug and p.is_public limit 1;\n$function$\n",
+        "identity": "p_slug text",
+        "name": "public.get_public_professional_profile",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "anon=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.list_public_professional_portfolios(p_page integer DEFAULT 1, p_discipline text DEFAULT ''::text, p_city text DEFAULT ''::text, p_availability text DEFAULT ''::text, p_talent boolean DEFAULT false)\n RETURNS TABLE(slug text, display_name text, disciplines text[], city text, bio text, availability text, updated_at timestamp with time zone, portfolio_items jsonb, presentation jsonb)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select p.slug,p.display_name,p.disciplines,p.city,p.bio,p.availability,p.updated_at,\n case when p.media_initialized then private.profile_visible_links(p.user_id) else p.portfolio_items end,\n jsonb_set(jsonb_set(private.profile_visible_presentation(p),'{rate_range}','\"\"'::jsonb),'{credits}','[]'::jsonb)\n from public.list_public_professional_profiles(p_page,p_discipline,p_city,p_availability,p_talent) summary\n join public.professional_profiles p on p.slug=summary.slug and p.is_public order by p.updated_at desc,p.slug asc;\n$function$\n",
+        "identity": "p_page integer, p_discipline text, p_city text, p_availability text, p_talent boolean",
+        "name": "public.list_public_professional_portfolios",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "anon=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.list_public_professional_profiles(p_page integer DEFAULT 1, p_discipline text DEFAULT ''::text, p_city text DEFAULT ''::text, p_availability text DEFAULT ''::text, p_talent boolean DEFAULT false)\n RETURNS TABLE(slug text, display_name text, disciplines text[], city text, bio text, availability text, updated_at timestamp with time zone)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select p.slug, p.display_name, p.disciplines, p.city, p.bio, p.availability, p.updated_at\n  from public.professional_profiles p\n  where p.is_public\n    and (coalesce(p_discipline, '') = '' or left(p_discipline, 80) = any(p.disciplines))\n    and (coalesce(p_city, '') = '' or position(lower(left(p_city, 80)) in lower(p.city)) > 0)\n    and (coalesce(p_availability, '') = '' or p.availability = p_availability)\n    and (not coalesce(p_talent, false) or p.disciplines && array['Actuación', 'Modelaje']::text[])\n  order by p.updated_at desc, p.slug asc\n  limit 25 offset ((greatest(1, least(coalesce(p_page, 1), 1000)) - 1) * 24);\n$function$\n",
+        "identity": "p_page integer, p_discipline text, p_city text, p_availability text, p_talent boolean",
+        "name": "public.list_public_professional_profiles",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.save_my_professional_portfolio(p_disciplines text[], p_city text, p_bio text, p_availability text, p_skills text[], p_equipment text[], p_portfolio_items jsonb, p_is_public boolean, p_contact_policy text, p_presentation jsonb)\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare result text;\r\nbegin\r\n  if (select auth.uid()) is null then raise exception 'Authentication required' using errcode='42501'; end if;\r\n  if not private.profile_presentation_is_valid(p_presentation) then raise exception 'Invalid presentation' using errcode='22023'; end if;\r\n  result := public.save_my_professional_profile(p_disciplines,p_city,p_bio,p_availability,p_skills,p_equipment,p_portfolio_items,p_is_public,p_contact_policy);\r\n  update public.professional_profiles set presentation=p_presentation where user_id=(select auth.uid());\r\n  return result;\r\nend $function$\n",
+        "identity": "p_disciplines text[], p_city text, p_bio text, p_availability text, p_skills text[], p_equipment text[], p_portfolio_items jsonb, p_is_public boolean, p_contact_policy text, p_presentation jsonb",
+        "name": "public.save_my_professional_portfolio",
+        "owner": "postgres"
+      },
+      {
+        "acl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "config": [
+          "search_path=\"\""
+        ],
+        "definition": "CREATE OR REPLACE FUNCTION public.save_my_professional_profile(p_disciplines text[], p_city text, p_bio text, p_availability text, p_skills text[], p_equipment text[], p_portfolio_items jsonb, p_is_public boolean, p_contact_policy text)\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare\r\n  current_user_id uuid := (select auth.uid());\r\n  private_full_name text;\r\n  public_display_name text;\r\n  profile_slug text;\r\n  slug_base text;\r\n  slug_candidate text;\r\n  slug_suffix integer := 1;\r\n\r\n  clean_disciplines text[];\r\n  clean_skills text[];\r\n  clean_equipment text[];\r\n\r\n  clean_city text := nullif(btrim(p_city), '');\r\n  clean_bio text := nullif(btrim(p_bio), '');\r\n  clean_portfolio_items jsonb :=\r\n    coalesce(p_portfolio_items, '[]'::jsonb);\r\n\r\nbegin\r\n\r\n  if current_user_id is null then\r\n    raise exception 'Authentication required'\r\n      using errcode = '42501';\r\n  end if;\r\n\r\n\r\n  select\r\n    nullif(\r\n      btrim(\r\n        coalesce(\r\n          app_user.raw_user_meta_data->>'full_name',\r\n          app_user.raw_user_meta_data->>'name'\r\n        )\r\n      ),\r\n      ''\r\n    )\r\n  into private_full_name\r\n  from auth.users as app_user\r\n  where app_user.id = current_user_id;\r\n\r\n\r\n  if private_full_name is null\r\n     or char_length(private_full_name) > 80\r\n  then\r\n    raise exception 'A valid private full name is required'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  public_display_name :=\r\n    private.professional_profile_public_display_name(\r\n      private_full_name\r\n    );\r\n\r\n\r\n  select coalesce(\r\n    array_agg(clean_value order by item_order),\r\n    '{}'::text[]\r\n  )\r\n  into clean_disciplines\r\n  from (\r\n    select\r\n      btrim(value) as clean_value,\r\n      item_order\r\n    from unnest(\r\n      coalesce(p_disciplines, '{}'::text[])\r\n    )\r\n    with ordinality as item(value, item_order)\r\n    where btrim(value) <> ''\r\n  ) as cleaned;\r\n\r\n\r\n  select coalesce(\r\n    array_agg(clean_value order by item_order),\r\n    '{}'::text[]\r\n  )\r\n  into clean_skills\r\n  from (\r\n    select\r\n      btrim(value) as clean_value,\r\n      item_order\r\n    from unnest(\r\n      coalesce(p_skills, '{}'::text[])\r\n    )\r\n    with ordinality as item(value, item_order)\r\n    where btrim(value) <> ''\r\n  ) as cleaned;\r\n\r\n\r\n  select coalesce(\r\n    array_agg(clean_value order by item_order),\r\n    '{}'::text[]\r\n  )\r\n  into clean_equipment\r\n  from (\r\n    select\r\n      btrim(value) as clean_value,\r\n      item_order\r\n    from unnest(\r\n      coalesce(p_equipment, '{}'::text[])\r\n    )\r\n    with ordinality as item(value, item_order)\r\n    where btrim(value) <> ''\r\n  ) as cleaned;\r\n\r\n\r\n  if cardinality(clean_disciplines) not between 1 and 5\r\n     or exists (\r\n       select 1\r\n       from unnest(clean_disciplines) as value\r\n       where char_length(value) > 80\r\n     )\r\n  then\r\n    raise exception 'Use between 1 and 5 valid disciplines'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if clean_city is not null\r\n     and char_length(clean_city) > 80\r\n  then\r\n    raise exception 'City is too long'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if clean_bio is not null\r\n     and char_length(clean_bio) > 1200\r\n  then\r\n    raise exception 'Bio is too long'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if p_availability is null\r\n     or p_availability not in (\r\n       'available',\r\n       'limited',\r\n       'unavailable',\r\n       'not_specified'\r\n     )\r\n  then\r\n    raise exception 'Invalid availability'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if cardinality(clean_skills) > 12\r\n     or exists (\r\n       select 1\r\n       from unnest(clean_skills) as value\r\n       where char_length(value) > 80\r\n     )\r\n  then\r\n    raise exception 'Invalid skills'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if cardinality(clean_equipment) > 10\r\n     or exists (\r\n       select 1\r\n       from unnest(clean_equipment) as value\r\n       where char_length(value) > 100\r\n     )\r\n  then\r\n    raise exception 'Invalid equipment'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if not private.professional_profile_items_are_valid(\r\n    clean_portfolio_items\r\n  )\r\n  then\r\n    raise exception 'Invalid portfolio items'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if p_is_public is null then\r\n    raise exception 'Profile visibility is required'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  if p_contact_policy is null\r\n     or p_contact_policy not in (\r\n       'members_only',\r\n       'closed'\r\n     )\r\n  then\r\n    raise exception 'Invalid contact policy'\r\n      using errcode = '22023';\r\n  end if;\r\n\r\n\r\n  -- Keep an existing nice slug.\r\n  select existing.slug\r\n  into profile_slug\r\n  from public.professional_profiles as existing\r\n  where existing.user_id = current_user_id;\r\n\r\n\r\n  -- Replace the old UUID-style slug or create a new one.\r\n  if profile_slug is null\r\n     or profile_slug ~ '-[0-9a-f]{32}$'\r\n  then\r\n\r\n    slug_base :=\r\n      private.professional_profile_slug_base(\r\n        public_display_name\r\n      );\r\n\r\n    slug_candidate := slug_base;\r\n    slug_suffix := 1;\r\n\r\n    while exists (\r\n      select 1\r\n      from public.professional_profiles as existing\r\n      where existing.slug = slug_candidate\r\n        and existing.user_id <> current_user_id\r\n    )\r\n    loop\r\n      slug_suffix := slug_suffix + 1;\r\n      slug_candidate :=\r\n        slug_base || '-' || slug_suffix::text;\r\n    end loop;\r\n\r\n    profile_slug := slug_candidate;\r\n\r\n  end if;\r\n\r\n\r\n  insert into public.professional_profiles (\r\n    user_id,\r\n    slug,\r\n    display_name,\r\n    disciplines,\r\n    city,\r\n    bio,\r\n    availability,\r\n    skills,\r\n    equipment,\r\n    portfolio_items,\r\n    is_public,\r\n    contact_policy\r\n  )\r\n  values (\r\n    current_user_id,\r\n    profile_slug,\r\n    public_display_name,\r\n    clean_disciplines,\r\n    clean_city,\r\n    clean_bio,\r\n    p_availability,\r\n    clean_skills,\r\n    clean_equipment,\r\n    clean_portfolio_items,\r\n    p_is_public,\r\n    p_contact_policy\r\n  )\r\n  on conflict (user_id)\r\n  do update set\r\n    slug = excluded.slug,\r\n    display_name = excluded.display_name,\r\n    disciplines = excluded.disciplines,\r\n    city = excluded.city,\r\n    bio = excluded.bio,\r\n    availability = excluded.availability,\r\n    skills = excluded.skills,\r\n    equipment = excluded.equipment,\r\n    portfolio_items = excluded.portfolio_items,\r\n    is_public = excluded.is_public,\r\n    contact_policy = excluded.contact_policy;\r\n\r\n\r\n  return profile_slug;\r\n\r\nend;\r\n$function$\n",
+        "identity": "p_disciplines text[], p_city text, p_bio text, p_availability text, p_skills text[], p_equipment text[], p_portfolio_items jsonb, p_is_public boolean, p_contact_policy text",
+        "name": "public.save_my_professional_profile",
+        "owner": "postgres"
+      }
+    ],
+    "indexes": [
+      {
+        "indexdef": "CREATE UNIQUE INDEX professional_profiles_pkey ON public.professional_profiles USING btree (user_id)",
+        "indexname": "professional_profiles_pkey",
+        "schemaname": "public",
+        "tablename": "professional_profiles",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE INDEX professional_profiles_public_catalog_order_idx ON public.professional_profiles USING btree (updated_at DESC, slug) WHERE is_public",
+        "indexname": "professional_profiles_public_catalog_order_idx",
+        "schemaname": "public",
+        "tablename": "professional_profiles",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE INDEX professional_profiles_public_disciplines_idx ON public.professional_profiles USING gin (disciplines) WHERE is_public",
+        "indexname": "professional_profiles_public_disciplines_idx",
+        "schemaname": "public",
+        "tablename": "professional_profiles",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE INDEX professional_profiles_public_updated_idx ON public.professional_profiles USING btree (updated_at DESC) WHERE is_public",
+        "indexname": "professional_profiles_public_updated_idx",
+        "schemaname": "public",
+        "tablename": "professional_profiles",
+        "tablespace": null
+      },
+      {
+        "indexdef": "CREATE UNIQUE INDEX professional_profiles_slug_key ON public.professional_profiles USING btree (slug)",
+        "indexname": "professional_profiles_slug_key",
+        "schemaname": "public",
+        "tablename": "professional_profiles",
+        "tablespace": null
+      }
+    ],
+    "media_exists": true,
+    "policies": [
+      {
+        "cmd": "SELECT",
+        "permissive": "PERMISSIVE",
+        "policyname": "professional_profiles_owner_read",
+        "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+        "roles": [
+          "authenticated"
+        ],
+        "schemaname": "public",
+        "tablename": "professional_profiles",
+        "with_check": null
+      }
+    ],
+    "rls": true,
+    "triggers": [
+      {
+        "definition": "CREATE TRIGGER professional_profiles_set_updated_at BEFORE UPDATE ON public.professional_profiles FOR EACH ROW EXECUTE FUNCTION private.set_professional_profiles_updated_at()",
+        "name": "professional_profiles_set_updated_at"
+      }
+    ]
+  },
+  "comparison": {
+    "differences": [],
+    "expectedChanges": [
+      "public.get_public_professional_profile",
+      "public.get_public_professional_portfolio",
+      "public.list_public_professional_portfolios"
+    ],
+    "crlfNormalized": true
+  }
+}

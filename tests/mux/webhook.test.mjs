@@ -8,6 +8,7 @@ function loadRoute({ event, signatureError = null }) {
     environment: 0,
     uploadRetrieve: 0,
     syncUpload: 0,
+    portfolio: 0,
   };
   const mux = {
     webhooks: {
@@ -20,11 +21,11 @@ function loadRoute({ event, signatureError = null }) {
       uploads: {
         retrieve: async (id) => {
           calls.uploadRetrieve++;
-          return { id, status: "asset_created", asset_id: "asset-fixture" };
+          return { id, status: "asset_created", asset_id: "asset-fixture", new_asset_settings: event.data.new_asset_settings };
         },
       },
       assets: {
-        retrieve: async (id) => ({ id, status: "ready" }),
+        retrieve: async (id) => ({ id, status: "ready", passthrough: event.data.passthrough }),
       },
     },
   };
@@ -52,6 +53,12 @@ function loadRoute({ event, signatureError = null }) {
           calls.syncUpload++;
           return { outcome: "updated" };
         },
+      },
+      "@/lib/profiles/mux-media": {
+        portfolioId: value => value?.startsWith("filmatta:portfolio:") ? "portfolio" : null,
+        syncPortfolioAsset: async () => { calls.portfolio++; },
+        syncPortfolioUpload: async () => { calls.portfolio++; },
+        markPortfolioAssetDeleted: async () => { calls.portfolio++; },
       },
       "@/lib/supabase/admin": { createAdminClient: () => ({}) },
     },
@@ -110,3 +117,13 @@ test("webhook processes a signed event only after environment validation", async
   assert.equal(route.calls.uploadRetrieve, 1);
   assert.equal(route.calls.syncUpload, 1);
 });
+
+for (const type of ["video.upload.asset_created", "video.asset.created", "video.asset.ready", "video.asset.errored", "video.asset.deleted", "video.upload.cancelled", "video.upload.errored"]) {
+ test("shared webhook isolates portfolio lifecycle: " + type, async () => {
+  const route=loadRoute({event:{id:"portfolio-event",type,environment:{id:"env-production-fixture"},data:{id:"portfolio",passthrough:"filmatta:portfolio:fixture",new_asset_settings:{passthrough:"filmatta:portfolio:fixture"}}}});
+  assert.equal((await route.POST(request())).status,200);
+  assert.equal(route.calls.portfolio,1);
+  assert.equal(route.calls.syncUpload,0);
+  assert.equal(route.calls.environment,1);
+ });
+}

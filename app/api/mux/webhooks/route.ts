@@ -4,6 +4,12 @@ import {
   getMuxEnvironmentExpectation,
 } from "@/lib/mux/environment";
 import { syncMuxAsset, syncMuxUpload } from "@/lib/mux/sync-asset";
+import {
+  portfolioId,
+  syncPortfolioAsset,
+  syncPortfolioUpload,
+  markPortfolioAssetDeleted,
+} from "@/lib/profiles/mux-media";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BodyReadError, readBoundedBody, validateContentLength } from "@/lib/security/bounded-body";
 
@@ -51,7 +57,10 @@ export async function POST(request: Request) {
     event.type !== "video.upload.asset_created" &&
     event.type !== "video.asset.created" &&
     event.type !== "video.asset.ready" &&
-    event.type !== "video.asset.errored"
+    event.type !== "video.asset.errored" &&
+    event.type !== "video.asset.deleted" &&
+    event.type !== "video.upload.cancelled" &&
+    event.type !== "video.upload.errored"
   ) {
     console.info("Mux webhook skipped", { reason: "unsupported-event", type: event.type });
     return Response.json({ received: true });
@@ -68,8 +77,26 @@ export async function POST(request: Request) {
   try {
     const supabase = createAdminClient();
 
+    if (event.type === "video.asset.deleted") {
+      await markPortfolioAssetDeleted(event.data.id, expectedEnvironment);
+      return Response.json({ received: true });
+    }
+
+    if (
+      event.type === "video.upload.cancelled" ||
+      event.type === "video.upload.errored"
+    ) {
+      await syncPortfolioUpload(event.data.id);
+      return Response.json({ received: true });
+    }
+
     if (event.type === "video.upload.asset_created") {
       const upload = await mux.video.uploads.retrieve(event.data.id);
+      if (portfolioId(upload.new_asset_settings?.passthrough)) {
+        await syncPortfolioUpload(upload.id);
+        console.info("Mux portfolio webhook handled", { eventId: event.id, type: event.type });
+        return Response.json({ received: true });
+      }
       const result = await syncMuxUpload(
         supabase,
         mux,
@@ -88,6 +115,11 @@ export async function POST(request: Request) {
 
     // Retrieve current Mux state so late/duplicate created events cannot regress ready.
     const asset = await mux.video.assets.retrieve(event.data.id);
+    if (portfolioId(asset.passthrough)) {
+      await syncPortfolioAsset(asset.id);
+      console.info("Mux portfolio webhook handled", { eventId: event.id, type: event.type });
+      return Response.json({ received: true });
+    }
     const result = asset.upload_id
       ? await syncMuxUpload(
           supabase,
