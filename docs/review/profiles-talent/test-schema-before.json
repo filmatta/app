@@ -1,0 +1,38 @@
+{
+  "legacy_data_hash": "6141171e5dcd3b405d22af9488e4ddf8",
+  "legacy_rpcs": [
+    {
+      "acl": "{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres}",
+      "hash": "89fbe1d151e288c5080f60bac47708c0",
+      "name": "get_public_professional_profile"
+    },
+    {
+      "acl": "{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres}",
+      "hash": "a1de22868eee8bd3265e2aefe321ecd8",
+      "name": "list_public_professional_profiles"
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "hash": "b974375ba03178d0269d8a6749c4d822",
+      "name": "save_my_professional_profile"
+    }
+  ],
+  "policies": [
+    {
+      "cmd": "SELECT",
+      "permissive": "PERMISSIVE",
+      "policyname": "professional_profiles_owner_read",
+      "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+      "roles": [
+        "authenticated"
+      ],
+      "schemaname": "public",
+      "tablename": "professional_profiles",
+      "with_check": null
+    }
+  ],
+  "presentation_exists": false,
+  "project": "ezlycwkuzkwcnhrhiruv",
+  "rls": true,
+  "rows": 1
+}
