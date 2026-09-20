@@ -44,6 +44,12 @@ export async function POST(request: Request) {
       )
         await syncPortfolioAsset(upload.asset_id);
     }
+    // Never log the request URL, headers, payload or signing/bypass secrets.
+    console.info("portfolio.mux_webhook", {
+      eventId: event.id,
+      type: event.type,
+      outcome: "accepted",
+    });
     return Response.json({ received: true });
   } catch {
     return new Response(null, { status: 503 });
