@@ -1,3 +1,5 @@
+> Revisión local inicial. Estado actualizado: [Preview validado y listo para merge](final-preview.md).
+
 # PROFILES + TALENT POLISH READY FOR REVIEW
 
 Implementación local terminada para revisión visual. Sin commit, push, deploy ni cambios en Supabase remoto.

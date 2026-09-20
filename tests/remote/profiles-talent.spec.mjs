@@ -78,7 +78,13 @@ test("real Preview: portfolio surfaces, responsive matrix, filters, privacy and 
         p_equipment: ["Cámara y óptica"],
         p_presentation: {
           ...presentation,
-          portrait_url: previewBase + "/images/editorial/monitor.webp",
+          portrait_url: "",
+          book: [
+            {
+              url: previewBase + "/images/editorial/monitor.webp",
+              caption: "Trabajo audiovisual · referencia editorial",
+            },
+          ],
           stage_name: "Dirección de fotografía · QA",
           credits: [
             {

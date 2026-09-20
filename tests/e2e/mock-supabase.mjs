@@ -4,6 +4,7 @@ import http from "node:http";
 import {profileFixture,resetProfileFixture} from "./profiles-fixture.mjs";
 const id = "11111111-1111-4111-8111-111111111111";
 let scenario = "empty";
+let profileDelayMs = 0;
 const profile = {
   slug: "test-profile",
   display_name: "Persona P.",
@@ -69,6 +70,7 @@ http
     if (url.pathname === "/health") return res.end("{}");
     if (url.pathname === "/__scenario") {
       scenario = url.searchParams.get("value") ?? "empty";
+      profileDelayMs = Math.min(5000, Math.max(0, Number(url.searchParams.get("delay")) || 0));
       if (scenario === "profiles-polish") resetProfileFixture();
       return res.end("{}");
     }
@@ -95,6 +97,7 @@ http
       res.statusCode = 405;
       return res.end("{}");
     }
+    if (profileDelayMs && url.pathname.endsWith("/list_public_professional_portfolios")) await new Promise(resolve => setTimeout(resolve, profileDelayMs));
     if (scenario === "profiles-polish" && await profileFixture(req,res,url,token)) return;
     if (scenario === "unconfigured") {
       res.statusCode = 404;

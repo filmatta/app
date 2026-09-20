@@ -1,0 +1,30 @@
+{
+  "id": "dpl_FX13QsfUCszR9c4tvNpy53z3CYUP",
+  "url": "https://app-d9ahfbbb8-filmatta.vercel.app",
+  "environment": "preview",
+  "apiTarget": null,
+  "readyState": "READY",
+  "gitCommit": "509964df929513ff22c06ba61dae23031c0be60b",
+  "gitBranch": "feature/profiles-talent-polish",
+  "gitDirtyAtUpload": "1",
+  "onlyUncommittedUpload": "Build evidence; application and migration identical to gitCommit",
+  "supabaseTestRef": "ezlycwkuzkwcnhrhiruv",
+  "deploymentOnlyOverrides": {
+    "BILLING_ENABLED": "false",
+    "BILLING_MODE": "test",
+    "clearedKeys": [
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "MUX_TOKEN_ID",
+      "MUX_TOKEN_SECRET",
+      "MUX_SIGNING_KEY",
+      "MUX_PRIVATE_KEY",
+      "MUX_WEBHOOK_SECRET",
+      "OPENAI_API_KEY",
+      "BILLING_APP_URL"
+    ]
+  },
+  "protected": true,
+  "temporaryQaAccessRevoked": true
+}

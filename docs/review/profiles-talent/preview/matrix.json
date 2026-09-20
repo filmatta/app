@@ -1,0 +1,271 @@
+{
+  "preview": "https://app-d9ahfbbb8-filmatta.vercel.app",
+  "matrix": [
+    {
+      "route": "/descubre/perfiles",
+      "width": 390,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/descubre/talento",
+      "width": 390,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles",
+      "width": 390,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/talento",
+      "width": 390,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles/integration-o",
+      "width": 390,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles/integration-s",
+      "width": 390,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/mi-perfil",
+      "width": 390,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/descubre/perfiles",
+      "width": 768,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/descubre/talento",
+      "width": 768,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles",
+      "width": 768,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/talento",
+      "width": 768,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles/integration-o",
+      "width": 768,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles/integration-s",
+      "width": 768,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/mi-perfil",
+      "width": 768,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/descubre/perfiles",
+      "width": 1024,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/descubre/talento",
+      "width": 1024,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles",
+      "width": 1024,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/talento",
+      "width": 1024,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles/integration-o",
+      "width": 1024,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles/integration-s",
+      "width": 1024,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/mi-perfil",
+      "width": 1024,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/descubre/perfiles",
+      "width": 1280,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/descubre/talento",
+      "width": 1280,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles",
+      "width": 1280,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/talento",
+      "width": 1280,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles/integration-o",
+      "width": 1280,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles/integration-s",
+      "width": 1280,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/mi-perfil",
+      "width": 1280,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/descubre/perfiles",
+      "width": 1440,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/descubre/talento",
+      "width": 1440,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles",
+      "width": 1440,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/talento",
+      "width": 1440,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles/integration-o",
+      "width": 1440,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles/integration-s",
+      "width": 1440,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/mi-perfil",
+      "width": 1440,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/descubre/perfiles",
+      "width": 1920,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/descubre/talento",
+      "width": 1920,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles",
+      "width": 1920,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/talento",
+      "width": 1920,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles/integration-o",
+      "width": 1920,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/perfiles/integration-s",
+      "width": 1920,
+      "overflow": false,
+      "images": "loaded"
+    },
+    {
+      "route": "/mi-perfil",
+      "width": 1920,
+      "overflow": false,
+      "images": "loaded"
+    }
+  ],
+  "scenarios": [
+    "filters",
+    "contact gate",
+    "lazy reel",
+    "draft 404",
+    "private preview",
+    "real server-action save",
+    "reorder",
+    "unpublish",
+    "republish",
+    "empty",
+    "reduced motion"
+  ],
+  "pageErrors": []
+}
