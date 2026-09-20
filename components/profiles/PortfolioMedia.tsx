@@ -8,6 +8,7 @@ import "./portfolio-editor.css";
 
 type Resource = {
   image?: string;
+  expiresAt?: number;
   playbackId?: string;
   tokens?: { playback: string; thumbnail: string };
 };
@@ -20,6 +21,7 @@ function useResource(id: string | null) {
     if (!id || !ref.current) return;
     let live = true;
     const controller = new AbortController();
+    let refresh: ReturnType<typeof setTimeout> | undefined;
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((e) => e.isIntersecting)) return;
@@ -34,6 +36,9 @@ function useResource(id: string | null) {
             if (live) {
               setResource(result);
               setError(false);
+              if (result.expiresAt) refresh = setTimeout(() => {
+                if (document.visibilityState === "visible") setAttempt(a => a + 1);
+              }, Math.max(1000, result.expiresAt - Date.now() - 15000));
             }
           })
           .catch(() => {
@@ -46,6 +51,7 @@ function useResource(id: string | null) {
     return () => {
       live = false;
       controller.abort();
+      clearTimeout(refresh);
       observer.disconnect();
     };
   }, [id, attempt]);
@@ -61,6 +67,7 @@ export function MediaVisual({
   const stored = item.source !== "external" && item.status === "ready";
   const { ref, resource, error, retry } = useResource(stored ? item.id : null);
   const [playing, setPlaying] = useState(false);
+  const [visualError, setVisualError] = useState("");
   const external = reelSource(item.url);
   const { ref: thumbRef, resource: thumbnailResource } = useResource(
     override?.source === "storage" ? override.id : null,
@@ -71,25 +78,24 @@ export function MediaVisual({
   if (item.status !== "ready")
     return (
       <div className="pm-screen pm-processing" role="status">
-        {
-          (
+        {item.terminal_reason === "cancelled" ? "Subida cancelada. Selecciona el archivo para un nuevo intento." : item.terminal_reason === "expired" ? "El intento venció sin completarse. Puedes volver a subir el archivo." : (
             {
-              uploading: "Esperando archivo…",
-              processing: "Procesando video…",
+              uploading: "Esperando archivoâ€¦",
+              processing: "Procesando videoâ€¦",
               errored:
                 "No se pudo procesar. Archiva este intento y vuelve a subirlo.",
               rejected:
-                "Archivo rechazado. Revisa el formato e inténtalo de nuevo.",
+                "Archivo rechazado. Revisa el formato e intÃ©ntalo de nuevo.",
               deleted: "Archivo eliminado.",
             } as Record<string, string>
-          )[item.status]
-        }
+          )[item.status]}
       </div>
     );
   return (
     <div
       ref={ref}
       className={`pm-screen ${item.category === "book" ? "pm-screen--portrait" : ""}`}
+      style={item.media_type === "video" && item.aspect_ratio ? { aspectRatio: item.aspect_ratio.replace(":", "/") } : undefined}
     >
       <div ref={thumbRef} />
       {item.media_type === "image" ? (
@@ -107,7 +113,7 @@ export function MediaVisual({
           autoPlay={false}
           onError={() => {
             setPlaying(false);
-            retry();
+            setVisualError("No pudimos reproducir el video. Renueva el acceso para reintentar.");
           }}
         />
       ) : playing && external ? (
@@ -129,6 +135,7 @@ export function MediaVisual({
                 : undefined)
             }
             alt=""
+            onError={() => setVisualError("La miniatura no está disponible. Puedes reintentar o reproducir el video.")}
             fallback={item.source === "mux" ? "VIDEO" : "TRABAJO"}
           />
           {external || item.source === "mux" ? (
@@ -142,7 +149,7 @@ export function MediaVisual({
               disabled={item.source === "mux" && !resource?.playbackId}
               aria-label={`Reproducir ${item.title}`}
             >
-              ▷ <span>Ver {item.category === "reel" ? "reel" : "video"}</span>
+              â–· <span>Ver {item.category === "reel" ? "reel" : "video"}</span>
             </button>
           ) : (
             portfolioWebUrl(item.url) && (
@@ -152,15 +159,15 @@ export function MediaVisual({
                 rel="noopener noreferrer"
                 target="_blank"
               >
-                Ver trabajo ↗
+                Ver trabajo â†—
               </a>
             )
           )}
         </>
       )}
-      {error && (
-        <button type="button" className="pm-retry" onClick={retry}>
-          No se pudo cargar. Reintentar
+      {(error || visualError) && (
+        <button type="button" className="pm-retry" onClick={() => { setVisualError(""); retry(); }}>
+          {visualError || "No se pudo obtener acceso al archivo."} Reintentar
         </button>
       )}
     </div>
@@ -220,7 +227,7 @@ export default function PortfolioMedia({
                 {category === "book"
                   ? talent
                     ? "Book"
-                    : "Imágenes"
+                    : "ImÃ¡genes"
                   : category === "reel"
                     ? "Reel"
                     : "Trabajos seleccionados"}
@@ -233,10 +240,10 @@ export default function PortfolioMedia({
                 >
                   +{" "}
                   {category === "book"
-                    ? "Añadir foto"
+                    ? "AÃ±adir foto"
                     : category === "reel"
-                      ? "Añadir reel"
-                      : "Añadir trabajo"}
+                      ? "AÃ±adir reel"
+                      : "AÃ±adir trabajo"}
                 </button>
               )}
             </div>
@@ -244,17 +251,17 @@ export default function PortfolioMedia({
               <div className="pm-empty">
                 <p>
                   {category === "work"
-                    ? "Todavía no has añadido trabajos."
+                    ? "TodavÃ­a no has aÃ±adido trabajos."
                     : category === "book"
-                      ? "Tu book está vacío."
+                      ? "Tu book estÃ¡ vacÃ­o."
                       : "Tu reel, en primer plano."}
                 </p>
                 <button type="button" onClick={() => controls.add(category)}>
                   {category === "work"
-                    ? "+ Añadir tu primer trabajo"
+                    ? "+ AÃ±adir tu primer trabajo"
                     : category === "book"
-                      ? "+ Añadir foto"
-                      : "+ Añadir reel"}
+                      ? "+ AÃ±adir foto"
+                      : "+ AÃ±adir reel"}
                 </button>
               </div>
             )}
@@ -278,7 +285,7 @@ export default function PortfolioMedia({
                     <h3>{item.title}</h3>
                     {(item.role || item.year) && (
                       <p>
-                        {[item.role, item.year].filter(Boolean).join(" · ")}
+                        {[item.role, item.year].filter(Boolean).join(" Â· ")}
                       </p>
                     )}
                     {item.description && <p>{item.description}</p>}
@@ -310,7 +317,7 @@ export default function PortfolioMedia({
                         onClick={() => controls.action(item, "up")}
                         aria-label={`Mover arriba: ${item.title}`}
                       >
-                        ↑
+                        â†‘
                       </button>
                       <button
                         type="button"
@@ -318,7 +325,7 @@ export default function PortfolioMedia({
                         onClick={() => controls.action(item, "down")}
                         aria-label={`Mover abajo: ${item.title}`}
                       >
-                        ↓
+                        â†“
                       </button>
                       <button
                         type="button"

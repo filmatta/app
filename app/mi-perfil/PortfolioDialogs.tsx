@@ -106,9 +106,17 @@ export function WorkDialog({
         e.returnValue = "";
       }
     };
+    const internal = (e: MouseEvent) => {
+      const link = (e.target as Element)?.closest?.("a[href]");
+      if (inFlight.current && link && !window.confirm("Hay una transferencia pendiente. ¿Salir y dejar que el servidor compruebe su estado?")) {
+        e.preventDefault(); e.stopPropagation();
+      }
+    };
+    document.addEventListener("click", internal, true);
     window.addEventListener("beforeunload", warn);
     return () => {
       window.removeEventListener("beforeunload", warn);
+      document.removeEventListener("click", internal, true);
       upload.current?.abort();
     };
   }, []);
@@ -240,12 +248,13 @@ export function WorkDialog({
             throw new Error(v.error ?? "No pudimos verificar la imagen.");
           }
         }
+        setProgress(null);
         setPhase(
           selectedSource === "mux"
             ? "Archivo recibido. Procesando video…"
             : "Imagen lista.",
         );
-        if (value.featured) {
+        if (value.featured && selectedSource !== "mux") {
           const featured = await managePortfolioItem(result.id, "feature");
           if ("error" in featured) throw new Error(featured.error);
         }
@@ -271,8 +280,17 @@ export function WorkDialog({
     )
       return;
     upload.current?.abort();
-    if (reserved.current)
-      await managePortfolioItem(reserved.current, "archive");
+    if (reserved.current) {
+      try {
+        const response = await fetch(`/api/portfolio/media/${reserved.current}/cancel`, { method: "POST" });
+        const result = await response.json();
+        if (!response.ok) { setError(result.error); return; }
+        if (result.state === "pending") { setError("La cancelación sigue pendiente. No descartamos un archivo recibido."); return; }
+        const current = await loadMyPortfolio();
+        if ("data" in current) done(current.data);
+        if (result.state === "received") { setError("El archivo ya fue recibido y se conservará mientras se procesa."); return; }
+      } catch { setError("No pudimos confirmar la cancelación. Comprueba el intento en tu perfil."); return; }
+    }
     close();
   }
   return (

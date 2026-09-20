@@ -7,12 +7,14 @@ export default function ProfileImage({
   className = "",
   eager = false,
   fallback = "F",
+  onError,
 }: {
   src?: string | null;
   alt: string;
   className?: string;
   eager?: boolean;
   fallback?: string;
+  onError?: () => void;
 }) {
   const [failedSource, setFailedSource] = useState<string | null>(null);
   return (
@@ -28,7 +30,7 @@ export default function ProfileImage({
           loading={eager ? "eager" : "lazy"}
           decoding="async"
           referrerPolicy="no-referrer"
-          onError={() => setFailedSource(src)}
+          onError={() => { setFailedSource(src); onError?.(); }}
         />
       )}
     </div>

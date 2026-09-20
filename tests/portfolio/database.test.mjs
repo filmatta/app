@@ -47,6 +47,7 @@ before(async () => {
     "20260916010000_public_profile_catalog.sql",
     "20260920010000_profile_presentation.sql",
     "20260921010000_profile_media.sql",
+    "20260923010000_profile_upload_lifecycle.sql",
   ])
     await db.exec(fs.readFileSync("supabase/migrations/" + file, "utf8"));
   await db.query("insert into auth.users values ($1,$3),($2,$4)", [

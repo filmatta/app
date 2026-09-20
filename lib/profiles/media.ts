@@ -26,6 +26,9 @@ export type MediaItem = {
     "uploading" | "processing" | "ready" | "errored" | "rejected" | "deleted";
   created_at: string;
   updated_at: string;
+  duration_seconds?: number | null;
+  aspect_ratio?: string | null;
+  terminal_reason?: "cancelled" | "expired" | "provider-error" | null;
 };
 export type MediaInput = Pick<
   MediaItem,

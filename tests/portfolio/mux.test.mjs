@@ -105,7 +105,7 @@ test("wrong environment, upload or foreign passthrough cannot mutate or delete m
     assert.equal(h.deleted.length, 0);
   }
 });
-test("public playback, ProRes and missing video are rejected before exposure and owned asset is removed", async () => {
+test("public playback, ProRes and missing video are rejected before exposure and retained for review", async () => {
   for (const patch of [
     { asset: { playback_ids: [{ id: "public", policy: "public" }] } },
     { inputs: [{ file: { tracks: [{ type: "video", encoding: "prores" }] } }] },
@@ -115,7 +115,7 @@ test("public playback, ProRes and missing video are rejected before exposure and
     await h.module.syncPortfolioAsset("asset");
     assert.equal(h.writes[0].status, "rejected");
     assert.equal(h.writes[0].mux_playback_id, null);
-    assert.deepEqual(h.deleted, ["asset"]);
+    assert.deepEqual(h.deleted, []);
   }
 });
 test("webhook races remain retryable; terminal deletion cannot resurrect playback", async () => {
@@ -126,5 +126,23 @@ test("webhook races remain retryable; terminal deletion cannot resurrect playbac
   const deleted = harness({ row: { status: "deleted" } });
   await deleted.module.syncPortfolioAsset("asset");
   assert.equal(deleted.writes.length, 0);
-  assert.deepEqual(deleted.deleted, ["asset"]);
+  assert.deepEqual(deleted.deleted, []);
+});
+
+test("cancelled and expired attempts cannot resurrect from late ready events", async () => {
+  for (const reason of ["cancelled", "expired"]) {
+    const h = harness({ row: { status: "errored", terminal_reason: reason } });
+    await h.module.syncPortfolioAsset("asset");
+    assert.equal(h.writes.length, 0);
+    assert.equal(h.deleted.length, 0);
+  }
+});
+test("real duration is attested without rounding; long video remains ready", async () => {
+  for (const duration of [179.9, 180, 180.01, 900]) {
+    const h = harness({ asset: { duration, aspect_ratio: "16:9" } });
+    await h.module.syncPortfolioAsset("asset");
+    assert.equal(h.writes[0].duration_seconds, duration);
+    assert.equal(h.writes[0].status, "ready");
+    assert.equal(h.deleted.length, 0);
+  }
 });

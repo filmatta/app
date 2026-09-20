@@ -22,7 +22,7 @@ export async function GET(
         .from("profile-media")
         .createSignedUrl(resource.storage_path, 60);
       if (signed.error) throw signed.error;
-      return Response.json({ image: signed.data.signedUrl }, { headers });
+      return Response.json({ image: signed.data.signedUrl, expiresAt: Date.now() + 60000 }, { headers });
     }
     if (resource.source === "mux") {
       const { mux, environment } = await createValidatedMuxContext();
@@ -50,6 +50,7 @@ export async function GET(
       return Response.json(
         {
           playbackId: resource.mux_playback_id,
+          expiresAt: Date.now() + 300000,
           tokens: { playback, thumbnail },
         },
         { headers },

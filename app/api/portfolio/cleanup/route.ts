@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   )
     return new Response(null, { status: 401 });
   try {
-    return Response.json({ cleaned: await cleanPortfolioMedia(), orphans: await cleanPortfolioOrphans() });
+    return Response.json({ reconciled: await cleanPortfolioMedia(), orphanedForReview: await cleanPortfolioOrphans() });
   } catch {
     return Response.json(
       { error: "Cleanup pendiente de reintento." },

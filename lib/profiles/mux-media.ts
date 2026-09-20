@@ -5,6 +5,7 @@ import {
   isMuxNotFoundError,
 } from "@/lib/mux/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { uploadDecision, terminalUploadReason } from "./upload-lifecycle";
 
 export function portfolioId(passthrough?: string) {
   return (
@@ -61,12 +62,8 @@ export async function syncPortfolioAsset(assetId: string) {
   )
     return;
   if (row.mux_asset_id && row.mux_asset_id !== asset.id) return;
-  if (row.status === "deleted" || row.status === "rejected") {
-    await mux.video.assets.delete(asset.id).catch((e) => {
-      if (!isMuxNotFoundError(e)) throw e;
-    });
-    return;
-  }
+  // A late event must neither resurrect a cancelled attempt nor delete its asset.
+  if (row.status === "deleted" || row.status === "rejected" || row.terminal_reason) return;
   let status =
     asset.status === "ready"
       ? "ready"
@@ -87,90 +84,52 @@ export async function syncPortfolioAsset(assetId: string) {
       status,
       mux_asset_id: asset.id,
       mux_playback_id: status === "ready" ? playbackId : null,
-      cleanup_after:
-        status === "errored" || status === "rejected"
-          ? new Date().toISOString()
-          : row.cleanup_after,
+      duration_seconds: asset.duration && Number.isFinite(asset.duration) ? asset.duration : null,
+      aspect_ratio: asset.aspect_ratio ?? null,
+      review_reason: status === "rejected" ? "provider-validation-rejected" : null,
+      cleanup_after: null,
     })
     .eq("id", id)
     .eq("updated_at", row.updated_at)
     .select("id");
   if (updated.error || !updated.data?.length)
     throw new Error("Concurrent media update; retry");
-  if (status === "rejected") await mux.video.assets.delete(asset.id);
 }
 
+// Only incomplete, expired attempts are reconciled. Archive never authorizes deletion.
 export async function cleanPortfolioMedia() {
   const db = createAdminClient();
   const now = new Date().toISOString();
-  const expired = await db
-    .from("profile_media")
-    .update({ status: "errored", cleanup_after: now })
-    .in("status", ["uploading", "processing"])
-    .lt("expires_at", now);
-  if (expired.error) throw expired.error;
-  const { data, error } = await db
-    .from("profile_media")
-    .select("*")
-    .lte("cleanup_after", now)
-    // A terminal row retains cleanup_after until external deletion succeeds.
-    // Include it after a crash; never lose a claimed cleanup job.
-    .order("cleanup_after")
-    .limit(50);
+  const { data, error } = await db.from("profile_media").select("*")
+    .in("status", ["uploading", "processing"]).lt("expires_at", now)
+    .order("expires_at").limit(50);
   if (error) throw error;
-  let count = 0;
+  let reconciled = 0;
   for (const row of data ?? []) {
-    // Lock the row into a terminal state before external deletion. Restore is rejected below.
-    const claimed = await db
-      .from("profile_media")
-      .update({ status: "deleted", visibility: "archived", featured: false })
-      .eq("id", row.id)
-      .eq("updated_at", row.updated_at)
-      .select("id");
-    if (claimed.error) throw claimed.error;
-    if (!claimed.data?.length) continue;
-    try {
-      if (row.source === "mux" && row.mux_upload_id) {
-        const { mux, environment } = await createValidatedMuxContext();
-        if (
-          row.mux_environment_id !== environment.id ||
-          row.mux_environment_type !== environment.type
-        )
-          throw new Error("Wrong environment");
-        const upload = await mux.video.uploads.retrieve(row.mux_upload_id);
-        if (portfolioId(upload.new_asset_settings?.passthrough) !== row.id)
-          throw new Error("Wrong portfolio association");
-        if (upload.asset_id) {
-          const asset = await mux.video.assets.retrieve(upload.asset_id);
-          if (
-            portfolioId(asset.passthrough) !== row.id ||
-            asset.upload_id !== upload.id
-          )
-            throw new Error("Wrong asset association");
-          await mux.video.assets.delete(asset.id);
-        } else if (upload.status === "waiting")
-          await mux.video.uploads.cancel(upload.id);
-      } else if (row.source === "storage" && row.storage_path) {
-        if (!row.storage_path.startsWith(`${row.owner_id}/${row.id}/`))
-          throw new Error("Wrong storage association");
-        const removed = await db.storage
-          .from("profile-media")
-          .remove([row.storage_path]);
-        if (removed.error) throw removed.error;
-      }
-    } catch (error) {
-      if (!isMuxNotFoundError(error)) {
-        // Keep the tombstone and due date: safe retries cannot restore playback.
-        throw error;
-      }
+    if (row.source === "mux" && row.mux_upload_id) {
+      await syncPortfolioUpload(row.mux_upload_id);
+      reconciled++;
+    } else if (row.source === "storage" && row.storage_path) {
+      // An uploaded object whose finalization response was lost is not abandoned.
+      const file = await db.storage.from("profile-media").info(row.storage_path);
+      if (file.data) {
+        const r = await db.from("profile_media").update({ review_reason: "image-finalization-required" })
+          .eq("id", row.id).eq("updated_at", row.updated_at);
+        if (r.error) throw r.error;
+      } else if (String(file.error?.status) === "404" || String(file.error?.statusCode) === "404") {
+        const r = await db.from("profile_media").update({ status: "errored", terminal_reason: "expired", cleanup_after: null })
+          .eq("id", row.id).eq("updated_at", row.updated_at).eq("status", "uploading");
+        if (r.error) throw r.error;
+        reconciled++;
+      } else throw new Error("Could not verify image existence");
+    } else if (!row.mux_upload_id && row.source === "mux") {
+      // Remote creation may have succeeded before binding failed. Review, never delete.
+      const r = await db.from("profile_media").update({ review_reason: "upload-binding-required" })
+        .eq("id", row.id).eq("updated_at", row.updated_at);
+      if (r.error) throw r.error;
     }
-    const finished = await db.from("profile_media")
-      .update({ cleanup_after: null, mux_playback_id: null })
-      .eq("id", row.id).eq("status", "deleted");
-    if (finished.error) throw finished.error;
-    count++;
   }
-  return count;
+  return reconciled;
 }
 
 export async function syncPortfolioUpload(uploadId: string) {
@@ -178,14 +137,34 @@ export async function syncPortfolioUpload(uploadId: string) {
   const upload = await mux.video.uploads.retrieve(uploadId);
   const id = portfolioId(upload.new_asset_settings?.passthrough);
   if (!id) return;
-  if (upload.asset_id) return syncPortfolioAsset(upload.asset_id);
-  if (!["cancelled", "timed_out", "errored"].includes(upload.status)) return;
+  const decision = uploadDecision(upload);
+  if (decision === "reconcile-asset") return syncPortfolioAsset(upload.asset_id!);
+  if (decision !== "terminal") return;
   const updated = await createAdminClient().from("profile_media")
-    .update({ status: "errored", cleanup_after: new Date().toISOString() })
+    .update({ status: "errored", terminal_reason: terminalUploadReason(upload.status), cleanup_after: null })
     .eq("id", id).eq("mux_upload_id", upload.id)
     .eq("mux_environment_id", environment.id).eq("mux_environment_type", environment.type)
     .in("status", ["uploading", "processing"]);
   if (updated.error) throw updated.error;
+}
+
+// Caller must supply an owner-authorized row; provider identity is independently checked.
+export async function cancelPortfolioUpload(row: { id: string; mux_upload_id: string; mux_environment_id: string; mux_environment_type: string }) {
+  const { mux, environment } = await createValidatedMuxContext();
+  if (row.mux_environment_id !== environment.id || row.mux_environment_type !== environment.type)
+    throw new Error("Wrong environment");
+  let upload = await mux.video.uploads.retrieve(row.mux_upload_id);
+  if (portfolioId(upload.new_asset_settings?.passthrough) !== row.id) throw new Error("Wrong association");
+  if (!upload.asset_id && upload.status === "waiting") {
+    try { await mux.video.uploads.cancel(upload.id); }
+    catch (error) {
+      // asset_created can win the cancellation race. Re-read instead of deleting.
+      if (isMuxNotFoundError(error)) throw error;
+    }
+    upload = await mux.video.uploads.retrieve(upload.id);
+  }
+  await syncPortfolioUpload(upload.id);
+  return upload.asset_id ? "received" : uploadDecision(upload) === "terminal" ? "cancelled" : "pending";
 }
 
 export async function markPortfolioAssetDeleted(assetId: string, environment: { id: string; type: string }) {
@@ -200,8 +179,8 @@ export async function markPortfolioAssetDeleted(assetId: string, environment: { 
 export async function cleanPortfolioOrphans() {
   const { mux } = await createValidatedMuxContext();
   const db = createAdminClient();
-  let cleaned = 0;
-  // SDK pagination traverses the inventory; Learn assets are never queried or changed.
+  let flagged = 0;
+  // Read-only inventory. Neither ready nor shared assets are deleted by this sweep.
   for await (const asset of mux.video.assets.list({ limit: 100 })) {
     const id = portfolioId(asset.passthrough);
     if (
@@ -224,11 +203,8 @@ export async function cleanPortfolioOrphans() {
       upload.new_asset_settings?.meta?.external_id !== id ||
       upload.new_asset_settings?.meta?.creator_id !== asset.meta.creator_id
     ) continue;
-    // Both independent Mux records agree and no current portfolio reference exists.
-    await mux.video.assets.delete(asset.id).catch(error => {
-      if (!isMuxNotFoundError(error)) throw error;
-    });
-    cleaned++;
+    // Retain provider asset; a separate reviewed dry-run is required before any cleanup.
+    flagged++;
   }
-  return cleaned;
+  return flagged;
 }
