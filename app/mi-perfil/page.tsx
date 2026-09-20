@@ -1,4 +1,5 @@
-import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import type { MediaItem } from "@/lib/profiles/media";
 import { redirect } from "next/navigation";
 import ProfileEditor from "./ProfileEditor";
 import SiteHeader from "@/components/SiteHeader";
@@ -22,17 +23,15 @@ export default async function EditProfessionalProfilePage({
     searchParams,
   ]);
   const displayName = getPublicDisplayName(viewer.fullName);
+  const db = await createClient();
+  const media = profile
+    ? await db.rpc("get_profile_media", { p_slug: profile.slug })
+    : { data: null, error: null };
+  if (media.error) throw new Error("No pudimos cargar tus trabajos.");
   return (
     <div className="editorial-page profiles-page">
       <SiteHeader />
-      <main className="editorial-container profile-editor-shell">
-        <header className="profile-editor-header">
-          <p className="eyebrow">FILMATTA / Mi perfil</p>
-          <h1>Tu perfil profesional.</h1>
-          <p>
-            Reel, trabajo y experiencia. Una página para presentar lo que haces.
-          </p>
-        </header>
+      <main className="editorial-container portfolio-editor-shell">
         {feedback.saved && (
           <p
             role="status"
@@ -51,18 +50,10 @@ export default async function EditProfessionalProfilePage({
             {feedback.error}.
           </p>
         )}
-        {profile?.is_public && (
-          <Link
-            href={`/perfiles/${profile.slug}`}
-            className="profile-text-link"
-          >
-            Ver perfil público ↗
-          </Link>
-        )}
         <ProfileEditor
-          key={profile?.updated_at ?? "new"}
           profile={profile}
           displayName={displayName}
+          initialItems={media.data as MediaItem[] | null}
         />
       </main>
     </div>

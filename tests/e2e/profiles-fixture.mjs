@@ -61,7 +61,9 @@ const base = {
 };
 let owned;
 let rows;
+let ownMedia = null;
 export function resetProfileFixture() {
+  ownMedia = null;
   rows = [
     {
       ...base,
@@ -148,6 +150,62 @@ export async function profileFixture(req, res, url, token) {
       : {};
   if (url.pathname === "/rest/v1/professional_profiles") {
     res.end(JSON.stringify(token.includes(".") ? owned : null));
+    return true;
+  }
+  if (url.pathname.endsWith("initialize_my_profile_media")) {
+    ownMedia ??= [
+      ...owned.portfolio_items.map((i, n) => ({
+        id: `00000000-0000-4000-8000-${String(n + 1).padStart(12, "0")}`,
+        category: i.kind === "reel" ? "reel" : "work",
+        title: i.title,
+        role: "",
+        year: "",
+        description: i.summary ?? "",
+        media_type: "link",
+        source: "external",
+        url: i.url,
+        provider: null,
+        external_video_id: null,
+        thumbnail_id: null,
+        featured: false,
+        sort_order: n,
+        visibility: "visible",
+        status: "ready",
+        created_at: owned.updated_at,
+        updated_at: owned.updated_at,
+      })),
+      ...owned.presentation.book.map((i, n) => ({
+        id: `00000000-0000-4000-8000-${String(n + 11).padStart(12, "0")}`,
+        category: "book",
+        title: i.caption,
+        role: "",
+        year: "",
+        description: "",
+        media_type: "image",
+        source: "external",
+        url: i.url,
+        provider: null,
+        external_video_id: null,
+        thumbnail_id: null,
+        featured: false,
+        sort_order: n,
+        visibility: "visible",
+        status: "ready",
+        created_at: owned.updated_at,
+        updated_at: owned.updated_at,
+      })),
+    ];
+    res.end("null");
+    return true;
+  }
+  if (url.pathname.endsWith("get_profile_media")) {
+    res.end(
+      JSON.stringify(
+        body.p_slug === owned.slug && (owned.is_public || token.includes("."))
+          ? ownMedia
+          : null,
+      ),
+    );
     return true;
   }
   if (url.pathname.endsWith("save_my_professional_portfolio")) {

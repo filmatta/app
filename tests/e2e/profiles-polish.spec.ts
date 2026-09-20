@@ -175,39 +175,46 @@ test("editor preview stays private; ordering and publication roundtrip; unpublis
   await expect(
     page.getByText("Borrador privado", { exact: false }).first(),
   ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Editar perfil", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Editar identidad", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Nombre profesional").fill("Elena · Escena");
   await page
-    .getByRole("button", { name: "Bajar pieza 1", exact: true })
+    .getByRole("button", { name: "Guardar cambios", exact: true })
     .click();
-  await expect(page.locator("#title-0")).toHaveValue("La última luz");
-  await page.getByRole("button", { name: "Vista previa ↗" }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(
-    page.getByRole("dialog").getByText("Elena · Escena", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Elena · Escena",
+  );
+  await page.getByRole("button", { name: "Editar bio", exact: true }).click();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).not.toBeVisible();
-  await page.getByLabel("Publicar mi perfil", { exact: false }).check();
+  await page.getByRole("button", { name: "Publicación", exact: true }).click();
+  await page.getByLabel("Perfil público y compartible").check();
   await page
-    .getByRole("button", { name: "Guardar perfil", exact: true })
+    .getByRole("button", { name: "Guardar cambios", exact: true })
     .click();
   await expect(
-    page.getByRole("status").filter({ hasText: "Perfil guardado" }),
-  ).toHaveText("Perfil guardado y publicado.");
-  await expect(page.locator("#title-0")).toHaveValue("La última luz");
+    page.getByRole("status").filter({ hasText: "Cambios guardados" }),
+  ).toHaveText("Cambios guardados en tu perfil público.");
   await page.getByRole("link", { name: "Ver perfil público ↗" }).click();
   await expect(page.getByText("Elena · Escena", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Contactar · próximamente" }),
   ).toBeDisabled();
   await page.goto("/mi-perfil");
-  await page.getByLabel("Publicar mi perfil", { exact: false }).uncheck();
+  await page.getByRole("button", { name: "Publicación", exact: true }).click();
+  await page.getByLabel("Perfil público y compartible").uncheck();
   await page
-    .getByRole("button", { name: "Guardar perfil", exact: true })
+    .getByRole("button", { name: "Guardar cambios", exact: true })
     .click();
   await expect(
-    page.getByRole("status").filter({ hasText: "Perfil guardado" }),
-  ).toHaveText("Perfil guardado como borrador.");
+    page.getByRole("status").filter({ hasText: "Cambios guardados" }),
+  ).toHaveText("Cambios guardados en tu borrador privado.");
   await context.clearCookies();
   await page.goto("/perfiles/perfil-propio-demo");
   await expect(page.getByRole("heading", { name: "Elena R." })).toHaveCount(0);

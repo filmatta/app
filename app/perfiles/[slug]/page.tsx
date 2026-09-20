@@ -3,6 +3,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import SiteHeader from "@/components/SiteHeader";
 import ProfilePortfolio from "@/components/profiles/ProfilePortfolio";
+import PortfolioMedia from "@/components/profiles/PortfolioMedia";
+import { isTalent } from "@/lib/profiles/presentation";
+import { createClient } from "@/lib/supabase/server";
+import type { MediaItem } from "@/lib/profiles/media";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getPublicProfessionalProfile } from "@/lib/profiles/data";
 type Props = { params: Promise<{ slug: string }> };
@@ -24,11 +28,27 @@ export default async function PublicProfilePage({ params }: Props) {
     getViewer(),
   ]);
   if (!profile) notFound();
+  const db = await createClient();
+  const { data: media, error } = await db.rpc("get_profile_media", {
+    p_slug: slug,
+  });
+  if (error) throw new Error("No pudimos cargar el portfolio.");
   return (
     <div className="editorial-page profiles-page">
       <SiteHeader />
       <main className="editorial-container">
-        <ProfilePortfolio profile={profile} signedIn={Boolean(viewer)} />
+        <ProfilePortfolio
+          profile={profile}
+          signedIn={Boolean(viewer)}
+          media={
+            media === null ? undefined : (
+              <PortfolioMedia
+                items={media as MediaItem[]}
+                talent={isTalent(profile.disciplines)}
+              />
+            )
+          }
+        />
       </main>
     </div>
   );

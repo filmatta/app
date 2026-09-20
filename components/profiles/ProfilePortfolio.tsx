@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import {
   AVAILABILITY_LABELS,
   PORTFOLIO_KIND_LABELS,
@@ -21,10 +22,16 @@ export default function ProfilePortfolio({
   profile,
   signedIn = false,
   preview = false,
+  media,
+  sectionControls = {},
 }: {
   profile: PublicProfessionalProfile;
   signedIn?: boolean;
   preview?: boolean;
+  media?: ReactNode;
+  sectionControls?: Partial<
+    Record<"identity" | "about" | "credits" | "skills", ReactNode>
+  >;
 }) {
   const talent = isTalent(profile.disciplines),
     p = profile.presentation;
@@ -41,7 +48,7 @@ export default function ProfilePortfolio({
   const cover =
     p.book.find((item) => item.url !== p.portrait_url)?.url ||
     (reel ? reelSource(reel.url)?.thumbnail : undefined);
-  const visual = Boolean(reel || p.book.length);
+  const visual = Boolean(media || reel || p.book.length);
   return (
     <article className={`profile-public-v2 ${talent ? "p2-talent" : ""}`}>
       <header className={`p2-hero ${cover ? "p2-hero--image" : ""}`}>
@@ -82,6 +89,7 @@ export default function ProfilePortfolio({
             {!preview && <ShareProfile slug={profile.slug} compact />}
           </div>
         </div>
+        {sectionControls.identity}
       </header>
       <div className="p2-layout">
         <div className="p2-main">
@@ -91,7 +99,8 @@ export default function ProfilePortfolio({
             {p.credits.length > 0 && <a href="#credits">Créditos</a>}
             <a href="#contact">Contacto</a>
           </nav>
-          {visual && (
+          {media}
+          {media === undefined && visual && (
             <section className="p2-portfolio" id="portfolio">
               <div className="p2-section-heading">
                 <h2>
@@ -172,7 +181,7 @@ export default function ProfilePortfolio({
               )}
             </section>
           )}
-          {remaining.length > 0 && (
+          {media === undefined && remaining.length > 0 && (
             <section className="p2-work">
               <h2>Trabajos y enlaces</h2>
               {remaining.map((item, i) => (
@@ -192,7 +201,9 @@ export default function ProfilePortfolio({
               ))}
             </section>
           )}
+          {sectionControls.about}
           {profile.bio && <ProfileBio text={profile.bio} />}
+          {sectionControls.credits}
           {p.credits.length > 0 && (
             <section className="p2-credits" id="credits">
               <h2>Créditos seleccionados</h2>
@@ -218,6 +229,7 @@ export default function ProfilePortfolio({
         <aside className="p2-aside">
           <section className="p2-information">
             <h2>Información profesional</h2>
+            {sectionControls.skills}
             <dl>
               {location && (
                 <div>
