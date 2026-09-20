@@ -1,0 +1,10 @@
+{
+  "temporaryDeployment": "dpl_CQQWsccT1eFDjouYLox2kEweUbu1",
+  "temporaryDeploymentDeleted": true,
+  "verificationHttpStatus": 404,
+  "runtimeSecretRemovedWithDeployment": true,
+  "projectSharedVariablesChanged": false,
+  "productionTouched": false,
+  "reviewPreview": "https://app-lg0nuiccy-filmatta.vercel.app",
+  "reviewPreviewState": "READY"
+}

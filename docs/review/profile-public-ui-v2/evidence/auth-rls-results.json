@@ -1,0 +1,50 @@
+[
+  {
+    "phase": "draft",
+    "slug": "qa-p",
+    "ownerRead": true,
+    "strangerPrivateReadDenied": true,
+    "strangerWriteDenied": true,
+    "anonWriteDenied": true,
+    "ownerDataPreserved": true,
+    "isPublic": false,
+    "publicRows": 0,
+    "usesUserAuthAndRLS": true
+  },
+  {
+    "phase": "public",
+    "slug": "qa-p",
+    "ownerRead": true,
+    "strangerPrivateReadDenied": true,
+    "strangerWriteDenied": true,
+    "anonWriteDenied": true,
+    "ownerDataPreserved": true,
+    "isPublic": true,
+    "publicRows": 1,
+    "usesUserAuthAndRLS": true
+  },
+  {
+    "phase": "edited",
+    "slug": "qa-p",
+    "ownerRead": true,
+    "strangerPrivateReadDenied": true,
+    "strangerWriteDenied": true,
+    "anonWriteDenied": true,
+    "ownerDataPreserved": true,
+    "isPublic": true,
+    "publicRows": 1,
+    "usesUserAuthAndRLS": true
+  },
+  {
+    "phase": "draft-final",
+    "slug": "qa-p",
+    "ownerRead": true,
+    "strangerPrivateReadDenied": true,
+    "strangerWriteDenied": true,
+    "anonWriteDenied": true,
+    "ownerDataPreserved": true,
+    "isPublic": false,
+    "publicRows": 0,
+    "usesUserAuthAndRLS": true
+  }
+]

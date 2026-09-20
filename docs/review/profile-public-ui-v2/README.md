@@ -2,7 +2,7 @@
 
 ## Estado
 
-Implementación lista para revisión visual. Preview público verificado; validación de login y edición owner en Preview pendiente de autorización específica para configurar la clave service_role de Supabase Test sólo en el servidor de Vercel Preview. No se ha desplegado a Production, hecho merge/push ni cambiado schema/RLS.
+Implementación lista para revisión visual. Login y edición owner validados en un Preview temporal con Supabase Test, tras autorización explícita del usuario. El deployment temporal y su secreto server-side ya se retiraron; el Preview visual original sigue Ready. No se ha desplegado a Production, hecho merge/push ni cambiado schema/RLS.
 
 - Rama: `feature/profile-public-ui-v2`
 - Worktree: `G:\PROYECTOS\filmatta-profile-public-ui-v2`
@@ -49,7 +49,7 @@ También se incluyen landings, catálogos y estados loading/empty/error. Las lan
 - TypeScript, lint focalizado y production build: correctos.
 - Revisión pública del Preview mediante sesión normal del navegador: profesional, Talent, sin reel y mínimo en 390/768/1024/1280/1440/1920; 24 combinaciones sin overflow ni completitud pública. Bio expandir/contraer correcto; reproductor sólo se monta tras interacción, sin autoplay; Contactar anónimo conduce al login.
 - La suite Playwright remota NO pasó: el navegador automatizado llegó al login de protección de Vercel. No es evidencia de fallo de layout. La revisión pública se completó después con la sesión normal autorizada del navegador.
-- Login y edición owner en el Preview NO están validados. El Preview carece de service_role Test, requerida por el control existente de intentos de Auth; login falla de forma cerrada. No se cambió Auth para eludir esa protección.
+- Login y edición owner completados después en el deployment temporal dpl_CQQWsccT1eFDjouYLox2kEweUbu1 del mismo código de producto. Dos usuarios entraron por el formulario normal. El owner creó un borrador, publicó, editó desde mobile, recargó y volvió a borrador. Se verificaron logout, redirección de /mi-perfil sin sesión, aislamiento del editor del segundo usuario y restricciones RLS con sesiones normales. Ver AUTH-QA.md. El Preview visual original conserva su configuración sin service_role; su login no queda habilitado permanentemente.
 - Los cuatro usuarios sintéticos de la revisión pública fueron eliminados de Test; se verificó que los usuarios y sus perfiles públicos desaparecieron. Se eliminó el archivo temporal de credenciales.
 
 Los logs y resultados sanitizados están en evidence/. El commit posterior de documentación/tests no cambia el código de producto del Preview.
@@ -62,9 +62,9 @@ Sin migraciones ni cambios de tablas, RPCs, policies, triggers, índices o RLS. 
 
 ## Pendientes
 
-- Autorizar service_role de Supabase Test únicamente en el runtime servidor del Preview para completar login y edición real de Mi perfil. No se modificarían variables compartidas ni Production.
+- QA de Auth/owner completada. Se retiró el deployment temporal completo para eliminar su secreto asociado; quedan las evidencias sanitizadas y el Preview visual original sin esa clave.
 - Revisión visual del usuario antes de cualquier Production deploy.
 - Contacto operativo, Follow, subida directa de archivos y Boost/Talent+ siguen fuera de alcance.
 - Datos sin imágenes/reels muestran una presentación sobria; no se inventa portfolio para completarlos.
 
-La revisión automática bloqueó tanto la extracción de un token bypass Vercel (innecesario: se usó acceso normal) como el envío de service_role Test al Preview. Ninguna de esas acciones se ejecutó. Sólo la segunda requiere permiso para completar Auth/owner en Preview.
+La primera revisión automática bloqueó la extracción de un token bypass Vercel; no se ejecutó ni se necesitó: se utilizó acceso normal. El envío inicial de service_role Test también quedó bloqueado. El usuario lo autorizó posteriormente sólo como secreto server-side temporal para QA; esa validación se completó y su deployment se eliminó al terminar.

@@ -1,0 +1,24 @@
+{
+  "method": "CUA normal browser UI and DOM measurements",
+  "cssWidths": [
+    390,
+    768,
+    1024,
+    1280,
+    1440,
+    1920
+  ],
+  "allWidthsMeasuredExactly": true,
+  "horizontalOverflow": false,
+  "ownerCompletenessCount": 1,
+  "loginOwner": true,
+  "loginSecondUser": true,
+  "uiDraftCreate": true,
+  "uiPublish": true,
+  "uiMobileEditPersisted": true,
+  "secondUserEditorIsolated": true,
+  "uiUnpublish": true,
+  "uiLogout": true,
+  "anonymousEditorRedirectToLogin": true,
+  "remainingQaProfiles": 0
+}

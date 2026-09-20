@@ -1,0 +1,17 @@
+{
+  "project": "ezlycwkuzkwcnhrhiruv",
+  "users": [
+    {
+      "kind": "owner",
+      "authUserDeleted": true,
+      "profileCascadeCheck": "verified separately with read-only SQL"
+    },
+    {
+      "kind": "stranger",
+      "authUserDeleted": true,
+      "profileCascadeCheck": "verified separately with read-only SQL"
+    }
+  ],
+  "publicProfileRemoved": true,
+  "noProductionMutation": true
+}
