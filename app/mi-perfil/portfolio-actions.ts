@@ -28,6 +28,8 @@ async function state() {
   if (error) throw new Error("No pudimos cargar los trabajos.");
   return { profile, items: data as MediaItem[] | null };
 }
+type PortfolioResult =
+  { data: Awaited<ReturnType<typeof state>> } | { error: string };
 function invalidate(slug: string) {
   revalidatePath(`/perfiles/${slug}`);
   revalidatePath("/perfiles");
@@ -40,14 +42,14 @@ function feedback(error: unknown) {
       : "No pudimos guardar el cambio. Inténtalo de nuevo.";
   return { error: message };
 }
-export async function loadMyPortfolio() {
+export async function loadMyPortfolio(): Promise<PortfolioResult> {
   try {
     return { data: await state() };
   } catch (e) {
     return feedback(e);
   }
 }
-export async function startPortfolioEditing() {
+export async function startPortfolioEditing(): Promise<PortfolioResult> {
   try {
     const { db } = await session();
     const { error } = await db.rpc("initialize_my_profile_media");
@@ -62,7 +64,10 @@ export async function startPortfolioEditing() {
     return feedback(e);
   }
 }
-export async function savePortfolioItem(id: string | null, input: unknown) {
+export async function savePortfolioItem(
+  id: string | null,
+  input: unknown,
+): Promise<PortfolioResult> {
   try {
     const { db } = await session();
     let parsed = parseMediaInput(input);
@@ -123,7 +128,7 @@ export async function managePortfolioItem(
   id: string,
   action: string,
   target: string | null = null,
-) {
+): Promise<PortfolioResult> {
   try {
     const { db } = await session();
     if (
@@ -155,7 +160,7 @@ export async function managePortfolioItem(
 export async function savePortfolioSection(
   section: string,
   input: Record<string, unknown>,
-) {
+): Promise<PortfolioResult> {
   try {
     const { db, user } = await session();
     const current = await getOwnedProfessionalProfile(user.id);
