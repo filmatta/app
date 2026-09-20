@@ -1,10 +1,15 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { profileContactEmailHtml } from "./email-template";
 
 type NotificationResult = "delivered" | "skipped" | "failed";
 
-export async function notifyNewProfileContact(inquiryId: string, senderId: string): Promise<NotificationResult> {
+export async function notifyNewProfileContact(
+  supabase: SupabaseClient,
+  inquiryId: string,
+  senderId: string,
+): Promise<NotificationResult> {
   if (process.env.CONTACT_EMAIL_NOTIFICATIONS_ENABLED !== "true") {
     console.warn("[contacts/email] notifications disabled");
     return "skipped";
@@ -17,14 +22,14 @@ export async function notifyNewProfileContact(inquiryId: string, senderId: strin
     return "skipped";
   }
   try {
-    const admin = createAdminClient();
-    const { data: inquiry, error } = await admin.from("catalog_inquiries")
+    const { data: inquiry, error } = await supabase.from("catalog_inquiries")
       .select("recipient_id,sender_id,sender_display_name,source_type")
       .eq("id", inquiryId).eq("sender_id", senderId).not("profile_id", "is", null).maybeSingle();
     if (error || !inquiry) {
       console.error("[contacts/email] inquiry lookup failed");
       return "failed";
     }
+    const admin = createAdminClient();
     const { data: recipient, error: recipientError } = await admin.auth.admin.getUserById(inquiry.recipient_id);
     if (recipientError || !recipient.user.email) {
       console.error("[contacts/email] recipient lookup failed");

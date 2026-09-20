@@ -25,7 +25,7 @@ export async function sendProfileContact(_previous: ContactActionState, form: Fo
     if (error?.code === "22023") return { error: "Alcanzaste un límite temporal o el mensaje no es válido. Inténtalo más tarde." };
     return { error: "No pudimos enviar la consulta. El perfil puede no estar disponible para contacto." };
   }
-  await notifyNewProfileContact(id, data.user.id);
+  await notifyNewProfileContact(supabase, id, data.user.id);
   revalidatePath("/cuenta/contactos");
   redirect(`/cuenta/contactos/${id}?sent=1`);
 }
