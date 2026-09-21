@@ -160,7 +160,7 @@ export function MediaVisual({
               disabled={item.source === "mux" && !resource?.playbackId}
               aria-label={`Reproducir ${item.title}`}
             >
-              ▷ <span>Ver {item.category === "reel" ? "reel" : "video"}</span>
+              <span aria-hidden="true">▷</span> <span>Ver {item.category === "reel" ? "reel" : "video"}</span>
             </button>
           ) : (
             portfolioWebUrl(item.url) && (

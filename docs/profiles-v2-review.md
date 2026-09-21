@@ -9,7 +9,7 @@ Rama: `feature/profiles-portfolio-polish`. Production queda fuera de esta tarea.
 - Cerrar una transferencia archivaba el trabajo; no cancelaba la Direct Upload. Un callback tardío podía restaurar su estado.
 - El Book se ordenaba antes del Reel en layouts Talent.
 - Identidad sólo tenía URL externa de retrato; no uploader ni portada explícita. Créditos sólo título/rol/año.
-- Los tokens de video y thumbnail ya tenían audiencias separadas. Un poster gris no demuestra error de firma: falta comprobar HTTP, asset/policy/entorno en Test. La UI ocultaba errores de imagen tras un fallback y no renovaba recursos caducados.
+- Los tokens de video y thumbnail ya tenían audiencias separadas. Un poster gris no demuestra error de firma: falta comprobar HTTP, asset/policy/entorno en Test. La UI ocultaba errores de imagen tras un fallback y no renovaba recursos caducados. En Preview se comprobó además que el poster firmado carga (1920×1080) pero el botón completo heredaba background opaco del editor y lo tapaba. Se corrige el overlay transparente sin cambiar la firma/política.
 
 ## Checkpoint A — ciclo de cargas
 

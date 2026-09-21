@@ -428,3 +428,10 @@
 
 .profile-card-frame > .p2-identity-image { position:absolute; inset:0; width:100%; height:100%; }
 .profile-card-frame > .p2-identity-image .profile-image { width:100%; height:100%; }
+
+/* The player overlay must not inherit the editor's opaque button surface. */
+.pm-portfolio .pm-screen > button.reel-play,
+.pe-shell .pm-screen > button.reel-play { background: #08080830; border: 0; padding: 0; }
+.pm-portfolio .pm-screen > button.reel-play:hover,
+.pe-shell .pm-screen > button.reel-play:hover { background: #08080850; }
+.pm-screen > button.reel-play:focus-visible { outline: 2px solid #b9dceb; outline-offset: -3px; }
