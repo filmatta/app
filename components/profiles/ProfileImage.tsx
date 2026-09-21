@@ -26,13 +26,18 @@ function ImageLoad({
   const [loaded, setLoaded] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const image = useRef<HTMLImageElement>(null);
   useEffect(() => {
     if ((!src && !pending) || error || loaded || !root.current) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const observer = new IntersectionObserver(entries => {
       if (!entries.some(entry => entry.isIntersecting)) return;
       observer.disconnect();
-      timer = setTimeout(() => setTimedOut(true), 20000);
+      if (image.current?.complete && image.current.naturalWidth > 0) { setLoaded(true); return; }
+      timer = setTimeout(() => {
+        if (image.current?.complete && image.current.naturalWidth > 0) setLoaded(true);
+        else setTimedOut(true);
+      }, 20000);
     }, { rootMargin: "250px" });
     observer.observe(root.current);
     return () => { observer.disconnect(); clearTimeout(timer); };
@@ -46,6 +51,10 @@ function ImageLoad({
       {src && !failed && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
+          ref={element => {
+            image.current = element;
+            if (!loaded && element?.complete && element.naturalWidth > 0) setLoaded(true);
+          }}
           src={src}
           alt={alt}
           loading={eager ? "eager" : "lazy"}

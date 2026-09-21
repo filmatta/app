@@ -79,7 +79,8 @@ test(
       );
       checked(await save(owner.client, { p_is_public: true }));
       const pub = checked(await detail(anon, slug))[0];
-      assert.deepEqual(pub.presentation, presentation);
+      const publicPresentation = { ...presentation, reel_cover_media_id: null };
+      assert.deepEqual(pub.presentation, publicPresentation);
       assert.equal(pub.user_id, undefined);
       assert.doesNotMatch(
         JSON.stringify(pub),
@@ -132,7 +133,7 @@ test(
       );
       assert.deepEqual(
         checked(await detail(anon, slug))[0].presentation,
-        presentation,
+        publicPresentation,
       );
       assert.equal(
         checked(
