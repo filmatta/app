@@ -20,7 +20,11 @@ import ReelPlayer from "./ReelPlayer";
 import ShareProfile from "./ShareProfile";
 import ProfileBio from "./ProfileBio";
 import ProfessionalDetails from "./ProfessionalDetails";
-import ProfileContactDialog from "./ProfileContactDialog";
+import ProfileContactSection from "./ProfileContactSection";
+import ProfileProjectPreferences from "./ProfileProjectPreferences";
+import ProfileDetailIcon from "./ProfileDetailIcon";
+import type { ProjectPreferences } from "@/lib/profiles/project-preferences";
+import type { ContactAccess } from "@/lib/profiles/social";
 import "./profile-public-v2.css";
 
 export default function ProfilePortfolio({
@@ -29,6 +33,10 @@ export default function ProfilePortfolio({
   owner = false,
   preview = false,
   media,
+  follow,
+  socialProof,
+  preferences = null,
+  contactAccess,
   sectionControls = {},
 }: {
   profile: PublicProfessionalProfile;
@@ -36,6 +44,10 @@ export default function ProfilePortfolio({
   owner?: boolean;
   preview?: boolean;
   media?: ReactNode;
+  follow?: ReactNode;
+  socialProof?: ReactNode;
+  preferences?: ProjectPreferences | null;
+  contactAccess?: ContactAccess | null;
   sectionControls?: Partial<
     Record<"identity" | "about" | "credits" | "skills", ReactNode>
   >;
@@ -78,6 +90,7 @@ export default function ProfilePortfolio({
           )}
           <div className="p2-name">
             <h1>{name}</h1>
+            {follow}
             <p>{profile.disciplines.join(" · ")}</p>
             <div className="p2-meta">
               {location && <span>{location}</span>}
@@ -107,35 +120,8 @@ export default function ProfilePortfolio({
           <div className="p2-availability" data-state={profile.availability}>
             <span aria-hidden="true">●</span> {AVAILABILITY_LABELS[profile.availability]}
           </div>
-          <section className="p2-contact" id="contact">
-            <h2>Contacto protegido</h2>
-            {profile.contact_policy === "closed" ? (
-              <p>No recibe solicitudes por ahora.</p>
-            ) : (
-              <>
-                {preview ? (
-                  <p>Contactar · acceso con cuenta</p>
-                ) : owner ? (
-                  <p>Este es tu perfil público.</p>
-                ) : signedIn ? (
-                  <ProfileContactDialog slug={profile.slug} name={name} />
-                ) : (
-                  <>
-                    <Link
-                      className="p2-contact-button"
-                      href={`/login?next=${encodeURIComponent("/perfiles/" + profile.slug + "#contact")}`}
-                    >
-                      Contactar ↗
-                    </Link>
-                    <p>Inicia sesión para enviar una consulta privada.</p>
-                  </>
-                )}
-                <p>Tus datos de contacto privados no se comparten al recibir consultas.</p>
-              </>
-            )}
-          </section>
+          {sectionControls.skills}
           <ProfessionalDetails><section className="p2-information">
-            {sectionControls.skills}
             <dl>
               {(p.rate || p.rate_range) && (
                 <div>
@@ -155,14 +141,14 @@ export default function ProfilePortfolio({
               </div>
               {profile.skills.length > 0 && (
                 <div>
-                  <dt>{talent ? "Habilidades en escena" : "Habilidades"}</dt>
-                  <dd>{profile.skills.join(" · ")}</dd>
+                  <dt><ProfileDetailIcon kind="skills" />{talent ? "Habilidades en escena" : "Habilidades"}</dt>
+                  <dd className="p2-detail-chips">{profile.skills.map(skill => <span key={skill}>{skill}</span>)}</dd>
                 </div>
               )}
               {profile.equipment.length > 0 && (
                 <div>
-                  <dt>Equipo / herramientas</dt>
-                  <dd>{profile.equipment.join(" · ")}</dd>
+                  <dt><ProfileDetailIcon kind="equipment" />Equipo / herramientas</dt>
+                  <dd className="p2-detail-chips">{profile.equipment.map(item => <span key={item}>{item}</span>)}</dd>
                 </div>
               )}
             </dl>
@@ -295,6 +281,9 @@ export default function ProfilePortfolio({
             !remaining.length && (
               <p className="p2-empty">El portfolio aún está en preparación.</p>
             )}
+          <ProfileProjectPreferences value={preferences} />
+          <ProfileContactSection slug={profile.slug} name={name} closed={profile.contact_policy === "closed"} owner={owner} preview={preview} signedIn={signedIn} access={contactAccess} />
+          {socialProof}
         </div>
       </div>
       <footer className="p2-footer">

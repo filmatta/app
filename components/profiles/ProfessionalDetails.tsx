@@ -9,6 +9,6 @@ export default function ProfessionalDetails({ children }: { children: ReactNode 
     return () => query.removeEventListener("change", update);
   }, []);
   return <details className="p2-professional-details" open={open} onToggle={e => setOpen(e.currentTarget.open)}>
-    <summary>Información profesional</summary>{children}
+    <summary aria-expanded={open}>{open ? "Ocultar información profesional ↑" : "Ver información profesional ↓"}</summary>{children}
   </details>;
 }

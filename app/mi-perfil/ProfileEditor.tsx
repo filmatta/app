@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import ProfilePortfolio from "@/components/profiles/ProfilePortfolio";
 import ProjectPreferencesDialog from "./ProjectPreferencesDialog";
+import PrivateContactDialog from "./PrivateContactDialog";
+import type { ProjectPreferences } from "@/lib/profiles/project-preferences";
 import PortfolioMedia from "@/components/profiles/PortfolioMedia";
 import {
   EMPTY_PRESENTATION,
@@ -27,10 +29,12 @@ export default function ProfileEditor({
   profile,
   displayName,
   initialItems,
+  initialPreferences,
 }: {
   profile: ProfessionalProfile | null;
   displayName: string;
   initialItems: MediaItem[] | null;
+  initialPreferences: ProjectPreferences | null;
 }) {
   const [draft, setDraft] = useState<ProfessionalProfile>(
     profile ?? {
@@ -50,6 +54,7 @@ export default function ProfileEditor({
     },
   );
   const [items, setItems] = useState(initialItems);
+  const [preferences, setPreferences] = useState(initialPreferences);
   const [bioDraft, setBioDraft] = useState(profile?.bio ?? "");
   const [editing, setEditing] = useState(false),
     [busy, setBusy] = useState(false),
@@ -235,11 +240,12 @@ export default function ProfileEditor({
         }
         preview
         signedIn
+        preferences={preferences}
         sectionControls={{
           identity: section("identity", "identidad"),
           about: section("about", "bio"),
           credits: section("credits", "créditos"),
-          skills: <>{section("skills", "habilidades / equipo")}{editing && <div className="pe-edit-sections"><button type="button" onClick={() => setDialog({ section: "preferences" })}>Preferencias de proyectos · privadas</button><a href="/cuenta#datos-contacto" target="_blank" rel="noopener noreferrer">Editar datos de contacto ↗</a></div>}</>,
+          skills: editing && <div className="pe-professional-actions"><button type="button" onClick={() => setDialog({section:"skills"})}>Editar habilidades / equipo</button><button type="button" onClick={() => setDialog({ section: "preferences" })}>Editar preferencias de proyectos</button><button type="button" onClick={() => setDialog({ section: "contact" })}>Editar datos de contacto</button></div>,
         }}
         media={
           items !== null || editing ? (
@@ -295,7 +301,7 @@ export default function ProfileEditor({
         </details>
       )}
       {dialog &&
-        ("section" in dialog ? (dialog.section === "preferences" ? <ProjectPreferencesDialog close={() => setDialog(null)} /> :
+        ("section" in dialog ? (dialog.section === "preferences" ? <ProjectPreferencesDialog close={() => setDialog(null)} saved={setPreferences} /> : dialog.section === "contact" ? <PrivateContactDialog close={() => setDialog(null)} /> :
           <SectionDialog
             section={dialog.section}
             profile={draft}

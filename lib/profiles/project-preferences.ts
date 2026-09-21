@@ -4,7 +4,7 @@ export const PREFERENCE_GROUPS = {
   participation: { kissing: "Besos", contact: "Contacto físico", intimacy_without_contact: "Intimidad simulada sin contacto", intimacy_with_contact: "Intimidad simulada con contacto", partial_nudity: "Desnudez parcial", nudity: "Desnudez total" },
   conditions: { action: "Acción física / coreografía", prop_weapons: "Armas de utilería", water_heights: "Trabajo en agua o alturas", animals: "Trabajo con animales", night: "Rodaje nocturno", travel: "Desplazamientos" },
 } as const;
-export const PREFERENCE_CHOICES = { unspecified: "Sin especificar", accept: "Acepto", consult: "Consultar", decline: "No acepto" } as const;
+export const PREFERENCE_CHOICES = { unspecified: "Sin especificar", accept: "Sí", consult: "Consultar", decline: "No" } as const;
 export type PreferenceChoice = keyof typeof PREFERENCE_CHOICES;
 export type ProjectPreferences = { formats: string[]; open_formats: boolean } & Record<keyof typeof PREFERENCE_GROUPS, Record<string, PreferenceChoice>>;
 export const EMPTY_PREFERENCES: ProjectPreferences = { formats: [], open_formats: false, themes: {}, participation: {}, conditions: {} };

@@ -21,6 +21,7 @@ export async function sendProfileContact(_previous: ContactActionState, form: Fo
     p_slug: parsed.slug, p_contact_type: parsed.contactType, p_message: parsed.message,
   });
   if (error || typeof id !== "string") {
+    if (error?.code === "PCC01") return { error: "Ya utilizaste tus contactos gratuitos. Consulta Pro en Planes para iniciar nuevos contactos." };
     if (error?.code === "23505") return { error: "Ya enviaste una consulta reciente a este perfil. Revísala en Contactos." };
     if (error?.code === "22023") return { error: "Alcanzaste un límite temporal o el mensaje no es válido. Inténtalo más tarde." };
     return { error: "No pudimos enviar la consulta. El perfil puede no estar disponible para contacto." };

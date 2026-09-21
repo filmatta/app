@@ -14,7 +14,7 @@ export default function ProfileContactDialog({ slug, name, compact = false }: { 
   return <>
     <button type="button" className="p2-contact-button" onClick={() => {
       dialog.current?.showModal(); document.body.style.overflow = "hidden";
-    }}>{compact ? "Contactar ↗" : "Enviar consulta"}</button>
+    }}>{compact ? "Contactar ↗" : "Contactar"}</button>
     <dialog ref={dialog} className="profile-contact-dialog" aria-labelledby={labelId}
       onClose={() => { document.body.style.overflow = ""; }} onClick={event => {
         if (event.target === event.currentTarget) close();

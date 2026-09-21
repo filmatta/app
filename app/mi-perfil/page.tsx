@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { MediaItem } from "@/lib/profiles/media";
 import { redirect } from "next/navigation";
 import ProfileEditor from "./ProfileEditor";
+import { parseProjectPreferences } from "@/lib/profiles/project-preferences";
 import SiteHeader from "@/components/SiteHeader";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getPublicDisplayName } from "@/lib/profiles/display-name";
@@ -28,6 +29,8 @@ export default async function EditProfessionalProfilePage({
     ? await db.rpc("get_profile_media", { p_slug: profile.slug })
     : { data: null, error: null };
   if (media.error) throw new Error("No pudimos cargar tus trabajos.");
+  const preferences = await db.from("profile_private_settings").select("project_preferences,publish_project_preferences").eq("owner_id",viewer.id).maybeSingle();
+  if (preferences.error) throw new Error("No pudimos cargar tus preferencias.");
   return (
     <div className="editorial-page profiles-page">
       <SiteHeader />
@@ -54,6 +57,7 @@ export default async function EditProfessionalProfilePage({
           profile={profile}
           displayName={displayName}
           initialItems={media.data as MediaItem[] | null}
+          initialPreferences={preferences.data?.publish_project_preferences ? parseProjectPreferences(preferences.data.project_preferences) : null}
         />
       </main>
     </div>

@@ -649,7 +649,7 @@
 }
 .pm-screen .profile-image-fallback { font-size: 12px; letter-spacing: .08em; color: #b7c4ca; }
 
-/* One DOM order: identity, bio, contact, portfolio, career. */
+/* One DOM order: identity, bio, availability, portfolio, career, preferences, contact, followers. */
 .p2-about { min-width: 0; }
 @media (min-width: 1024px) {
   .p2-layout { grid-template-rows: auto auto 1fr; }
@@ -662,3 +662,46 @@
   .p2-layout { row-gap: 24px; }
   .p2-about .p2-bio { margin-bottom: 0; }
 }
+
+/* Social/contact foundation stays visually subordinate to the portfolio. */
+.p2-hero { border-bottom: 1px solid #ffffff18; }
+.p2-follow { display: inline-flex; align-items: center; min-height: 36px; padding: 5px 15px; border: 1px solid #b9dceb44; border-radius: 20px; color: #b9dceb; font-size: 12px; margin: 10px 0 2px; transition: background .15s; }
+.p2-follow:hover { background: #b9dceb0d; }
+.p2-follow[aria-pressed="true"] { background: #b9dceb15; }
+.p2-follow:disabled { opacity: .65; }
+.p2-follow-control small { display: block; color: #edb3b3; font-size: 12px; }
+.p2-detail-icon { flex: none; vertical-align: middle; }
+.p2-information dt { display: flex; align-items: center; gap: 8px; }
+.p2-detail-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.p2-detail-chips span { border: 1px solid #ffffff18; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+.p2-foundation-box { border: 1px solid #ffffff1c; border-radius: 6px; background: #ffffff02; padding: 26px; margin-top: 32px; }
+.p2-foundation-box h2 { font-size: 18px; margin-bottom: 22px; color: #eeede6; }
+.p2-foundation-box p { font-size: 14px; color: #b9bfbd; line-height: 1.65; margin: 14px 0; }
+.p2-foundation-box small { display: block; color: #929b9d; font-size: 12px; line-height: 1.6; margin-top: 20px; }
+.p2-preference-formats,.p2-preference-group h3 { display: flex; align-items: center; gap: 9px; }
+.p2-preference-group { margin-top: 26px; }
+.p2-preference-group h3 { font-size: 12px; color: #a9b8bd; margin-bottom: 12px; }
+.p2-preference-group ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); column-gap: 24px; }
+.p2-preference-group li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid #ffffff0d; font-size: 13px; }
+.p2-preference-group li > span { display: flex; align-items: center; gap: 8px; }
+.p2-preference-group strong { flex-shrink: 0; font-size: 12px; font-weight: 500; }
+.p2-preference-group [data-choice="accept"] { color: #95d2ad; }
+.p2-preference-group [data-choice="consult"] { color: #e5c184; }
+.p2-preference-group [data-choice="decline"] { color: #e5a2a2; }
+.p2-pro-link { color: #b9dceb; font-size: 13px; }
+.p2-social-proof { display: flex; align-items: center; gap: 16px; margin: 28px 0 12px; color: #a2abad; font-size: 12px; }
+.p2-social-proof > div { display: flex; gap: 7px; }
+.p2-social-proof a { width: 36px; height: 36px; border-radius: 50%; overflow: hidden; background: #202728; border: 1px solid #ffffff24; }
+.p2-social-proof .profile-image { aspect-ratio: 1; }
+.p2-follower-initial { width: 100%; height: 100%; display: grid; place-items: center; color: #b9dceb; }
+.pe-professional-actions { display: grid; gap: 4px; margin: 18px 0; padding: 10px 0; border-block: 1px solid #ffffff18; }
+.pe-professional-actions button { text-align: left; min-height: 36px; font-size: 12px; color: #b9dceb; padding: 6px 0; }
+.pe-preferences-consent { margin: 20px 0; padding: 16px; border: 1px solid #b9dceb44; border-radius: 4px; }
+.p2-professional-details summary { list-style: none; }
+.p2-professional-details summary::-webkit-details-marker { display: none; }
+.p2-professional-details summary:focus-visible,.p2-follow:focus-visible { outline: 2px solid #b9dceb; outline-offset: 4px; }
+@media(max-width:767px) {
+ .p2-foundation-box { padding: 20px 16px; }
+ .p2-preference-group ul { grid-template-columns: 1fr; }
+}
+@media(prefers-reduced-motion:reduce) { .p2-follow { transition: none; } }
