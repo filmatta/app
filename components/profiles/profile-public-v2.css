@@ -693,6 +693,7 @@
 .p2-social-proof > div { display: flex; gap: 7px; }
 .p2-social-proof a { width: 36px; height: 36px; border-radius: 50%; overflow: hidden; background: #202728; border: 1px solid #ffffff24; }
 .p2-social-proof .profile-image { aspect-ratio: 1; }
+.p2-follower-avatar { width: 100%; height: 100%; display: grid; place-items: center; }
 .p2-social-proof .p2-proof-mobile { display: none; }
 .p2-proof-count { align-self: center; color: #B9DCEB; }
 @media(max-width:600px) { .p2-social-proof .p2-proof-desktop { display: none; } .p2-social-proof .p2-proof-mobile { display: inline; } .p2-social-proof > div { gap: 4px; } .p2-social-proof { gap: 10px; } .p2-social-proof a { width: 32px; height: 32px; } }

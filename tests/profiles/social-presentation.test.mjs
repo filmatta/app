@@ -18,7 +18,7 @@ test('profile contact leaves availability and follows media/career/preferences i
 });
 test('followers use identity only, bounded responsive proof and no visitor analytics',()=>{
   const p=read('components/profiles/ProfileSocialProof.tsx');
-  assert.match(p,/portrait_media_id/);assert.match(p,/portrait_url/);assert.match(p,/p2-follower-initial/);
+  assert.match(p,/portrait_media_id/);assert.match(p,/portrait_url/);assert.match(read('components/profiles/ProfileAvatar.tsx'),/p2-follower-initial/);
   assert.doesNotMatch(p,/reel|cover|mux|visit/i);assert.match(p,/if \(!followers.length\) return null/);
   assert.match(p,/slice\(0,7\)/); assert.match(p,/total-7/); assert.match(p,/total-5/);
 });

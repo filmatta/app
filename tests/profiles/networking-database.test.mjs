@@ -32,7 +32,7 @@ before(async()=>{
     '20260923030000_profile_identity_images_rates.sql','20260923040000_private_profile_contact_bio.sql',
     '20260923050000_profile_preferences_credits.sql','20260923060000_profile_media_attestation_grant.sql',
     '20260923070000_profile_bio_professional_references.sql','20260924010000_profile_reel_cover_projection.sql',
-    '20260924020000_custom_reel_cover.sql','20260924030000_profile_social_contact_foundation.sql','20260924040000_networking_projects_channels.sql','20260924050000_networking_requests_notifications.sql','20260924060000_networking_private_views.sql'
+    '20260924020000_custom_reel_cover.sql','20260924030000_profile_social_contact_foundation.sql','20260924040000_networking_projects_channels.sql','20260924050000_networking_requests_notifications.sql','20260924060000_networking_private_views.sql','20260924070000_networking_outbox_legacy_history.sql'
   ]) await db.exec(fs.readFileSync(`supabase/migrations/${file}`,'utf8'));
   for(let n=1;n<=16;n++) {
     await db.query('insert into auth.users(id) values($1)',[id(n)]);
@@ -124,4 +124,12 @@ test('Pro skips monetary cap but retains daily fair use',async()=>{
  await db.query("insert into admin_plan_grants(user_id,plan,granted_by,reason) values($1,'pro',$1,'Unit QA entitlement')",[id(16)]);
  await as('authenticated',16);for(let n=1;n<=10;n++)await send(n);
  assert.equal((await wallet()).reserved_contacts,0);assert.equal((await wallet()).remaining_contacts,5);await assert.rejects(send(11),/Daily inquiry limit/);
+});
+test('Outbox is private with RLS; legacy history keeps received and sent without new requests',async()=>{
+ await as('postgres');assert.equal((await db.query("select relrowsecurity from pg_class where oid='private.network_email_outbox'::regclass")).rows[0].relrowsecurity,true);
+ await db.query("insert into catalog_inquiries(profile_id,sender_id,recipient_id,message,source_type,contact_type,sender_display_name) values($1,$2,$1,'Consulta anterior sin reserva de créditos','profile','other','QA anterior')",[id(15),id(14)]);
+ await as('authenticated',14);assert.equal((await db.query("select * from list_my_legacy_profile_contacts('sent')")).rows.length,1);
+ await assert.rejects(db.query('select * from private.network_email_outbox'),/permission denied/);
+ await as('authenticated',15);assert.equal((await db.query("select * from list_my_legacy_profile_contacts('received')")).rows.length,1);
+ await as('authenticated',1);assert.equal((await db.query("select * from list_my_legacy_profile_contacts('sent')")).rows.length,0);
 });
