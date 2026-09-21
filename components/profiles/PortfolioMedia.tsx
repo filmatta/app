@@ -9,6 +9,7 @@ import { reelEligible } from "@/lib/profiles/upload-lifecycle";
 import "./portfolio-editor.css";
 
 type Resource = {
+  resourceId?: string;
   image?: string;
   expiresAt?: number;
   playbackId?: string;
@@ -17,7 +18,7 @@ type Resource = {
 export function useResource(id: string | null) {
   const ref = useRef<HTMLDivElement>(null);
   const [resource, setResource] = useState<Resource | null>(null);
-  const [error, setError] = useState(false);
+  const [errorId, setErrorId] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!id || !ref.current) return;
@@ -33,14 +34,14 @@ export function useResource(id: string | null) {
         observer.disconnect();
         fetch(`/api/portfolio/media/${id}/resource`, {
           cache: "no-store",
-          signal: controller.signal,
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]),
         })
           .then(async (r) => {
             if (!r.ok) throw new Error();
             const result = await r.json();
             if (live) {
-              setResource(result);
-              setError(false);
+              setResource({ ...result, resourceId: id });
+              setErrorId(null);
               expiresAt = result.expiresAt ?? 0;
               if (result.expiresAt) refresh = setTimeout(() => {
                 if (document.visibilityState === "visible") setAttempt(a => a + 1);
@@ -48,7 +49,7 @@ export function useResource(id: string | null) {
             }
           })
           .catch(() => {
-            if (live) setError(true);
+            if (live) setErrorId(id);
           });
       },
       { rootMargin: "250px" },
@@ -62,7 +63,7 @@ export function useResource(id: string | null) {
       observer.disconnect();
     };
   }, [id, attempt]);
-  return { ref, resource, error, retry: () => setAttempt((a) => a + 1) };
+  return { ref, resource: resource?.resourceId === id ? resource : null, error: Boolean(id && errorId === id), retry: () => { setErrorId(null); setAttempt((a) => a + 1); } };
 }
 export function MediaVisual({
   item,
@@ -74,11 +75,13 @@ export function MediaVisual({
   openImage?: () => void;
 }) {
   const stored = item.source !== "external" && item.status === "ready";
-  const { ref, resource, error, retry } = useResource(stored ? item.id : null);
+  const external = reelSource(item.url);
+  const needsResource = stored || (item.category === "work" && external?.provider === "Vimeo");
+  const { ref, resource, error, retry } = useResource(needsResource ? item.id : null);
   const [playing, setPlaying] = useState(false);
   const [visualError, setVisualError] = useState("");
-  const external = reelSource(item.url);
-  const { ref: thumbRef, resource: thumbnailResource } = useResource(
+  const [failedPoster, setFailedPoster] = useState<string | null>(null);
+  const { ref: thumbRef, resource: thumbnailResource, error: thumbnailError } = useResource(
     override?.source === "storage" ? override.id : null,
   );
   const poster =
@@ -87,7 +90,7 @@ export function MediaVisual({
   const automaticPoster =
     item.category === "reel"
       ? undefined
-      : external?.thumbnail ||
+      : external?.thumbnail || resource?.image ||
         (resource?.playbackId && resource.tokens
           ? `https://image.mux.com/${resource.playbackId}/thumbnail.jpg?token=${encodeURIComponent(resource.tokens.thumbnail)}`
           : undefined);
@@ -111,12 +114,14 @@ export function MediaVisual({
     <div
       ref={ref}
       className={`pm-screen ${item.category === "book" ? "pm-screen--portrait" : ""}`}
-      style={item.media_type === "video" && item.aspect_ratio ? { aspectRatio: item.aspect_ratio.replace(":", "/") } : item.media_type === "image" ? { aspectRatio: item.image_crop?.frame === "square" ? "1" : item.image_crop?.frame === "portrait" ? "4/5" : item.image_crop?.frame === "landscape" ? "3/2" : item.image_width && item.image_height ? `${item.image_width}/${item.image_height}` : "4/5" } : undefined}
+      style={item.media_type === "video" && item.aspect_ratio ? { aspectRatio: item.aspect_ratio.replace(":", "/") } : item.media_type === "image" ? { aspectRatio: "4/5" } : undefined}
     >
       <div ref={thumbRef} />
       {item.media_type === "image" ? (
         <><ProfileImage
           src={item.source === "external" ? item.url : resource?.image}
+          pending={stored && !resource && !error}
+          error={error}
           alt={item.title}
           onError={() => setVisualError("No se pudo cargar la imagen. Renueva el acceso para reintentar.")}
           imageStyle={item.image_crop ? { objectPosition: `${item.image_crop.x}% ${item.image_crop.y}%`, transform: `scale(${item.image_crop.zoom})`, transformOrigin: `${item.image_crop.x}% ${item.image_crop.y}%` } : undefined}
@@ -145,9 +150,11 @@ export function MediaVisual({
       ) : (
         <>
           <ProfileImage
-            src={poster || automaticPoster}
+            src={poster && poster !== failedPoster ? poster : automaticPoster}
+            pending={Boolean(!poster && ((override?.source === "storage" && !thumbnailResource && !thumbnailError) || (item.category !== "reel" && needsResource && !resource && !error)))}
+            error={Boolean(error && item.category !== "reel")}
             alt=""
-            onError={() => setVisualError("La miniatura no está disponible. Puedes reintentar o reproducir el video.")}
+            onError={() => { if (poster && poster !== failedPoster && automaticPoster) setFailedPoster(poster); else setVisualError("La miniatura no está disponible. Puedes reintentar o reproducir el video."); }}
             fallback={item.category === "reel" ? "REEL" : item.source === "mux" ? "VIDEO" : "TRABAJO"}
           />
           {external || item.source === "mux" ? (
@@ -276,7 +283,7 @@ export default function PortfolioMedia({
               {group.map((item, index) => (
                 <figure
                   key={item.id}
-                  className={`pm-piece ${category === "book" ? `pm-piece--${bookShape(item)}` : ""} ${item.featured || (category === "reel" && index === 0) ? "pm-piece--featured" : ""} ${item.visibility === "hidden" ? "pm-piece--hidden" : ""}`}
+                  className={`pm-piece ${item.featured || (category === "reel" && index === 0) ? "pm-piece--featured" : ""} ${item.visibility === "hidden" ? "pm-piece--hidden" : ""}`}
                 >
                   <MediaVisual
                     item={item}
@@ -380,18 +387,6 @@ export default function PortfolioMedia({
   );
 }
 
-function bookShape(item: MediaItem) {
-  if (item.image_crop?.frame === "portrait") return "portrait";
-  if (item.image_crop?.frame === "square") return "square";
-  if (item.image_crop?.frame === "landscape") return "landscape";
-  if (item.image_width && item.image_height) {
-    const ratio = item.image_width / item.image_height;
-    if (ratio > 1.18) return "landscape";
-    if (ratio >= 0.9) return "square";
-  }
-  return "portrait";
-}
-
 function BookLightbox({ items, id, select, close }: { items: MediaItem[]; id: string; select: (id: string) => void; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const index = items.findIndex(i => i.id === id);
@@ -405,7 +400,7 @@ function BookLightbox({ items, id, select, close }: { items: MediaItem[]; id: st
     if (e.key === "ArrowRight") { e.preventDefault(); move(1); }
   }}>
     <header><p>Book</p><button type="button" onClick={close} aria-label="Cerrar imagen">×</button></header>
-    <div ref={ref} className="pm-full-image"><ProfileImage src={item.source === "external" ? item.url : resource?.image} alt={item.description || item.title} eager />{error && <button onClick={retry}>Reintentar imagen</button>}</div>
+    <div ref={ref} className="pm-full-image"><ProfileImage src={item.source === "external" ? item.url : resource?.image} pending={item.source === "storage" && !resource && !error} error={error} alt={item.description || item.title} eager />{error && <button onClick={retry}>Reintentar imagen</button>}</div>
     <div className="pm-lightbox-details"><h2 id="pm-lightbox-title">{item.title}</h2>{(item.role || item.year) && <p>{[item.role, item.year].filter(Boolean).join(" · ")}</p>}{item.description && <p>{item.description}</p>}</div>
     <footer><button onClick={() => move(-1)} aria-label="Imagen anterior">←</button><p>{index + 1} / {items.length}</p><button onClick={() => move(1)} aria-label="Imagen siguiente">→</button></footer>
   </dialog>;

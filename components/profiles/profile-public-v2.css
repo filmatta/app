@@ -647,4 +647,18 @@
  .p2-contact .p2-contact-button { margin-top: 8px; }
  .p2-professional-details summary { padding: 9px 0; font-size: 12px; }
 }
-.pm-screen .profile-image-fallback { font-size: 12px; letter-spacing: .16em; color: #b7c4ca; }
+.pm-screen .profile-image-fallback { font-size: 12px; letter-spacing: .08em; color: #b7c4ca; }
+
+/* One DOM order: identity, bio, contact, portfolio, career. */
+.p2-about { min-width: 0; }
+@media (min-width: 1024px) {
+  .p2-layout { grid-template-rows: auto auto 1fr; }
+  .p2-about { grid-column: 1; grid-row: 2; }
+  .p2-main { grid-column: 1; grid-row: 3; }
+  .p2-aside { grid-column: 2; grid-row: 2 / 4; position: sticky; top: 24px; align-self: start; max-height: calc(100dvh - 48px); overflow-y: auto; }
+}
+@media (max-width: 1023px) {
+  .p2-layout > .p2-about, .p2-layout > .p2-aside, .p2-layout > .p2-main { grid-column: auto; grid-row: auto; }
+  .p2-layout { row-gap: 24px; }
+  .p2-about .p2-bio { margin-bottom: 0; }
+}

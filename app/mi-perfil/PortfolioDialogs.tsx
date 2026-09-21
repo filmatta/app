@@ -512,7 +512,7 @@ export function WorkDialog({
               </select>
               <small>
                 {item.category === "reel"
-                  ? "Elige una imagen de tu Book. Se usará en el catálogo y antes de reproducir el reel; el video permanece separado."
+                  ? "Elige una imagen de tu Book como portada del reel en tu perfil. Tu foto de perfil y las portadas de otros videos son independientes."
                   : "Para usar otro still, añádelo como imagen y selecciónalo aquí."}
               </small>
             </label>

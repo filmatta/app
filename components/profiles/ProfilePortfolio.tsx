@@ -99,6 +99,10 @@ export default function ProfilePortfolio({
           {visual && <><a href="#reel">Reel</a><a href="#videos">Videos</a><a href="#book">Book</a></>}
           {(p.credits.length > 0 || preview) && <a href="#credits">Trayectoria</a>}
         </nav>
+        {(profile.bio || sectionControls.about) && <div className="p2-about">
+          {sectionControls.about}
+          {profile.bio && <ProfileBio text={profile.bio} />}
+        </div>}
         <aside className="p2-aside">
           <div className="p2-availability" data-state={profile.availability}>
             <span aria-hidden="true">●</span> {AVAILABILITY_LABELS[profile.availability]}
@@ -166,8 +170,6 @@ export default function ProfilePortfolio({
           {!preview && <ShareProfile slug={profile.slug} />}
         </aside>
         <div className="p2-main">
-          {sectionControls.about}
-          {profile.bio && <ProfileBio text={profile.bio} />}
           {media}
           {media === undefined && visual && (
             <section className="p2-portfolio" id="portfolio">

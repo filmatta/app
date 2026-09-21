@@ -4,13 +4,13 @@ import test from "node:test";
 
 const read = (file) => fs.readFileSync(file, "utf8");
 
-test("Book is an editorial mosaic and keeps metadata in the lightbox", () => {
+test("Book has uniform three-column thumbnails and keeps metadata in the lightbox", () => {
   const component = read("components/profiles/PortfolioMedia.tsx");
   const css = read("components/profiles/portfolio-editor.css");
-  assert.match(component, /pm-piece--\$\{bookShape\(item\)\}/);
+  assert.doesNotMatch(component, /bookShape/);
   assert.match(component, /pm-lightbox-details/);
   assert.match(component, /aria-labelledby="pm-lightbox-title"/);
-  assert.match(css, /grid-template-columns: repeat\(12/);
+  assert.match(css, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
   assert.match(css, /pm-portfolio:not\(\.pm-portfolio--editing\).*figcaption/);
 });
 
@@ -28,17 +28,17 @@ test("reels use a curated cover while preserving the signed player", () => {
 test("catalog identity order never promotes a reel frame", () => {
   const card = read("components/profiles/ProfileCard.tsx");
   assert.match(card, /p\.portrait_media_id/);
-  assert.match(card, /p\.reel_cover_media_id \|\| p\.cover_media_id/);
+  assert.doesNotMatch(card, /reel_cover_media_id|cover_media_id/);
+  assert.match(card, /!talent &&/);
   assert.doesNotMatch(card, /reelSource/);
   assert.doesNotMatch(card, /p\.book\[0\]/);
 });
 
-test("profile layout places contact before content on mobile and aligns desktop grid rows", () => {
+test("profile DOM order preserves bio then contact then media on mobile", () => {
   const component = read("components/profiles/ProfilePortfolio.tsx");
   const css = read("components/profiles/profile-public-v2.css");
   assert.ok(component.indexOf('<aside className="p2-aside">') < component.indexOf('<div className="p2-main">'));
-  assert.match(css, /\.p2-aside \{ grid-row: 1; \}/);
-  assert.match(css, /\.p2-main \{ grid-row: 2; \}/);
-  assert.match(css, /\.p2-aside \{ grid-column: 2; grid-row: 2; \}/);
+  assert.ok(component.indexOf('<ProfileBio text={profile.bio}') < component.indexOf('<aside className="p2-aside">'));
+  assert.match(css, /position: sticky; top: 24px/);
   assert.match(css, /row-gap: 0/);
 });

@@ -14,8 +14,7 @@ export default function ProfileCard({
   const reel = leadReel(profile.portfolio_items),
     p = profile.presentation;
   const identityUrl = p.portrait_url || null;
-  const imageId = p.portrait_media_id ||
-    (!identityUrl ? p.reel_cover_media_id || p.cover_media_id : null);
+  const imageId = p.portrait_media_id;
   return (
     <Link
       href={`/perfiles/${profile.slug}`}
@@ -27,9 +26,9 @@ export default function ProfileCard({
         {!imageId && !identityUrl && <ProfileImage
           src={null}
           alt=""
-          fallback={(p.stage_name || profile.display_name).slice(0, 1)}
+          fallback="Sin foto de perfil"
         />}
-        {(reel || p.book.length > 0) && (
+        {!talent && (reel || p.book.length > 0) && (
           <span className="profile-card-material">
             {reel ? "▷ Reel" : "Book"}
             {reel && p.book.length > 0 ? " / Book" : ""}

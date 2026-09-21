@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createValidatedMuxContext } from "@/lib/mux/server";
 import { assertMuxEnvironmentProvenance } from "@/lib/mux/provenance";
+import { reelSource } from "@/lib/profiles/presentation";
 export const runtime = "nodejs";
 export async function GET(
   _request: Request,
@@ -45,6 +46,7 @@ export async function GET(
         mux.jwt.signPlaybackId(resource.mux_playback_id, {
           ...opts,
           type: "thumbnail",
+          params: { time: "3" },
         }),
       ]);
       return Response.json(
@@ -55,6 +57,15 @@ export async function GET(
         },
         { headers },
       );
+    }
+    const video = reelSource(resource.url);
+    if (video?.provider === "Vimeo") {
+      const response = await fetch(`https://vimeo.com/api/oembed.json?url=${encodeURIComponent(resource.url)}`, { signal: AbortSignal.timeout(8000), next: { revalidate: 3600 } });
+      if (!response.ok) throw new Error("Unavailable");
+      const metadata = await response.json();
+      const image = new URL(metadata.thumbnail_url);
+      if (image.protocol !== "https:" || !(image.hostname === "vimeocdn.com" || image.hostname.endsWith(".vimeocdn.com"))) throw new Error("Unavailable");
+      return Response.json({ image: image.href }, { headers });
     }
     return Response.json({ image: resource.url }, { headers });
   } catch {
