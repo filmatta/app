@@ -106,7 +106,7 @@ export function getPrimaryNavigation(authenticated: boolean): NavigationItem[] {
 
 export function getAccountNavigation(role: string): NavigationLink[] {
   return [
-    { label: "Mi cuenta", href: "/cuenta" },
+    { label: "Mi cuenta", href: "/mi-cuenta" },
     { label: "Mi perfil profesional", href: "/mi-perfil" },
     { label: "Contactos", href: "/cuenta/contactos" },
     { label: "Mi red", href: "/mi-red" },

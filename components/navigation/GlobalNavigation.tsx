@@ -104,6 +104,7 @@ export function AccountNavigation({ role, displayName, portrait }: { role: strin
       </div>
       <div className="account-menu-section">
         <p className="account-menu-heading">Cuenta</p>
+        {accountLink(accountLinks.find(item => item.href === "/mi-cuenta")!, "Mi cuenta")}
         {accountLink(settings, "Configuración / cuenta")}
         <form action={logout}>
           <LoadingButton type="submit" loadingText="Saliendo…" className="account-menu-link account-signout w-full">Cerrar sesión</LoadingButton>

@@ -31,7 +31,7 @@ before(async()=>{
     '20260923030000_profile_identity_images_rates.sql','20260923040000_private_profile_contact_bio.sql',
     '20260923050000_profile_preferences_credits.sql','20260923060000_profile_media_attestation_grant.sql',
     '20260923070000_profile_bio_professional_references.sql','20260924010000_profile_reel_cover_projection.sql',
-    '20260924020000_custom_reel_cover.sql','20260924030000_profile_social_contact_foundation.sql','20260924040000_networking_projects_channels.sql','20260924050000_networking_requests_notifications.sql','20260924060000_networking_private_views.sql','20260924070000_networking_outbox_legacy_history.sql','20260925010000_networking_ui_metadata.sql'
+    '20260924020000_custom_reel_cover.sql','20260924030000_profile_social_contact_foundation.sql','20260924040000_networking_projects_channels.sql','20260924050000_networking_requests_notifications.sql','20260924060000_networking_private_views.sql','20260924070000_networking_outbox_legacy_history.sql','20260925010000_networking_ui_metadata.sql','20260925020000_authorized_project_view.sql'
   ]) await db.exec(fs.readFileSync(`supabase/migrations/${file}`,'utf8'));
   for(let n=1;n<=16;n++) {
     await db.query('insert into auth.users(id) values($1)',[id(n)]);
@@ -158,4 +158,29 @@ test('Notification metadata exposes only published actor portraits and authorize
  const expiring=own.find(n=>n.type==='contact_request_expiring');
  assert.equal(expiring.has_actor,false);assert.equal(expiring.portrait_media_id,null);
  await as('anon');await assert.rejects(db.query('select get_my_network_notifications()'),/permission denied/);
+});
+
+test('authorized Project view: owner, live pending, accepted history, consent, expiration and outsider denial',async()=>{
+ await as('authenticated',1);
+ const slug=(await db.query('select slug from projects where id=$1',[project])).rows[0].slug;
+ const view=async()=> (await db.query('select get_authorized_networking_project($1) r',[slug])).rows[0].r;
+ assert.equal((await view()).is_owner,true);
+ const snapshot=(await detail(request)).project_snapshot;
+ await as('authenticated',2);let shared=await view();assert.equal(shared.is_owner,false);assert.equal(shared.client_name,'');assert.equal(shared.title,'Otro título');
+ assert.ok(!('owner_id' in shared));assert.ok(!JSON.stringify(shared).includes('private_qa'));
+ assert.equal((await detail(request)).project_slug,slug);
+ assert.equal((await db.query('select id from projects where id=$1',[project])).rows.length,0);
+ await assert.rejects(db.query('select save_my_networking_project($1,$2)',[project,projectData]),/unavailable/);
+ await as('authenticated',1);
+ await db.query('select save_my_networking_project($1,$2)',[project,{...projectData,title:'Versión actual',share_client_name:true,operational_status:'inactive',status:'archived'}]);
+ await as('authenticated',2);shared=await view();assert.equal(shared.status,'archived');assert.equal(shared.operational_status,'inactive');assert.equal(shared.client_name,'Cliente privado');assert.deepEqual((await detail(request)).project_snapshot,snapshot);
+ await as('authenticated',3);assert.equal(await view(),null);
+ await as('anon');await assert.rejects(db.query('select get_authorized_networking_project($1)',[slug]),/permission denied/);
+ // A separate pending request has access only while it remains valid.
+ await as('authenticated',14);const pid=(await db.query('select save_my_networking_project(null,$1) id',[projectData])).rows[0].id;
+ const ps=(await db.query('select slug from projects where id=$1',[pid])).rows[0].slug;
+ const rid=(await db.query("select send_profile_contact_request('person-13','other','Una invitación profesional para producción.', $1) id",[pid])).rows[0].id;
+ await as('authenticated',13);assert.equal((await db.query('select get_authorized_networking_project($1) r',[ps])).rows[0].r.title,projectData.title);
+ await as('postgres');await db.query("update catalog_inquiries set created_at=now()-interval '49 hours',expires_at=now()-interval '1 hour' where id=$1",[rid]);
+ await as('authenticated',13);assert.equal((await db.query('select get_authorized_networking_project($1) r',[ps])).rows[0].r,null);
 });

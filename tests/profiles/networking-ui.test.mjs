@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 const read=p=>fs.readFileSync(p,'utf8');
-test('project create navigates only after successful save; edits keep their context',()=>{
+test('project create and edit redirect after save; archive remains separate',()=>{
   const code=read('components/networking/ProjectForm.tsx');
   assert.ok(code.indexOf('if (!value.roles.length)')<code.indexOf('await saveNetworkingProject'));
   assert.match(code,/Selecciona al menos una opción/);
-  assert.match(code,/else if \(!initial\) \{ router.push\("\/mis-proyectos\?created=1"\)/);
+  assert.match(code,/router.push\(initial \? "\/mis-proyectos\?saved=1" : "\/mis-proyectos\?created=1"\)/);
   assert.match(code,/setSaved\(n => n \+ 1\)/);
   assert.match(read('app/proyectos/page.tsx'),/Proyecto creado/);
 });

@@ -6,7 +6,7 @@ import AppNavigationSidebar, {
 export default function AccountNavigationSidebar() {
   return (
     <AppNavigationSidebar currentArea="account">
-      <WorkspaceNavigationGroup label="Tu espacio">
+      <WorkspaceNavigationGroup label="Tu espacio"><WorkspaceNavigationLink href="/mi-cuenta">Mi cuenta · Dashboard</WorkspaceNavigationLink>
         <WorkspaceNavigationLink href="/cuenta#mis-cursos">
           Mis cursos
         </WorkspaceNavigationLink>

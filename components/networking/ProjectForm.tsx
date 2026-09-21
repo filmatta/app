@@ -13,7 +13,7 @@ import "./networking.css";
 
 export default function ProjectForm({ initial, onSaved, onCancel }: { initial?: Project; onSaved?: (project: Project) => void; onCancel?: () => void }) {
   const router = useRouter(), [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const [value, setValue] = useState({ title: initial?.title ?? "", summary: initial?.summary ?? "", project_type: initial?.project_type ?? "Cortometraje", client_name: initial?.client_name ?? "", client_type: initial?.client_type ?? "Proyecto personal", city: initial?.city ?? "", work_area: initial?.work_area ?? "", shooting_schedule: initial?.shooting_schedule ?? "day", economic_mode: initial?.economic_mode ?? "undecided", date_window: initial?.date_window ?? "", operational_status: initial?.operational_status ?? "active", status: initial?.status ?? "draft", roles: initial?.roles ?? [], requirements: initial?.requirements ?? { themes: [], participation: [], conditions: [] } as Requirements });
+  const [value, setValue] = useState({ title: initial?.title ?? "", summary: initial?.summary ?? "", project_type: initial?.project_type ?? "Cortometraje", client_name: initial?.client_name ?? "", share_client_name: initial?.share_client_name ?? false, client_type: initial?.client_type ?? "Proyecto personal", city: initial?.city ?? "", work_area: initial?.work_area ?? "", shooting_schedule: initial?.shooting_schedule ?? "day", economic_mode: initial?.economic_mode ?? "undecided", date_window: initial?.date_window ?? "", operational_status: initial?.operational_status ?? "active", status: initial?.status ?? "draft", roles: initial?.roles ?? [], requirements: initial?.requirements ?? { themes: [], participation: [], conditions: [] } as Requirements });
   const [baseline, setBaseline] = useState(JSON.stringify(value)), dirty = JSON.stringify(value) !== baseline;
   const leaving = useRef<(() => void) | null>(null), confirm = useRef<HTMLDialogElement>(null), [rolesOpen, setRolesOpen] = useState(false), [saved, setSaved] = useState(0);
   useEffect(() => {
@@ -43,8 +43,8 @@ export default function ProjectForm({ initial, onSaved, onCancel }: { initial?: 
           const persisted = { ...next, requirements: result.data.requirements, roles: result.data.roles };
           setBaseline(JSON.stringify(persisted)); setValue(persisted);
           if (onSaved) onSaved(result.data);
-          else if (!initial) { router.push("/mis-proyectos?created=1"); router.refresh(); }
-          else { setSaved(n => n + 1); router.refresh(); }
+          else if (action === "archive" || action === "restore") { setSaved(n => n + 1); router.refresh(); }
+          else { router.push(initial ? "/mis-proyectos?saved=1" : "/mis-proyectos?created=1"); router.refresh(); }
         }
       } catch { setError("No pudimos guardar. Tus cambios siguen aquí."); } finally { setBusy(false); }
     }}>
@@ -56,6 +56,7 @@ export default function ProjectForm({ initial, onSaved, onCancel }: { initial?: 
         <label>Nombre del proyecto<input name="title" required maxLength={160} value={value.title} onChange={e => set("title", e.target.value)} /></label>
         {single("Tipo de proyecto", "project_type", Object.fromEntries(PROJECT_TYPES.map(v => [v, v])))}
         <div className="network-fields"><label>Cliente o artista (opcional)<input name="client_name" maxLength={120} value={value.client_name} onChange={e => set("client_name", e.target.value)} /></label><label>Tipo de cliente<select name="client_type" value={value.client_type} onChange={e => set("client_type", e.target.value)}>{CLIENT_TYPES.map(v => <option key={v}>{v}</option>)}</select></label></div>
+        <SelectionRow checked={value.share_client_name} onChange={e => setValue(current => ({ ...current, share_client_name: e.target.checked }))}>Mostrar el nombre del cliente o artista a los receptores autorizados</SelectionRow>
         <label>Descripción breve<textarea name="summary" maxLength={500} rows={3} value={value.summary} onChange={e => set("summary", e.target.value)} /></label>
       </section>
       <section className="network-form-block"><h2>Producción</h2><div className="network-fields"><label>Ciudad<input name="city" maxLength={80} value={value.city} onChange={e => set("city", e.target.value)} /></label><label>Zona de trabajo<input name="work_area" maxLength={80} value={value.work_area} onChange={e => set("work_area", e.target.value)} /></label></div>

@@ -709,3 +709,5 @@
  .p2-preference-group ul { grid-template-columns: 1fr; }
 }
 @media(prefers-reduced-motion:reduce) { .p2-follow { transition: none; } }
+
+.p2-availability{margin-bottom:18px}

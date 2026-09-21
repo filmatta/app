@@ -129,22 +129,22 @@ export default async function CuentaPage({
       >
       <section className="mx-auto max-w-7xl py-10 lg:py-16">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
-          FILMATTA Learn
+          CUENTA / CONFIGURACIÓN Y APRENDIZAJE
         </p>
         <div className="mt-4 flex flex-col justify-between gap-5 md:flex-row md:items-end">
           <div>
-            <h1 className="text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">
-              Hola, {viewer.displayName}.
+            <h1 className="text-2xl font-semibold tracking-[-0.04em] sm:text-3xl">
+              Tu cuenta
             </h1>
             {viewer.email && (
               <p className="mt-3 text-sm text-white/35">{viewer.email}</p>
             )}
           </div>
           <Link
-            href="/cursos"
+            href="/mi-cuenta"
             className="w-fit rounded-full border border-white/15 px-5 py-3 text-sm font-medium text-white/75 transition hover:bg-white/[0.06] hover:text-white"
           >
-            Descubrir cursos
+            Ir a Mi cuenta →
           </Link>
         </div>
 
