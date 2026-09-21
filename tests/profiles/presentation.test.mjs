@@ -49,6 +49,21 @@ test("presentation strips extra keys and rejects unsafe media, oversized or inva
   ])
     assert.equal(p.parsePresentation({ ...value, ...patch }), null);
 });
+test("public presentation accepts a separate validated reel cover id", () => {
+  const id = "11111111-2222-4333-8444-555555555555";
+  const parsed = p.parsePresentation({
+    ...p.EMPTY_PRESENTATION,
+    reel_cover_media_id: id,
+  });
+  assert.equal(parsed.reel_cover_media_id, id);
+  assert.equal(
+    p.parsePresentation({
+      ...p.EMPTY_PRESENTATION,
+      reel_cover_media_id: "not-an-id",
+    }),
+    null,
+  );
+});
 test("completion has explicit criteria; equipment and optional rate do not penalize talent", () => {
   const profile = {
     disciplines: [],

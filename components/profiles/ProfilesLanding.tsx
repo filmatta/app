@@ -11,6 +11,8 @@ export default function ProfilesLanding({
 }) {
   const landing = landings[talent ? "talento" : "perfiles"];
   const createHref = landingActionHref("/mi-perfil", signedIn);
+  const catalogHref = talent ? "/talento" : "/perfiles";
+  const catalogLabel = talent ? "Buscar talento" : "Explorar profesionales";
   return (
     <div className="editorial-page profiles-page">
       <SiteHeader />
@@ -27,10 +29,10 @@ export default function ProfilesLanding({
                 {landing.primary.label} ↗
               </Link>
               <Link
-                href={landing.secondary.href}
+                href={catalogHref}
                 className="editorial-secondary"
               >
-                {landing.secondary.label} →
+                {catalogLabel} →
               </Link>
             </div>
             <p className="profiles-hero-note">
@@ -157,6 +159,9 @@ export default function ProfilesLanding({
             <Link className="editorial-secondary" href={createHref}>
               Preparar mi perfil →
             </Link>
+            <Link className="profiles-catalog-link" href={catalogHref}>
+              {catalogLabel} ↗
+            </Link>
           </div>
         </section>
         <section className="editorial-container profiles-ecosystem">
@@ -208,9 +213,14 @@ export default function ProfilesLanding({
               ? "Que te vean como te presentas."
               : "Dale a tu trabajo su propio espacio."}
           </h2>
-          <Link className="editorial-primary" href={createHref}>
-            {landing.primary.label} ↗
-          </Link>
+          <div className="editorial-actions">
+            <Link className="editorial-primary" href={createHref}>
+              {landing.primary.label} ↗
+            </Link>
+            <Link className="editorial-secondary" href={catalogHref}>
+              {catalogLabel} →
+            </Link>
+          </div>
         </section>
       </main>
       <footer className="editorial-container editorial-footer">

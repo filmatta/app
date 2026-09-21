@@ -34,8 +34,13 @@ export function getPrimaryNavigation(authenticated: boolean): NavigationItem[] {
           ? [
               {
                 label: "Talento",
-                href: destination("talento", "/talento"),
+                href: "/descubre/talento",
                 description: "Actuación y modelaje, con una misma identidad.",
+              },
+              {
+                label: "Buscar talento",
+                href: "/talento",
+                description: "Ir directamente al catálogo de talento.",
               },
             ]
           : []),

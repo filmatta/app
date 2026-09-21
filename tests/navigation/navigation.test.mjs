@@ -13,6 +13,7 @@ test("session navigation preserves hierarchy and unique destinations", () => {
     assert.equal(items.filter((item) => item.label === "Talento").length, 0);
     const routes = items.flatMap((item) => item.children ?? [item]);
     assert.equal(new Set(routes.map((item) => item.href)).size, routes.length);
+    assert.ok(routes.some((item) => item.label === "Buscar talento" && item.href === "/talento"));
   }
 });
 test("account navigation uses exact server role and existing account routes", () => {

@@ -180,13 +180,17 @@
 }
 .p2-main {
   min-width: 0;
+  grid-column: 1;
+  grid-row: 3;
 }
 .p2-nav {
   display: flex;
   gap: 26px;
   border-bottom: 1px solid #ffffff28;
-  margin-bottom: 20px;
+  margin-bottom: 0;
   flex-wrap: wrap;
+  grid-column: 1;
+  grid-row: 1;
 }
 .p2-nav a {
   display: flex;
@@ -413,6 +417,8 @@
 }
 .p2-aside {
   align-self: start;
+  grid-column: 1;
+  grid-row: 2;
   padding: 20px;
   border: 1px solid #ffffff20;
   border-radius: 5px;
@@ -475,7 +481,11 @@
   }
   .p2-aside {
     margin-top: 0;
+    grid-column: 2;
+    grid-row: 2;
   }
+  .p2-main { grid-column: 1; grid-row: 2; }
+  .p2-nav { margin-bottom: 0; }
 }
 @media (min-width: 1440px) {
   .p2-cover {
@@ -514,8 +524,10 @@
     gap: 20px;
   }
   .p2-nav {
-    gap: 22px;
+    display: none;
   }
+  .p2-aside { grid-row: 1; }
+  .p2-main { grid-row: 2; }
   .p2-feature--multiple {
     grid-template-columns: 1fr;
   }
@@ -588,9 +600,8 @@
   }
 }
 
-/* Navigation and sidebar share the same grid row, independently of identity height. */
+/* The nav owns the first row; content and contact begin together below its rule. */
 .p2-layout { gap: 24px; align-items: start; }
-.p2-aside { grid-row: 1; }
 .p2-bio { margin: 0 0 28px; padding: 18px 0; border-top: 0; }
 .p2-availability { color: #b5bbbe; display: flex; gap: 9px; align-items: center; font-size: 13px; }
 .p2-availability[data-state="available"] { color: #95d2ad; }
@@ -603,8 +614,9 @@
 .profile-public-v2 .p2-feature--multiple > .profile-reel .profile-reel-screen,
 .profile-public-v2 .p2-secondary .profile-reel-screen { aspect-ratio: 16/9; }
 @media(min-width:1024px) {
- .p2-main { grid-column: 1; grid-row: 1; }
- .p2-aside { grid-column: 2; grid-row: 1; }
+ .p2-main { grid-column: 1; grid-row: 2; }
+ .p2-aside { grid-column: 2; grid-row: 2; }
+ .p2-nav { grid-column: 1; grid-row: 1; margin-bottom: 0; }
 }
 
 /* Explicit panoramic cover, separate from the readable identity row. */

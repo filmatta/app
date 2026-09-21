@@ -84,6 +84,13 @@ export function MediaVisual({
   const poster =
     thumbnailResource?.image ||
     (override?.source === "external" ? override.url : undefined);
+  const automaticPoster =
+    item.category === "reel"
+      ? undefined
+      : external?.thumbnail ||
+        (resource?.playbackId && resource.tokens
+          ? `https://image.mux.com/${resource.playbackId}/thumbnail.jpg?token=${encodeURIComponent(resource.tokens.thumbnail)}`
+          : undefined);
   if (item.status !== "ready")
     return (
       <div className="pm-screen pm-processing" role="status">
@@ -138,16 +145,10 @@ export function MediaVisual({
       ) : (
         <>
           <ProfileImage
-            src={
-              poster ||
-              external?.thumbnail ||
-              (resource?.playbackId && resource.tokens
-                ? `https://image.mux.com/${resource.playbackId}/thumbnail.jpg?token=${encodeURIComponent(resource.tokens.thumbnail)}`
-                : undefined)
-            }
+            src={poster || automaticPoster}
             alt=""
             onError={() => setVisualError("La miniatura no está disponible. Puedes reintentar o reproducir el video.")}
-            fallback={item.source === "mux" ? "VIDEO" : "TRABAJO"}
+            fallback={item.category === "reel" ? "REEL" : item.source === "mux" ? "VIDEO" : "TRABAJO"}
           />
           {external || item.source === "mux" ? (
             <button
@@ -208,7 +209,7 @@ export default function PortfolioMedia({
   const categories: MediaCategory[] = ["reel", "work", "book"];
   const groups = portfolioGroups(visible);
   return (
-    <div className="pm-portfolio" id="portfolio">
+    <div className={`pm-portfolio ${controls ? "pm-portfolio--editing" : ""}`} id="portfolio">
       {expanded && <BookLightbox items={groups.book.filter(i => i.status === "ready")} id={expanded} select={setExpanded} close={() => setExpanded(null)} />}
       {categories.map((category) => {
         const group = groups[category];
@@ -275,7 +276,7 @@ export default function PortfolioMedia({
               {group.map((item, index) => (
                 <figure
                   key={item.id}
-                  className={`pm-piece ${item.featured || (category === "reel" && index === 0) ? "pm-piece--featured" : ""} ${item.visibility === "hidden" ? "pm-piece--hidden" : ""}`}
+                  className={`pm-piece ${category === "book" ? `pm-piece--${bookShape(item)}` : ""} ${item.featured || (category === "reel" && index === 0) ? "pm-piece--featured" : ""} ${item.visibility === "hidden" ? "pm-piece--hidden" : ""}`}
                 >
                   <MediaVisual
                     item={item}
@@ -379,6 +380,18 @@ export default function PortfolioMedia({
   );
 }
 
+function bookShape(item: MediaItem) {
+  if (item.image_crop?.frame === "portrait") return "portrait";
+  if (item.image_crop?.frame === "square") return "square";
+  if (item.image_crop?.frame === "landscape") return "landscape";
+  if (item.image_width && item.image_height) {
+    const ratio = item.image_width / item.image_height;
+    if (ratio > 1.18) return "landscape";
+    if (ratio >= 0.9) return "square";
+  }
+  return "portrait";
+}
+
 function BookLightbox({ items, id, select, close }: { items: MediaItem[]; id: string; select: (id: string) => void; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const index = items.findIndex(i => i.id === id);
@@ -387,12 +400,13 @@ function BookLightbox({ items, id, select, close }: { items: MediaItem[]; id: st
   const move = (delta: number) => select(items[(index + delta + items.length) % items.length].id);
   useEffect(() => { const d = dialog.current; d?.showModal(); return () => d?.close(); }, []);
   if (!item) return null;
-  return <dialog ref={dialog} className="pm-lightbox" aria-label={item.title} onCancel={close} onKeyDown={e => {
+  return <dialog ref={dialog} className="pm-lightbox" aria-labelledby="pm-lightbox-title" onCancel={close} onKeyDown={e => {
     if (e.key === "ArrowLeft") { e.preventDefault(); move(-1); }
     if (e.key === "ArrowRight") { e.preventDefault(); move(1); }
   }}>
-    <header><p>{item.title}</p><button type="button" onClick={close} aria-label="Cerrar imagen">×</button></header>
+    <header><p>Book</p><button type="button" onClick={close} aria-label="Cerrar imagen">×</button></header>
     <div ref={ref} className="pm-full-image"><ProfileImage src={item.source === "external" ? item.url : resource?.image} alt={item.description || item.title} eager />{error && <button onClick={retry}>Reintentar imagen</button>}</div>
+    <div className="pm-lightbox-details"><h2 id="pm-lightbox-title">{item.title}</h2>{(item.role || item.year) && <p>{[item.role, item.year].filter(Boolean).join(" · ")}</p>}{item.description && <p>{item.description}</p>}</div>
     <footer><button onClick={() => move(-1)} aria-label="Imagen anterior">←</button><p>{index + 1} / {items.length}</p><button onClick={() => move(1)} aria-label="Imagen siguiente">→</button></footer>
   </dialog>;
 }

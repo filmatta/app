@@ -200,6 +200,7 @@ html {
 .profiles-url-example > span:last-child { margin-left:auto; color:#b9dceb; }
 .profiles-share-story .profiles-small-print { font-size:.8rem; max-width:40rem; }
 .profiles-share-story .editorial-secondary { margin-top:1.5rem; }
+.profiles-share-story .profiles-catalog-link { display:inline-flex; margin:1.5rem 0 0 1.25rem; color:#b9dceb; font-size:.85rem; }
 .profiles-ecosystem { padding-block:5rem; }
 .profiles-ecosystem > div { display:grid; gap:2rem; margin-top:3rem; }
 .profiles-ecosystem a { padding-block:1.5rem; border-top:1px solid #ffffff24; }
@@ -208,6 +209,7 @@ html {
 .profiles-ecosystem a p { margin-top:.75rem; color:#aaa; line-height:1.7; font-size:.9rem; }
 .profiles-final { padding-block:2rem 6rem; }
 .profiles-final h2 { max-width:14ch; margin-block:1.5rem 2rem; font-size:clamp(3rem,6vw,6rem); letter-spacing:-.05em; line-height:1.05; font-weight:500; }
+.profiles-final .editorial-actions { margin-top:0; }
 .profile-catalog { padding-block:3.5rem 2rem; }
 .profile-catalog-heading { display:flex; justify-content:space-between; align-items:flex-end; gap:2rem; flex-wrap:wrap; margin-top:1.2rem; }
 .profile-catalog-heading h1 { max-width:14ch; font-size:clamp(3rem,5vw,5.6rem); letter-spacing:-.05em; line-height:1.03; font-weight:500; }

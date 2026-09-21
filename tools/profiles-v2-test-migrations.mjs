@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { testContext, testSql, TEST_REF, SUPABASE_CLI } from "./portfolio-test-context.mjs";
-const migrations = ["20260923010000_profile_upload_lifecycle.sql", "20260923020000_profile_reel_selection.sql", "20260923030000_profile_identity_images_rates.sql", "20260923040000_private_profile_contact_bio.sql", "20260923050000_profile_preferences_credits.sql", "20260923060000_profile_media_attestation_grant.sql", "20260923070000_profile_bio_professional_references.sql"];
+const migrations = ["20260923010000_profile_upload_lifecycle.sql", "20260923020000_profile_reel_selection.sql", "20260923030000_profile_identity_images_rates.sql", "20260923040000_private_profile_contact_bio.sql", "20260923050000_profile_preferences_credits.sql", "20260923060000_profile_media_attestation_grant.sql", "20260923070000_profile_bio_professional_references.sql", "20260924010000_profile_reel_cover_projection.sql"];
 let temporary;
 try {
   await testContext(); // Effective Supabase and Mux Test destination guard.
@@ -30,5 +30,11 @@ try {
   const after = testSql("select (select count(*) from professional_profiles)::int profiles,(select count(*) from profile_media)::int media")[0];
   if (JSON.stringify(before) !== JSON.stringify(after)) throw Error("Unexpected row count change");
   console.log(JSON.stringify({ project: TEST_REF, preexistingCountsPreserved: after, rls: testSql("select relname,relrowsecurity from pg_class where oid in ('public.professional_profiles'::regclass,'public.profile_media'::regclass,'public.profile_private_settings'::regclass)") }));
-} catch { console.error("Test migration validation failed; no other environment was targeted. Inspect Test safely before continuing."); process.exitCode = 1; }
+} catch (error) {
+  const detail = String(error?.stderr ?? error?.message ?? "unknown")
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/g, "[redacted]")
+    .slice(0, 1200);
+  console.error("Test migration validation failed; no other environment was targeted.", detail);
+  process.exitCode = 1;
+}
 finally { if (temporary) fs.rmSync(temporary, { force:true }); }

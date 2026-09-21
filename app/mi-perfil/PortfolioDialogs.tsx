@@ -488,13 +488,15 @@ export function WorkDialog({
           </p>
           {item && item.media_type !== "image" && (
             <label>
-              Still personalizado
+              {item.category === "reel" ? "Cover del reel" : "Still personalizado"}
               <select
                 name="thumbnail"
                 defaultValue={item.thumbnail_id ?? ""}
                 disabled={busy}
               >
-                <option value="">Frame del video</option>
+                <option value="">
+                  {item.category === "reel" ? "Sin cover curada" : "Frame del video"}
+                </option>
                 {items
                   .filter(
                     (i) =>
@@ -509,7 +511,9 @@ export function WorkDialog({
                   ))}
               </select>
               <small>
-                Para usar otro still, añádelo como imagen y selecciónalo aquí.
+                {item.category === "reel"
+                  ? "Elige una imagen de tu Book. Se usará en el catálogo y antes de reproducir el reel; el video permanece separado."
+                  : "Para usar otro still, añádelo como imagen y selecciónalo aquí."}
               </small>
             </label>
           )}

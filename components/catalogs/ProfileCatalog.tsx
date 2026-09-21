@@ -39,7 +39,7 @@ export default async function ProfileCatalog({
           <div>
             <h1>
               {talent
-                ? "Presencia. Carácter. Talento."
+                ? "Personas que aparecen en pantalla"
                 : "Personas que hacen cine."}
             </h1>
             <p>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ProfileSummary } from "@/lib/profiles/catalog";
 import { AVAILABILITY_LABELS } from "@/lib/profiles/constants";
-import { leadReel, reelSource } from "@/lib/profiles/presentation";
+import { leadReel } from "@/lib/profiles/presentation";
 import ProfileImage from "./ProfileImage";
 import IdentityImage from "./IdentityImage";
 export default function ProfileCard({
@@ -13,21 +13,19 @@ export default function ProfileCard({
 }) {
   const reel = leadReel(profile.portfolio_items),
     p = profile.presentation;
-  const image = talent
-    ? p.portrait_url || p.book[0]?.url
-    : p.book[0]?.url ||
-      (reel ? reelSource(reel.url)?.thumbnail : null) ||
-      p.portrait_url;
+  const identityUrl = p.portrait_url || null;
+  const imageId = p.portrait_media_id ||
+    (!identityUrl ? p.reel_cover_media_id || p.cover_media_id : null);
   return (
     <Link
       href={`/perfiles/${profile.slug}`}
       className={`profile-card ${talent ? "profile-card--talent" : ""}`}
     >
       <div className="profile-card-frame">
-        {(p.portrait_media_id || image) && <IdentityImage id={p.portrait_media_id} fallbackUrl={image} alt="" interactive={false} />}
+        {(imageId || identityUrl) && <IdentityImage id={imageId} fallbackUrl={identityUrl} alt="" interactive={false} />}
         {/* Legacy fallback retains initials when no saved image exists. */}
-        {!p.portrait_media_id && !image && <ProfileImage
-          src={image}
+        {!imageId && !identityUrl && <ProfileImage
+          src={null}
           alt=""
           fallback={(p.stage_name || profile.display_name).slice(0, 1)}
         />}

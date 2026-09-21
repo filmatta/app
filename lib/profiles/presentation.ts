@@ -7,6 +7,7 @@ export type ProfilePresentation = {
   portrait_url: string;
   portrait_media_id?: string | null;
   cover_media_id?: string | null;
+  reel_cover_media_id?: string | null;
   rate?: ProfileRate | null;
   portfolio_mode?: "unspecified" | "audiovisual" | "photographic";
   stage_name: string;
@@ -71,12 +72,13 @@ export function parsePresentation(value: unknown): ProfilePresentation | null {
   }
   const rateValue = parseRate(p.rate);
   if (rateValue === false) return null;
-  for (const key of ["portrait_media_id", "cover_media_id"]) if (p[key] != null && (typeof p[key] !== "string" || !/^[0-9a-f-]{36}$/i.test(p[key] as string))) return null;
+  for (const key of ["portrait_media_id", "cover_media_id", "reel_cover_media_id"]) if (p[key] != null && (typeof p[key] !== "string" || !/^[0-9a-f-]{36}$/i.test(p[key] as string))) return null;
   if (p.portfolio_mode != null && !["unspecified", "audiovisual", "photographic"].includes(String(p.portfolio_mode))) return null;
   return {
     ...(p.rate !== undefined ? { rate: rateValue } : {}),
     ...(p.portrait_media_id !== undefined ? { portrait_media_id: p.portrait_media_id as string | null } : {}),
     ...(p.cover_media_id !== undefined ? { cover_media_id: p.cover_media_id as string | null } : {}),
+    ...(p.reel_cover_media_id !== undefined ? { reel_cover_media_id: p.reel_cover_media_id as string | null } : {}),
     ...(p.portfolio_mode !== undefined ? { portfolio_mode: p.portfolio_mode as ProfilePresentation["portfolio_mode"] } : {}),
     portrait_url: portrait!,
     stage_name: stage!,
