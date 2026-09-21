@@ -5,7 +5,6 @@ import {PGlite} from '@electric-sql/pglite';
 const db=new PGlite();
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 async function as(role,n=0) { await db.exec('reset role'); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[n?id(n):'']); if(role!=='postgres') await db.exec(`set role ${role}`); }
-const access=async()=> (await db.query("select * from get_my_profile_contact_access('person-2')")).rows[0];
 const send=n=>db.query("select send_profile_contact($1,'other',$2) id",[`person-${n}`,`Consulta profesional específica para la producción número ${n}.`]);
 before(async()=>{
   await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;

@@ -40,7 +40,8 @@ export default function ProjectForm({ initial, onSaved, onCancel }: { initial?: 
         const result = await saveNetworkingProject(initial?.id ?? null, next);
         if ("error" in result) setError(result.error);
         else {
-          setBaseline(JSON.stringify(next)); setValue(next);
+          const persisted = { ...next, requirements: result.data.requirements, roles: result.data.roles };
+          setBaseline(JSON.stringify(persisted)); setValue(persisted);
           if (onSaved) onSaved(result.data);
           else if (!initial) { router.push("/mis-proyectos?created=1"); router.refresh(); }
           else { setSaved(n => n + 1); router.refresh(); }

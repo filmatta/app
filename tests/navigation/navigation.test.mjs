@@ -66,3 +66,25 @@ test("active matching respects path boundaries", () => {
   );
   assert.equal(nav.isNavigationActive("/descubre/learn", "/cursos"), true);
 });
+
+test("navigation identity uses the authenticated profile portrait and falls back without video metadata", async () => {
+  let record = { display_name: "Profesional", presentation: { portrait_media_id: "photo", portrait_url: "https://example.com/photo.webp", reel_cover_media_id: "never", reel_cover_url: "never" } };
+  let owner;
+  const client = { from: table => { assert.equal(table, "professional_profiles"); return { select: () => ({ eq: (key,id) => { assert.equal(key,"user_id"); owner=id; return { maybeSingle: async()=>({data:record}) }; } }) }; } };
+  const { getNavigationIdentity } = load("lib/navigation-identity.ts", { react: { cache: fn=>fn }, "@/lib/supabase/server": { createClient: async()=>client } });
+  assert.equal(Object.keys(await getNavigationIdentity(null)).length,0);
+  const viewer={id:"owner",displayName:"Fallback"};
+  const actual=await getNavigationIdentity(viewer);
+  assert.equal(owner,"owner"); assert.equal(actual.accountName,"Profesional");
+  assert.equal(actual.accountPortrait.id,"photo"); assert.equal(actual.accountPortrait.url,"https://example.com/photo.webp");
+  assert.ok(!JSON.stringify(actual).includes("never"));
+  record=null; assert.equal((await getNavigationIdentity(viewer)).accountName,"Fallback");
+});
+
+test("menu identity is a profile link in both header variants, with account settings retained", () => {
+  const code=fs.readFileSync("components/navigation/GlobalNavigation.tsx","utf8");
+  const identity=code.slice(code.indexOf("function AccountIdentity"),code.indexOf("function DesktopMenu"));
+  assert.match(identity,/href="\/mi-perfil"/); assert.match(identity,/Mi perfil →/);
+  assert.match(code,/Configuración \/ cuenta/);
+  for(const path of ["components/SiteHeader.tsx","components/student/AuthenticatedHeader.tsx"]) assert.match(fs.readFileSync(path,"utf8"),/getNavigationIdentity\(viewer\)/);
+});

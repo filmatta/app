@@ -44,7 +44,7 @@ test('contact UI: authentic balance, exhausted CTA, Pro anti-abuse, existing thr
   const render=access=>renderToStaticMarkup(React.createElement(mod.exports.default,{slug:'demo',name:'Demo',closed:false,owner:false,preview:false,signedIn:true,access}));
   const base={is_pro:false,free_contact_limit:5,remaining_contacts:5,already_contacted:false,thread_id:null};
   assert.match(render(base),/5 disponibles/);
-  assert.match(render({...base,reserved_contacts:2,consumed_contacts:1}),/2 reservados[\s\S]*1 consumidos/);
+  assert.match(render({...base,reserved_contacts:2,consumed_contacts:1}),/2 reservados[\s\S]*1 consumido/);
   assert.match(render(base),/Los créditos se gastan cuando este perfil acepta tu solicitud/);
   const exhausted=render({...base,remaining_contacts:0});assert.match(exhausted,/Ver plan Pro/);assert.doesNotMatch(exhausted,/<button/);
   const pro=render({...base,is_pro:true,remaining_contacts:0});assert.match(pro,/sin límite de créditos/);assert.match(pro,/medidas contra el abuso/);assert.match(pro,/<button/);

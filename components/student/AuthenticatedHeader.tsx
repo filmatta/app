@@ -1,3 +1,4 @@
+import { getNavigationIdentity } from "@/lib/navigation-identity";
 import Link from "next/link";
 import type { Viewer } from "@/lib/auth/get-viewer";
 import BillingPlanBadge from "@/components/BillingPlanBadge";
@@ -8,15 +9,16 @@ export type HeaderBreadcrumb = {
   href?: string;
 };
 
-export default function AuthenticatedHeader({
+export default async function AuthenticatedHeader({
   viewer,
   breadcrumbs,
 }: {
   viewer: Viewer;
   breadcrumbs: HeaderBreadcrumb[];
 }) {
+  const identity = await getNavigationIdentity(viewer);
   return (
-    <GlobalNavigation authenticated role={viewer.role} badge={<BillingPlanBadge authenticated />}>
+    <GlobalNavigation authenticated role={viewer.role} {...identity} badge={<BillingPlanBadge authenticated />}>
       <nav aria-label="Ruta actual" className="mx-auto max-w-[1800px] px-6 pb-3 text-xs text-white/60 lg:px-8 xl:px-12">
         <BreadcrumbItems breadcrumbs={breadcrumbs} />
       </nav>

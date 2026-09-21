@@ -116,7 +116,7 @@
   display: grid;
   gap: 18px;
 }
-.pe-dialog label {
+.pe-dialog label:not(.selection-row) {
   display: grid;
   gap: 7px;
   font-size: 13px;
