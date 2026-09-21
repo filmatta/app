@@ -1,0 +1,15 @@
+{
+  "project": "ezlycwkuzkwcnhrhiruv",
+  "checks": [
+    "Real pending cap rejects third attempt",
+    "Cross-owner Storage overwrite rejected",
+    "Missing original expires after real Storage check",
+    "Received original retained for explicit finalization",
+    "Owner explicitly finalizes received image after expiry",
+    "Repeated reconciliation preserves ready image",
+    "Two transient rows and their exact owner-scoped paths removed after verified-ID audit"
+  ],
+  "transport": "Reconciliation code with real Supabase/Storage and fixture-scoped client; not scheduled cron",
+  "scheduledCron": false,
+  "cleanupNote": "Initial service-role DELETE lacked permission. Scope audited and exact two fixtures removed through Test operator SQL. No grants widened."
+}
