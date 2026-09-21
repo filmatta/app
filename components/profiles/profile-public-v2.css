@@ -600,8 +600,8 @@
   }
 }
 
-/* The nav owns the first row; content and contact begin together below its rule. */
-.p2-layout { gap: 24px; align-items: start; }
+/* The nav rule becomes the shared top edge for content and the contact card. */
+.p2-layout { column-gap: 24px; row-gap: 0; align-items: start; }
 .p2-bio { margin: 0 0 28px; padding: 18px 0; border-top: 0; }
 .p2-availability { color: #b5bbbe; display: flex; gap: 9px; align-items: center; font-size: 13px; }
 .p2-availability[data-state="available"] { color: #95d2ad; }
@@ -630,6 +630,7 @@
 .p2-portrait .p2-identity-image { aspect-ratio: 1; }
 .p2-talent .p2-portrait .profile-image { aspect-ratio: 1; }
 @media(max-width:767px) { .p2-hero { padding-top: 0; } .p2-cover { inset: auto; } }
+@media(max-width:767px) { .p2-layout { row-gap: 24px; } }
 
 .p2-credits ul { display: block; margin: 20px 0 0 7px; padding: 0 0 0 24px; border-left: 1px solid #b9dceb45; }
 .p2-credits li { position: relative; padding: 0 0 26px; margin-bottom: 20px; }

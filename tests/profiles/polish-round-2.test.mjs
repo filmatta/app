@@ -40,4 +40,5 @@ test("profile layout places contact before content on mobile and aligns desktop 
   assert.match(css, /\.p2-aside \{ grid-row: 1; \}/);
   assert.match(css, /\.p2-main \{ grid-row: 2; \}/);
   assert.match(css, /\.p2-aside \{ grid-column: 2; grid-row: 2; \}/);
+  assert.match(css, /row-gap: 0/);
 });
