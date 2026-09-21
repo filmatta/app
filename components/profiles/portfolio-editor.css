@@ -455,4 +455,3 @@
 .pm-screen:has(> .profile-image[data-state="loading"]) > .reel-play { visibility: hidden; }
 .pm-screen > .reel-play svg { display: block; }
 
-.pe-professional-actions{display:flex;flex-direction:column;gap:10px;margin:0 0 18px}.pe-professional-actions>button{width:100%;margin:0}
