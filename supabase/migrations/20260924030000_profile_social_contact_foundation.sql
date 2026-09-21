@@ -20,6 +20,12 @@ end $$;
 revoke all on function public.save_my_project_preferences_visibility(jsonb,boolean) from public,anon;
 grant execute on function public.save_my_project_preferences_visibility(jsonb,boolean) to authenticated;
 
+-- Older clients explicitly promised private preferences. Preserve that contract.
+create or replace function public.save_my_project_preferences(p_preferences jsonb)
+returns void language sql security definer set search_path='' as $$
+  select public.save_my_project_preferences_visibility(p_preferences,false);
+$$;
+
 create function public.get_public_project_preferences(p_slug text) returns jsonb
 language sql stable security definer set search_path='' as $$
   select s.project_preferences from public.profile_private_settings s

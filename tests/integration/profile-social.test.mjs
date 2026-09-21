@@ -54,6 +54,9 @@ try {
   assert.equal(ok(await anonymous.rpc('get_public_project_preferences',{p_slug:target.slug}),'private projection'),null);
   ok(await target.db.rpc('save_my_project_preferences_visibility',{p_preferences:preferences,p_publish:true}),'consent');
   assert.deepEqual(ok(await anonymous.rpc('get_public_project_preferences',{p_slug:target.slug}),'public preferences'),preferences);
+  ok(await target.db.rpc('save_my_project_preferences',{p_preferences:preferences}),'legacy private save');
+  assert.equal(ok(await anonymous.rpc('get_public_project_preferences',{p_slug:target.slug}),'legacy private projection'),null);
+  ok(await target.db.rpc('save_my_project_preferences_visibility',{p_preferences:preferences,p_publish:true}),'renewed consent');
   assert.equal(ok(await free.db.from('profile_private_settings').select('*').eq('owner_id',target.id),'private RLS').length,0);
   ok(await target.db.rpc('save_my_professional_profile',{p_disciplines:['Dirección'],p_city:'QA Test',p_bio:'Borrador privado.',p_availability:'available',p_skills:[],p_equipment:[],p_portfolio_items:[],p_is_public:false,p_contact_policy:'members_only'}),'draft');
   assert.equal(ok(await anonymous.rpc('get_public_project_preferences',{p_slug:target.slug}),'draft preferences'),null);

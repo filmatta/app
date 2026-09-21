@@ -55,6 +55,7 @@ export default function ProfileEditor({
   );
   const [items, setItems] = useState(initialItems);
   const [preferences, setPreferences] = useState(initialPreferences);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [bioDraft, setBioDraft] = useState(profile?.bio ?? "");
   const [editing, setEditing] = useState(false),
     [busy, setBusy] = useState(false),
@@ -274,8 +275,8 @@ export default function ProfileEditor({
         }
       />
       {editing && items?.some((i) => i.visibility === "archived") && (
-        <details className="pe-archive">
-          <summary>Trabajos archivados</summary>
+        <details className="pe-archive" open={archiveOpen} onToggle={e => setArchiveOpen(e.currentTarget.open)}>
+          <summary aria-expanded={archiveOpen}>{archiveOpen ? "Ocultar trabajos archivados ↑" : "Ver trabajos archivados ↓"}</summary>
           <p className="pe-hint">
             Restaurar los deja ocultos. Los archivos se conservan hasta 30 días.
           </p>

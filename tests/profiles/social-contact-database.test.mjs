@@ -72,6 +72,9 @@ test('Public preferences require explicit owner consent; private contacts and dr
   await as('anon');assert.equal((await db.query("select get_public_project_preferences('person-2') p")).rows[0].p,null);
   await as('authenticated',2);await db.query('select save_my_project_preferences_visibility($1,true)',[prefs]);
   await as('anon');assert.deepEqual((await db.query("select get_public_project_preferences('person-2') p")).rows[0].p,prefs);
+  await as('authenticated',2);await db.query('select save_my_project_preferences($1)',[prefs]);
+  await as('anon');assert.equal((await db.query("select get_public_project_preferences('person-2') p")).rows[0].p,null);
+  await as('authenticated',2);await db.query('select save_my_project_preferences_visibility($1,true)',[prefs]);
   await as('authenticated',1);assert.equal((await db.query('select * from profile_private_settings where owner_id=$1',[id(2)])).rows.length,0);
   await as('postgres');await db.query('update professional_profiles set is_public=false where user_id=$1',[id(2)]);
   await as('anon');assert.equal((await db.query("select get_public_project_preferences('person-2') p")).rows[0].p,null);

@@ -14,6 +14,8 @@ answers. An explicit owner checkbox publishes the existing preferences (includin
 participation limits). Only the preferences JSON is projected, only while the
 profile is public and consent is enabled. Contact fields and Auth metadata never
 join that projection. Withdrawing consent or unpublishing removes it immediately.
+The legacy private-preferences RPC also withdraws publication, preserving the
+privacy promise of older clients that do not offer explicit consent.
 
 Follow links `auth.users.id` to `professional_profiles.user_id`. RLS permits only
 the authenticated actor's own inserts/deletes/reads. Unique pair and self-follow
@@ -64,3 +66,23 @@ uses actual password sessions. It verifies concurrent credit exhaustion, Pro
 anti-abuse, consent/draft privacy and Follow permissions, then deletes its users,
 profiles, contacts and temporary grant in finally. No secrets are stored in the
 test or this report. Review demos are retained deliberately.
+
+Verified on the deployed Preview: real Cine password login, all five editor
+actions outside the collapsed professional accordion, skill/equipment/preference
+save + refresh, and shared private contact edits in both directions with Mi cuenta.
+Follow, refresh, unfollow, anonymous login requirement and empty social proof were
+tested in the browser. A real identity photo and two initial fallbacks are retained
+for the three demo followers (Book, Luz and Sonido).
+
+Widths 390/768/1024/1280/1440/1920 had no horizontal overflow. Mobile order:
+identity, bio, availability, Reel, Videos, Book, CV, preferences, contact, followers.
+Desktop sidebar remains sticky at 24px, inside its column and above the footer;
+tablet/mobile sidebar remains static. Preference states include text/symbols plus
+green/amber/red. Videos show static cover thumbnails; Reel playback starts after
+click; Book retains 3 equal desktop columns and 4:5 covers; lightbox next/previous
+and Escape work. Talent has no Reel text or Mux imagery.
+
+Final local suite: 256 passing, including the new database and rendered contact
+state regressions. Remote Test verified simultaneous five-credit exhaustion,
+entitlements and all temporary fixture cleanup. Main/origin-main retained
+`a2e89353698e1c6ec163f06fddf0a1e9ecf2f985`. No Production or ledger changes.
