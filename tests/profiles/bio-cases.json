@@ -110,5 +110,29 @@
   {
     "text": "Sigo el trabajo de Instagram para campañas.",
     "blocked": false
+  },
+  {
+    "text": "Mi usuario es un personaje de esta historia.",
+    "blocked": false
+  },
+  {
+    "text": "En Instagram mi usuario es cine.",
+    "blocked": true
+  },
+  {
+    "text": "Referencia de campaña: https://instagram.com/p/ABC123/",
+    "blocked": false
+  },
+  {
+    "text": "Edición de este anuncio https://www.instagram.com/reel/ABC123/",
+    "blocked": false
+  },
+  {
+    "text": "https://instagram.com/reelista/",
+    "blocked": true
+  },
+  {
+    "text": "https://instagram.com/p/ABC123/ y @cine",
+    "blocked": true
   }
 ]

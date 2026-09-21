@@ -3,6 +3,7 @@ import type { ProfileSummary } from "@/lib/profiles/catalog";
 import { AVAILABILITY_LABELS } from "@/lib/profiles/constants";
 import { leadReel, reelSource } from "@/lib/profiles/presentation";
 import ProfileImage from "./ProfileImage";
+import IdentityImage from "./IdentityImage";
 export default function ProfileCard({
   profile,
   talent = false,
@@ -23,11 +24,13 @@ export default function ProfileCard({
       className={`profile-card ${talent ? "profile-card--talent" : ""}`}
     >
       <div className="profile-card-frame">
-        <ProfileImage
+        {(p.portrait_media_id || image) && <IdentityImage id={p.portrait_media_id} fallbackUrl={image} alt="" interactive={false} />}
+        {/* Legacy fallback retains initials when no saved image exists. */}
+        {!p.portrait_media_id && !image && <ProfileImage
           src={image}
           alt=""
           fallback={(p.stage_name || profile.display_name).slice(0, 1)}
-        />
+        />}
         {(reel || p.book.length > 0) && (
           <span className="profile-card-material">
             {reel ? "▷ Reel" : "Book"}

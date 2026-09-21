@@ -26,7 +26,7 @@ export async function POST(
     !row ||
     row.source !== "storage" ||
     !row.storage_path ||
-    row.status !== "uploading"
+    !(row.status === "uploading" || (row.status === "errored" && row.review_reason === "image-finalization-required"))
   )
     return new Response(null, { status: 409 });
   const file = await db.storage
@@ -85,12 +85,13 @@ export async function POST(
     .from("profile_media")
     .update({
       status: valid ? "ready" : "rejected",
+      review_reason: null,
       derivative_path: derivativePath, image_width: dimensions?.width ?? null, image_height: dimensions?.height ?? null,
       cleanup_after: valid ? row.cleanup_after : new Date().toISOString(),
     })
     .eq("id", id)
     .eq("owner_id", auth.user.id)
-    .eq("status", "uploading")
+    .eq("status", row.status)
     .eq("updated_at", row.updated_at)
     .select("id");
   if (updated.error || !updated.data?.length) {

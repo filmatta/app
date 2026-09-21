@@ -14,7 +14,7 @@ export default function ProjectPreferencesDialog({ close }: { close: () => void 
         <div className="pe-disciplines">{PROJECT_FORMATS.map(f => <label key={f} className="pe-checkbox"><input type="checkbox" checked={value.formats.includes(f)} onChange={e => setValue({ ...value, formats: e.target.checked ? [...value.formats,f] : value.formats.filter(v => v !== f) })} />{f}</label>)}</div>
       </fieldset>
       {(Object.keys(PREFERENCE_GROUPS) as (keyof typeof PREFERENCE_GROUPS)[]).map(group => <fieldset key={group} className="pe-preferences"><legend>{group === "themes" ? "Temáticas" : group === "participation" ? "Participación personal frente a cámara" : "Condiciones de trabajo"}</legend>
-        {Object.entries(PREFERENCE_GROUPS[group]).map(([key,label]) => <label key={key}>{label}<select value={value[group][key] ?? "unspecified"} onChange={e => setValue({ ...value, [group]: { ...value[group], [key]: e.target.value as PreferenceChoice } })}>{Object.entries(PREFERENCE_CHOICES).map(([v,l]) => <option value={v} key={v}>{l}</option>)}</select></label>)}
+        {Object.entries(PREFERENCE_GROUPS[group]).map(([key,label]) => <label key={key}>{label}<select aria-label={label} value={value[group][key] ?? "unspecified"} onChange={e => setValue({ ...value, [group]: { ...value[group], [key]: e.target.value as PreferenceChoice } })}>{Object.entries(PREFERENCE_CHOICES).map(([v,l]) => <option value={v} key={v}>{l}</option>)}</select></label>)}
       </fieldset>)}
       <footer><button type="button" onClick={close} disabled={busy}>Cerrar</button><button type="submit" disabled={busy} className="pe-primary">{busy ? "Guardando…" : "Guardar preferencias"}</button></footer>
     </form>}

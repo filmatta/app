@@ -24,6 +24,9 @@ export function useResource(id: string | null) {
     let live = true;
     const controller = new AbortController();
     let refresh: ReturnType<typeof setTimeout> | undefined;
+    let expiresAt = 0;
+    const resume = () => { if (document.visibilityState === "visible" && expiresAt && Date.now() > expiresAt - 15000) setAttempt(a => a + 1); };
+    document.addEventListener("visibilitychange", resume);
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((e) => e.isIntersecting)) return;
@@ -38,6 +41,7 @@ export function useResource(id: string | null) {
             if (live) {
               setResource(result);
               setError(false);
+              expiresAt = result.expiresAt ?? 0;
               if (result.expiresAt) refresh = setTimeout(() => {
                 if (document.visibilityState === "visible") setAttempt(a => a + 1);
               }, Math.max(1000, result.expiresAt - Date.now() - 15000));
@@ -54,6 +58,7 @@ export function useResource(id: string | null) {
       live = false;
       controller.abort();
       clearTimeout(refresh);
+      document.removeEventListener("visibilitychange", resume);
       observer.disconnect();
     };
   }, [id, attempt]);
@@ -106,6 +111,7 @@ export function MediaVisual({
         <><ProfileImage
           src={item.source === "external" ? item.url : resource?.image}
           alt={item.title}
+          onError={() => setVisualError("No se pudo cargar la imagen. Renueva el acceso para reintentar.")}
           imageStyle={item.image_crop ? { objectPosition: `${item.image_crop.x}% ${item.image_crop.y}%`, transform: `scale(${item.image_crop.zoom})`, transformOrigin: `${item.image_crop.x}% ${item.image_crop.y}%` } : undefined}
           fallback="IMAGEN"
         />{openImage && <button className="pm-open-image" type="button" onClick={openImage} aria-label={`Ampliar ${item.title}`} />}</>
@@ -154,7 +160,7 @@ export function MediaVisual({
               disabled={item.source === "mux" && !resource?.playbackId}
               aria-label={`Reproducir ${item.title}`}
             >
-              â–· <span>Ver {item.category === "reel" ? "reel" : "video"}</span>
+              ▷ <span>Ver {item.category === "reel" ? "reel" : "video"}</span>
             </button>
           ) : (
             portfolioWebUrl(item.url) && (
@@ -164,7 +170,7 @@ export function MediaVisual({
                 rel="noopener noreferrer"
                 target="_blank"
               >
-                Ver trabajo â†—
+                Ver trabajo ↗
               </a>
             )
           )}
@@ -305,6 +311,7 @@ export default function PortfolioMedia({
                             ? "Oculto"
                             : ""}
                       </span>
+                      {item.source === "storage" && ["uploading", "errored"].includes(item.status) && <button type="button" disabled={controls.busy} onClick={() => controls.action(item, "complete-image")}>Terminar verificación</button>}
                       <button
                         type="button"
                         disabled={controls.busy}
@@ -318,7 +325,7 @@ export default function PortfolioMedia({
                         onClick={() => controls.action(item, "up")}
                         aria-label={`Mover arriba: ${item.title}`}
                       >
-                        â†‘
+                        ↑
                       </button>
                       <button
                         type="button"
@@ -326,7 +333,7 @@ export default function PortfolioMedia({
                         onClick={() => controls.action(item, "down")}
                         aria-label={`Mover abajo: ${item.title}`}
                       >
-                        â†“
+                        ↓
                       </button>
                       {item.media_type === "video" && category !== "reel" && <button type="button" disabled={controls.busy || !reelEligible(item)} onClick={() => controls.action(item, "reel")}>Elegir como reel</button>}
                       {category === "reel" && <button type="button" disabled={controls.busy} onClick={() => controls.action(item, "other-video")}>Mover a otros videos</button>}

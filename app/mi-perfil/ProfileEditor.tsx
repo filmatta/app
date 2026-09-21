@@ -118,13 +118,21 @@ export default function ProfileEditor({
     if (
       name === "archive" &&
       !window.confirm(
-        `¿Archivar «${item.title}»? Dejará de mostrarse. Conservaremos el archivo hasta 30 días.`,
+        `¿Archivar «${item.title}»? Dejará de mostrarse. El archivo se conserva; archivar no lo elimina.`,
       )
     )
       return;
     setBusy(true);
     setError("");
     try {
+      if (name === "complete-image") {
+        const response = await fetch(`/api/portfolio/media/${item.id}/complete`, { method: "POST" });
+        if (!response.ok) throw new Error("Image finalization failed");
+        const refreshed = await loadMyPortfolio();
+        if ("data" in refreshed) accept(refreshed.data);
+        else setError(refreshed.error);
+        return;
+      }
       const r = await managePortfolioItem(item.id, name);
       if ("error" in r) setError(r.error);
       else {

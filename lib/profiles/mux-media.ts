@@ -47,6 +47,7 @@ export async function syncPortfolioAsset(assetId: string) {
   if (error) throw error;
   // An absent reference is handled conservatively by the daily orphan sweep.
   if (!row || row.source !== "mux") return;
+  if (row.terminal_reason || row.status === "deleted" || row.status === "rejected") return;
   // A very early webhook may race binding. Return retryable failure, never acknowledge loss.
   if (!row.mux_upload_id) throw new Error("Upload binding pending");
   if (
@@ -62,8 +63,6 @@ export async function syncPortfolioAsset(assetId: string) {
   )
     return;
   if (row.mux_asset_id && row.mux_asset_id !== asset.id) return;
-  // A late event must neither resurrect a cancelled attempt nor delete its asset.
-  if (row.status === "deleted" || row.status === "rejected" || row.terminal_reason) return;
   let status =
     asset.status === "ready"
       ? "ready"
@@ -113,7 +112,7 @@ export async function cleanPortfolioMedia() {
       // An uploaded object whose finalization response was lost is not abandoned.
       const file = await db.storage.from("profile-media").info(row.storage_path);
       if (file.data) {
-        const r = await db.from("profile_media").update({ review_reason: "image-finalization-required" })
+        const r = await db.from("profile_media").update({ status: "errored", review_reason: "image-finalization-required", cleanup_after: null })
           .eq("id", row.id).eq("updated_at", row.updated_at);
         if (r.error) throw r.error;
       } else if (String(file.error?.status) === "404" || String(file.error?.statusCode) === "404") {
@@ -124,7 +123,7 @@ export async function cleanPortfolioMedia() {
       } else throw new Error("Could not verify image existence");
     } else if (!row.mux_upload_id && row.source === "mux") {
       // Remote creation may have succeeded before binding failed. Review, never delete.
-      const r = await db.from("profile_media").update({ review_reason: "upload-binding-required" })
+      const r = await db.from("profile_media").update({ status: "errored", terminal_reason: "expired", review_reason: "upload-binding-required", cleanup_after: null })
         .eq("id", row.id).eq("updated_at", row.updated_at);
       if (r.error) throw r.error;
     }

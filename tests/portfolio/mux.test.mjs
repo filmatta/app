@@ -76,7 +76,7 @@ function harness(patch = {}) {
     },
     "@/lib/supabase/admin": { createAdminClient: () => db },
   });
-  return { module, writes, deleted };
+  return { module, writes, deleted, mux, row };
 }
 test("portfolio namespace never accepts Learn or malformed IDs", () => {
   const { module: m } = harness();
@@ -145,4 +145,17 @@ test("real duration is attested without rounding; long video remains ready", asy
     assert.equal(h.writes[0].status, "ready");
     assert.equal(h.deleted.length, 0);
   }
+});
+
+
+test("asset_created winning cancellation is reconciled without deletion; two tabs converge", async () => {
+  const h = harness();
+  let reads = 0, cancels = 0;
+  h.mux.video.uploads.retrieve = async () => ({ id: "upload", status: ++reads === 1 ? "waiting" : "asset_created", ...(reads > 1 ? { asset_id: "asset" } : {}), new_asset_settings: { passthrough: "filmatta:portfolio:" + id } });
+  h.mux.video.uploads.cancel = async () => { cancels++; throw new Error("Asset already created"); };
+  assert.equal(await h.module.cancelPortfolioUpload(h.row), "received");
+  assert.equal(await h.module.cancelPortfolioUpload(h.row), "received");
+  assert.equal(cancels, 1);
+  assert.ok(h.writes.every(w => w.status === "ready"));
+  assert.equal(h.deleted.length, 0);
 });

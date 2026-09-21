@@ -16,7 +16,12 @@ async function as(role, uid = "") {
 
 before(async () => {
   await db.exec(`create role anon; create role authenticated; create role service_role;
-    create schema auth; create schema private;
+    create schema auth; create schema private; create schema storage;
+    create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
+    create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);
+    alter table storage.objects enable row level security;
+    grant usage on schema storage to anon,authenticated,service_role;
+    grant select,insert on storage.objects to anon,authenticated;
     create table auth.users(id uuid primary key,raw_user_meta_data jsonb default '{}');
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
     grant usage on schema public,auth to anon,authenticated; grant usage on schema private to authenticated;
@@ -30,7 +35,15 @@ before(async () => {
     "20260916020000_opportunity_owner_publishing.sql",
     "20260916030000_services_directory.sql",
     "20260916040000_jobs_specialization.sql",
+    "20260920010000_profile_presentation.sql",
+    "20260921010000_profile_media.sql",
     "20260922010000_profile_contacts.sql",
+    "20260923010000_profile_upload_lifecycle.sql",
+    "20260923020000_profile_reel_selection.sql",
+    "20260923030000_profile_identity_images_rates.sql",
+    "20260923040000_private_profile_contact_bio.sql",
+    "20260923050000_profile_preferences_credits.sql",
+    "20260923060000_profile_media_attestation_grant.sql", "20260923070000_profile_bio_professional_references.sql",
   ]) await db.exec(fs.readFileSync(`supabase/migrations/${file}`, "utf8"));
   await db.query("insert into auth.users(id,raw_user_meta_data) values ($1,$5),($2,$6),($3,$7),($4,$8)", [
     sender, professional, talent, third,

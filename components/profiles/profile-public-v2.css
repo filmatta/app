@@ -624,3 +624,14 @@
 .p2-credits li::before { content: ""; position: absolute; width: 7px; height: 7px; border-radius: 50%; background: #b9dceb; left: -28px; top: 8px; }
 .p2-credits .p2-credit-period { margin: 0 0 8px; color: #b9dceb; font-size: 11px; letter-spacing: .05em; }
 .p2-credits a { display: inline-block; padding-top: 10px; color: #b9dceb; font-size: 12px; }
+
+@media(max-width:1023px) {
+ .p2-aside { padding: 14px 16px; }
+ .p2-aside .profile-share { display: none; }
+ .p2-contact { padding: 10px 0 12px; margin-bottom: 4px; }
+ .p2-contact h2 { font-size: 13px; }
+ .p2-contact > p { display: none; }
+ .p2-contact .p2-contact-button { margin-top: 8px; }
+ .p2-professional-details summary { padding: 9px 0; font-size: 12px; }
+}
+.pm-screen .profile-image-fallback { font-size: 12px; letter-spacing: .16em; color: #b7c4ca; }

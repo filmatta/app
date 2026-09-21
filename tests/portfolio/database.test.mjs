@@ -52,6 +52,7 @@ before(async () => {
     "20260923030000_profile_identity_images_rates.sql",
     "20260923040000_private_profile_contact_bio.sql",
     "20260923050000_profile_preferences_credits.sql",
+    "20260923060000_profile_media_attestation_grant.sql", "20260923070000_profile_bio_professional_references.sql",
   ])
     await db.exec(fs.readFileSync("supabase/migrations/" + file, "utf8"));
   await db.query("insert into auth.users values ($1,$3),($2,$4)", [
@@ -342,4 +343,9 @@ test("extended credits remain a single owner-authorized presentation, with parti
  await as("authenticated",other);
  await assert.rejects(db.query("update professional_profiles set presentation=jsonb_set(presentation,'{credits}','[]') where user_id=$1 returning user_id",[owner]),/permission denied/);
  await as("anon");const detail=(await db.query("select presentation from get_public_professional_portfolio($1)",[slug])).rows[0];assert.equal(detail.presentation.credits[0].start,"2024");
+});
+
+test("infrastructure attestation can validate crop without granting user writes",async()=>{
+ await as("service_role");await db.query("update profile_media set review_reason='local-attestation-test' where owner_id=$1",[owner]);
+ await as("authenticated",owner);await assert.rejects(db.query("update profile_media set duration_seconds=10 where owner_id=$1",[owner]),/permission denied/);
 });

@@ -425,3 +425,6 @@
 
 .pe-preferences { display: grid; gap: 16px; padding: 18px 0; border-top: 1px solid #ffffff20; }
 .pe-preferences legend { padding-top: 18px; color: #b9dceb; }
+
+.profile-card-frame > .p2-identity-image { position:absolute; inset:0; width:100%; height:100%; }
+.profile-card-frame > .p2-identity-image .profile-image { width:100%; height:100%; }

@@ -52,7 +52,7 @@ export default function ProfilePortfolio({
     .slice(0, 2);
   const remaining = work.filter((item) => !secondary.includes(item));
   const location = [profile.city, p.work_area].filter(Boolean).join(" · ");
-  const cover =
+  const cover = p.cover_media_id === null ? undefined :
     p.book.find((item) => item.url !== p.portrait_url)?.url ||
     (reel ? reelSource(reel.url)?.thumbnail : undefined);
   const visual = Boolean(media || reel || p.book.length);
