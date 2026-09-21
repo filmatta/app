@@ -618,3 +618,9 @@
 .p2-portrait .p2-identity-image { aspect-ratio: 1; }
 .p2-talent .p2-portrait .profile-image { aspect-ratio: 1; }
 @media(max-width:767px) { .p2-hero { padding-top: 0; } .p2-cover { inset: auto; } }
+
+.p2-credits ul { display: block; margin: 20px 0 0 7px; padding: 0 0 0 24px; border-left: 1px solid #b9dceb45; }
+.p2-credits li { position: relative; padding: 0 0 26px; margin-bottom: 20px; }
+.p2-credits li::before { content: ""; position: absolute; width: 7px; height: 7px; border-radius: 50%; background: #b9dceb; left: -28px; top: 8px; }
+.p2-credits .p2-credit-period { margin: 0 0 8px; color: #b9dceb; font-size: 11px; letter-spacing: .05em; }
+.p2-credits a { display: inline-block; padding-top: 10px; color: #b9dceb; font-size: 12px; }

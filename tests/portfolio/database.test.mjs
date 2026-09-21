@@ -51,6 +51,7 @@ before(async () => {
     "20260923020000_profile_reel_selection.sql",
     "20260923030000_profile_identity_images_rates.sql",
     "20260923040000_private_profile_contact_bio.sql",
+    "20260923050000_profile_preferences_credits.sql",
   ])
     await db.exec(fs.readFileSync("supabase/migrations/" + file, "utf8"));
   await db.query("insert into auth.users values ($1,$3),($2,$4)", [
@@ -320,4 +321,25 @@ test("shared Bio matrix is identical in PostgreSQL and direct writes cannot bypa
  await db.query("select save_my_professional_profile(array['Actuación'],'City','IG: legacy','limited','{}','{}','[]',true,'members_only')");
  await assert.rejects(db.query("select save_my_professional_profile(array['Actuación'],'City','IG: modified','limited','{}','{}','[]',true,'members_only')"),/BIO_CONTACT_BLOCKED/);
  await db.query("select save_my_professional_profile(array['Actuación'],'City','Mi correo es x@y.com','available','{}','{}','[]',true,'members_only')");
+});
+
+test("project preferences have no public projection and no acceptance defaults",async()=>{
+ await as("authenticated",owner);
+ const prefs={formats:["Fotografía"],open_formats:true,themes:{},participation:{nudity:"decline"},conditions:{night:"consult"}};
+ await db.query("select save_my_project_preferences($1)",[prefs]);
+ assert.deepEqual((await db.query("select project_preferences from profile_private_settings")).rows[0].project_preferences,prefs);
+ for(const bad of [{...prefs,participation:{nudity:"yes"}},{...prefs,formats:["Other"]},{...prefs,conditions:{unknown:"accept"}},{...prefs,visibility:"public"}]) await assert.rejects(db.query("select save_my_project_preferences($1)",[bad]));
+ await as("authenticated",other);assert.equal((await db.query("select project_preferences from profile_private_settings")).rows.length,0);
+ const detail=(await db.query("select * from get_public_professional_portfolio($1)",[slug])).rows;
+ assert.doesNotMatch(JSON.stringify(detail),/project_preferences|nudity|decline|night|consult/);
+ await as("anon");await assert.rejects(db.query("select save_my_project_preferences($1)",[prefs]));
+});
+test("extended credits remain a single owner-authorized presentation, with partial dates",async()=>{
+ await as("postgres");
+ const credits=[{title:"Film",role:"DP",year:"2024",start:"2024",end:"2025-03",company:"Demo",production_type:"Cortometraje",description:"Fictitious fixture",url:"https://example.org/film",ongoing:false}];
+ await db.query("update professional_profiles set presentation=jsonb_set(presentation,'{credits}',$1) where user_id=$2",[credits,owner]);
+ for(const c of [{...credits[0],start:"2024-13"},{...credits[0],end:"2023"},{...credits[0],ongoing:true},{...credits[0],url:"javascript:bad"}]) await assert.rejects(db.query("update professional_profiles set presentation=jsonb_set(presentation,'{credits}',$1) where user_id=$2",[[c],owner]));
+ await as("authenticated",other);
+ await assert.rejects(db.query("update professional_profiles set presentation=jsonb_set(presentation,'{credits}','[]') where user_id=$1 returning user_id",[owner]),/permission denied/);
+ await as("anon");const detail=(await db.query("select presentation from get_public_professional_portfolio($1)",[slug])).rows[0];assert.equal(detail.presentation.credits[0].start,"2024");
 });

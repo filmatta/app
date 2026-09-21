@@ -14,6 +14,7 @@ import {
 import type { PublicProfessionalProfile } from "@/lib/profiles/types";
 import ProfileImage from "./ProfileImage";
 import IdentityImage from "./IdentityImage";
+import { sortedCredits, creditPeriod } from "@/lib/profiles/credits";
 import { formatRate } from "@/lib/profiles/rate";
 import ReelPlayer from "./ReelPlayer";
 import ShareProfile from "./ShareProfile";
@@ -208,12 +209,13 @@ export default function ProfilePortfolio({
             <section className="p2-credits" id="credits">
               <h2>Trayectoria / CV</h2>
               <ul>
-                {p.credits.map((credit, i) => (
+                {sortedCredits(p.credits).map((credit, i) => (
                   <li key={i}>
+                    <p className="p2-credit-period">{creditPeriod(credit)}</p>
                     <h3>{credit.title}</h3>
-                    <p>
-                      {[credit.role, credit.year].filter(Boolean).join(" · ")}
-                    </p>
+                    <p>{[credit.role, credit.company, credit.production_type].filter(Boolean).join(" · ")}</p>
+                    {credit.description && <p>{credit.description}</p>}
+                    {credit.url && <a href={credit.url} target="_blank" rel="noopener noreferrer">Ver proyecto ↗</a>}
                   </li>
                 ))}
               </ul>

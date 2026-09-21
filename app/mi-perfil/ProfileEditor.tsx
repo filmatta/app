@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import ProfilePortfolio from "@/components/profiles/ProfilePortfolio";
+import ProjectPreferencesDialog from "./ProjectPreferencesDialog";
 import PortfolioMedia from "@/components/profiles/PortfolioMedia";
 import {
   EMPTY_PRESENTATION,
@@ -230,7 +231,7 @@ export default function ProfileEditor({
           identity: section("identity", "identidad"),
           about: section("about", "bio"),
           credits: section("credits", "créditos"),
-          skills: section("skills", "habilidades / equipo"),
+          skills: <>{section("skills", "habilidades / equipo")}{editing && <div className="pe-edit-sections"><button type="button" onClick={() => setDialog({ section: "preferences" })}>Preferencias de proyectos · privadas</button><a href="/cuenta#datos-contacto" target="_blank" rel="noopener noreferrer">Editar datos de contacto ↗</a></div>}</>,
         }}
         media={
           items !== null || editing ? (
@@ -286,7 +287,7 @@ export default function ProfileEditor({
         </details>
       )}
       {dialog &&
-        ("section" in dialog ? (
+        ("section" in dialog ? (dialog.section === "preferences" ? <ProjectPreferencesDialog close={() => setDialog(null)} /> :
           <SectionDialog
             section={dialog.section}
             profile={draft}

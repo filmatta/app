@@ -1,7 +1,8 @@
 import { parseRate, type ProfileRate } from "./rate";
 import type { PortfolioItem, ProfessionalProfile } from "./types";
 
-export type ProfileCredit = { title: string; role: string; year: string };
+import { parseCredit, type ProfileCredit } from "./credits";
+export type { ProfileCredit } from "./credits";
 export type ProfilePresentation = {
   portrait_url: string;
   portrait_media_id?: string | null;
@@ -48,7 +49,7 @@ export function parsePresentation(value: unknown): ProfilePresentation | null {
     !Array.isArray(p.book) ||
     p.book.length > 6 ||
     !Array.isArray(p.credits) ||
-    p.credits.length > 12
+    p.credits.length > 30
   )
     return null;
   const book: ProfilePresentation["book"] = [];
@@ -66,23 +67,7 @@ export function parsePresentation(value: unknown): ProfilePresentation | null {
   }
   const credits: ProfileCredit[] = [];
   for (const item of p.credits) {
-    if (
-      !item ||
-      typeof item.title !== "string" ||
-      !item.title.trim() ||
-      item.title.length > 100 ||
-      typeof item.role !== "string" ||
-      !item.role.trim() ||
-      item.role.length > 80 ||
-      typeof item.year !== "string" ||
-      !/^(|19\d{2}|20\d{2})$/.test(item.year)
-    )
-      return null;
-    credits.push({
-      title: item.title.trim(),
-      role: item.role.trim(),
-      year: item.year,
-    });
+    const parsed = parseCredit(item); if (!parsed) return null; credits.push(parsed);
   }
   const rateValue = parseRate(p.rate);
   if (rateValue === false) return null;

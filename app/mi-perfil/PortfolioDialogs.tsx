@@ -25,6 +25,7 @@ import {
 import { analyzeBio, BIO_CONTACT_TITLE, BIO_CONTACT_MESSAGE, BIO_EMAIL_NOTICE } from "@/lib/profiles/bio-policy";
 import "@/app/cuenta/private-contact.css";
 import IdentityImageEditor from "./IdentityImageEditor";
+import { PRODUCTION_TYPES } from "@/lib/profiles/credits";
 import { DEFAULT_CROP } from "@/lib/profiles/image-input";
 import { RATE_CURRENCIES } from "@/lib/profiles/rate";
 export type EditorState = {
@@ -719,37 +720,44 @@ export function SectionDialog({
                     />
                   </label>
                   <label>
-                    Año
+                    Inicio (año o año-mes)
                     <input
-                      maxLength={4}
-                      pattern="(19|20)[0-9]{2}"
-                      value={c.year}
+                      maxLength={7}
+                      pattern="(19|20)[0-9]{2}(-(0[1-9]|1[0-2]))?"
+                      placeholder="2024 o 2024-06"
+                      value={c.start || c.year}
                       onChange={(e) =>
                         setCredits((v) =>
                           v.map((r, j) =>
-                            j === i ? { ...r, year: e.target.value } : r,
+                            j === i ? { ...r, year: e.target.value.slice(0,4), start: e.target.value } : r,
                           ),
                         )
                       }
                     />
                   </label>
                 </div>
+                <label className="pe-checkbox"><input type="checkbox" checked={c.ongoing ?? false} onChange={e => setCredits(v => v.map((r,j) => j === i ? { ...r, ongoing: e.target.checked, end: e.target.checked ? "" : r.end } : r))} />En curso</label>
+                {!c.ongoing && <label>Fin (opcional, año o año-mes)<input maxLength={7} pattern="(19|20)[0-9]{2}(-(0[1-9]|1[0-2]))?" value={c.end ?? ""} onChange={e => setCredits(v => v.map((r,j) => j === i ? { ...r, end: e.target.value } : r))} /></label>}
+                <label>Productora / cliente (opcional)<input maxLength={100} value={c.company ?? ""} onChange={e => setCredits(v => v.map((r,j) => j === i ? { ...r, company: e.target.value } : r))} /></label>
+                <label>Tipo de producción<select value={c.production_type ?? ""} onChange={e => setCredits(v => v.map((r,j) => j === i ? { ...r, production_type: e.target.value } : r))}>{PRODUCTION_TYPES.map(t => <option key={t} value={t}>{t || "Sin especificar"}</option>)}</select></label>
+                <label>Descripción breve<textarea maxLength={400} value={c.description ?? ""} onChange={e => setCredits(v => v.map((r,j) => j === i ? { ...r, description: e.target.value } : r))} /></label>
+                <label>Enlace público (opcional)<input type="url" maxLength={500} value={c.url ?? ""} onChange={e => setCredits(v => v.map((r,j) => j === i ? { ...r, url: e.target.value } : r))} /></label>
                 <button
                   type="button"
                   onClick={() => setCredits((v) => v.filter((_, j) => j !== i))}
                 >
-                  Quitar crédito
+                  Quitar experiencia
                 </button>
               </div>
             ))}
             <button
               type="button"
-              disabled={credits.length >= 12}
+              disabled={credits.length >= 30}
               onClick={() =>
                 setCredits((v) => [...v, { title: "", role: "", year: "" }])
               }
             >
-              + Añadir crédito
+              + Añadir experiencia
             </button>
           </>
         )}
