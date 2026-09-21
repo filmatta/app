@@ -1,0 +1,10 @@
+.private-contact-form { display: grid; gap: 18px; border-top: 1px solid #ffffff20; padding: 24px 0; max-width: 720px; }
+.private-contact-form label { display: grid; gap: 8px; font-size: 14px; }
+.private-contact-form input:not([type="checkbox"]), .private-contact-form select { width: 100%; min-width: 0; padding: 12px; color: #f1efe9; background: #111415; border: 1px solid #ffffff30; border-radius: 5px; font-size: 16px; }
+.private-contact-form :focus-visible { outline: 2px solid #b9dceb; outline-offset: 3px; }
+.private-contact-form small, .private-contact-form p { color: #b9bfbc; line-height: 1.7; font-size: 13px; overflow-wrap: anywhere; }
+.private-contact-form .private-contact-check { display: flex; align-items: center; gap: 12px; }
+.private-contact-form button { justify-self: start; padding: 12px 18px; border: 1px solid #b9dceb66; color: #b9dceb; border-radius: 5px; }
+.private-contact-form [role="alert"] { color: #f1c37e; }
+.bio-contact-warning { border: 1px solid #d8ae6760; background: #d8ae6710; padding: 16px; color: #ebca97; line-height: 1.7; border-radius: 6px; }
+.bio-contact-warning a { text-decoration: underline; display: inline-block; padding-block: 8px; }

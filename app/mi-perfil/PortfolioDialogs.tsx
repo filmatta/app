@@ -22,6 +22,8 @@ import {
   savePortfolioItem,
   savePortfolioSection,
 } from "./portfolio-actions";
+import { analyzeBio, BIO_CONTACT_TITLE, BIO_CONTACT_MESSAGE, BIO_EMAIL_NOTICE } from "@/lib/profiles/bio-policy";
+import "@/app/cuenta/private-contact.css";
 import IdentityImageEditor from "./IdentityImageEditor";
 import { DEFAULT_CROP } from "@/lib/profiles/image-input";
 import { RATE_CURRENCIES } from "@/lib/profiles/rate";
@@ -561,14 +563,20 @@ export function WorkDialog({
 export function SectionDialog({
   section,
   profile,
+  bioDraft,
+  setBioDraft,
   done,
   close,
 }: {
   section: string;
   profile: ProfessionalProfile;
+  bioDraft: string;
+  setBioDraft: (text: string) => void;
   done: (v: EditorState) => void;
   close: () => void;
 }) {
+  const bioWarning = useRef<HTMLDivElement>(null);
+  const bioAnalysis = analyzeBio(bioDraft);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [credits, setCredits] = useState(profile.presentation.credits);
@@ -582,6 +590,7 @@ export function SectionDialog({
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy) return;
+    if (section === "about" && bioDraft.trim() !== (profile.bio ?? "").trim() && bioAnalysis.blocked) { bioWarning.current?.focus(); setError(BIO_CONTACT_MESSAGE); return; }
     setBusy(true);
     setError("");
     const form = new FormData(e.currentTarget);
@@ -668,17 +677,12 @@ export function SectionDialog({
 
           </>
         )}
-        {section === "about" && (
-          <label>
-            Bio breve
-            <textarea
-              name="bio"
-              maxLength={1200}
-              defaultValue={profile.bio ?? ""}
-              rows={7}
-            />
-          </label>
-        )}
+        {section === "about" && <>
+          <label htmlFor="profile-bio">Bio breve</label>
+          <textarea id="profile-bio" name="bio" maxLength={1200} value={bioDraft} onChange={e => setBioDraft(e.target.value)} rows={7} aria-describedby={bioAnalysis.blocked ? "bio-contact-warning" : bioAnalysis.hasEmail ? "bio-email-notice" : undefined} />
+          {bioAnalysis.blocked && <div id="bio-contact-warning" ref={bioWarning} tabIndex={-1} className="bio-contact-warning"><strong>⚠ {BIO_CONTACT_TITLE}</strong><p>{BIO_CONTACT_MESSAGE}</p><a href="/cuenta#datos-contacto" target="_blank" rel="noopener noreferrer">Ir a datos de contacto ↗</a>{bioDraft.trim() === (profile.bio ?? "").trim() && <p>Bio histórica: puedes guardar otras secciones. Al modificarla, tendrás que corregir estos datos.</p>}</div>}
+          {bioAnalysis.hasEmail && <p id="bio-email-notice" className="pe-hint">{BIO_EMAIL_NOTICE}</p>}
+        </>}
         {section === "credits" && (
           <>
             {credits.map((c, i) => (
@@ -790,6 +794,8 @@ export function SectionDialog({
               En borrador sólo tú puedes verlo. Los enlaces protegidos ya
               emitidos pueden tardar hasta 5 minutos en caducar.
             </p>
+            <a href="/cuenta#datos-contacto" target="_blank" rel="noopener noreferrer">Editar datos de contacto ↗</a>
+            <p className="pe-hint">Las consultas internas no dan acceso a Instagram ni WhatsApp.</p>
             <label>
               Contacto
               <select

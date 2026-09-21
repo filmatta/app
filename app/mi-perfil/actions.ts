@@ -1,5 +1,6 @@
 "use server";
 
+import { analyzeBio, BIO_CONTACT_MESSAGE } from "@/lib/profiles/bio-policy";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
@@ -46,6 +47,8 @@ export async function saveProfessionalProfile(formData: FormData) {
   const disciplines = uniqueStrings(formData.getAll("disciplines"));
   const city = cleanOptionalText(formData.get("city"));
   const bio = cleanOptionalText(formData.get("bio"));
+  const { data: historical } = await supabase.from("professional_profiles").select("bio").eq("user_id", user.id).maybeSingle();
+  if ((bio ?? "") !== (historical?.bio ?? "") && analyzeBio(bio ?? "").blocked) redirect(profileFeedback("error", BIO_CONTACT_MESSAGE));
   const skills = parseList(formData.get("skills"));
   const equipment = parseList(formData.get("equipment"));
   const availability = String(formData.get("availability") ?? "");

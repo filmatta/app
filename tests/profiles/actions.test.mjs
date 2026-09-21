@@ -7,8 +7,9 @@ function fixture(signedIn=true,rpcError=null) {
  const actions=load("app/mi-perfil/actions.ts",{
   "next/cache":{revalidatePath:p=>revalidated.push(p)},
   "next/navigation":{redirect:url=>{throw new Error("REDIRECT "+url);}},
+  "@/lib/profiles/bio-policy":load("lib/profiles/bio-policy.ts"),
   "@/lib/profiles/constants":constants,"@/lib/profiles/presentation":presentation,
-  "@/lib/supabase/server":{createClient:async()=>({auth:{getUser:async()=>({data:{user:signedIn?{id:"owner",user_metadata:{full_name:"Private Name"}}:null},error:null})},rpc:async(name,args)=>{calls.push({name,args});return {data:"public-slug",error:rpcError};}})},
+  "@/lib/supabase/server":{createClient:async()=>({from:()=>({select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{bio:null}})}),auth:{getUser:async()=>({data:{user:signedIn?{id:"owner",user_metadata:{full_name:"Private Name"}}:null},error:null})},rpc:async(name,args)=>{calls.push({name,args});return {data:"public-slug",error:rpcError};}})},
  });
  const form=new FormData();
  for(const [key,value] of Object.entries({disciplines:"Actuación",availability:"available",contact_policy:"members_only",portfolio_items:"[]",presentation:JSON.stringify(presentation.EMPTY_PRESENTATION)}))form.set(key,value);

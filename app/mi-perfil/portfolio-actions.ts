@@ -7,6 +7,7 @@ import {
   parsePresentation,
 } from "@/lib/profiles/presentation";
 import { getPublicDisplayName } from "@/lib/profiles/display-name";
+import { analyzeBio, BIO_CONTACT_MESSAGE } from "@/lib/profiles/bio-policy";
 import { parseRate } from "@/lib/profiles/rate";
 import { parseMediaInput } from "@/lib/profiles/media";
 import type { MediaItem } from "@/lib/profiles/media";
@@ -222,6 +223,7 @@ export async function savePortfolioSection(
       next.is_public = input.is_public;
       next.contact_policy = input.contact_policy as typeof next.contact_policy;
     } else return { error: "Sección no válida." };
+    if ((next.bio ?? "") !== (base.bio ?? "") && analyzeBio(next.bio ?? "").blocked) return { error: BIO_CONTACT_MESSAGE };
     if (!parsePresentation(next.presentation))
       return { error: "Revisa el nombre, retrato y créditos." };
     const { error } = await db.rpc("save_my_professional_portfolio", {

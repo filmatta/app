@@ -50,6 +50,7 @@ before(async () => {
     "20260923010000_profile_upload_lifecycle.sql",
     "20260923020000_profile_reel_selection.sql",
     "20260923030000_profile_identity_images_rates.sql",
+    "20260923040000_private_profile_contact_bio.sql",
   ])
     await db.exec(fs.readFileSync("supabase/migrations/" + file, "utf8"));
   await db.query("insert into auth.users values ($1,$3),($2,$4)", [
@@ -292,4 +293,31 @@ test("rate and crop constraints reject forged values without changing legacy tex
  await db.query("update professional_profiles set presentation=jsonb_set(jsonb_set(presentation,'{rate_range}','\"5000\"'),'{rate}',$1) where user_id=$2",[{amount:"5000.50",currency:"MXN",unit:"day"},owner]);
  assert.equal((await db.query("select presentation->>'rate_range' legacy from professional_profiles where user_id=$1",[owner])).rows[0].legacy,"5000");
  await assert.rejects(db.exec("update profile_media set image_crop='{\"x\":101,\"y\":50,\"zoom\":1,\"frame\":\"auto\"}'"));
+});
+
+test("private contacts stay owner-only and forged visibility or direct writes are rejected",async()=>{
+ await as("authenticated",owner);
+ const contact={instagram_username:"qa_demo",whatsapp_e164:"+442079460018",preferred_contact:"whatsapp",contact_visibility:"private"};
+ await db.query("select save_my_private_contact($1)",[contact]);
+ assert.equal((await db.query("select whatsapp_e164 from profile_private_settings")).rows[0].whatsapp_e164,contact.whatsapp_e164);
+ await assert.rejects(db.query("select save_my_private_contact($1)",[{...contact,contact_visibility:"members_only"}]));
+ await assert.rejects(db.exec("update profile_private_settings set contact_visibility='public'"));
+ await as("authenticated",other);assert.equal((await db.query("select * from profile_private_settings")).rows.length,0);
+ const detail=(await db.query("select * from get_public_professional_portfolio($1)",[slug])).rows;
+ assert.doesNotMatch(JSON.stringify(detail),/qa_demo|442079460018|instagram_username|whatsapp_e164/);
+ await as("anon");await assert.rejects(db.exec("select * from profile_private_settings"));await assert.rejects(db.query("select save_my_private_contact($1)",[contact]));
+});
+test("shared Bio matrix is identical in PostgreSQL and direct writes cannot bypass it; old bios remain unchanged",async()=>{
+ await as("postgres");
+ for(const c of JSON.parse(fs.readFileSync("tests/profiles/bio-cases.json","utf8"))){
+  assert.equal((await db.query("select private.profile_bio_has_contact($1) blocked",[c.text])).rows[0].blocked,c.blocked,c.text);
+  if(c.blocked) await assert.rejects(db.query("update professional_profiles set bio=$1 where user_id=$2",[c.text,owner]),/BIO_CONTACT_BLOCKED/);
+ }
+ await db.exec("alter table professional_profiles disable trigger professional_profile_bio_contact");
+ await db.query("update professional_profiles set bio='IG: legacy' where user_id=$1",[owner]);
+ await db.exec("alter table professional_profiles enable trigger professional_profile_bio_contact");
+ await as("authenticated",owner);
+ await db.query("select save_my_professional_profile(array['Actuación'],'City','IG: legacy','limited','{}','{}','[]',true,'members_only')");
+ await assert.rejects(db.query("select save_my_professional_profile(array['Actuación'],'City','IG: modified','limited','{}','{}','[]',true,'members_only')"),/BIO_CONTACT_BLOCKED/);
+ await db.query("select save_my_professional_profile(array['Actuación'],'City','Mi correo es x@y.com','available','{}','{}','[]',true,'members_only')");
 });

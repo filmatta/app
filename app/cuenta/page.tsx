@@ -1,3 +1,6 @@
+import PrivateContactForm from "./PrivateContactForm";
+import { loadPrivateContact } from "./private-profile-actions";
+import "./private-contact.css";
 import Link from "next/link";
 import { getBillingAccess } from "@/lib/billing/access";
 import { billingEnabled } from "@/lib/billing/config";
@@ -63,6 +66,7 @@ export default async function CuentaPage({
     redirect("/acceso?next=%2Fcuenta");
   }
 
+  const privateContact = await loadPrivateContact();
   const feedback = await searchParams;
   const billing = await getBillingAccess();
 
@@ -247,7 +251,7 @@ export default async function CuentaPage({
                 Perfil
               </p>
               <h2 id="profile-heading" className="mt-2 text-3xl font-semibold">
-                Datos personales
+                Información personal
               </h2>
               <p className="mt-4 max-w-md leading-7 text-white/40">
                 Este nombre se usa para saludarte y será la base de tu futuro
@@ -296,6 +300,12 @@ export default async function CuentaPage({
               </div>
             </form>
           </div>
+        </section>
+
+        <section id="datos-contacto" aria-labelledby="private-contact-heading" className="mt-12 scroll-mt-28">
+          <p className="text-xs uppercase tracking-widest text-white/40">Información personal</p>
+          <h2 id="private-contact-heading" className="mt-3 text-2xl">Datos de contacto</h2>
+          {"data" in privateContact ? <PrivateContactForm initial={privateContact.data} /> : <p role="alert" className="mt-6 text-amber-200">{privateContact.error}</p>}
         </section>
 
         <PlaceholderAccountSection

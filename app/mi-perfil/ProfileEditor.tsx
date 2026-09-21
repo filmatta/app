@@ -49,6 +49,7 @@ export default function ProfileEditor({
     },
   );
   const [items, setItems] = useState(initialItems);
+  const [bioDraft, setBioDraft] = useState(profile?.bio ?? "");
   const [editing, setEditing] = useState(false),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
@@ -289,6 +290,8 @@ export default function ProfileEditor({
           <SectionDialog
             section={dialog.section}
             profile={draft}
+            bioDraft={bioDraft}
+            setBioDraft={setBioDraft}
             done={accept}
             close={() => setDialog(null)}
           />

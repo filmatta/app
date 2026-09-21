@@ -1,0 +1,114 @@
+[
+  {
+    "text": "Directora con 10 años de experiencia.",
+    "blocked": false
+  },
+  {
+    "text": "Creo contenido para Instagram y TikTok.",
+    "blocked": false
+  },
+  {
+    "text": "Trabajo con cámara 4K a 25 fps. Festival 2025.",
+    "blocked": false
+  },
+  {
+    "text": "Mi correo es x@y.com",
+    "blocked": false
+  },
+  {
+    "text": "Productora https://example.org y hola@cine.com",
+    "blocked": false
+  },
+  {
+    "text": "Tarifa 5000 MXN, 1080 × 1350",
+    "blocked": false
+  },
+  {
+    "text": "@miusuario",
+    "blocked": true
+  },
+  {
+    "text": "IG: miusuario",
+    "blocked": true
+  },
+  {
+    "text": "Mi IG es cine",
+    "blocked": true
+  },
+  {
+    "text": "Instagram: cine",
+    "blocked": true
+  },
+  {
+    "text": "Me encuentras en Instagram como cine",
+    "blocked": true
+  },
+  {
+    "text": "Búscame en Instagram",
+    "blocked": true
+  },
+  {
+    "text": "Sígueme en Instagram",
+    "blocked": true
+  },
+  {
+    "text": "Mi usuario de Instagram es cine",
+    "blocked": true
+  },
+  {
+    "text": "https://instagram.com/cine/",
+    "blocked": true
+  },
+  {
+    "text": "https://wa.me/523312345678",
+    "blocked": true
+  },
+  {
+    "text": "https://api.whatsapp.com/send?phone=12345678",
+    "blocked": true
+  },
+  {
+    "text": "Escríbeme por WhatsApp al +52 33 1234 5678",
+    "blocked": true
+  },
+  {
+    "text": "WhatsApp: +52 33 1234 5678",
+    "blocked": true
+  },
+  {
+    "text": "Llámame al +52 33 1234 5678",
+    "blocked": true
+  },
+  {
+    "text": "Teléfono de contacto: 3312345678",
+    "blocked": true
+  },
+  {
+    "text": "ＩＧ： cine",
+    "blocked": true
+  },
+  {
+    "text": "＠cine",
+    "blocked": true
+  },
+  {
+    "text": "I​G:\ncine",
+    "blocked": true
+  },
+  {
+    "text": "arroba cine",
+    "blocked": true
+  },
+  {
+    "text": "cine@example.com e Instagram: cine",
+    "blocked": true
+  },
+  {
+    "text": "Mi correo x@y.com y @cine",
+    "blocked": true
+  },
+  {
+    "text": "Sigo el trabajo de Instagram para campañas.",
+    "blocked": false
+  }
+]
