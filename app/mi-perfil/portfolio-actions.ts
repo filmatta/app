@@ -12,6 +12,7 @@ import { parseRate } from "@/lib/profiles/rate";
 import { parseMediaInput } from "@/lib/profiles/media";
 import type { MediaItem } from "@/lib/profiles/media";
 import type { ProfessionalProfile } from "@/lib/profiles/types";
+import { cleanDiscardedReelCovers } from "@/lib/profiles/reel-cover-cleanup";
 
 async function session() {
   const db = await createClient();
@@ -32,6 +33,23 @@ async function state() {
 }
 type PortfolioResult =
   { data: Awaited<ReturnType<typeof state>> } | { error: string };
+export async function saveReelCover(reel: string, custom: string | null, book: string | null): Promise<PortfolioResult> {
+  try {
+    const { db, user } = await session();
+    const { error } = await db.rpc("set_my_reel_cover", { p_reel: reel, p_custom: custom, p_book: book });
+    if (error) return { error: "No pudimos guardar la portada del Reel. La anterior se conserva." };
+    // A cleanup outage does not undo the committed selection; cron retries its queue.
+    await cleanDiscardedReelCovers(user.id).catch(() => undefined);
+    const data = await state(); invalidate(data.profile.slug); return { data };
+  } catch (error) { return feedback(error); }
+}
+export async function discardReelCover(id: string) {
+  const { db, user } = await session();
+  const result = await db.rpc("discard_my_reel_cover", { p_id: id });
+  if (result.error) return { error: "No se pudo descartar esta portada." };
+  await cleanDiscardedReelCovers(user.id).catch(() => undefined);
+  return { success: true };
+}
 function invalidate(slug: string) {
   revalidatePath(`/perfiles/${slug}`);
   revalidatePath("/perfiles");

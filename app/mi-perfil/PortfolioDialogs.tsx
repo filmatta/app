@@ -21,6 +21,8 @@ import {
   managePortfolioItem,
   savePortfolioItem,
   savePortfolioSection,
+  saveReelCover,
+  discardReelCover,
 } from "./portfolio-actions";
 import { analyzeBio, BIO_CONTACT_TITLE, BIO_CONTACT_MESSAGE, BIO_EMAIL_NOTICE } from "@/lib/profiles/bio-policy";
 import "@/app/cuenta/private-contact.css";
@@ -99,6 +101,9 @@ export function WorkDialog({
   const [source, setSource] = useState(item?.source ?? "external");
   const [imageCrop, setImageCrop] = useState(item?.image_crop ?? { ...DEFAULT_CROP });
   const [file, setFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [customCoverId, setCustomCoverId] = useState(item?.custom_reel_cover_id ?? null);
+  const [bookCoverId, setBookCoverId] = useState(item?.thumbnail_id ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
@@ -172,6 +177,10 @@ export function WorkDialog({
       featured: form.get("featured") === "on",
     };
     const thumbnail = String(form.get("thumbnail") ?? "");
+    if (coverFile) {
+      const invalid = validateUploadDeclaration("image", coverFile);
+      if (invalid) { setError(invalid); return; }
+    }
     if (!item && selectedSource !== "external") {
       if (!file) {
         setError("Elige un archivo.");
@@ -189,11 +198,32 @@ export function WorkDialog({
     setError("");
     setBusy(true);
     inFlight.current = true;
+    let pendingCover: string | null = null;
     try {
       if (item || selectedSource === "external") {
         const result = await savePortfolioItem(item?.id ?? null, value);
         if ("error" in result) throw new Error(result.error);
-        if (
+        if (item?.category === "reel") {
+          let coverId = customCoverId;
+          if (coverFile) {
+            const response = await fetch("/api/portfolio/uploads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+              item: { category: "book", purpose: "reel_cover", title: "Portada del Reel", role: "", year: "", description: "", source: "storage", media_type: "image", url: "", featured: false },
+              file: { name: coverFile.name, type: coverFile.type, size: coverFile.size },
+            }) });
+            const reservedCover = await response.json();
+            if (!response.ok) throw Error(reservedCover.error);
+            pendingCover = reservedCover.id;
+            const uploaded = await createClient().storage.from("profile-media").upload(reservedCover.path, coverFile, { contentType: coverFile.type, upsert: false });
+            if (uploaded.error) throw Error("No se pudo subir la portada. La anterior se conserva.");
+            const complete = await fetch(`/api/portfolio/media/${reservedCover.id}/complete`, { method: "POST" });
+            if (!complete.ok) throw Error("Imagen no válida. Usa JPG, PNG o WebP estático, hasta 20 MB / 40 megapíxeles.");
+            coverId = reservedCover.id;
+          }
+          const r = await saveReelCover(item.id, coverId, bookCoverId || null);
+          if ("error" in r) throw Error(r.error);
+          pendingCover = null;
+          done(r.data);
+        } else if (
           item &&
           item.media_type !== "image" &&
           thumbnail !== (item.thumbnail_id ?? "")
@@ -276,6 +306,7 @@ export function WorkDialog({
         e instanceof Error ? e.message : "No pudimos guardar el trabajo.",
       );
     } finally {
+      if (pendingCover) await discardReelCover(pendingCover).catch(() => undefined);
       setBusy(false);
       inFlight.current = false;
     }
@@ -486,20 +517,35 @@ export function WorkDialog({
             Un principal por sección. Al destacarlo reemplazas la selección
             anterior.
           </p>
-          {item && item.media_type !== "image" && (
+          {item?.category === "reel" && <fieldset disabled={busy}>
+            <legend>Portada del Reel</legend>
+            <p className="pe-hint">Una imagen personalizada tiene prioridad sobre el Book. Sin portada manual usamos un frame estable del Reel.</p>
+            {customCoverId && <p>Portada personalizada guardada.</p>}
+            <label>Elegir imagen del Book<select value={bookCoverId} onChange={e => { setBookCoverId(e.target.value); setCustomCoverId(null); setCoverFile(null); }}>
+              <option value="">Portada automática</option>
+              {items.filter(i => (!i.purpose || i.purpose === "portfolio") && i.category === "book" && i.media_type === "image" && i.status === "ready" && i.visibility === "visible").map(i => <option key={i.id} value={i.id}>{i.title}</option>)}
+            </select></label>
+            <label>Subir portada personalizada<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => { const next = e.target.files?.[0] ?? null; setCoverFile(next); setError(next ? validateUploadDeclaration("image", next) ?? "" : ""); }} /></label>
+            <p className="pe-hint">JPG, PNG o WebP · hasta 20 MB. Sólo se usa en el Reel; no se añade al Book ni cambia tu foto de perfil.</p>
+            {coverFile && <p>Portada seleccionada: {coverFile.name}</p>}
+            {(customCoverId || bookCoverId || coverFile) && <button type="button" onClick={() => { setCustomCoverId(null); setBookCoverId(""); setCoverFile(null); }}>Quitar portada manual y usar automática</button>}
+            <p className="pe-hint">La portada se actualiza al guardar los cambios.</p>
+          </fieldset>}
+          {item && item.category !== "reel" && item.media_type !== "image" && (
             <label>
-              {item.category === "reel" ? "Cover del reel" : "Still personalizado"}
+              Still personalizado
               <select
                 name="thumbnail"
                 defaultValue={item.thumbnail_id ?? ""}
                 disabled={busy}
               >
                 <option value="">
-                  {item.category === "reel" ? "Sin cover curada" : "Frame del video"}
+                  Frame del video
                 </option>
                 {items
                   .filter(
                     (i) =>
+                      (!i.purpose || i.purpose === "portfolio") &&
                       i.media_type === "image" &&
                       i.status === "ready" &&
                       i.visibility !== "archived",
@@ -511,9 +557,7 @@ export function WorkDialog({
                   ))}
               </select>
               <small>
-                {item.category === "reel"
-                  ? "Elige una imagen de tu Book como portada del reel en tu perfil. Tu foto de perfil y las portadas de otros videos son independientes."
-                  : "Para usar otro still, añádelo como imagen y selecciónalo aquí."}
+                Para usar otro still, añádelo como imagen y selecciónalo aquí.
               </small>
             </label>
           )}

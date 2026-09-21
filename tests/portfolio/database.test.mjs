@@ -53,6 +53,7 @@ before(async () => {
     "20260923040000_private_profile_contact_bio.sql",
     "20260923050000_profile_preferences_credits.sql",
     "20260923060000_profile_media_attestation_grant.sql", "20260923070000_profile_bio_professional_references.sql",
+    "20260924010000_profile_reel_cover_projection.sql", "20260924020000_custom_reel_cover.sql",
   ])
     await db.exec(fs.readFileSync("supabase/migrations/" + file, "utf8"));
   await db.query("insert into auth.users values ($1,$3),($2,$4)", [
@@ -69,6 +70,36 @@ before(async () => {
   ).rows[0].slug;
 });
 after(() => db.close());
+test("dedicated reel cover: owner-only, public reference, private draft, replacement cleanup and Book separation", async () => {
+  await as("postgres");
+  const reel = (await db.query("insert into profile_media(owner_id,category,title,role,media_type,source,status,duration_seconds) values($1,'reel','QA Reel','DP','video','mux','ready',16) returning id", [owner])).rows[0].id;
+  const image = async purpose => (await db.query("insert into profile_media(owner_id,category,title,media_type,source,status,purpose,visibility,derivative_path) values($1,'book','QA cover','image','storage','ready',$2,$3,gen_random_uuid()::text) returning id", [owner,purpose,purpose==='portfolio'?'visible':'hidden'])).rows[0].id;
+  const custom = await image('reel_cover'), replacement = await image('reel_cover'), book = await image('portfolio');
+  const select = (c,b=book) => db.query('select set_my_reel_cover($1,$2,$3)',[reel,c,b]);
+  await as('authenticated', other); await assert.rejects(()=>select(custom));
+  await as('anon'); await assert.rejects(()=>select(custom));
+  await as('authenticated', owner);
+  await assert.rejects(()=>select(book));
+  await select(custom);
+  await assert.rejects(()=>db.query('select discard_my_reel_cover($1)',[custom]));
+  await as('anon');
+  assert.equal((await db.query('select get_profile_media_resource($1) r',[custom])).rows[0].r,null);
+  await as('postgres'); await db.query('update professional_profiles set is_public=true where user_id=$1',[owner]);
+  await as('anon');
+  assert.ok((await db.query('select get_profile_media_resource($1) r',[custom])).rows[0].r);
+  assert.equal((await db.query('select get_profile_media_resource($1) r',[replacement])).rows[0].r,null);
+  const media=(await db.query('select get_profile_media($1) m',[slug])).rows[0].m;
+  assert.equal(media.find(i=>i.id===custom).purpose,'reel_cover');
+  await as('authenticated',owner); await select(replacement);
+  await as('postgres');
+  assert.equal((await db.query('select status from profile_media where id=$1',[custom])).rows[0].status,'deleted');
+  assert.equal((await db.query('select status from profile_media where id=$1',[book])).rows[0].status,'ready');
+  await as('authenticated',owner); await select(null,null);
+  await as('postgres');
+  assert.equal((await db.query('select status from profile_media where id=$1',[replacement])).rows[0].status,'deleted');
+  await db.query('delete from profile_media where id=any($1::uuid[])',[[reel,custom,replacement,book]]);
+  await db.query('update professional_profiles set is_public=false where user_id=$1',[owner]);
+});
 test("owner CRUD; import is idempotent; originals preserved", async () => {
   await as("authenticated", owner);
   one = (await save()).rows[0].id;

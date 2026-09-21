@@ -18,9 +18,10 @@ test("reels use a curated cover while preserving the signed player", () => {
   const component = read("components/profiles/PortfolioMedia.tsx");
   const dialog = read("app/mi-perfil/PortfolioDialogs.tsx");
   const migration = read("supabase/migrations/20260924010000_profile_reel_cover_projection.sql");
-  assert.match(component, /item\.category === "reel"\s*\? undefined/);
+  assert.doesNotMatch(component, /item\.category === "reel"\s*\? undefined/);
+  assert.match(component, /selectedPoster/);
   assert.match(component, /tokens=\{resource\.tokens\}/);
-  assert.match(dialog, /Cover del reel/);
+  assert.match(dialog, /Portada del Reel/);
   assert.match(migration, /reel_cover_media_id/);
   assert.match(migration, /cover\.visibility = 'visible'/);
 });

@@ -20,6 +20,7 @@ export type MediaItem = {
   provider: "youtube" | "vimeo" | null;
   external_video_id: string | null;
   thumbnail_id: string | null;
+  custom_reel_cover_id?: string | null;
   featured: boolean;
   sort_order: number;
   visibility: "visible" | "hidden" | "archived";
@@ -31,7 +32,7 @@ export type MediaItem = {
   image_crop?: ImageCrop;
   image_width?: number | null;
   image_height?: number | null;
-  purpose?: "portfolio" | "portrait" | "cover";
+  purpose?: "portfolio" | "portrait" | "cover" | "reel_cover";
   aspect_ratio?: string | null;
   terminal_reason?: "cancelled" | "expired" | "provider-error" | null;
 };
@@ -166,7 +167,7 @@ export function parseMediaInput(value: unknown): MediaInput | null {
   )
     return null; // Legacy items are imported only by the database.
   const crop = parseImageCrop(v.image_crop);
-  if (!crop || (v.purpose != null && !["portfolio", "portrait", "cover"].includes(String(v.purpose)))) return null;
+  if (!crop || (v.purpose != null && !["portfolio", "portrait", "cover", "reel_cover"].includes(String(v.purpose)))) return null;
   if (v.purpose && v.purpose !== "portfolio" && (v.source !== "storage" || v.media_type !== "image")) return null;
   return {
     purpose: (v.purpose ?? "portfolio") as MediaInput["purpose"], image_crop: crop,

@@ -452,3 +452,5 @@
 .pm-portfolio .pm-screen > button.reel-play:hover,
 .pe-shell .pm-screen > button.reel-play:hover { background: #08080850; }
 .pm-screen > button.reel-play:focus-visible { outline: 2px solid #b9dceb; outline-offset: -3px; }
+.pm-screen:has(> .profile-image[data-state="loading"]) > .reel-play { visibility: hidden; }
+.pm-screen > .reel-play svg { display: block; }

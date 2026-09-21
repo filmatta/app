@@ -68,10 +68,12 @@ export function useResource(id: string | null) {
 export function MediaVisual({
   item,
   override,
+  customCover,
   openImage,
 }: {
   item: MediaItem;
   override?: MediaItem;
+  customCover?: MediaItem;
   openImage?: () => void;
 }) {
   const stored = item.source !== "external" && item.status === "ready";
@@ -81,6 +83,10 @@ export function MediaVisual({
   const [playing, setPlaying] = useState(false);
   const [visualError, setVisualError] = useState("");
   const [failedPoster, setFailedPoster] = useState<string | null>(null);
+  const [failedCustom, setFailedCustom] = useState<string | null>(null);
+  const { ref: customRef, resource: customResource, error: customError } = useResource(
+    item.category === "reel" && customCover ? customCover.id : null,
+  );
   const { ref: thumbRef, resource: thumbnailResource, error: thumbnailError } = useResource(
     override?.source === "storage" ? override.id : null,
   );
@@ -88,12 +94,13 @@ export function MediaVisual({
     thumbnailResource?.image ||
     (override?.source === "external" ? override.url : undefined);
   const automaticPoster =
-    item.category === "reel"
-      ? undefined
-      : external?.thumbnail || resource?.image ||
+    external?.thumbnail || resource?.image ||
         (resource?.playbackId && resource.tokens
           ? `https://image.mux.com/${resource.playbackId}/thumbnail.jpg?token=${encodeURIComponent(resource.tokens.thumbnail)}`
           : undefined);
+  const customPoster = customResource?.image;
+  const selectedPoster = customPoster && customPoster !== failedCustom ? customPoster
+    : poster && poster !== failedPoster ? poster : automaticPoster;
   if (item.status !== "ready")
     return (
       <div className="pm-screen pm-processing" role="status">
@@ -117,6 +124,7 @@ export function MediaVisual({
       style={item.media_type === "video" && item.aspect_ratio ? { aspectRatio: item.aspect_ratio.replace(":", "/") } : item.media_type === "image" ? { aspectRatio: "4/5" } : undefined}
     >
       <div ref={thumbRef} />
+      <div ref={customRef} />
       {item.media_type === "image" ? (
         <><ProfileImage
           src={item.source === "external" ? item.url : resource?.image}
@@ -133,7 +141,9 @@ export function MediaVisual({
           tokens={resource.tokens}
           streamType="on-demand"
           accentColor="#B9DCEB"
-          autoPlay={false}
+          // Mounted only after the user presses Play (playing starts false).
+          // Start that requested Reel playback; never mount a player as its preview.
+          autoPlay={item.category === "reel"}
           onError={() => {
             setPlaying(false);
             setVisualError("No pudimos reproducir el video. Renueva el acceso para reintentar.");
@@ -150,12 +160,16 @@ export function MediaVisual({
       ) : (
         <>
           <ProfileImage
-            src={poster && poster !== failedPoster ? poster : automaticPoster}
-            pending={Boolean(!poster && ((override?.source === "storage" && !thumbnailResource && !thumbnailError) || (item.category !== "reel" && needsResource && !resource && !error)))}
-            error={Boolean(error && item.category !== "reel")}
+            src={selectedPoster}
+            pending={Boolean(!selectedPoster && ((customCover && !customResource && !customError) || (override?.source === "storage" && !thumbnailResource && !thumbnailError) || (needsResource && !resource && !error)))}
+            error={Boolean(!selectedPoster && error)}
             alt=""
-            onError={() => { if (poster && poster !== failedPoster && automaticPoster) setFailedPoster(poster); else setVisualError("La miniatura no está disponible. Puedes reintentar o reproducir el video."); }}
-            fallback={item.category === "reel" ? "REEL" : item.source === "mux" ? "VIDEO" : "TRABAJO"}
+            onError={() => {
+              if (selectedPoster === customPoster && customPoster) setFailedCustom(customPoster);
+              else if (selectedPoster === poster && poster) setFailedPoster(poster);
+              else setVisualError("La miniatura no está disponible. Puedes reintentar o reproducir el video.");
+            }}
+            fallback="Portada no disponible"
           />
           {external || item.source === "mux" ? (
             <button
@@ -168,7 +182,7 @@ export function MediaVisual({
               disabled={item.source === "mux" && !resource?.playbackId}
               aria-label={`Reproducir ${item.title}`}
             >
-              <span aria-hidden="true">▷</span> <span>Ver {item.category === "reel" ? "reel" : "video"}</span>
+              <span aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M8 5L19 12L8 19V5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg></span> <span>Ver {item.category === "reel" ? "reel" : "video"}</span>
             </button>
           ) : (
             portfolioWebUrl(item.url) && (
@@ -185,7 +199,7 @@ export function MediaVisual({
         </>
       )}
       {(error || visualError) && (
-        <button type="button" className="pm-retry" onClick={() => { setVisualError(""); retry(); }}>
+        <button type="button" className="pm-retry" onClick={() => { setVisualError(""); setFailedPoster(null); setFailedCustom(null); retry(); }}>
           {visualError || "No se pudo obtener acceso al archivo."} Reintentar
         </button>
       )}
@@ -287,6 +301,7 @@ export default function PortfolioMedia({
                 >
                   <MediaVisual
                     item={item}
+                    customCover={item.category === "reel" ? items.find(i => i.id === item.custom_reel_cover_id && i.status === "ready" && i.visibility !== "archived") : undefined}
                     openImage={item.media_type === "image" ? () => setExpanded(item.id) : undefined}
                     override={items.find(
                       (i) =>

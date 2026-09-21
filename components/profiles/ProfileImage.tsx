@@ -36,12 +36,12 @@ function ImageLoad({
       if (image.current?.complete && image.current.naturalWidth > 0) { setLoaded(true); return; }
       timer = setTimeout(() => {
         if (image.current?.complete && image.current.naturalWidth > 0) setLoaded(true);
-        else setTimedOut(true);
+        else { setTimedOut(true); onError?.(); }
       }, 20000);
     }, { rootMargin: "250px" });
     observer.observe(root.current);
     return () => { observer.disconnect(); clearTimeout(timer); };
-  }, [src, pending, error, loaded]);
+  }, [src, pending, error, loaded, onError]);
   const failed = error || timedOut || Boolean(src && src === failedSource);
   const loading = !failed && !loaded && Boolean(src || pending);
   return (
