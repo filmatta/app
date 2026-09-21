@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { withTestUsers, checked } from "./test-project.mjs";
+import { withTestUsers, checked, verifyTestAdminMfa } from "./test-project.mjs";
 
 test("real Test Auth/PostgREST: public Profiles and Opportunities owner lifecycle", async () => {
   await withTestUsers(async ({ prefix, anon, owner, stranger, admin }) => {
@@ -138,12 +138,11 @@ test("real Test Auth/PostgREST: public Profiles and Opportunities owner lifecycl
           .length,
         0,
       );
-    assert.equal(
-      checked(
-        await admin.client.from("opportunities").select("id").eq("id", id),
-      ).length,
-      1,
-    );
+    assert.equal(checked(await admin.client.from("opportunities").select("id").eq("id", id)).length, 0,
+      "Admin AAL1 cannot read another owner's draft");
+    await verifyTestAdminMfa(admin);
+    assert.equal(checked(await admin.client.from("opportunities").select("id").eq("id", id)).length, 1,
+      "Admin AAL2 can read the draft");
     assert.ok(
       (
         await stranger.client.rpc("save_my_opportunity", {

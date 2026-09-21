@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { withTestUsers, checked } from "./test-project.mjs";
+import { withTestUsers, checked, verifyTestAdminMfa } from "./test-project.mjs";
 test("real Test Services lifecycle and private inquiries enforce RLS and column grants", async () =>
   withTestUsers(async ({ prefix, anon, owner, stranger, admin, outsider }) => {
     const values = {
@@ -159,12 +159,11 @@ test("real Test Services lifecycle and private inquiries enforce RLS and column 
       )[0].target_href,
       null,
     );
-    assert.equal(
-      checked(
-        await admin.client.from("service_listings").select("id").eq("id", id),
-      ).length,
-      1,
-    );
+    assert.equal(checked(await admin.client.from("service_listings").select("id").eq("id", id)).length, 0,
+      "Admin AAL1 cannot read another owner's draft");
+    await verifyTestAdminMfa(admin);
+    assert.equal(checked(await admin.client.from("service_listings").select("id").eq("id", id)).length, 1,
+      "Admin AAL2 can read the draft");
     checked(
       await owner.client.rpc("save_my_service", {
         ...args,

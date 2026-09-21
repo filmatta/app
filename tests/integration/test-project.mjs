@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { totp } from "../totp.mjs";
 
 export const TEST_REF = "ezlycwkuzkwcnhrhiruv";
 export function testSql(sql) {
@@ -123,4 +124,22 @@ export async function withTestUsers(run) {
 export function checked(result) {
   assert.equal(result.error, null);
   return result.data;
+}
+
+// Only call for a disposable admin supplied by withTestUsers. Exercise real MFA;
+// the admin role alone must never grant access to another owner's draft.
+export async function verifyTestAdminMfa(admin) {
+  assert.equal(admin.kind, "admin");
+  assert.ok(admin.email.startsWith("catalog-"));
+  const before = checked(await admin.client.auth.mfa.getAuthenticatorAssuranceLevel());
+  assert.equal(before.currentLevel, "aal1");
+  const factor = checked(await admin.client.auth.mfa.enroll({
+    factorType: "totp", friendlyName: "Catalog regression QA",
+  }));
+  const challenge = checked(await admin.client.auth.mfa.challenge({ factorId: factor.id }));
+  checked(await admin.client.auth.mfa.verify({
+    factorId: factor.id, challengeId: challenge.id, code: totp(factor.totp.secret),
+  }));
+  const after = checked(await admin.client.auth.mfa.getAuthenticatorAssuranceLevel());
+  assert.equal(after.currentLevel, "aal2");
 }
