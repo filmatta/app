@@ -13,6 +13,8 @@ import {
 } from "@/lib/profiles/presentation";
 import type { PublicProfessionalProfile } from "@/lib/profiles/types";
 import ProfileImage from "./ProfileImage";
+import IdentityImage from "./IdentityImage";
+import { formatRate } from "@/lib/profiles/rate";
 import ReelPlayer from "./ReelPlayer";
 import ShareProfile from "./ShareProfile";
 import ProfileBio from "./ProfileBio";
@@ -55,21 +57,21 @@ export default function ProfilePortfolio({
   const visual = Boolean(media || reel || p.book.length);
   return (
     <article className={`profile-public-v2 ${talent ? "p2-talent" : ""}`}>
-      <header className={`p2-hero ${cover ? "p2-hero--image" : ""}`}>
-        {cover && (
+      <header className={`p2-hero ${p.cover_media_id || cover ? "p2-hero--image" : ""}`}>
+        {(p.cover_media_id || cover) && (
           <div className="p2-cover" aria-hidden="true">
-            <ProfileImage src={cover} alt="" eager />
+            <IdentityImage id={p.cover_media_id} fallbackUrl={cover} alt="" eager />
           </div>
         )}
         <p className="eyebrow">FILMATTA / {talent ? "Talento" : "Perfiles"}</p>
         <div className="p2-identity">
-          {p.portrait_url && (
+          {(p.portrait_media_id || p.portrait_url) && (
             <div className="p2-portrait profile-portrait">
-              <ProfileImage
-                src={p.portrait_url}
+              <IdentityImage
+                id={p.portrait_media_id}
+                fallbackUrl={p.portrait_url}
                 alt={`Retrato de ${name}`}
                 eager
-                fallback={name.slice(0, 1)}
               />
             </div>
           )}
@@ -260,10 +262,10 @@ export default function ProfilePortfolio({
           <ProfessionalDetails><section className="p2-information">
             {sectionControls.skills}
             <dl>
-              {p.rate_range && (
+              {(p.rate || p.rate_range) && (
                 <div>
                   <dt>Tarifa aproximada</dt>
-                  <dd>{p.rate_range}</dd>
+                  <dd>{p.rate ? formatRate(p.rate) : p.rate_range}</dd>
                 </div>
               )}
               {location && (

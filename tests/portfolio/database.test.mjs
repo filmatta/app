@@ -49,6 +49,7 @@ before(async () => {
     "20260921010000_profile_media.sql",
     "20260923010000_profile_upload_lifecycle.sql",
     "20260923020000_profile_reel_selection.sql",
+    "20260923030000_profile_identity_images_rates.sql",
   ])
     await db.exec(fs.readFileSync("supabase/migrations/" + file, "utf8"));
   await db.query("insert into auth.users values ($1,$3),($2,$4)", [
@@ -262,4 +263,33 @@ test("reel selection uses attested exact duration, serial replacement, owner-onl
       assert.equal((await db.query("select id from profile_media where category='reel'")).rows[0].id,before);
     }
   }
+});
+
+test("identity references require owner validated derivatives; originals and unreferenced candidates remain private", async () => {
+ await as("authenticated",other);
+ await db.query("select save_my_professional_profile(array['Actuación'],'City','Bio','available','{}','{}','[]',false,'members_only')");
+ await as("postgres");
+ const own=(await db.query("insert into profile_media(owner_id,category,title,media_type,source,status,purpose,storage_path,derivative_path) values($1,'book','Portrait','image','storage','ready','portrait','own/original','own/derived') returning id",[owner])).rows[0].id;
+ const foreign=(await db.query("insert into profile_media(owner_id,category,title,media_type,source,status,purpose,storage_path,derivative_path) values($1,'book','Portrait','image','storage','ready','portrait','foreign/original','foreign/derived') returning id",[other])).rows[0].id;
+ await as("authenticated",owner);
+ await assert.rejects(db.query("select set_my_profile_identity_image('portrait',$1)",[foreign]),/Invalid identity/);
+ await db.query("select set_my_profile_identity_image('portrait',$1)",[own]);
+ await as("postgres"); await db.query("update professional_profiles set is_public=true where user_id=$1",[owner]);
+ await as("anon");
+ assert.equal((await db.query("select can_read_profile_image('own/original') allowed")).rows[0].allowed,false);
+ assert.equal((await db.query("select can_read_profile_image('own/derived') allowed")).rows[0].allowed,true);
+ const list=(await db.query("select get_profile_media($1) items",[slug])).rows[0].items;
+ assert.ok(!list.some(m=>m.id===own));
+ await as("authenticated",other); await assert.rejects(db.query("select set_my_profile_identity_image('portrait',$1)",[own]));
+ await as("authenticated",owner); await db.query("select set_my_profile_identity_image('portrait',null)");
+ await as("anon"); assert.equal((await db.query("select can_read_profile_image('own/derived') allowed")).rows[0].allowed,false);
+ await as("postgres"); assert.equal((await db.query("select status from profile_media where id=$1",[own])).rows[0].status,"ready");
+});
+test("rate and crop constraints reject forged values without changing legacy text",async()=>{
+ await as("postgres");
+ for(const rate of [{amount:"5.555",currency:"MXN",unit:"day"},{amount:"-1",currency:"USD",unit:"hour"},{amount:"3",currency:"FAKE",unit:"day"},{amount:"3",currency:"MXN",unit:"month"},{amount:"3.50",currency:"CLP",unit:"day"}])
+  await assert.rejects(db.query("update professional_profiles set presentation=jsonb_set(presentation,'{rate}',$1) where user_id=$2",[rate,owner]));
+ await db.query("update professional_profiles set presentation=jsonb_set(jsonb_set(presentation,'{rate_range}','\"5000\"'),'{rate}',$1) where user_id=$2",[{amount:"5000.50",currency:"MXN",unit:"day"},owner]);
+ assert.equal((await db.query("select presentation->>'rate_range' legacy from professional_profiles where user_id=$1",[owner])).rows[0].legacy,"5000");
+ await assert.rejects(db.exec("update profile_media set image_crop='{\"x\":101,\"y\":50,\"zoom\":1,\"frame\":\"auto\"}'"));
 });

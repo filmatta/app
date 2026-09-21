@@ -606,3 +606,15 @@
  .p2-main { grid-column: 1; grid-row: 1; }
  .p2-aside { grid-column: 2; grid-row: 1; }
 }
+
+/* Explicit panoramic cover, separate from the readable identity row. */
+.p2-hero, .p2-hero--image { padding-top: 0; }
+.p2-cover { position: relative; z-index: 0; inset: auto; mask-image: none; aspect-ratio: 1920/780; border-radius: 6px; margin-bottom: 24px; }
+.p2-cover .profile-image { opacity: 1; }
+.p2-cover::after { display: none; }
+.p2-hero--image .p2-identity { margin-top: 24px; }
+.p2-identity-image { width: 100%; height: 100%; }
+.p2-identity-image .profile-image { width: 100%; height: 100%; }
+.p2-portrait .p2-identity-image { aspect-ratio: 1; }
+.p2-talent .p2-portrait .profile-image { aspect-ratio: 1; }
+@media(max-width:767px) { .p2-hero { padding-top: 0; } .p2-cover { inset: auto; } }

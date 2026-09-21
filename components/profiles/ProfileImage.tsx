@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 // User-supplied HTTPS images stay in the browser, never in a server image proxy.
 export default function ProfileImage({
   src,
@@ -8,6 +8,7 @@ export default function ProfileImage({
   eager = false,
   fallback = "F",
   onError,
+  imageStyle,
 }: {
   src?: string | null;
   alt: string;
@@ -15,6 +16,7 @@ export default function ProfileImage({
   eager?: boolean;
   fallback?: string;
   onError?: () => void;
+  imageStyle?: CSSProperties;
 }) {
   const [failedSource, setFailedSource] = useState<string | null>(null);
   return (
@@ -29,6 +31,7 @@ export default function ProfileImage({
           alt={alt}
           loading={eager ? "eager" : "lazy"}
           decoding="async"
+          style={imageStyle}
           referrerPolicy="no-referrer"
           onError={() => { setFailedSource(src); onError?.(); }}
         />

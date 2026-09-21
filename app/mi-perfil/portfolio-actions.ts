@@ -7,6 +7,7 @@ import {
   parsePresentation,
 } from "@/lib/profiles/presentation";
 import { getPublicDisplayName } from "@/lib/profiles/display-name";
+import { parseRate } from "@/lib/profiles/rate";
 import { parseMediaInput } from "@/lib/profiles/media";
 import type { MediaItem } from "@/lib/profiles/media";
 import type { ProfessionalProfile } from "@/lib/profiles/types";
@@ -193,7 +194,8 @@ export async function savePortfolioSection(
         input.availability as ProfessionalProfile["availability"];
       next.presentation.stage_name = String(input.name ?? "").trim();
       next.presentation.work_area = String(input.work_area ?? "").trim();
-      next.presentation.portrait_url = String(input.portrait_url ?? "").trim();
+      if (typeof input.portrait_url === "string") next.presentation.portrait_url = input.portrait_url.trim();
+      next.presentation.portfolio_mode = input.portfolio_mode as typeof next.presentation.portfolio_mode;
     } else if (section === "about") next.bio = String(input.bio ?? "").trim();
     else if (section === "credits")
       next.presentation.credits =
@@ -207,7 +209,10 @@ export async function savePortfolioSection(
         .split(",")
         .map((v) => v.trim())
         .filter(Boolean);
-      next.presentation.rate_range = String(input.rate_range ?? "");
+      const rate = input.amount ? parseRate({ amount: String(input.amount), currency: input.currency, unit: input.unit }) : null;
+      if (rate === false) return { error: "Revisa importe, moneda y unidad de la tarifa." };
+      next.presentation.rate = rate;
+      if (input.clear_legacy_rate === "on") next.presentation.rate_range = "";
     } else if (section === "publication") {
       if (
         typeof input.is_public !== "boolean" ||
@@ -248,4 +253,13 @@ export async function savePortfolioSection(
   } catch (e) {
     return feedback(e);
   }
+}
+
+export async function saveIdentityImage(kind: "portrait" | "cover", id: string | null): Promise<PortfolioResult> {
+  try {
+    const { db } = await session();
+    const { error } = await db.rpc("set_my_profile_identity_image", { p_kind: kind, p_id: id });
+    if (error) return { error: "No pudimos guardar la imagen. La anterior se conserva." };
+    const data = await state(); invalidate(data.profile.slug); return { data };
+  } catch (error) { return feedback(error); }
 }

@@ -181,7 +181,7 @@ export default function ProfileEditor({
             type="button"
             onClick={() => setDialog({ section: "publication" })}
           >
-            Publicación
+            Publicar
           </button>
           <button
             type="button"

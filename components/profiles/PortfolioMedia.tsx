@@ -14,7 +14,7 @@ type Resource = {
   playbackId?: string;
   tokens?: { playback: string; thumbnail: string };
 };
-function useResource(id: string | null) {
+export function useResource(id: string | null) {
   const ref = useRef<HTMLDivElement>(null);
   const [resource, setResource] = useState<Resource | null>(null);
   const [error, setError] = useState(false);
@@ -99,13 +99,14 @@ export function MediaVisual({
     <div
       ref={ref}
       className={`pm-screen ${item.category === "book" ? "pm-screen--portrait" : ""}`}
-      style={item.media_type === "video" && item.aspect_ratio ? { aspectRatio: item.aspect_ratio.replace(":", "/") } : undefined}
+      style={item.media_type === "video" && item.aspect_ratio ? { aspectRatio: item.aspect_ratio.replace(":", "/") } : item.media_type === "image" ? { aspectRatio: item.image_crop?.frame === "square" ? "1" : item.image_crop?.frame === "portrait" ? "4/5" : item.image_crop?.frame === "landscape" ? "3/2" : item.image_width && item.image_height ? `${item.image_width}/${item.image_height}` : "4/5" } : undefined}
     >
       <div ref={thumbRef} />
       {item.media_type === "image" ? (
         <><ProfileImage
           src={item.source === "external" ? item.url : resource?.image}
           alt={item.title}
+          imageStyle={item.image_crop ? { objectPosition: `${item.image_crop.x}% ${item.image_crop.y}%`, transform: `scale(${item.image_crop.zoom})`, transformOrigin: `${item.image_crop.x}% ${item.image_crop.y}%` } : undefined}
           fallback="IMAGEN"
         />{openImage && <button className="pm-open-image" type="button" onClick={openImage} aria-label={`Ampliar ${item.title}`} />}</>
       ) : playing && item.source === "mux" && resource?.playbackId ? (

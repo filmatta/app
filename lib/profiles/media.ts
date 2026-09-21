@@ -1,3 +1,4 @@
+import { parseImageCrop, type ImageCrop } from "./image-input";
 // Decimal product limits. The video limit validates a declaration, not Mux bytes.
 export const VIDEO_LIMIT = 5_000_000_000;
 export const IMAGE_LIMIT = 20_000_000;
@@ -27,6 +28,10 @@ export type MediaItem = {
   created_at: string;
   updated_at: string;
   duration_seconds?: number | null;
+  image_crop?: ImageCrop;
+  image_width?: number | null;
+  image_height?: number | null;
+  purpose?: "portfolio" | "portrait" | "cover";
   aspect_ratio?: string | null;
   terminal_reason?: "cancelled" | "expired" | "provider-error" | null;
 };
@@ -41,6 +46,8 @@ export type MediaInput = Pick<
   | "source"
   | "url"
   | "featured"
+  | "purpose"
+  | "image_crop"
 >;
 export function externalVideo(value: unknown) {
   if (typeof value !== "string" || value.length > 500) return null;
@@ -158,7 +165,11 @@ export function parseMediaInput(value: unknown): MediaInput | null {
     (v.media_type === "image" && v.source === "external")
   )
     return null; // Legacy items are imported only by the database.
+  const crop = parseImageCrop(v.image_crop);
+  if (!crop || (v.purpose != null && !["portfolio", "portrait", "cover"].includes(String(v.purpose)))) return null;
+  if (v.purpose && v.purpose !== "portfolio" && (v.source !== "storage" || v.media_type !== "image")) return null;
   return {
+    purpose: (v.purpose ?? "portfolio") as MediaInput["purpose"], image_crop: crop,
     category: v.category as MediaCategory,
     title,
     role,

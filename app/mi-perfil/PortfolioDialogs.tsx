@@ -22,6 +22,9 @@ import {
   savePortfolioItem,
   savePortfolioSection,
 } from "./portfolio-actions";
+import IdentityImageEditor from "./IdentityImageEditor";
+import { DEFAULT_CROP } from "@/lib/profiles/image-input";
+import { RATE_CURRENCIES } from "@/lib/profiles/rate";
 export type EditorState = {
   profile: ProfessionalProfile;
   items: MediaItem[] | null;
@@ -91,6 +94,7 @@ export function WorkDialog({
       (category === "book" ? "image" : category === "reel" ? "video" : null),
   );
   const [source, setSource] = useState(item?.source ?? "external");
+  const [imageCrop, setImageCrop] = useState(item?.image_crop ?? { ...DEFAULT_CROP });
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -159,6 +163,7 @@ export function WorkDialog({
       year: String(form.get("year") ?? ""),
       description: String(form.get("description") ?? ""),
       media_type: type,
+      image_crop: imageCrop,
       source: selectedSource,
       url: String(form.get("url") ?? item?.url ?? ""),
       featured: form.get("featured") === "on",
@@ -415,6 +420,11 @@ export function WorkDialog({
               )}
             </div>
           )}
+          {type === "image" && <fieldset><legend>Encuadre de miniatura</legend>
+            <label>Formato<select value={imageCrop.frame} onChange={e => setImageCrop(v => ({ ...v, frame: e.target.value as typeof v.frame }))}><option value="auto">Original</option><option value="portrait">Vertical 4:5</option><option value="square">Cuadrado</option><option value="landscape">Horizontal</option></select></label>
+            {(["x", "y", "zoom"] as const).map(key => <label key={key}>{key === "x" ? "Horizontal" : key === "y" ? "Vertical" : "Acercamiento"}<input type="range" min={key === "zoom" ? 1 : 0} max={key === "zoom" ? 3 : 100} step={key === "zoom" ? .05 : 1} value={imageCrop[key]} onChange={e => setImageCrop(v => ({ ...v, [key]: Number(e.target.value) }))} /></label>)}
+            <p className="pe-hint">Sólo cambia la miniatura. Al ampliar se muestra la imagen completa.</p>
+          </fieldset>}
           <label>
             Título
             <input
@@ -565,9 +575,9 @@ export function SectionDialog({
   const titles: Record<string, string> = {
     identity: "Identidad profesional",
     about: "Sobre mí",
-    credits: "Créditos seleccionados",
+    credits: "Trayectoria / CV",
     skills: "Habilidades y equipo",
-    publication: "Publicación y contacto",
+    publication: "Publicar y contacto",
   };
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -652,15 +662,10 @@ export function SectionDialog({
                 ))}
               </select>
             </label>
-            <label>
-              Retrato · enlace HTTPS
-              <input
-                name="portrait_url"
-                type="url"
-                maxLength={500}
-                defaultValue={profile.presentation.portrait_url}
-              />
-            </label>
+            <label>Orientación del portafolio<select name="portfolio_mode" defaultValue={profile.presentation.portfolio_mode ?? "unspecified"}><option value="unspecified">Sin especificar</option><option value="audiovisual">Audiovisual · reel prioritario</option><option value="photographic">Fotográfico · Book</option></select></label>
+            <IdentityImageEditor kind="portrait" id={profile.presentation.portrait_media_id} fallbackUrl={profile.presentation.portrait_url} done={done} />
+            <IdentityImageEditor kind="cover" id={profile.presentation.cover_media_id} done={done} />
+
           </>
         )}
         {section === "about" && (
@@ -760,14 +765,14 @@ export function SectionDialog({
                 defaultValue={profile.equipment.join(", ")}
               />
             </label>
-            <label>
-              Rango orientativo (opcional)
-              <input
-                name="rate_range"
-                maxLength={100}
-                defaultValue={profile.presentation.rate_range}
-              />
-            </label>
+            <fieldset><legend>Tarifa aproximada (opcional)</legend>
+              <div className="pe-row"><label>Importe<input name="amount" inputMode="decimal" pattern="(0|[1-9][0-9]{0,7})([.][0-9]{1,2})?" defaultValue={profile.presentation.rate?.amount ?? ""} placeholder="5000" /></label>
+              <label>Moneda<select name="currency" defaultValue={profile.presentation.rate?.currency ?? "MXN"}>{RATE_CURRENCIES.map(c => <option key={c}>{c}</option>)}</select></label></div>
+              <label>Unidad<select name="unit" defaultValue={profile.presentation.rate?.unit ?? "day"}><option value="hour">Por hora</option><option value="day">Por día</option></select></label>
+              <p className="pe-hint">Referencia orientativa. No activa cobros ni reservas.</p>
+              {profile.presentation.rate_range && <><p className="pe-hint">Valor anterior: {profile.presentation.rate_range}. Completa moneda y unidad sin asumirlas.</p><label className="pe-checkbox"><input type="checkbox" name="clear_legacy_rate" />Quitar el texto histórico al guardar</label></>}
+            </fieldset>
+
           </>
         )}
         {section === "publication" && (
@@ -792,7 +797,7 @@ export function SectionDialog({
                 defaultValue={profile.contact_policy}
               >
                 <option value="members_only">
-                  Contacto protegido · miembros
+                  Pueden contactarme miembros de FILMATTA
                 </option>
                 <option value="closed">No recibir solicitudes</option>
               </select>
