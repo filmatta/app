@@ -1,0 +1,38 @@
+{
+  "deployment": "dpl_5BQzWw6T5G5vfQCq1hMXUGsHEi9g",
+  "url": "https://app-6us2zvpwb-filmatta.vercel.app",
+  "codeCommit": "e9c105a4e57dbab3c3f35da4478f139e33e2a71b",
+  "ready": true,
+  "supabase": "ezlycwkuzkwcnhrhiruv",
+  "muxEnvironment": "development",
+  "posterLoaded": true,
+  "posterDimensions": [
+    1920,
+    1080
+  ],
+  "verifiedCause": "opaque editor button covered successfully loaded signed poster",
+  "signedPlayback": {
+    "observedSeekFractions": [
+      0.0110392865671193,
+      0.646199125424342,
+      1
+    ],
+    "visibleFrames": true,
+    "finished": true
+  },
+  "widths": [
+    360,
+    390,
+    768,
+    1280,
+    1440
+  ],
+  "horizontalOverflow": false,
+  "physicalMobile": false,
+  "previewProtectionPreserved": true,
+  "bypassCreated": false,
+  "productionTouched": false,
+  "authEditorScope": "localhost backend with real Test Auth/RLS",
+  "providerWebhookToThisPreview": "not tested",
+  "scheduledCron": "not tested"
+}

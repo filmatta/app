@@ -51,7 +51,7 @@ Las siete se aplicaron únicamente a `ezlycwkuzkwcnhrhiruv`, con RLS activo y re
 
 ## Validación local y Test
 
-- 231 pruebas de Profiles/Portfolio/Contactos/Auth-MFA/Billing/Navigation/Mux-Learn/DB/Security/Catálogos pasaron, más prueba posterior de carrera cancelación/asset_created y dos pestañas. Son pruebas locales; mocks y PGlite no se presentan como integración remota.
+- 240 pruebas de Profiles/Portfolio/Contactos/Auth-MFA/Billing/Navigation/Mux-Learn/DB/Security/Catálogos/Tools pasaron, incluida carrera cancelación/asset_created y dos pestañas. Son pruebas locales; mocks y PGlite no se presentan como integración remota.
 - TypeScript, lint focalizado, build optimizado y diff-check correctos.
 - Test real: login de fixture por contraseña, publicación/despublicación, imagen con bytes reales y EXIF eliminado, sustitución UI válida y sustitución inválida que conserva retrato; RLS owner/non-owner/anon, Storage overwrite ajeno rechazado, contactos y preferencias privados, visibilidad forjada rechazada. Guardado UI de contacto normalizado, preferencia, alta/edición/eliminación CV; 34 casos Bio por RPC.
 - Direct Upload real a Mux Test con clip oficial pequeño, asset ready y duración real 16 s, selección de reel, cancelación waiting y declaración >5GB rechazada. Webhooks firmados de QA recibidos en localhost y duplicados idempotentes, comprobando estado canónico real de Mux. **Esto no equivale a entrega del proveedor al Preview.**
@@ -59,13 +59,23 @@ Las siete se aplicaron únicamente a `ezlycwkuzkwcnhrhiruv`, con RLS activo y re
 - Playwright local: 360/390/768/1280/1440 px, perfiles público/owner; sólo fotos, catálogos y landings en 390/1440. Viewports emulados, no dispositivo físico. Capturas en `docs/review/profiles-v2`. Los contactos privados no aparecen en capturas.
 - Las cuatro capturas de referencia mencionadas no estaban en el adjunto recibido: comparación basada en las instrucciones y diseño actual.
 
-## Demo y verificación pendiente en Preview
+## Demo y verificación final en Preview
 
 Fixtures exclusivamente Test, rotulados como ficticios: Cine (reel, otros videos, Book, CV), Book (sólo fotos), Incompleto (borrador). Se conservan intencionalmente para revisión. No son perfiles de personas reales. No se tocó el perfil de Alain. Imágenes editoriales ya presentes en el manifiesto del repositorio; sin nuevas fuentes de stock.
 
 Se creó un único clip QA `test:true` después de comprobar que los assets existentes de Test tenían políticas incompatibles (pública/mixta). No se copiaron videos Production ni se cambiaron políticas ajenas. El manifiesto local temporal conserva sólo IDs; credenciales en memoria. La limpieza completa verifica qa_run, owner y passthrough antes de retirar exclusivamente estos fixtures; jamás assets reutilizados.
 
-Pendiente antes de cerrar: Preview Ready con configuración Test existente, poster firmado y **reproducción real con avance temporal**, revisión visual allí. Los secretos de firma Preview existentes son sensibles/no extraíbles; no se copian a archivos locales ni se crea otra credencial. Capturas locales del reel muestran de forma explícita la falta de esa configuración local; no se presenta como fallo de firma demostrado en Production.
+Preview validado: https://app-6us2zvpwb-filmatta.vercel.app · deployment `dpl_5BQzWw6T5G5vfQCq1hMXUGsHEi9g` · código `e9c105a4e57dbab3c3f35da4478f139e33e2a71b`, Vercel **Ready**, entorno Preview con Supabase Test/Mux development. No cambios de variables globales, secretos ni bypass. La protección Vercel sigue activa (cliente HTTP anónimo recibe redirect de autenticación); navegador con la sesión Vercel existente.
+
+Demo audiovisual: `/perfiles/demostraci-n-c`; demo sólo fotos: `/perfiles/demostraci-n-b`; tercera demo es borrador privado. Perfil principal, catálogos Perfiles/Talento y ambas landings revisados; `/mi-perfil` anónimo redirige al login. El editor autenticado se validó con backend local contra Test (no se afirma un segundo login autenticado al Preview).
+
+**Poster y playback comprobados en Preview**: imagen Mux de 1920×1080 cargada; causa visual del gris identificada en el botón opaco, corregida y observada. Reproductor mostró fotogramas y el control de tiempo avanzó de 0.011 a 0.646 de su duración y finalmente 1 (final del clip de 16 s). No se contó un manifiesto HTTP 200 como reproducción. Política signed preservada, sin credenciales nuevas. Audiencias independientes protegidas por pruebas existentes; no se imprimieron tokens.
+
+Capturas finales del Preview en `docs/review/profiles-v2/preview/`, incluida reproducción y poster a 1440; perfil a 360/390/768/1280/1440, foto-only/catalog/landings a 390/1440. Todas sin overflow horizontal. Las capturas locales anteriores preservan evidencia del editor/QA y muestran el error explícito de firma local cuando faltaban secretos allí; las finales Preview muestran el video correcto.
+
+Las suites remotas heredadas de Jobs/Services/seguridad/catálogos no se contabilizan como aprobadas: al ejecutar el glob general, cuatro se detuvieron en el guard de configuración y una quedó omitida, antes de realizar aserciones de producto. Requieren `FILMATTA_TEST_ENV_FILE`; no se creó un archivo de credenciales ni se modificaron roles/MFA para ejecutarlas. Las suites locales de sus consumidores sí pasan. La integración remota específica de esta feature usa credenciales Test en memoria y está registrada aparte. No se validó entrega proveedor→webhook de este Preview, ejecución programada del cron ni dispositivo móvil físico; ninguna se presenta como PASSED.
+
+Fixtures transitorios de la prueba de limpieza: retirados tras verificar IDs y propietario. La revisión automática rechazó un primer alcance ambiguo; se acotó y verificó antes de ejecutar la retirada de exactamente dos filas/archivos propios. Las tres demos y su clip QA se conservan intencionalmente para revisión, con manifiesto temporal sin secretos. El operador de creación ahora rechaza sobrescribir un manifiesto existente.
 
 ## Rollout posterior (no ejecutado)
 
@@ -81,3 +91,13 @@ Pendiente antes de cerrar: Preview Ready con configuración Test existente, post
 Reversión: conservar datos nuevos y desactivar el antiguo limpiador antes de volver a código previo, pues éste vuelve a borrar por tiempo. No hacer down destructivo de columnas/tabla como rollback. Leer esquema nuevo desde código previo requiere revisar proyecciones y compatibilidad; mantener las defensas de privacidad del schema.
 
 Deuda posterior: ejecución remota del cron a comprobar en rollout; revisión manual de huérfanos/derivados fallidos inciertos; duración de fuentes externas sin atestación; política general de email voluntario en Bio pendiente; compartir contactos por consentimiento, matching y preferencias públicas no implementados. Follow y Boost/Talent+ siguen fuera de scope.
+
+
+## Commits y alcance final
+
+`c5c87f6` lifecycle; `2df377c` jerarquía/reel; `1bbe643` identidad/tarifas; `a8ed6ec` privacidad/Bio; `a3eff25` preferencias/CV; `dc02a73` correcciones de integración; `cfecabb` evidencia Test; `e9c105a` overlay del poster. Los siguientes commits de evidencia no cambian el código del Preview validado.
+
+Origin/main se volvió a consultar y continúa en `a2e89353698e1c6ec163f06fddf0a1e9ecf2f985`. No merge/push a main, migración/deploy Production, pagos, cambios de Auth/MFA/Stripe ni eliminación de datos/assets reales. Contacto Operativo, inbox/respuesta, antispam/report/archive mantienen sus implementaciones y pasan regresión local con las migraciones nuevas.
+
+
+Retiro posterior de las demos: `FILMATTA_RUN_REMOTE_TESTS=ezlycwkuzkwcnhrhiruv node tools/profiles-v2-demo-cleanup.mjs` hace inventario read-only. Añadir `cleanup` sólo al terminar la revisión: valida los tres qa_run/owners, IDs de filas, prefijos de Storage, passthrough/creator del asset y referencias compartidas antes de borrar exclusivamente los fixtures propios. No se ejecutó el retiro de demos en esta entrega.

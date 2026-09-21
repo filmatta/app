@@ -1,0 +1,31 @@
+{
+  "groups": [
+    "portfolio",
+    "profiles",
+    "contacts",
+    "auth",
+    "billing",
+    "navigation",
+    "mux",
+    "database",
+    "security",
+    "catalogs",
+    "tools"
+  ],
+  "exitCode": 0,
+  "summary": [
+    "ℹ tests 240",
+    "ℹ suites 0",
+    "ℹ pass 240",
+    "ℹ fail 0",
+    "ℹ cancelled 0",
+    "ℹ skipped 0",
+    "ℹ todo 0",
+    "ℹ duration_ms 15949.4249"
+  ],
+  "typescript": "passed",
+  "focusedLint": "passed",
+  "optimizedBuild": "passed locally and Vercel Ready",
+  "diffCheck": "passed",
+  "separateRemoteSuites": "The earlier broad glob failed four integration guards because FILMATTA_TEST_ENV_FILE is not supplied; one opt-in suite skipped. No assertion against a remote product was reached. Scope-specific remote QA uses in-memory Test credentials and is recorded separately."
+}

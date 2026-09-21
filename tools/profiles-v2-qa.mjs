@@ -10,6 +10,7 @@ import sharp from "sharp";
 import { testContext, TEST_REF } from "./portfolio-test-context.mjs";
 const base="http://127.0.0.1:3110", evidence=path.resolve("docs/review/profiles-v2"), run="profiles-v2-"+randomUUID();
 const manifestPath=path.join(os.tmpdir(),"filmatta-profiles-v2-fixtures.json");
+if (fs.existsSync(manifestPath)) throw Error("Existing Profiles V2 fixture manifest: resume or explicitly clean it before creating another run.");
 const report={run,project:TEST_REF,checks:[],screenshots:[],blocked:[],productionTouched:false};
 const c=await testContext(), users=[], assets=[];
 let server,browser,phase="initialization";
