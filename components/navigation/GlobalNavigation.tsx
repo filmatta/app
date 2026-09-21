@@ -1,5 +1,6 @@
 "use client";
 
+import ProfileAvatar from "@/components/profiles/ProfileAvatar";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -27,18 +28,19 @@ function initials(value: string) {
   return `${parts[0][0]}${parts.length > 1 ? parts.at(-1)?.[0] ?? "" : ""}`.toUpperCase();
 }
 
-function AccountAvatar({ name, small = false }: { name: string; small?: boolean }) {
-  return <i aria-hidden="true" className={`account-avatar ${small ? "account-avatar--small" : ""}`}>{initials(name)}</i>;
+type AccountPortrait = { id?: string | null; url?: string | null };
+function AccountAvatar({ name, small = false, portrait }: { name: string; small?: boolean; portrait?: AccountPortrait }) {
+  return <i aria-hidden="true" className={`account-avatar ${small ? "account-avatar--small" : ""}`}>{portrait?.id || portrait?.url ? <ProfileAvatar id={portrait.id} fallbackUrl={portrait.url} name={name} /> : initials(name)}</i>;
 }
 
-function AccountIdentity({ name, mobile = false }: { name: string; mobile?: boolean }) {
-  return <div className={`account-identity ${mobile ? "account-identity--mobile" : ""}`}>
-    <AccountAvatar name={name} />
+function AccountIdentity({ name, mobile = false, portrait }: { name: string; mobile?: boolean; portrait?: AccountPortrait }) {
+  return <Link href="/mi-perfil" className={`account-identity ${mobile ? "account-identity--mobile" : ""}`}>
+    <AccountAvatar name={name} portrait={portrait} />
     <span className="min-w-0">
       <span className="account-identity-name">{name}</span>
-      <span className="account-identity-meta">Mi cuenta</span>
+      <span className="account-identity-meta">Mi perfil →</span>
     </span>
-  </div>;
+  </Link>;
 }
 
 function DesktopMenu({ item }: { item: { label: string; children: NavigationLink[] } }) {
@@ -73,7 +75,7 @@ function DesktopMenu({ item }: { item: { label: string; children: NavigationLink
   </div>;
 }
 
-export function AccountNavigation({ role, displayName }: { role: string; displayName: string }) {
+export function AccountNavigation({ role, displayName, portrait }: { role: string; displayName: string; portrait?: AccountPortrait }) {
   const pathname = usePathname();
   const [hash, setHash] = useState("");
   const accountLinks = getAccountNavigation(role);
@@ -93,9 +95,9 @@ export function AccountNavigation({ role, displayName }: { role: string; display
       ? <a key={item.href} href={item.href} {...attributes}>{label}</a>
       : <Link key={item.href} href={item.href} {...attributes}>{label}</Link>;
   };
-  return <Disclosure key={pathname} label="Mi cuenta" leading={<AccountAvatar name={displayName} small />} align="right" panelClassName="account-panel" onOpen={() => setHash(window.location.hash)}>
+  return <Disclosure key={pathname} label="Mi cuenta" leading={<AccountAvatar name={displayName} small portrait={portrait} />} align="right" panelClassName="account-panel" onOpen={() => setHash(window.location.hash)}>
     <nav aria-label="Menú de cuenta">
-      <AccountIdentity name={displayName} />
+      <AccountIdentity name={displayName} portrait={portrait} />
       <div className="account-menu-section">
         <p className="account-menu-heading">Mi FILMATTA</p>
         {personalLinks.map(item => accountLink(item))}
@@ -115,8 +117,8 @@ export function AccountNavigation({ role, displayName }: { role: string; display
   </Disclosure>;
 }
 
-export default function GlobalNavigation({ authenticated, role, accountName = "Mi cuenta", hasContextLink = false, badge, children }: {
-  authenticated: boolean; role?: string; accountName?: string; hasContextLink?: boolean; badge?: ReactNode; children?: ReactNode;
+export default function GlobalNavigation({ authenticated, role, accountName = "Mi cuenta", accountPortrait, hasContextLink = false, badge, children }: {
+  authenticated: boolean; role?: string; accountName?: string; accountPortrait?: AccountPortrait; hasContextLink?: boolean; badge?: ReactNode; children?: ReactNode;
 }) {
   const pathname = usePathname();
   const links = getPrimaryNavigation(authenticated);
@@ -148,7 +150,7 @@ export default function GlobalNavigation({ authenticated, role, accountName = "M
         <NetworkingHeader authenticated={authenticated} />
         {authenticated ? <>
           <div className="nav-publish-slot hidden min-[1600px]:flex"><Disclosure label="Publicar" align="right" panelClassName="nav-publishing-panel"><MenuLinks items={publishingNavigation.filter(i => !["/mis-locaciones/nueva","/mis-servicios/nuevo"].includes(i.href))} /></Disclosure></div>
-          <div className="nav-account-slot hidden min-[1280px]:flex"><AccountNavigation role={role ?? "user"} displayName={accountName} /></div>
+          <div className="nav-account-slot hidden min-[1280px]:flex"><AccountNavigation role={role ?? "user"} displayName={accountName} portrait={accountPortrait} /></div>
         </> : <>
           <Link href="/login" className="nav-trigger hidden sm:inline-flex">Entrar</Link>
           <Link href="/registro" className="nav-signup hidden sm:inline-flex">Crear cuenta</Link>
@@ -178,6 +180,7 @@ export default function GlobalNavigation({ authenticated, role, accountName = "M
           <button type="button" className="nav-trigger" onClick={close} autoFocus>Cerrar ×</button>
         </div>
         <nav aria-label="Navegación móvil" onClick={event => { if ((event.target as HTMLElement).closest("a")) close(); }}>
+          {authenticated && <AccountIdentity name={accountName} mobile portrait={accountPortrait} />}
           {links.map(item => item.children ? <details key={item.label} className="border-b border-white/15 py-2">
             <summary className="nav-trigger cursor-pointer py-3">{item.label}</summary>
             <div className="pb-3 pl-4"><MenuLinks items={item.children} /></div>
@@ -185,7 +188,7 @@ export default function GlobalNavigation({ authenticated, role, accountName = "M
           <div className="mt-8">
             {authenticated ? <>
               <p className="mb-2 text-xs uppercase tracking-[0.2em] text-white/50">Tu espacio</p>
-              <AccountIdentity name={accountName} mobile />
+
               <MenuLinks items={getAccountNavigation(role ?? "user")} />
               <p className="mb-2 mt-7 text-xs uppercase tracking-[0.2em] text-white/50">Publicar</p>
               <MenuLinks items={publishingNavigation.filter(i => !["/mis-locaciones/nueva","/mis-servicios/nuevo"].includes(i.href))} />

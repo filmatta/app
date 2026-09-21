@@ -1,2 +1,1 @@
-import { redirect } from "next/navigation";
-export default function MyProjects() { redirect("/proyectos"); }
+export { default, metadata } from "../proyectos/page";

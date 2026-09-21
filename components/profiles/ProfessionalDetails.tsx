@@ -1,4 +1,5 @@
 "use client";
+import FilmattaAccordion from "@/components/ui/FilmattaAccordion";
 import { useEffect, useState, type ReactNode } from "react";
 export default function ProfessionalDetails({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -8,7 +9,5 @@ export default function ProfessionalDetails({ children }: { children: ReactNode 
     update(); query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
-  return <details className="p2-professional-details" open={open} onToggle={e => setOpen(e.currentTarget.open)}>
-    <summary aria-expanded={open}>{open ? "Ocultar información profesional ↑" : "Ver información profesional ↓"}</summary>{children}
-  </details>;
+  return <FilmattaAccordion title="Información profesional" className="p2-professional-details" open={open} onOpenChange={setOpen}>{children}</FilmattaAccordion>;
 }

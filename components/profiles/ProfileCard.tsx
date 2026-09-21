@@ -1,3 +1,5 @@
+import StatusBadge from "@/components/ui/StatusBadge";
+import { MetaChips } from "@/components/ui/MetaChip";
 import Link from "next/link";
 import type { ProfileSummary } from "@/lib/profiles/catalog";
 import { AVAILABILITY_LABELS } from "@/lib/profiles/constants";
@@ -43,19 +45,12 @@ export default function ProfileCard({
         <span aria-hidden="true">↗</span>
       </div>
 
-      <p className="profile-card-disciplines">
-        {profile.disciplines.join(" · ")}
-      </p>
+      <MetaChips labels={profile.disciplines} limit={3} />
       <p className="profile-card-city">
         {[profile.city, p.work_area].filter(Boolean).join(" · ") ||
           "Ciudad por confirmar"}
       </p>
-      <p
-        className="profile-availability"
-        data-available={profile.availability === "available"}
-      >
-        {AVAILABILITY_LABELS[profile.availability]}
-      </p>
+      <StatusBadge tone={profile.availability === "available" ? "success" : profile.availability === "limited" ? "warning" : "neutral"}>{AVAILABILITY_LABELS[profile.availability]}</StatusBadge>
     </Link>
   );
 }

@@ -26,7 +26,8 @@ test('follow optimistic state is rolled back on errors, login required, verbal d
   const p=read('components/profiles/ProfileFollow.tsx');
   assert.match(p,/setFollowing\(previous\)/);assert.match(p,/\/login\?next=/);
   const d=read('components/profiles/ProfessionalDetails.tsx');
-  assert.match(d,/aria-expanded=\{open\}/);assert.match(d,/Ocultar información profesional/);assert.match(d,/Ver información profesional/);
+  assert.match(d,/FilmattaAccordion/);assert.match(d,/open=\{open\}/);assert.match(d,/Información profesional/);
+  const accordion=read("components/ui/FilmattaAccordion.tsx");assert.match(accordion,/aria-expanded=\{expanded\}/);assert.match(accordion,/aria-controls=\{id\}/);assert.match(accordion,/hidden=\{!expanded\}/);
 });
 test('contact UI: authentic balance, exhausted CTA, Pro anti-abuse, existing thread and fail-closed',()=>{
   const code=ts.transpileModule(read('components/profiles/ProfileContactSection.tsx'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
@@ -35,13 +36,15 @@ test('contact UI: authentic balance, exhausted CTA, Pro anti-abuse, existing thr
     if(name==='react/jsx-runtime')return jsx;
     if(name.endsWith('.css'))return {};
     if(name==='next/link')return function MockLink({children,...props}) {return React.createElement('a',props,children);};
+    if(name==='@/components/ui/StatusBadge')return function Badge({children}) {return React.createElement('span',null,children);};
+    if(name==='@/components/ui/CreditIcon')return function Credit() {return React.createElement('svg',{'aria-hidden':true});};
     if(name==='./ProfileContactDialog')return function MockContactDialog() {return React.createElement('button',null,'Contactar');};
     throw new Error(`Unexpected UI dependency: ${name}`);
   }});
   const render=access=>renderToStaticMarkup(React.createElement(mod.exports.default,{slug:'demo',name:'Demo',closed:false,owner:false,preview:false,signedIn:true,access}));
   const base={is_pro:false,free_contact_limit:5,remaining_contacts:5,already_contacted:false,thread_id:null};
   assert.match(render(base),/5 disponibles/);
-  assert.match(render({...base,reserved_contacts:2,consumed_contacts:1}),/2 reservados · 1 consumidos/);
+  assert.match(render({...base,reserved_contacts:2,consumed_contacts:1}),/2 reservados[\s\S]*1 consumidos/);
   assert.match(render(base),/Los créditos se gastan cuando este perfil acepta tu solicitud/);
   const exhausted=render({...base,remaining_contacts:0});assert.match(exhausted,/Ver plan Pro/);assert.doesNotMatch(exhausted,/<button/);
   const pro=render({...base,is_pro:true,remaining_contacts:0});assert.match(pro,/sin límite de créditos/);assert.match(pro,/medidas contra el abuso/);assert.match(pro,/<button/);

@@ -24,6 +24,16 @@ try {
  const anon=c.client(c.anonKey);
  const project=ok(await free.db.rpc('save_my_networking_project',{p_id:null,p_data:projectData}),'create Project');
  const before=ok(await free.db.from('projects').select('*').eq('id',project).single(),'own Project');
+ for(const operational_status of ['active','pending_confirmation','inactive']) {
+  ok(await free.db.rpc('save_my_networking_project',{p_id:project,p_data:{...projectData,operational_status}}),'operational status');
+  const state=ok(await free.db.from('projects').select('status,operational_status,networking_private').eq('id',project).single(),'state roundtrip');
+  assert.deepEqual(state,{status:'draft',operational_status,networking_private:true});
+ }
+ ok(await free.db.rpc('save_my_networking_project',{p_id:project,p_data:{...projectData,status:'archived'}}),'archive independently');
+ assert.equal(ok(await free.db.from('projects').select('operational_status').eq('id',project).single(),'preserved operational status').operational_status,'inactive');
+ ok(await free.db.rpc('save_my_networking_project',{p_id:project,p_data:{...projectData,operational_status:'active'}}),'restore');
+ assert.ok((await free.db.rpc('save_my_networking_project',{p_id:null,p_data:{...projectData,roles:[]}})).error);
+ assert.ok((await free.db.rpc('save_my_networking_project',{p_id:project,p_data:{...projectData,operational_status:'published'}})).error);
  assert.equal(ok(await targets[0].db.from('projects').select('*').eq('id',project),'other Project').length,0);
  assert.equal(ok(await anon.from('projects').select('*').eq('id',project),'anon Project').length,0);
  assert.ok((await targets[0].db.rpc('save_my_networking_project',{p_id:project,p_data:projectData})).error);
@@ -78,6 +88,10 @@ try {
  assert.ok((await anon.from('profile_follows').select('*')).error);assert.equal(ok(await pro.db.rpc('get_my_network'),'other graph').length,0);
  assert.equal(ok(await free.db.rpc('get_my_network'),'own graph').length,9);
  assert.equal(ok(await pro.db.from('notifications').select('*').eq('user_id',free.id),'notification RLS').length,0);
+ const notices=ok(await free.db.rpc('get_my_network_notifications'),'notification presentation');
+ assert.ok(notices.some(n=>n.type==='follow_received' && n.has_actor));
+ assert.ok(notices.some(n=>n.type==='contact_request_expiring' && !n.has_actor && n.portrait_url===null));
+ assert.ok(notices.every(n=>!('shared_contact_snapshot' in n)));
  ok(await free.db.rpc('mark_my_network_notification',{p_id:null}),'mark own read');assert.equal(ok(await free.db.rpc('get_my_network_summary'),'read count').unread,0);
  ok(await targets[0].db.rpc('unfollow_my_network_profile',{p_id:free.id}),'unfollow');
  console.log('PASS: real Auth/RLS, parallel credit cap, duplicate acceptance, reserve/consume/release/expiry, snapshots and future consent, empty contacts, Projects isolation/stable slug, public 7/private graph, notifications/mark read, Pro fair use.');

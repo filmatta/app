@@ -1,3 +1,5 @@
+import StatusBadge from "@/components/ui/StatusBadge";
+import { MetaChips } from "@/components/ui/MetaChip";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import {
@@ -91,7 +93,7 @@ export default function ProfilePortfolio({
           <div className="p2-name">
             <h1>{name}</h1>
             {follow}
-            <p>{profile.disciplines.join(" · ")}</p>
+            <MetaChips labels={profile.disciplines} limit={3} />
             <div className="p2-meta">
               {location && <span>{location}</span>}
 
@@ -118,7 +120,7 @@ export default function ProfilePortfolio({
         </div>}
         <aside className="p2-aside">
           <div className="p2-availability" data-state={profile.availability}>
-            <span aria-hidden="true">●</span> {AVAILABILITY_LABELS[profile.availability]}
+            <StatusBadge tone={profile.availability === "available" ? "success" : profile.availability === "limited" ? "warning" : "neutral"}>{AVAILABILITY_LABELS[profile.availability]}</StatusBadge>
           </div>
           {sectionControls.skills}
           <ProfessionalDetails><section className="p2-information">

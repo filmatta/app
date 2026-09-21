@@ -32,7 +32,7 @@ before(async()=>{
     '20260923030000_profile_identity_images_rates.sql','20260923040000_private_profile_contact_bio.sql',
     '20260923050000_profile_preferences_credits.sql','20260923060000_profile_media_attestation_grant.sql',
     '20260923070000_profile_bio_professional_references.sql','20260924010000_profile_reel_cover_projection.sql',
-    '20260924020000_custom_reel_cover.sql','20260924030000_profile_social_contact_foundation.sql','20260924040000_networking_projects_channels.sql','20260924050000_networking_requests_notifications.sql','20260924060000_networking_private_views.sql','20260924070000_networking_outbox_legacy_history.sql'
+    '20260924020000_custom_reel_cover.sql','20260924030000_profile_social_contact_foundation.sql','20260924040000_networking_projects_channels.sql','20260924050000_networking_requests_notifications.sql','20260924060000_networking_private_views.sql','20260924070000_networking_outbox_legacy_history.sql','20260925010000_networking_ui_metadata.sql'
   ]) await db.exec(fs.readFileSync(`supabase/migrations/${file}`,'utf8'));
   for(let n=1;n<=16;n++) {
     await db.query('insert into auth.users(id) values($1)',[id(n)]);
@@ -132,4 +132,31 @@ test('Outbox is private with RLS; legacy history keeps received and sent without
  await assert.rejects(db.query('select * from private.network_email_outbox'),/permission denied/);
  await as('authenticated',15);assert.equal((await db.query("select * from list_my_legacy_profile_contacts('received')")).rows.length,1);
  await as('authenticated',1);assert.equal((await db.query("select * from list_my_legacy_profile_contacts('sent')")).rows.length,0);
+});
+
+test('Project operational state is independent from archive and privacy, with required roles',async()=>{
+ await as('authenticated',1);
+ const p=(await db.query('select save_my_networking_project(null,$1) id',[projectData])).rows[0].id;
+ for(const operational_status of ['active','pending_confirmation','inactive']) {
+  await db.query('select save_my_networking_project($1,$2)',[p,{...projectData,operational_status}]);
+  const row=(await db.query('select status,operational_status,networking_private from projects where id=$1',[p])).rows[0];
+  assert.deepEqual(row,{status:'draft',operational_status,networking_private:true});
+ }
+ await db.query('select save_my_networking_project($1,$2)',[p,{...projectData,status:'archived'}]);
+ assert.equal((await db.query('select operational_status from projects where id=$1',[p])).rows[0].operational_status,'inactive');
+ await assert.rejects(db.query('select save_my_networking_project($1,$2)',[p,{...projectData,operational_status:'published'}]),/valid operational status/);
+ await assert.rejects(db.query('select save_my_networking_project(null,$1)',[{...projectData,roles:[]}]),/at least one role/);
+ await as('authenticated',2);assert.equal((await db.query('select id from projects where id=$1',[p])).rows.length,0);
+});
+test('Notification metadata exposes only published actor portraits and authorized project snapshot',async()=>{
+ await as('authenticated',2);
+ const notices=(await db.query('select get_my_network_notifications() r')).rows[0].r;
+ const received=notices.find(n=>n.type==='contact_request_received' && n.project_title==='La última noche — revisada');
+ assert.equal(received.has_actor,true);assert.equal(received.project_title,'La última noche — revisada');
+ assert.equal(received.portrait_media_id,null);assert.equal(received.portrait_url,'');
+ await as('authenticated',1);
+ const own=(await db.query('select get_my_network_notifications() r')).rows[0].r;
+ const expiring=own.find(n=>n.type==='contact_request_expiring');
+ assert.equal(expiring.has_actor,false);assert.equal(expiring.portrait_media_id,null);
+ await as('anon');await assert.rejects(db.query('select get_my_network_notifications()'),/permission denied/);
 });

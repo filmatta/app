@@ -1,4 +1,7 @@
 "use client";
+import FilmattaAccordion from "@/components/ui/FilmattaAccordion";
+import SelectionRow from "@/components/ui/SelectionRow";
+import StatusBadge from "@/components/ui/StatusBadge";
 import { useEffect, useState } from "react";
 import { EditorDialog } from "./PortfolioDialogs";
 import { loadProjectPreferences, saveProjectPreferences } from "./preference-actions";
@@ -11,13 +14,13 @@ export default function ProjectPreferencesDialog({ close, saved }: { close: () =
     <p className="pe-hint">Tus preferencias permanecen privadas salvo que elijas publicarlas. Trabajar técnicamente en una producción no significa representar personalmente sus escenas.</p>
     <p className="bio-contact-warning">Estas preferencias no constituyen consentimiento definitivo ni acreditan capacitación. Cada escena, condición, límites y medidas de seguridad se acuerdan por separado.</p>
     {value && <form onSubmit={async e => { e.preventDefault(); if (busy) return; setBusy(true); setError(""); setMessage(""); try { const result=await saveProjectPreferences(value,published); if(result.error) setError(result.error); else { setMessage(published ? "Preferencias guardadas para mostrar en tu perfil público." : "Preferencias privadas guardadas."); saved(published ? value : null); } } catch { setError("No pudimos guardar tus preferencias."); } finally {setBusy(false);} }}>
-      <label className="pe-checkbox pe-preferences-consent"><input type="checkbox" checked={published} onChange={e => setPublished(e.target.checked)} />Quiero publicar estas preferencias, incluidos mis límites de participación, en mi perfil público.</label>
-      <fieldset><legend>Formatos</legend><label className="pe-checkbox"><input type="checkbox" checked={value.open_formats} onChange={e => setValue({ ...value, open_formats: e.target.checked })} />Abierto a distintos formatos</label><p className="pe-hint">Esta opción sólo afecta formatos; no acepta escenas ni condiciones.</p>
-        <div className="pe-disciplines">{PROJECT_FORMATS.map(f => <label key={f} className="pe-checkbox"><input type="checkbox" checked={value.formats.includes(f)} onChange={e => setValue({ ...value, formats: e.target.checked ? [...value.formats,f] : value.formats.filter(v => v !== f) })} />{f}</label>)}</div>
-      </fieldset>
-      {(Object.keys(PREFERENCE_GROUPS) as (keyof typeof PREFERENCE_GROUPS)[]).map(group => <fieldset key={group} className="pe-preferences"><legend>{group === "themes" ? "Temáticas" : group === "participation" ? "Participación personal frente a cámara" : "Condiciones de trabajo"}</legend>
-        {Object.entries(PREFERENCE_GROUPS[group]).map(([key,label]) => <label key={key}>{label}<select aria-label={label} value={value[group][key] ?? "unspecified"} onChange={e => setValue({ ...value, [group]: { ...value[group], [key]: e.target.value as PreferenceChoice } })}>{Object.entries(PREFERENCE_CHOICES).map(([v,l]) => <option value={v} key={v}>{l}</option>)}</select></label>)}
-      </fieldset>)}
+      <SelectionRow checked={published} onChange={e => setPublished(e.target.checked)}>Quiero publicar estas preferencias, incluidos mis límites de participación, en mi perfil público.</SelectionRow>
+      <FilmattaAccordion title="Formatos" summary={value.open_formats ? "Abierto a distintos formatos" : value.formats.length + " seleccionados"}><SelectionRow checked={value.open_formats} onChange={e => setValue({ ...value, open_formats: e.target.checked })}>Abierto a distintos formatos</SelectionRow><p className="pe-hint">Esta opción sólo afecta formatos; no acepta escenas ni condiciones.</p>
+        <div className="selection-grid">{PROJECT_FORMATS.map(f => <SelectionRow key={f} checked={value.formats.includes(f)} onChange={e => setValue({ ...value, formats: e.target.checked ? [...value.formats,f] : value.formats.filter(v => v !== f) })}>{f}</SelectionRow>)}</div>
+      </FilmattaAccordion>
+      {(Object.keys(PREFERENCE_GROUPS) as (keyof typeof PREFERENCE_GROUPS)[]).map(group => <FilmattaAccordion key={group} title={group === "themes" ? "Temáticas" : group === "participation" ? "Participación personal frente a cámara" : "Condiciones de trabajo"} summary={Object.values(value[group]).filter(v => v !== "unspecified").length + " definidas"}>
+        {Object.entries(PREFERENCE_GROUPS[group]).map(([key,label]) => <label key={key}>{label}<StatusBadge tone={value[group][key] === "accept" ? "success" : value[group][key] === "consult" ? "warning" : value[group][key] === "decline" ? "danger" : "neutral"}>{PREFERENCE_CHOICES[value[group][key] ?? "unspecified"]}</StatusBadge><select aria-label={label} value={value[group][key] ?? "unspecified"} onChange={e => setValue({ ...value, [group]: { ...value[group], [key]: e.target.value as PreferenceChoice } })}>{Object.entries(PREFERENCE_CHOICES).map(([v,l]) => <option value={v} key={v}>{l}</option>)}</select></label>)}
+      </FilmattaAccordion>)}
       <footer><button type="button" onClick={close} disabled={busy}>Cerrar</button><button type="submit" disabled={busy} className="pe-primary">{busy ? "Guardando…" : "Guardar preferencias"}</button></footer>
     </form>}
     {!value && !error && <p role="status">Cargando preferencias…</p>}{error && <p className="pe-error" role="alert">{error}</p>}{message && <p role="status">{message}</p>}

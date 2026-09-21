@@ -1,4 +1,6 @@
 "use client";
+import FilmattaAccordion from "@/components/ui/FilmattaAccordion";
+import SelectionRow from "@/components/ui/SelectionRow";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode, FormEvent } from "react";
 import type {
@@ -629,6 +631,7 @@ export function SectionDialog({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [credits, setCredits] = useState(profile.presentation.credits);
+  const [selectedDisciplines, setSelectedDisciplines] = useState(profile.disciplines);
   const titles: Record<string, string> = {
     identity: "Identidad profesional",
     about: "Sobre mí",
@@ -676,24 +679,15 @@ export function SectionDialog({
                 }
               />
             </label>
-            <fieldset>
-              <legend>Disciplinas · elige hasta 5</legend>
+            <FilmattaAccordion title="Disciplinas" summary={selectedDisciplines.length + " seleccionadas · máximo 5"} defaultOpen>
               <div className="pe-disciplines">
                 {Array.from(
                   new Set([...PROFILE_DISCIPLINES, ...profile.disciplines]),
                 ).map((d) => (
-                  <label className="pe-checkbox" key={d}>
-                    <input
-                      type="checkbox"
-                      name="disciplines"
-                      value={d}
-                      defaultChecked={profile.disciplines.includes(d)}
-                    />
-                    {d}
-                  </label>
+                  <SelectionRow key={d} name="disciplines" value={d} checked={selectedDisciplines.includes(d)} onChange={e => setSelectedDisciplines(e.target.checked ? [...selectedDisciplines, d] : selectedDisciplines.filter(v => v !== d))}>{d}</SelectionRow>
                 ))}
               </div>
-            </fieldset>
+            </FilmattaAccordion>
             <label>
               Ciudad
               <input
@@ -810,7 +804,7 @@ export function SectionDialog({
           </>
         )}
         {section === "skills" && (
-          <>
+          <FilmattaAccordion title="Habilidades y equipo" defaultOpen>
             <label>
               Habilidades · separadas por coma
               <textarea
@@ -833,7 +827,7 @@ export function SectionDialog({
               {profile.presentation.rate_range && <><p className="pe-hint">Valor anterior: {profile.presentation.rate_range}. Completa moneda y unidad sin asumirlas.</p><label className="pe-checkbox"><input type="checkbox" name="clear_legacy_rate" />Quitar el texto histórico al guardar</label></>}
             </fieldset>
 
-          </>
+          </FilmattaAccordion>
         )}
         {section === "publication" && (
           <>

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../components/ui/semantic.css";
 
 :root {
   --background: #ffffff;
