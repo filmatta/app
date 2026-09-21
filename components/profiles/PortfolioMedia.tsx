@@ -4,6 +4,8 @@ import MuxPlayer from "@mux/mux-player-react/lazy";
 import type { MediaCategory, MediaItem } from "@/lib/profiles/media";
 import { reelSource, portfolioWebUrl } from "@/lib/profiles/presentation";
 import ProfileImage from "./ProfileImage";
+import { portfolioGroups } from "@/lib/profiles/portfolio-order";
+import { reelEligible } from "@/lib/profiles/upload-lifecycle";
 import "./portfolio-editor.css";
 
 type Resource = {
@@ -60,9 +62,11 @@ function useResource(id: string | null) {
 export function MediaVisual({
   item,
   override,
+  openImage,
 }: {
   item: MediaItem;
   override?: MediaItem;
+  openImage?: () => void;
 }) {
   const stored = item.source !== "external" && item.status === "ready";
   const { ref, resource, error, retry } = useResource(stored ? item.id : null);
@@ -80,12 +84,12 @@ export function MediaVisual({
       <div className="pm-screen pm-processing" role="status">
         {item.terminal_reason === "cancelled" ? "Subida cancelada. Selecciona el archivo para un nuevo intento." : item.terminal_reason === "expired" ? "El intento venció sin completarse. Puedes volver a subir el archivo." : (
             {
-              uploading: "Esperando archivoâ€¦",
-              processing: "Procesando videoâ€¦",
+              uploading: "Esperando archivo…",
+              processing: "Procesando video…",
               errored:
                 "No se pudo procesar. Archiva este intento y vuelve a subirlo.",
               rejected:
-                "Archivo rechazado. Revisa el formato e intÃ©ntalo de nuevo.",
+                "Archivo rechazado. Revisa el formato e inténtalo de nuevo.",
               deleted: "Archivo eliminado.",
             } as Record<string, string>
           )[item.status]}
@@ -99,11 +103,11 @@ export function MediaVisual({
     >
       <div ref={thumbRef} />
       {item.media_type === "image" ? (
-        <ProfileImage
+        <><ProfileImage
           src={item.source === "external" ? item.url : resource?.image}
           alt={item.title}
           fallback="IMAGEN"
-        />
+        />{openImage && <button className="pm-open-image" type="button" onClick={openImage} aria-label={`Ampliar ${item.title}`} />}</>
       ) : playing && item.source === "mux" && resource?.playbackId ? (
         <MuxPlayer
           playbackId={resource.playbackId}
@@ -188,31 +192,26 @@ export default function PortfolioMedia({
   talent: boolean;
   controls?: MediaControls;
 }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
   const visible = items.filter((i) =>
     controls
       ? i.visibility !== "archived"
       : i.visibility === "visible" && i.status === "ready",
   );
-  const categories: MediaCategory[] = talent
-    ? ["book", "reel", "work"]
-    : ["reel", "work", "book"];
+  const categories: MediaCategory[] = ["reel", "work", "book"];
+  const groups = portfolioGroups(visible);
   return (
     <div className="pm-portfolio" id="portfolio">
+      {expanded && <BookLightbox items={groups.book.filter(i => i.status === "ready")} id={expanded} select={setExpanded} close={() => setExpanded(null)} />}
       {categories.map((category) => {
-        const group = visible
-          .filter((i) => i.category === category)
-          .sort(
-            (a, b) =>
-              Number(b.featured) - Number(a.featured) ||
-              a.sort_order - b.sort_order ||
-              a.id.localeCompare(b.id),
-          );
+        const group = groups[category];
         if (!group.length && !controls) return null;
         if (category === "book" && !talent && !group.length && !controls)
           return null;
         return (
           <section
             key={category}
+            id={category === "work" ? "videos" : category}
             className={`pm-section pm-${category}`}
             aria-label={
               category === "book"
@@ -225,12 +224,10 @@ export default function PortfolioMedia({
             <div className="p2-section-heading">
               <h2>
                 {category === "book"
-                  ? talent
-                    ? "Book"
-                    : "ImÃ¡genes"
+                  ? "Book"
                   : category === "reel"
                     ? "Reel"
-                    : "Trabajos seleccionados"}
+                    : "Otros videos"}
               </h2>
               {controls && (
                 <button
@@ -240,10 +237,10 @@ export default function PortfolioMedia({
                 >
                   +{" "}
                   {category === "book"
-                    ? "AÃ±adir foto"
+                    ? "Añadir foto"
                     : category === "reel"
-                      ? "AÃ±adir reel"
-                      : "AÃ±adir trabajo"}
+                      ? "Añadir reel"
+                      : "Añadir trabajo"}
                 </button>
               )}
             </div>
@@ -251,17 +248,17 @@ export default function PortfolioMedia({
               <div className="pm-empty">
                 <p>
                   {category === "work"
-                    ? "TodavÃ­a no has aÃ±adido trabajos."
+                    ? "Todavía no has añadido trabajos."
                     : category === "book"
-                      ? "Tu book estÃ¡ vacÃ­o."
+                      ? "Tu book está vacío."
                       : "Tu reel, en primer plano."}
                 </p>
                 <button type="button" onClick={() => controls.add(category)}>
                   {category === "work"
-                    ? "+ AÃ±adir tu primer trabajo"
+                    ? "+ Añadir tu primer trabajo"
                     : category === "book"
-                      ? "+ AÃ±adir foto"
-                      : "+ AÃ±adir reel"}
+                      ? "+ Añadir foto"
+                      : "+ Añadir reel"}
                 </button>
               </div>
             )}
@@ -275,6 +272,7 @@ export default function PortfolioMedia({
                 >
                   <MediaVisual
                     item={item}
+                    openImage={item.media_type === "image" ? () => setExpanded(item.id) : undefined}
                     override={items.find(
                       (i) =>
                         i.id === item.thumbnail_id &&
@@ -285,10 +283,12 @@ export default function PortfolioMedia({
                     <h3>{item.title}</h3>
                     {(item.role || item.year) && (
                       <p>
-                        {[item.role, item.year].filter(Boolean).join(" Â· ")}
+                        {[item.role, item.year].filter(Boolean).join(" · ")}
                       </p>
                     )}
+                    {item.duration_seconds != null && <p>{Math.floor(item.duration_seconds / 60)}:{String(Math.floor(item.duration_seconds % 60)).padStart(2, "0")}</p>}
                     {item.description && <p>{item.description}</p>}
+                    {controls && category === "reel" && !reelEligible(item) && <p>Selección histórica: duración no verificada o superior a 3 minutos. Puedes conservarla o elegir otro reel.</p>}
                   </figcaption>
                   {controls && (
                     <div
@@ -327,6 +327,8 @@ export default function PortfolioMedia({
                       >
                         â†“
                       </button>
+                      {item.media_type === "video" && category !== "reel" && <button type="button" disabled={controls.busy || !reelEligible(item)} onClick={() => controls.action(item, "reel")}>Elegir como reel</button>}
+                      {category === "reel" && <button type="button" disabled={controls.busy} onClick={() => controls.action(item, "other-video")}>Mover a otros videos</button>}
                       <button
                         type="button"
                         disabled={controls.busy}
@@ -367,4 +369,22 @@ export default function PortfolioMedia({
       })}
     </div>
   );
+}
+
+function BookLightbox({ items, id, select, close }: { items: MediaItem[]; id: string; select: (id: string) => void; close: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const index = items.findIndex(i => i.id === id);
+  const item = items[index];
+  const { ref, resource, error, retry } = useResource(item?.source === "storage" ? item.id : null);
+  const move = (delta: number) => select(items[(index + delta + items.length) % items.length].id);
+  useEffect(() => { const d = dialog.current; d?.showModal(); return () => d?.close(); }, []);
+  if (!item) return null;
+  return <dialog ref={dialog} className="pm-lightbox" aria-label={item.title} onCancel={close} onKeyDown={e => {
+    if (e.key === "ArrowLeft") { e.preventDefault(); move(-1); }
+    if (e.key === "ArrowRight") { e.preventDefault(); move(1); }
+  }}>
+    <header><p>{item.title}</p><button type="button" onClick={close} aria-label="Cerrar imagen">×</button></header>
+    <div ref={ref} className="pm-full-image"><ProfileImage src={item.source === "external" ? item.url : resource?.image} alt={item.description || item.title} eager />{error && <button onClick={retry}>Reintentar imagen</button>}</div>
+    <footer><button onClick={() => move(-1)} aria-label="Imagen anterior">←</button><p>{index + 1} / {items.length}</p><button onClick={() => move(1)} aria-label="Imagen siguiente">→</button></footer>
+  </dialog>;
 }

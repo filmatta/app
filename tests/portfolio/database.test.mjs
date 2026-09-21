@@ -48,6 +48,7 @@ before(async () => {
     "20260920010000_profile_presentation.sql",
     "20260921010000_profile_media.sql",
     "20260923010000_profile_upload_lifecycle.sql",
+    "20260923020000_profile_reel_selection.sql",
   ])
     await db.exec(fs.readFileSync("supabase/migrations/" + file, "utf8"));
   await db.query("insert into auth.users values ($1,$3),($2,$4)", [
@@ -240,4 +241,25 @@ test("storage write paths are owner-scoped, immutable and public reads require r
     (await db.query("select * from storage.objects")).rows.length,
     0,
   );
+});
+
+test("reel selection uses attested exact duration, serial replacement, owner-only and preserves long works", async () => {
+  await as("authenticated", owner);
+  await assert.rejects(save({...metadata, category: "reel"}), /duration/);
+  for (const duration of [179.9, 180, 180.01, null]) {
+    await as("postgres");
+    const id=(await db.query("insert into profile_media(owner_id,category,title,media_type,source,status,duration_seconds) values($1,'work','Duration test','video','mux','ready',$2) returning id", [owner,duration])).rows[0].id;
+    await as("authenticated", other); await assert.rejects(manage(id,"reel"));
+    await as("authenticated", owner);
+    if(duration !== null && duration <= 180) {
+      await manage(id,"reel");
+      assert.equal((await db.query("select count(*)::int n from profile_media where category='reel'")).rows[0].n,1);
+      assert.equal((await db.query("select id from profile_media where category='reel'")).rows[0].id,id);
+    } else {
+      const before=(await db.query("select id from profile_media where category='reel'")).rows[0].id;
+      await assert.rejects(manage(id,"reel"),/duration/);
+      assert.equal((await db.query("select status from profile_media where id=$1",[id])).rows[0].status,"ready");
+      assert.equal((await db.query("select id from profile_media where category='reel'")).rows[0].id,before);
+    }
+  }
 });

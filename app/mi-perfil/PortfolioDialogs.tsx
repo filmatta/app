@@ -153,9 +153,9 @@ export function WorkDialog({
     const selectedSource =
       type === "image" ? (item?.source ?? "storage") : source;
     const value: MediaInput = {
-      category,
+      category: !item && category === "reel" ? "work" : category,
       title: String(form.get("title")),
-      role: String(form.get("role") ?? ""),
+      role: String(form.get("role") ?? "") || (category === "reel" ? "Reel" : ""),
       year: String(form.get("year") ?? ""),
       description: String(form.get("description") ?? ""),
       media_type: type,
@@ -457,6 +457,7 @@ export function WorkDialog({
               disabled={busy}
             />
           </label>
+          {category === "reel" && !item && <p className="pe-hint">El video se añade a Otros videos. Cuando esté listo, podrás elegirlo como reel si su duración verificada es de hasta 3 minutos. Los enlaces externos sin duración verificada permanecen en Otros videos.</p>}
           <label className="pe-checkbox">
             <input
               name="featured"

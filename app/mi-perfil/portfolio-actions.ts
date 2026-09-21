@@ -141,6 +141,8 @@ export async function managePortfolioItem(
         "archive",
         "restore",
         "thumbnail",
+        "reel",
+        "other-video",
       ].includes(action)
     )
       return { error: "Acción no válida." };

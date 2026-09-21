@@ -16,6 +16,7 @@ import ProfileImage from "./ProfileImage";
 import ReelPlayer from "./ReelPlayer";
 import ShareProfile from "./ShareProfile";
 import ProfileBio from "./ProfileBio";
+import ProfessionalDetails from "./ProfessionalDetails";
 import ProfileContactDialog from "./ProfileContactDialog";
 import "./profile-public-v2.css";
 
@@ -77,20 +78,12 @@ export default function ProfilePortfolio({
             <p>{profile.disciplines.join(" · ")}</p>
             <div className="p2-meta">
               {location && <span>{location}</span>}
-              <span
-                className="profile-availability"
-                data-available={profile.availability === "available"}
-              >
-                {AVAILABILITY_LABELS[profile.availability]}
-              </span>
+
             </div>
           </div>
           <div className="p2-actions">
             {preview ? null : owner ? (
               <Link className="p2-contact-button" href="/mi-perfil">Editar perfil</Link>
-            ) : profile.contact_policy === "members_only" ? (
-              signedIn ? <ProfileContactDialog slug={profile.slug} name={name} compact /> :
-                <Link className="p2-contact-button" href={`/login?next=${encodeURIComponent("/perfiles/" + profile.slug + "#contact")}`}>Contactar ↗</Link>
             ) : null}
             {!preview && <ShareProfile slug={profile.slug} compact />}
           </div>
@@ -100,11 +93,12 @@ export default function ProfilePortfolio({
       <div className="p2-layout">
         <div className="p2-main">
           <nav className="p2-nav" aria-label="Secciones del perfil">
-            {visual && <a href="#portfolio">Portfolio</a>}
-            {profile.bio && <a href="#about">Sobre mí</a>}
-            {p.credits.length > 0 && <a href="#credits">Créditos</a>}
-            <a href="#contact">Contacto</a>
+            {(profile.bio || preview) && <a href="#about">Sobre mí</a>}
+            {visual && <><a href="#reel">Reel</a><a href="#videos">Videos</a><a href="#book">Book</a></>}
+            {(p.credits.length > 0 || preview) && <a href="#credits">Trayectoria</a>}
           </nav>
+          {sectionControls.about}
+          {profile.bio && <ProfileBio text={profile.bio} />}
           {media}
           {media === undefined && visual && (
             <section className="p2-portfolio" id="portfolio">
@@ -119,7 +113,7 @@ export default function ProfilePortfolio({
                 {reel && <span>Reel principal</span>}
               </div>
               {reel && (
-                <div
+                <div id="reel"
                   className={`p2-feature ${secondary.length ? "p2-feature--multiple" : ""}`}
                 >
                   <ReelPlayer
@@ -131,7 +125,7 @@ export default function ProfilePortfolio({
                     }
                   />
                   {secondary.length > 0 && (
-                    <div className="p2-secondary">
+                    <div className="p2-secondary" id="videos">
                       {secondary.map((item, i) => (
                         <ReelPlayer
                           key={i}
@@ -148,7 +142,7 @@ export default function ProfilePortfolio({
                 </div>
               )}
               {p.book.length > 0 && (
-                <section className="p2-gallery-section">
+                <section className="p2-gallery-section" id="book">
                   {reel && (
                     <div className="p2-section-heading">
                       <h2>{talent ? "Book" : "Imágenes de mi trabajo"}</h2>
@@ -207,12 +201,10 @@ export default function ProfilePortfolio({
               ))}
             </section>
           )}
-          {sectionControls.about}
-          {profile.bio && <ProfileBio text={profile.bio} />}
           {sectionControls.credits}
           {p.credits.length > 0 && (
             <section className="p2-credits" id="credits">
-              <h2>Créditos seleccionados</h2>
+              <h2>Trayectoria / CV</h2>
               <ul>
                 {p.credits.map((credit, i) => (
                   <li key={i}>
@@ -233,44 +225,9 @@ export default function ProfilePortfolio({
             )}
         </div>
         <aside className="p2-aside">
-          <section className="p2-information">
-            <h2>Información profesional</h2>
-            {sectionControls.skills}
-            <dl>
-              {location && (
-                <div>
-                  <dt>Ciudad / zona</dt>
-                  <dd>{location}</dd>
-                </div>
-              )}
-              <div>
-                <dt>Disciplinas</dt>
-                <dd>{profile.disciplines.join(" · ")}</dd>
-              </div>
-              <div>
-                <dt>Disponibilidad</dt>
-                <dd>{AVAILABILITY_LABELS[profile.availability]}</dd>
-              </div>
-              {profile.skills.length > 0 && (
-                <div>
-                  <dt>{talent ? "Habilidades en escena" : "Habilidades"}</dt>
-                  <dd>{profile.skills.join(" · ")}</dd>
-                </div>
-              )}
-              {profile.equipment.length > 0 && (
-                <div>
-                  <dt>Equipo / herramientas</dt>
-                  <dd>{profile.equipment.join(" · ")}</dd>
-                </div>
-              )}
-              {p.rate_range && (
-                <div>
-                  <dt>Rango orientativo</dt>
-                  <dd>{p.rate_range}</dd>
-                </div>
-              )}
-            </dl>
-          </section>
+          <div className="p2-availability" data-state={profile.availability}>
+            <span aria-hidden="true">●</span> {AVAILABILITY_LABELS[profile.availability]}
+          </div>
           <section className="p2-contact" id="contact">
             <h2>Contacto protegido</h2>
             {profile.contact_policy === "closed" ? (
@@ -280,7 +237,7 @@ export default function ProfilePortfolio({
                 {preview ? (
                   <p>Contactar · acceso con cuenta</p>
                 ) : owner ? (
-                  <><Link className="p2-contact-button" href="/mi-perfil">Editar mi perfil</Link><p>Este es tu perfil público.</p></>
+                  <p>Este es tu perfil público.</p>
                 ) : signedIn ? (
                   <ProfileContactDialog slug={profile.slug} name={name} />
                 ) : (
@@ -296,10 +253,44 @@ export default function ProfilePortfolio({
                     </p>
                   </>
                 )}
-                <p>El correo y teléfono no se muestran en esta página.</p>
+                <p>Tus datos de contacto privados no se comparten al recibir consultas.</p>
               </>
             )}
           </section>
+          <ProfessionalDetails><section className="p2-information">
+            {sectionControls.skills}
+            <dl>
+              {p.rate_range && (
+                <div>
+                  <dt>Tarifa aproximada</dt>
+                  <dd>{p.rate_range}</dd>
+                </div>
+              )}
+              {location && (
+                <div>
+                  <dt>Ciudad / zona</dt>
+                  <dd>{location}</dd>
+                </div>
+              )}
+              <div>
+                <dt>Disciplinas</dt>
+                <dd>{profile.disciplines.join(" · ")}</dd>
+              </div>
+              {profile.skills.length > 0 && (
+                <div>
+                  <dt>{talent ? "Habilidades en escena" : "Habilidades"}</dt>
+                  <dd>{profile.skills.join(" · ")}</dd>
+                </div>
+              )}
+              {profile.equipment.length > 0 && (
+                <div>
+                  <dt>Equipo / herramientas</dt>
+                  <dd>{profile.equipment.join(" · ")}</dd>
+                </div>
+              )}
+
+            </dl>
+          </section></ProfessionalDetails>
           {!preview && <ShareProfile slug={profile.slug} />}
         </aside>
       </div>
