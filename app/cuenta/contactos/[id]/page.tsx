@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import SiteHeader from "@/components/SiteHeader";
+import ContactRequestCard from "@/components/networking/ContactRequestCard";
+import type { ContactRequest } from "@/lib/networking/types";
+import "@/components/networking/networking.css";
 import { ContactManageForms, ContactReadMarker, ContactReplyForm } from "@/components/profiles/ContactInboxActions";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { contactTypeLabel, type ProfileContact } from "@/lib/contacts/types";
@@ -15,6 +18,9 @@ export default async function ContactDetail({ params }: { params: Promise<{ id: 
   const { id } = await params;
   if (!validUuid(id)) notFound();
   const supabase = await createClient();
+  const request = await supabase.rpc("get_my_contact_request", { p_id: id });
+  if (request.error) throw new Error("No pudimos cargar la solicitud.");
+  if (request.data) return <div className="editorial-page"><SiteHeader contextLink={{ href: "/cuenta/contactos", label: "← Solicitudes y contactos" }} /><main className="network-shell"><header className="network-heading"><h1>Solicitud profesional</h1></header><ContactRequestCard item={request.data as ContactRequest} detail /></main></div>;
   const { data, error } = await supabase.rpc("get_my_profile_contact", { p_id: id });
   const item = (Array.isArray(data) ? data[0] : data) as ProfileContact | undefined;
   if (error || !item) notFound();

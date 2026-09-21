@@ -46,7 +46,7 @@ try {
   assert.equal(ok(await free.db.rpc('am_i_following_profile',{p_slug:target.slug}),'persistent follow'),true);
   const proof=ok(await anonymous.rpc('get_profile_followers',{p_slug:target.slug}),'public proof');
   assert.equal(proof.length,1);assert.equal(proof[0].slug,free.slug);
-  assert.deepEqual(Object.keys(proof[0]).sort(),['display_name','portrait_media_id','portrait_url','slug']);
+  assert.deepEqual(Object.keys(proof[0]).sort(),['display_name','portrait_media_id','portrait_url','slug','total_count']);
   ok(await free.db.rpc('set_profile_follow',{p_slug:target.slug,p_follow:false}),'unfollow');
   assert.equal(ok(await anonymous.rpc('get_profile_followers',{p_slug:target.slug}),'empty proof').length,0);
   const preferences={formats:['Cortometraje'],open_formats:false,themes:{drama:'accept'},participation:{nudity:'decline'},conditions:{travel:'consult'}};

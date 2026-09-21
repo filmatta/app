@@ -16,10 +16,11 @@ test('profile contact leaves availability and follows media/career/preferences i
   assert.doesNotMatch(aside,/Contacto protegido|ProfileContactDialog|ProfileContactSection/);
   assert.ok(aside.indexOf('{sectionControls.skills}')<aside.indexOf('<ProfessionalDetails>'));
 });
-test('followers use identity only, no counters or visitor analytics',()=>{
+test('followers use identity only, bounded responsive proof and no visitor analytics',()=>{
   const p=read('components/profiles/ProfileSocialProof.tsx');
   assert.match(p,/portrait_media_id/);assert.match(p,/portrait_url/);assert.match(p,/p2-follower-initial/);
-  assert.doesNotMatch(p,/reel|cover|mux|visit|count/i);assert.match(p,/if \(!followers.length\) return null/);
+  assert.doesNotMatch(p,/reel|cover|mux|visit/i);assert.match(p,/if \(!followers.length\) return null/);
+  assert.match(p,/slice\(0,7\)/); assert.match(p,/total-7/); assert.match(p,/total-5/);
 });
 test('follow optimistic state is rolled back on errors, login required, verbal details accessible',()=>{
   const p=read('components/profiles/ProfileFollow.tsx');
@@ -32,15 +33,18 @@ test('contact UI: authentic balance, exhausted CTA, Pro anti-abuse, existing thr
   const mod={exports:{}};
   vm.runInNewContext(code,{module:mod,exports:mod.exports,require:name=>{
     if(name==='react/jsx-runtime')return jsx;
+    if(name.endsWith('.css'))return {};
     if(name==='next/link')return function MockLink({children,...props}) {return React.createElement('a',props,children);};
     if(name==='./ProfileContactDialog')return function MockContactDialog() {return React.createElement('button',null,'Contactar');};
     throw new Error(`Unexpected UI dependency: ${name}`);
   }});
   const render=access=>renderToStaticMarkup(React.createElement(mod.exports.default,{slug:'demo',name:'Demo',closed:false,owner:false,preview:false,signedIn:true,access}));
   const base={is_pro:false,free_contact_limit:5,remaining_contacts:5,already_contacted:false,thread_id:null};
-  assert.match(render(base),/Te quedan 5 de 5/);
+  assert.match(render(base),/5 disponibles/);
+  assert.match(render({...base,reserved_contacts:2,consumed_contacts:1}),/2 reservados · 1 consumidos/);
+  assert.match(render(base),/Los créditos se gastan cuando este perfil acepta tu solicitud/);
   const exhausted=render({...base,remaining_contacts:0});assert.match(exhausted,/Ver plan Pro/);assert.doesNotMatch(exhausted,/<button/);
   const pro=render({...base,is_pro:true,remaining_contacts:0});assert.match(pro,/sin límite de créditos/);assert.match(pro,/medidas contra el abuso/);assert.match(pro,/<button/);
-  const thread=render({...base,remaining_contacts:0,already_contacted:true,thread_id:'known-thread'});assert.match(thread,/\/cuenta\/contactos\/known-thread/);assert.match(thread,/No volverás a gastar/);
+  const thread=render({...base,remaining_contacts:0,already_contacted:true,thread_id:'known-thread'});assert.match(thread,/\/cuenta\/contactos\/known-thread/);assert.doesNotMatch(thread,/<button/);
   assert.doesNotMatch(render(null),/Te quedan|<button/);
 });

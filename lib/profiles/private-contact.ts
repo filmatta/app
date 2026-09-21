@@ -1,6 +1,16 @@
 import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js/min";
 export type PrivateContact = { instagram_username: string; whatsapp_e164: string; preferred_contact: "none" | "instagram" | "whatsapp"; contact_visibility: "private" };
 export const EMPTY_CONTACT: PrivateContact = { instagram_username: "", whatsapp_e164: "", preferred_contact: "none", contact_visibility: "private" };
+export type ContactChannels = PrivateContact & { contact_email: string; phone_e164: string; share_instagram: boolean; share_whatsapp: boolean; share_email: boolean; share_phone: boolean };
+export const EMPTY_CHANNELS: ContactChannels = { ...EMPTY_CONTACT, contact_email: "", phone_e164: "", share_instagram: false, share_whatsapp: false, share_email: false, share_phone: false };
+export function parseContactChannels(value: unknown): ContactChannels | null {
+  const base = parsePrivateContact(value); if (!base) return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.contact_email !== "string" || v.contact_email.length > 254 || (v.contact_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.contact_email))) return null;
+  if (typeof v.phone_e164 !== "string" || (v.phone_e164 && !/^\+[1-9][0-9]{6,14}$/.test(v.phone_e164))) return null;
+  if (["share_instagram", "share_whatsapp", "share_email", "share_phone"].some(k => typeof v[k] !== "boolean")) return null;
+  return { ...base, contact_email: v.contact_email.trim(), phone_e164: v.phone_e164, share_instagram: v.share_instagram as boolean, share_whatsapp: v.share_whatsapp as boolean, share_email: v.share_email as boolean, share_phone: v.share_phone as boolean };
+}
 export function normalizeInstagram(input: string): string | null {
   let value = input.trim();
   if (!value) return "";

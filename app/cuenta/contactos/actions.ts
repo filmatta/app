@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { notifyNewProfileContact } from "@/lib/contacts/email";
 import {
   CONTACT_MESSAGE_MAX, CONTACT_MESSAGE_MIN, CONTACT_REPORT_MAX, CONTACT_REPORT_MIN,
   parseContactInput, validUuid,
@@ -17,16 +16,20 @@ export async function sendProfileContact(_previous: ContactActionState, form: Fo
   if (authError || !data.user) return { error: "Inicia sesión para contactar." };
   const parsed = parseContactInput(form);
   if (!parsed.ok) return { error: parsed.error };
-  const { data: id, error } = await supabase.rpc("send_profile_contact", {
+  if (parsed.message.length > 200) return { error: "Resume tu solicitud en un máximo de 200 caracteres." };
+  const project = String(form.get("project_id") ?? "");
+  if (project && !validUuid(project)) return { error: "Selecciona un proyecto válido." };
+  const { data: id, error } = await supabase.rpc("send_profile_contact_request", {
     p_slug: parsed.slug, p_contact_type: parsed.contactType, p_message: parsed.message,
+    p_project_id: project || null,
   });
   if (error || typeof id !== "string") {
-    if (error?.code === "PCC01") return { error: "Ya utilizaste tus contactos gratuitos. Consulta Pro en Planes para iniciar nuevos contactos." };
+    if (error?.code === "PCC01") return { error: "No tienes créditos disponibles: están reservados o consumidos. Revisa tus solicitudes o consulta Pro." };
     if (error?.code === "23505") return { error: "Ya enviaste una consulta reciente a este perfil. Revísala en Contactos." };
     if (error?.code === "22023") return { error: "Alcanzaste un límite temporal o el mensaje no es válido. Inténtalo más tarde." };
     return { error: "No pudimos enviar la consulta. El perfil puede no estar disponible para contacto." };
   }
-  await notifyNewProfileContact(supabase, id, data.user.id);
+  // The transaction creates notifications and the private email outbox together.
   revalidatePath("/cuenta/contactos");
   redirect(`/cuenta/contactos/${id}?sent=1`);
 }

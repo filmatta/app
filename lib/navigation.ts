@@ -109,6 +109,8 @@ export function getAccountNavigation(role: string): NavigationLink[] {
     { label: "Mi cuenta", href: "/cuenta" },
     { label: "Mi perfil profesional", href: "/mi-perfil" },
     { label: "Contactos", href: "/cuenta/contactos" },
+    { label: "Mi red", href: "/mi-red" },
+    { label: "Mis proyectos", href: "/proyectos" },
     { label: "Mi aprendizaje", href: "/cuenta#mis-cursos" },
     { label: "Mis locaciones", href: "/mis-locaciones" },
     { label: "Mis publicaciones", href: "/mis-oportunidades" },

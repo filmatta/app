@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { logout } from "@/app/cuenta/actions";
 import LoadingButton from "@/components/ui/LoadingButton";
 import Disclosure from "./Disclosure";
+import NetworkingHeader from "@/components/networking/NetworkingHeader";
 import { getAccountNavigation, getPrimaryNavigation, isNavigationActive, publishingNavigation, type NavigationLink } from "@/lib/navigation";
 
 function MenuLinks({ items, descriptions = true }: { items: NavigationLink[]; descriptions?: boolean }) {
@@ -76,7 +77,7 @@ export function AccountNavigation({ role, displayName }: { role: string; display
   const pathname = usePathname();
   const [hash, setHash] = useState("");
   const accountLinks = getAccountNavigation(role);
-  const personalLinks = ["/mi-perfil", "/cuenta/contactos", "/mis-locaciones", "/mis-servicios", "/cuenta#mis-cursos", "/cuenta/suscripcion"]
+  const personalLinks = ["/mi-perfil", "/cuenta/contactos", "/mi-red", "/proyectos", "/mis-locaciones", "/mis-servicios", "/cuenta#mis-cursos", "/cuenta/suscripcion"]
     .map(href => accountLinks.find(item => item.href === href)!);
   const settings = accountLinks.find(item => item.href === "/cuenta#configuracion")!;
   const admin = accountLinks.find(item => item.href === "/admin");
@@ -144,8 +145,9 @@ export default function GlobalNavigation({ authenticated, role, accountName = "M
         </ul>
       </nav>
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+        <NetworkingHeader authenticated={authenticated} />
         {authenticated ? <>
-          <div className="nav-publish-slot hidden min-[1600px]:flex"><Disclosure label="Publicar" align="right" panelClassName="nav-publishing-panel"><MenuLinks items={publishingNavigation} /></Disclosure></div>
+          <div className="nav-publish-slot hidden min-[1600px]:flex"><Disclosure label="Publicar" align="right" panelClassName="nav-publishing-panel"><MenuLinks items={publishingNavigation.filter(i => !["/mis-locaciones/nueva","/mis-servicios/nuevo"].includes(i.href))} /></Disclosure></div>
           <div className="nav-account-slot hidden min-[1280px]:flex"><AccountNavigation role={role ?? "user"} displayName={accountName} /></div>
         </> : <>
           <Link href="/login" className="nav-trigger hidden sm:inline-flex">Entrar</Link>
@@ -186,7 +188,7 @@ export default function GlobalNavigation({ authenticated, role, accountName = "M
               <AccountIdentity name={accountName} mobile />
               <MenuLinks items={getAccountNavigation(role ?? "user")} />
               <p className="mb-2 mt-7 text-xs uppercase tracking-[0.2em] text-white/50">Publicar</p>
-              <MenuLinks items={publishingNavigation} />
+              <MenuLinks items={publishingNavigation.filter(i => !["/mis-locaciones/nueva","/mis-servicios/nuevo"].includes(i.href))} />
               <form action={logout} className="mt-5"><LoadingButton type="submit" loadingText="Saliendo…" className="nav-menu-link">Cerrar sesión</LoadingButton></form>
             </> : <div className="flex flex-wrap gap-4"><Link href="/login" className="nav-trigger">Entrar</Link><Link href="/registro" className="nav-signup">Crear cuenta</Link></div>}
           </div>

@@ -45,7 +45,7 @@ export default async function PublicProfilePage({ params }: Props) {
     db.rpc("get_public_project_preferences", { p_slug: slug }),
     db.rpc("get_profile_followers", { p_slug: slug }),
     viewer ? db.rpc("am_i_following_profile", { p_slug: slug }) : null,
-    viewer ? db.rpc("get_my_profile_contact_access", { p_slug: slug }) : null,
+    viewer ? db.rpc("get_my_contact_wallet", { p_slug: slug }) : null,
   ]);
   if (preferences.error || followers.error || following?.error) throw new Error("No pudimos cargar el perfil completo.");
   return (
@@ -59,7 +59,7 @@ export default async function PublicProfilePage({ params }: Props) {
           follow={!owned?.data && <ProfileFollow key={`${slug}:${Boolean(following?.data)}`} slug={slug} signedIn={Boolean(viewer)} initial={Boolean(following?.data)} />}
           socialProof={<ProfileSocialProof followers={(followers.data ?? []) as ProfileFollower[]} />}
           preferences={parseProjectPreferences(preferences.data)}
-          contactAccess={access?.error ? null : (access?.data?.[0] as ContactAccess | undefined)}
+          contactAccess={access?.error ? null : (access?.data as ContactAccess | undefined)}
           media={
             media === null ? undefined : (
               <PortfolioMedia

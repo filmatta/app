@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { MediaItem } from "@/lib/profiles/media";
 import { redirect } from "next/navigation";
 import ProfileEditor from "./ProfileEditor";
+import PrivateTools from "@/components/networking/PrivateTools";
 import { parseProjectPreferences } from "@/lib/profiles/project-preferences";
 import SiteHeader from "@/components/SiteHeader";
 import { getViewer } from "@/lib/auth/get-viewer";
@@ -59,6 +60,7 @@ export default async function EditProfessionalProfilePage({
           initialItems={media.data as MediaItem[] | null}
           initialPreferences={preferences.data?.publish_project_preferences ? parseProjectPreferences(preferences.data.project_preferences) : null}
         />
+        <PrivateTools />
       </main>
     </div>
   );
