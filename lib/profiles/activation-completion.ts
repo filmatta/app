@@ -106,7 +106,7 @@ export function activationCompletion(
         ]),
     {
       key: "credits",
-      label: "Completar trayectoria",
+      label: "Construir CV",
       done: Boolean(p?.credits.length),
     },
   ];
