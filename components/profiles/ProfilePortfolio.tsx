@@ -1,3 +1,5 @@
+import ProfileAvatar from "./ProfileAvatar";
+import "./activation-owner.css";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { MetaChips } from "@/components/ui/MetaChip";
 import Link from "next/link";
@@ -35,6 +37,7 @@ export default function ProfilePortfolio({
   owner = false,
   preview = false,
   media,
+  mediaSections,
   follow,
   socialProof,
   preferences = null,
@@ -46,6 +49,7 @@ export default function ProfilePortfolio({
   owner?: boolean;
   preview?: boolean;
   media?: ReactNode;
+  mediaSections?: string[];
   follow?: ReactNode;
   socialProof?: ReactNode;
   preferences?: ProjectPreferences | null;
@@ -66,42 +70,48 @@ export default function ProfilePortfolio({
     .slice(0, 2);
   const remaining = work.filter((item) => !secondary.includes(item));
   const location = [profile.city, p.work_area].filter(Boolean).join(" · ");
-  const cover = p.cover_media_id === null ? undefined :
-    p.book.find((item) => item.url !== p.portrait_url)?.url ||
-    (reel ? reelSource(reel.url)?.thumbnail : undefined);
+  const cover =
+    p.cover_media_id === null
+      ? undefined
+      : p.book.find((item) => item.url !== p.portrait_url)?.url ||
+        (reel ? reelSource(reel.url)?.thumbnail : undefined);
   const visual = Boolean(media || reel || p.book.length);
   return (
     <article className={`profile-public-v2 ${talent ? "p2-talent" : ""}`}>
-      <header className={`p2-hero ${p.cover_media_id || cover ? "p2-hero--image" : ""}`}>
+      <header
+        data-tour-target={preview ? "preview" : undefined}
+        className={`p2-hero ${p.cover_media_id || cover ? "p2-hero--image" : ""}`}
+      >
         {(p.cover_media_id || cover) && (
           <div className="p2-cover" aria-hidden="true">
-            <IdentityImage id={p.cover_media_id} fallbackUrl={cover} alt="" eager />
+            <IdentityImage
+              id={p.cover_media_id}
+              fallbackUrl={cover}
+              alt=""
+              eager
+            />
           </div>
         )}
         <p className="eyebrow">FILMATTA / {talent ? "Talento" : "Perfiles"}</p>
         <div className="p2-identity">
-          {(p.portrait_media_id || p.portrait_url) && (
-            <div className="p2-portrait profile-portrait">
-              <IdentityImage
-                id={p.portrait_media_id}
-                fallbackUrl={p.portrait_url}
-                alt={`Retrato de ${name}`}
-                eager
-              />
-            </div>
-          )}
+          <div className="p2-portrait profile-portrait">
+            <ProfileAvatar
+              id={p.portrait_media_id}
+              fallbackUrl={p.portrait_url}
+              name={name}
+            />
+          </div>
           <div className="p2-name">
             <h1>{name}</h1>
             {follow}
             <MetaChips labels={profile.disciplines} limit={3} />
-            <div className="p2-meta">
-              {location && <span>{location}</span>}
-
-            </div>
+            <div className="p2-meta">{location && <span>{location}</span>}</div>
           </div>
           <div className="p2-actions">
             {preview ? null : owner ? (
-              <Link className="p2-contact-button" href="/mi-perfil">Editar perfil</Link>
+              <Link className="p2-contact-button" href="/mi-perfil">
+                Editar perfil
+              </Link>
             ) : null}
             {!preview && <ShareProfile slug={profile.slug} compact />}
           </div>
@@ -111,50 +121,91 @@ export default function ProfilePortfolio({
       <div className="p2-layout">
         <nav className="p2-nav" aria-label="Secciones del perfil">
           {(profile.bio || preview) && <a href="#about">Sobre mí</a>}
-          {visual && <><a href="#reel">Reel</a><a href="#videos">Videos</a><a href="#book">Book</a></>}
-          {(p.credits.length > 0 || preview) && <a href="#credits">Trayectoria</a>}
+          {(preview ||
+            (mediaSections ? mediaSections.includes("reel") : reel)) && (
+            <a href="#reel">Reel</a>
+          )}
+          {(preview ||
+            (mediaSections
+              ? mediaSections.includes("work")
+              : secondary.length > 0)) && <a href="#videos">Videos</a>}
+          {(preview ||
+            (mediaSections
+              ? mediaSections.includes("book")
+              : p.book.length > 0)) && <a href="#book">Book</a>}
+          {(p.credits.length > 0 || preview) && (
+            <a href="#credits">Trayectoria</a>
+          )}
         </nav>
-        {(profile.bio || sectionControls.about) && <div className="p2-about">
-          {sectionControls.about}
-          {profile.bio && <ProfileBio text={profile.bio} />}
-        </div>}
+        {(profile.bio || sectionControls.about) && (
+          <div className="p2-about">
+            {sectionControls.about}
+            {profile.bio && <ProfileBio text={profile.bio} />}
+          </div>
+        )}
         <aside className="p2-aside">
           <div className="p2-availability" data-state={profile.availability}>
-            <StatusBadge tone={profile.availability === "available" ? "success" : profile.availability === "limited" ? "warning" : "neutral"}>{AVAILABILITY_LABELS[profile.availability]}</StatusBadge>
+            <StatusBadge
+              tone={
+                profile.availability === "available"
+                  ? "success"
+                  : profile.availability === "limited"
+                    ? "warning"
+                    : "neutral"
+              }
+            >
+              {AVAILABILITY_LABELS[profile.availability]}
+            </StatusBadge>
           </div>
           {sectionControls.skills}
-          <ProfessionalDetails><section className="p2-information">
-            <dl>
-              {(p.rate || p.rate_range) && (
+          <ProfessionalDetails>
+            <section className="p2-information">
+              <dl>
+                {(p.rate || p.rate_range) && (
+                  <div>
+                    <dt>Tarifa aproximada</dt>
+                    <dd>{p.rate ? formatRate(p.rate) : p.rate_range}</dd>
+                  </div>
+                )}
+                {location && (
+                  <div>
+                    <dt>Ciudad / zona</dt>
+                    <dd>{location}</dd>
+                  </div>
+                )}
                 <div>
-                  <dt>Tarifa aproximada</dt>
-                  <dd>{p.rate ? formatRate(p.rate) : p.rate_range}</dd>
+                  <dt>Disciplinas</dt>
+                  <dd>{profile.disciplines.join(" · ")}</dd>
                 </div>
-              )}
-              {location && (
-                <div>
-                  <dt>Ciudad / zona</dt>
-                  <dd>{location}</dd>
-                </div>
-              )}
-              <div>
-                <dt>Disciplinas</dt>
-                <dd>{profile.disciplines.join(" · ")}</dd>
-              </div>
-              {profile.skills.length > 0 && (
-                <div>
-                  <dt><ProfileDetailIcon kind="skills" />{talent ? "Habilidades en escena" : "Habilidades"}</dt>
-                  <dd className="p2-detail-chips">{profile.skills.map(skill => <span key={skill}>{skill}</span>)}</dd>
-                </div>
-              )}
-              {profile.equipment.length > 0 && (
-                <div>
-                  <dt><ProfileDetailIcon kind="equipment" />Equipo / herramientas</dt>
-                  <dd className="p2-detail-chips">{profile.equipment.map(item => <span key={item}>{item}</span>)}</dd>
-                </div>
-              )}
-            </dl>
-          </section></ProfessionalDetails>
+                {profile.skills.length > 0 && (
+                  <div>
+                    <dt>
+                      <ProfileDetailIcon kind="skills" />
+                      {talent ? "Habilidades en escena" : "Habilidades"}
+                    </dt>
+                    <dd className="p2-detail-chips">
+                      {profile.skills.map((skill) => (
+                        <span key={skill}>{skill}</span>
+                      ))}
+                    </dd>
+                  </div>
+                )}
+                {profile.equipment.length > 0 && (
+                  <div>
+                    <dt>
+                      <ProfileDetailIcon kind="equipment" />
+                      Equipo / herramientas
+                    </dt>
+                    <dd className="p2-detail-chips">
+                      {profile.equipment.map((item) => (
+                        <span key={item}>{item}</span>
+                      ))}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </section>
+          </ProfessionalDetails>
           {!preview && <ShareProfile slug={profile.slug} />}
         </aside>
         <div className="p2-main">
@@ -172,7 +223,8 @@ export default function ProfilePortfolio({
                 {reel && <span>Reel principal</span>}
               </div>
               {reel && (
-                <div id="reel"
+                <div
+                  id="reel"
                   className={`p2-feature ${secondary.length ? "p2-feature--multiple" : ""}`}
                 >
                   <ReelPlayer
@@ -269,9 +321,21 @@ export default function ProfilePortfolio({
                   <li key={i}>
                     <p className="p2-credit-period">{creditPeriod(credit)}</p>
                     <h3>{credit.title}</h3>
-                    <p>{[credit.role, credit.company, credit.production_type].filter(Boolean).join(" · ")}</p>
+                    <p>
+                      {[credit.role, credit.company, credit.production_type]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
                     {credit.description && <p>{credit.description}</p>}
-                    {credit.url && <a href={credit.url} target="_blank" rel="noopener noreferrer">Ver proyecto ↗</a>}
+                    {credit.url && (
+                      <a
+                        href={credit.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Ver proyecto ↗
+                      </a>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -284,7 +348,15 @@ export default function ProfilePortfolio({
               <p className="p2-empty">El portfolio aún está en preparación.</p>
             )}
           <ProfileProjectPreferences value={preferences} />
-          <ProfileContactSection slug={profile.slug} name={name} closed={profile.contact_policy === "closed"} owner={owner} preview={preview} signedIn={signedIn} access={contactAccess} />
+          <ProfileContactSection
+            slug={profile.slug}
+            name={name}
+            closed={profile.contact_policy === "closed"}
+            owner={owner}
+            preview={preview}
+            signedIn={signedIn}
+            access={contactAccess}
+          />
           {socialProof}
         </div>
       </div>

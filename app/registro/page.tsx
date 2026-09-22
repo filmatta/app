@@ -40,7 +40,9 @@ export default async function RegistroPage({
 
       <section className="mx-auto flex min-h-[80vh] max-w-md flex-col justify-center px-6 py-16">
         <p className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
-          FILMATTA Learn
+          {nextPath.startsWith("/onboarding/perfil")
+            ? "FILMATTA / TU PERFIL"
+            : "FILMATTA Learn"}
         </p>
 
         <h1 className="text-5xl font-semibold tracking-[-0.04em]">
@@ -48,8 +50,9 @@ export default async function RegistroPage({
         </h1>
 
         <p className="mt-4 leading-7 text-white/45">
-          Empieza a aprender, guarda tus cursos y construye poco a poco tu
-          identidad profesional.
+          {nextPath.startsWith("/onboarding/perfil")
+            ? "Crea tu cuenta y prepara tu presencia profesional paso a paso. Tu portfolio puede llegar después."
+            : "Empieza a aprender, guarda tus cursos y construye poco a poco tu identidad profesional."}
         </p>
 
         <GoogleSignInForm nextPath={nextPath} />
@@ -93,7 +96,9 @@ export default async function RegistroPage({
             />
           </Field>
 
-          {params.error && <p className="text-sm text-red-400">{params.error}</p>}
+          {params.error && (
+            <p className="text-sm text-red-400">{params.error}</p>
+          )}
 
           <LoadingButton
             type="submit"

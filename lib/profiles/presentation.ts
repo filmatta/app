@@ -148,6 +148,7 @@ export function leadReel(items: PortfolioItem[]) {
     (item) => item.kind === "reel" && portfolioWebUrl(item.url),
   );
 }
+/** Legacy completion contract; owner activation uses activationCompletion with real media and private preferences. */
 export function profileCompletion(
   profile: Pick<
     ProfessionalProfile,

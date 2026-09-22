@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import type { MediaItem } from "@/lib/profiles/media";
 import { redirect } from "next/navigation";
+import { shouldStartTour } from "@/lib/profiles/activation";
 import ProfileEditor from "./ProfileEditor";
 import PrivateTools from "@/components/networking/PrivateTools";
 import { parseProjectPreferences } from "@/lib/profiles/project-preferences";
@@ -30,7 +31,13 @@ export default async function EditProfessionalProfilePage({
     ? await db.rpc("get_profile_media", { p_slug: profile.slug })
     : { data: null, error: null };
   if (media.error) throw new Error("No pudimos cargar tus trabajos.");
-  const preferences = await db.from("profile_private_settings").select("project_preferences,publish_project_preferences").eq("owner_id",viewer.id).maybeSingle();
+  const preferences = await db
+    .from("profile_private_settings")
+    .select(
+      "project_preferences,publish_project_preferences,onboarding_completed_at,profile_tour_completed_at",
+    )
+    .eq("owner_id", viewer.id)
+    .maybeSingle();
   if (preferences.error) throw new Error("No pudimos cargar tus preferencias.");
   return (
     <div className="editorial-page profiles-page">
@@ -58,7 +65,18 @@ export default async function EditProfessionalProfilePage({
           profile={profile}
           displayName={displayName}
           initialItems={media.data as MediaItem[] | null}
-          initialPreferences={preferences.data?.publish_project_preferences ? parseProjectPreferences(preferences.data.project_preferences) : null}
+          completionPreferences={parseProjectPreferences(
+            preferences.data?.project_preferences,
+          )}
+          startTour={shouldStartTour(
+            preferences.data?.onboarding_completed_at,
+            preferences.data?.profile_tour_completed_at,
+          )}
+          initialPreferences={
+            preferences.data?.publish_project_preferences
+              ? parseProjectPreferences(preferences.data.project_preferences)
+              : null
+          }
         />
         <PrivateTools />
       </main>

@@ -1,16 +1,18 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import ProfilePortfolio from "@/components/profiles/ProfilePortfolio";
 import ProjectPreferencesDialog from "./ProjectPreferencesDialog";
 import PrivateContactDialog from "./PrivateContactDialog";
 import type { ProjectPreferences } from "@/lib/profiles/project-preferences";
 import PortfolioMedia from "@/components/profiles/PortfolioMedia";
-import {
-  EMPTY_PRESENTATION,
-  isTalent,
-  profileCompletion,
-} from "@/lib/profiles/presentation";
+import { EMPTY_PRESENTATION, isTalent } from "@/lib/profiles/presentation";
+import { activationCompletion } from "@/lib/profiles/activation-completion";
+import { activationEvent } from "@/lib/profiles/activation-events";
+import { minimumProfile } from "@/lib/profiles/activation";
+import ProfileTour from "@/components/profiles/ProfileTour";
+import "@/components/profiles/activation-owner.css";
 import type { ProfessionalProfile } from "@/lib/profiles/types";
 import type { MediaCategory, MediaItem } from "@/lib/profiles/media";
 import {
@@ -30,12 +32,17 @@ export default function ProfileEditor({
   displayName,
   initialItems,
   initialPreferences,
+  completionPreferences,
+  startTour = false,
 }: {
   profile: ProfessionalProfile | null;
   displayName: string;
   initialItems: MediaItem[] | null;
   initialPreferences: ProjectPreferences | null;
+  completionPreferences: ProjectPreferences | null;
+  startTour?: boolean;
 }) {
+  const router = useRouter();
   const [draft, setDraft] = useState<ProfessionalProfile>(
     profile ?? {
       slug: "tu-perfil",
@@ -54,6 +61,9 @@ export default function ProfileEditor({
     },
   );
   const [items, setItems] = useState(initialItems);
+  const [privatePreferences, setPrivatePreferences] = useState(
+    completionPreferences,
+  );
   const [preferences, setPreferences] = useState(initialPreferences);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [bioDraft, setBioDraft] = useState(profile?.bio ?? "");
@@ -132,7 +142,10 @@ export default function ProfileEditor({
     setError("");
     try {
       if (name === "complete-image") {
-        const response = await fetch(`/api/portfolio/media/${item.id}/complete`, { method: "POST" });
+        const response = await fetch(
+          `/api/portfolio/media/${item.id}/complete`,
+          { method: "POST" },
+        );
         if (!response.ok) throw new Error("Image finalization failed");
         const refreshed = await loadMyPortfolio();
         if ("data" in refreshed) accept(refreshed.data);
@@ -154,17 +167,38 @@ export default function ProfileEditor({
       setBusy(false);
     }
   }
-  const completion = profileCompletion({
-    ...draft,
-    portfolio_items:
-      items
-        ?.filter((i) => i.status === "ready" && i.visibility !== "archived")
-        .map((i) => ({
-          kind: i.category === "reel" ? "reel" : "project",
-          title: i.title,
-          url: i.url || `https://app.filmatta.com/perfiles/${draft.slug}`,
-        })) ?? draft.portfolio_items,
-  });
+  const completion = activationCompletion(draft, items, privatePreferences);
+  async function addEmpty(category: MediaCategory) {
+    if (!draft.updated_at) {
+      router.push("/onboarding/perfil");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await startPortfolioEditing();
+      if ("error" in r) setError(r.error);
+      else {
+        accept(r.data);
+        setEditing(true);
+        setDialog({ category });
+      }
+    } catch {
+      setError("No pudimos abrir el editor. Inténtalo de nuevo.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  function completeSection(key: string) {
+    if (!draft.updated_at) { router.push("/onboarding/perfil"); return; }
+    activationEvent("profile_completion_cta_clicked");
+    if (key === "reel" || key === "book") {
+      void addEmpty(key);
+      return;
+    }
+    setDialog({
+      section: key === "photo" || key === "availability" ? "identity" : key,
+    });
+  }
   const section = (name: string, label: string) =>
     editing ? (
       <div className="pe-edit-sections">
@@ -180,11 +214,8 @@ export default function ProfileEditor({
           <p className="eyebrow">
             MI PERFIL / {draft.is_public ? "Público" : "Borrador privado"}
           </p>
-          <small>
-            {completion.percent}% completo · sólo tú ves este indicador
-          </small>
         </div>
-        <div className="pe-tools">
+        <div className="pe-tools" data-tour-target="public">
           {draft.is_public && (
             <Link
               className="editorial-secondary"
@@ -202,6 +233,7 @@ export default function ProfileEditor({
           <button
             type="button"
             className="pe-primary"
+            data-tour-target="identity"
             onClick={begin}
             disabled={busy}
           >
@@ -209,6 +241,35 @@ export default function ProfileEditor({
           </button>
         </div>
       </div>
+      <section className="activation-owner" aria-label="Completar tu perfil">
+        <h2>Perfil {completion.percent}% completo</h2>
+        <progress
+          aria-label="Completitud del perfil"
+          value={completion.percent}
+          max={100}
+        />
+        <p>Un perfil completo ayuda a que otros entiendan mejor tu trabajo.</p>
+        <ul>
+          {completion.checks
+            .filter((c) => !c.done)
+            .map((c) => (
+              <li key={c.key}>
+                <button type="button" onClick={() => completeSection(c.key)}>
+                  {c.label} ↗
+                </button>
+              </li>
+            ))}
+        </ul>
+        <Link
+          href="/onboarding/perfil"
+          onClick={() => activationEvent("profile_completion_cta_clicked")}
+        >
+          {minimumProfile(draft)
+            ? "Revisar lo esencial"
+            : "Completar perfil · continuar paso a paso"}
+        </Link>
+      </section>
+      <ProfileTour autoStart={startTour} />
       {message && (
         <p role="status" className="pe-message">
           {message}
@@ -219,64 +280,114 @@ export default function ProfileEditor({
           {error}
         </p>
       )}
-      <ProfilePortfolio
-        profile={
-          items === null
-            ? draft
-            : {
-                ...draft,
-                presentation: {
-                  ...draft.presentation,
-                  book: draft.presentation.book.filter((b) =>
-                    items.some(
-                      (i) =>
-                        i.category === "book" &&
-                        i.url === b.url &&
-                        i.visibility === "visible" &&
-                        i.status === "ready",
+      <div>
+        <ProfilePortfolio
+          profile={
+            items === null
+              ? draft
+              : {
+                  ...draft,
+                  presentation: {
+                    ...draft.presentation,
+                    book: draft.presentation.book.filter((b) =>
+                      items.some(
+                        (i) =>
+                          i.category === "book" &&
+                          i.url === b.url &&
+                          i.visibility === "visible" &&
+                          i.status === "ready",
+                      ),
                     ),
-                  ),
-                },
-              }
-        }
-        preview
-        signedIn
-        preferences={preferences}
-        sectionControls={{
-          identity: section("identity", "identidad"),
-          about: section("about", "bio"),
-          credits: section("credits", "créditos"),
-          skills: editing && <div className="pe-professional-actions"><button type="button" onClick={() => setDialog({section:"skills"})}>Editar habilidades / equipo</button><button type="button" onClick={() => setDialog({ section: "preferences" })}>Editar preferencias de proyectos</button><button type="button" onClick={() => setDialog({ section: "contact" })}>Editar datos de contacto</button></div>,
-        }}
-        media={
-          items !== null || editing ? (
-            <PortfolioMedia
-              items={items ?? []}
-              talent={isTalent(draft.disciplines)}
-              controls={
-                editing
-                  ? {
-                      add: (category) => {
-                        if (!draft.updated_at) {
-                          setDialog({ section: "identity" });
-                          return;
+                  },
+                }
+          }
+          preview
+          signedIn
+          preferences={preferences}
+          sectionControls={{
+            identity: section("identity", "identidad"),
+            about: section("about", "bio"),
+            credits: draft.presentation.credits.length ? (
+              section("credits", "créditos")
+            ) : (
+              <div className="activation-owner-empty" id="credits">
+                <h2>Trayectoria</h2>
+                <p>
+                  Agrega experiencia, proyectos y colaboraciones que cuenten tu
+                  recorrido.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => completeSection("credits")}
+                >
+                  Editar trayectoria
+                </button>
+              </div>
+            ),
+            skills: editing && (
+              <div className="pe-professional-actions">
+                <button
+                  type="button"
+                  onClick={() => setDialog({ section: "skills" })}
+                >
+                  Editar habilidades / equipo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDialog({ section: "preferences" })}
+                >
+                  Editar preferencias de proyectos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDialog({ section: "contact" })}
+                >
+                  Editar datos de contacto
+                </button>
+              </div>
+            ),
+          }}
+          media={
+            items !== null || editing || !draft.portfolio_items.length ? (
+              <div data-tour-target="media">
+                <PortfolioMedia
+                  items={items ?? []}
+                  talent={isTalent(draft.disciplines)}
+                  emptyAdd={addEmpty}
+                  controls={
+                    editing
+                      ? {
+                          add: (category) => {
+                            if (!draft.updated_at) {
+                              setDialog({ section: "identity" });
+                              return;
+                            }
+                            setDialog({ category });
+                          },
+                          edit: (item) =>
+                            setDialog({ category: item.category, item }),
+                          action,
+                          busy,
                         }
-                        setDialog({ category });
-                      },
-                      edit: (item) =>
-                        setDialog({ category: item.category, item }),
-                      action,
-                      busy,
-                    }
-                  : undefined
-              }
-            />
-          ) : undefined
-        }
-      />
+                      : undefined
+                  }
+                />
+              </div>
+            ) : undefined
+          }
+        />
+      </div>
       {editing && items?.some((i) => i.visibility === "archived") && (
-        <details className="pe-archive" open={archiveOpen} onToggle={e => setArchiveOpen(e.currentTarget.open)}>
-          <summary aria-expanded={archiveOpen}>{archiveOpen ? "Ocultar trabajos archivados ↑" : "Ver trabajos archivados ↓"}</summary>
+        <details
+          className="pe-archive"
+          open={archiveOpen}
+          onToggle={(e) => setArchiveOpen(e.currentTarget.open)}
+        >
+          <summary aria-expanded={archiveOpen}>
+            {archiveOpen
+              ? "Ocultar trabajos archivados ↑"
+              : "Ver trabajos archivados ↓"}
+          </summary>
           <p className="pe-hint">
             Restaurar los deja ocultos. Los archivos se conservan hasta 30 días.
           </p>
@@ -302,15 +413,25 @@ export default function ProfileEditor({
         </details>
       )}
       {dialog &&
-        ("section" in dialog ? (dialog.section === "preferences" ? <ProjectPreferencesDialog close={() => setDialog(null)} saved={setPreferences} /> : dialog.section === "contact" ? <PrivateContactDialog close={() => setDialog(null)} /> :
-          <SectionDialog
-            section={dialog.section}
-            profile={draft}
-            bioDraft={bioDraft}
-            setBioDraft={setBioDraft}
-            done={accept}
-            close={() => setDialog(null)}
-          />
+        ("section" in dialog ? (
+          dialog.section === "preferences" ? (
+            <ProjectPreferencesDialog
+              close={() => setDialog(null)}
+              saved={setPreferences}
+              privateSaved={setPrivatePreferences}
+            />
+          ) : dialog.section === "contact" ? (
+            <PrivateContactDialog close={() => setDialog(null)} />
+          ) : (
+            <SectionDialog
+              section={dialog.section}
+              profile={draft}
+              bioDraft={bioDraft}
+              setBioDraft={setBioDraft}
+              done={accept}
+              close={() => setDialog(null)}
+            />
+          )
         ) : (
           <WorkDialog
             category={dialog.category}

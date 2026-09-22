@@ -38,8 +38,12 @@ export default async function PublicProfilePage({ params }: Props) {
   });
   if (error) throw new Error("No pudimos cargar el portfolio.");
   const owned = viewer
-    ? await db.from("professional_profiles").select("user_id")
-        .eq("user_id", viewer.id).eq("slug", slug).maybeSingle()
+    ? await db
+        .from("professional_profiles")
+        .select("user_id")
+        .eq("user_id", viewer.id)
+        .eq("slug", slug)
+        .maybeSingle()
     : null;
   const [preferences, followers, following, access] = await Promise.all([
     db.rpc("get_public_project_preferences", { p_slug: slug }),
@@ -47,7 +51,8 @@ export default async function PublicProfilePage({ params }: Props) {
     viewer ? db.rpc("am_i_following_profile", { p_slug: slug }) : null,
     viewer ? db.rpc("get_my_contact_wallet", { p_slug: slug }) : null,
   ]);
-  if (preferences.error || followers.error || following?.error) throw new Error("No pudimos cargar el perfil completo.");
+  if (preferences.error || followers.error || following?.error)
+    throw new Error("No pudimos cargar el perfil completo.");
   return (
     <div className="editorial-page profiles-page">
       <SiteHeader />
@@ -56,10 +61,41 @@ export default async function PublicProfilePage({ params }: Props) {
           profile={profile}
           signedIn={Boolean(viewer)}
           owner={Boolean(owned?.data)}
-          follow={!owned?.data && <ProfileFollow key={`${slug}:${Boolean(following?.data)}`} slug={slug} signedIn={Boolean(viewer)} initial={Boolean(following?.data)} />}
-          socialProof={<ProfileSocialProof followers={(followers.data ?? []) as ProfileFollower[]} />}
+          follow={
+            !owned?.data && (
+              <ProfileFollow
+                key={`${slug}:${Boolean(following?.data)}`}
+                slug={slug}
+                signedIn={Boolean(viewer)}
+                initial={Boolean(following?.data)}
+              />
+            )
+          }
+          socialProof={
+            <ProfileSocialProof
+              followers={(followers.data ?? []) as ProfileFollower[]}
+            />
+          }
           preferences={parseProjectPreferences(preferences.data)}
-          contactAccess={access?.error ? null : (access?.data as ContactAccess | undefined)}
+          contactAccess={
+            access?.error ? null : (access?.data as ContactAccess | undefined)
+          }
+          mediaSections={
+            media === null
+              ? undefined
+              : Array.from(
+                  new Set(
+                    (media as MediaItem[])
+                      .filter(
+                        (i) =>
+                          i.status === "ready" &&
+                          i.visibility === "visible" &&
+                          (!i.purpose || i.purpose === "portfolio"),
+                      )
+                      .map((i) => i.category),
+                  ),
+                )
+          }
           media={
             media === null ? undefined : (
               <PortfolioMedia
