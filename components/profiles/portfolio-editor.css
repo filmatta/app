@@ -7,12 +7,17 @@
   color: #f1efe9;
 }
 .pe-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
   padding: 24px 0;
   border-bottom: 1px solid #ffffff18;
+  background: #080808;
+  box-shadow: 0 8px 14px -14px #ffffff80;
   flex-wrap: wrap;
 }
 .pe-toolbar small,
@@ -332,7 +337,7 @@
 }
 @media (max-width: 600px) {
   .pe-toolbar {
-    padding: 18px 0;
+    padding: 12px 0;
     gap: 12px;
   }
   .pe-tools {
