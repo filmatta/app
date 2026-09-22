@@ -314,3 +314,16 @@
   color: #b8c0c2;
   margin: 10px 0;
 }
+.activation-flow .pe-identity-upload--cover {
+  max-width: none;
+  width: 100%;
+}
+.activation-flow .pe-identity-upload--cover .pe-image-preview {
+  width: 100%;
+}
+.activation-flow input[type="file"][hidden] {
+  display: none;
+}
+.activation-flow .pe-identity-upload--cover .pe-image-preview {
+  max-width: none;
+}
