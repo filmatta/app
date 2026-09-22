@@ -699,7 +699,7 @@
 @media(max-width:600px) { .p2-social-proof .p2-proof-desktop { display: none; } .p2-social-proof .p2-proof-mobile { display: inline; } .p2-social-proof > div { gap: 4px; } .p2-social-proof { gap: 10px; } .p2-social-proof a { width: 32px; height: 32px; } }
 .p2-follower-initial { width: 100%; height: 100%; display: grid; place-items: center; color: #b9dceb; }
 .pe-professional-actions { display: grid; gap: 10px; margin: 18px 0; padding: 10px 0; border-block: 1px solid #ffffff18; }
-.pe-professional-actions button { text-align: left; min-height: 36px; font-size: 12px; color: #b9dceb; padding: 6px 0; }
+.pe-professional-actions button { text-align: left; min-height: 44px; font-size: 12px; color: #b9dceb; padding: 10px 14px; }
 .pe-preferences-consent { margin: 20px 0; padding: 16px; border: 1px solid #b9dceb44; border-radius: 4px; }
 .p2-professional-details summary { list-style: none; }
 .p2-professional-details summary::-webkit-details-marker { display: none; }
@@ -710,6 +710,12 @@
 }
 @media(prefers-reduced-motion:reduce) { .p2-follow { transition: none; } }
 
-.p2-availability{margin-bottom:18px}
+.p2-layout > .p2-availability {justify-content:flex-end; margin:18px 0; min-width:0;}
+@media(min-width:1024px) {
+ .p2-layout > .p2-availability {grid-column:2; grid-row:1;}
+}
+@media(max-width:1023px) {
+ .p2-layout > .p2-availability {margin:0;}
+}
 
 .p2-contact-section .network-credit-title{margin:24px 0 12px}

@@ -166,7 +166,9 @@ export default function IdentityImageEditor({
           ? "Usa una foto nítida y de buena calidad donde tu rostro se vea claramente."
           : "Una buena portada puede ser un still de uno de tus trabajos o una fotografía horizontal de un rodaje."}
       </p>
-      <div className="pe-image-preview">
+      <div
+        className={`pe-image-preview ${kind === "cover" && !hasImage ? "pe-image-preview--empty-cover" : ""}`}
+      >
         {selectedUrl ? (
           <div className="pe-crop-preview">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -189,12 +191,20 @@ export default function IdentityImageEditor({
         ) : stored.id ? (
           <IdentityImage id={stored.id} alt="Portada actual" />
         ) : (
-          <div className="activation-cover-neutral">
-            <span>FILMATTA</span>
-            <small>Tu próxima historia</small>
+          <div className="activation-cover-placeholder">
+            <strong>Portada de perfil</strong>
+            <p>Agrega una imagen horizontal para personalizar tu perfil.</p>
+            <button type="button" onClick={() => input.current?.click()}>
+              Agregar portada
+            </button>
           </div>
         )}
       </div>
+      {kind === "cover" && hasImage && (
+        <button type="button" onClick={() => input.current?.click()}>
+          Cambiar portada
+        </button>
+      )}
       {kind === "cover" && (
         <div className="activation-presets">
           <h3>Portadas FILMATTA</h3>

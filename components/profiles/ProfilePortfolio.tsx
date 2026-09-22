@@ -42,6 +42,8 @@ export default function ProfilePortfolio({
   socialProof,
   preferences = null,
   contactAccess,
+  editAction,
+  preferencesNotice,
   sectionControls = {},
 }: {
   profile: PublicProfessionalProfile;
@@ -54,6 +56,8 @@ export default function ProfilePortfolio({
   socialProof?: ReactNode;
   preferences?: ProjectPreferences | null;
   contactAccess?: ContactAccess | null;
+  editAction?: ReactNode;
+  preferencesNotice?: ReactNode;
   sectionControls?: Partial<
     Record<"identity" | "cover" | "about" | "credits" | "skills", ReactNode>
   >;
@@ -105,6 +109,7 @@ export default function ProfilePortfolio({
             <div className="p2-meta">{location && <span>{location}</span>}</div>
           </div>
           <div className="p2-actions">
+            {editAction}
             {preview ? null : owner ? (
               <Link className="p2-contact-button" href="/mi-perfil">
                 Editar perfil
@@ -140,20 +145,20 @@ export default function ProfilePortfolio({
             {profile.bio && <ProfileBio text={profile.bio} />}
           </div>
         )}
+        <div className="p2-availability" data-state={profile.availability}>
+          <StatusBadge
+            tone={
+              profile.availability === "available"
+                ? "success"
+                : profile.availability === "limited"
+                  ? "warning"
+                  : "neutral"
+            }
+          >
+            {AVAILABILITY_LABELS[profile.availability]}
+          </StatusBadge>
+        </div>
         <aside className="p2-aside">
-          <div className="p2-availability" data-state={profile.availability}>
-            <StatusBadge
-              tone={
-                profile.availability === "available"
-                  ? "success"
-                  : profile.availability === "limited"
-                    ? "warning"
-                    : "neutral"
-              }
-            >
-              {AVAILABILITY_LABELS[profile.availability]}
-            </StatusBadge>
-          </div>
           {sectionControls.skills}
           <ProfessionalDetails>
             <section className="p2-information">
@@ -312,7 +317,7 @@ export default function ProfilePortfolio({
           {sectionControls.credits}
           {p.credits.length > 0 && (
             <section className="p2-credits" id="credits">
-              <h2>Trayectoria / CV</h2>
+              <h2>Trayectoria</h2>
               <ul>
                 {sortedCredits(p.credits).map((credit, i) => (
                   <li key={i}>
@@ -345,6 +350,7 @@ export default function ProfilePortfolio({
               <p className="p2-empty">El portfolio aún está en preparación.</p>
             )}
           <ProfileProjectPreferences value={preferences} />
+          {preview && preferencesNotice}
           <ProfileContactSection
             slug={profile.slug}
             name={name}

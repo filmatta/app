@@ -1,4 +1,5 @@
 "use client";
+import FilmattaAccordion from "@/components/ui/FilmattaAccordion";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { AVAILABILITY_LABELS } from "@/lib/profiles/constants";
@@ -323,55 +324,63 @@ export default function Onboarding({
                     : "Son privadas. Sólo se compartirán si lo decides después desde el editor."}{" "}
                   Sin marcar significa sin especificar; no es un rechazo.
                 </p>
-                <h2 className="activation-group-title">Formatos de proyecto</h2>
-                <div className="activation-options">
-                  {PROJECT_FORMATS.map((f) => (
-                    <SelectionRow
-                      key={f}
-                      checked={prefs.formats.includes(f)}
-                      onChange={(e) => {
-                        setFormatsChanged(true);
-                        setPrefs((v) => ({
-                          ...v,
-                          formats: e.target.checked
-                            ? [...v.formats, f]
-                            : v.formats.filter((x) => x !== f),
-                        }));
-                      }}
-                    >
-                      {f}
-                    </SelectionRow>
-                  ))}
-                </div>
-                <h2 className="activation-group-title">
-                  Condiciones de rodaje
-                </h2>
-                <div className="activation-options activation-options--vertical">
-                  {Object.entries(PREFERENCE_GROUPS.conditions).map(
-                    ([key, label]) => (
+                <FilmattaAccordion
+                  title="Formatos de proyecto"
+                  summary={`${prefs.formats.length} seleccionados`}
+                >
+                  <div className="activation-options">
+                    {PROJECT_FORMATS.map((f) => (
                       <SelectionRow
-                        key={key}
-                        checked={prefs.conditions[key] === "accept"}
+                        key={f}
+                        checked={prefs.formats.includes(f)}
                         onChange={(e) => {
-                          const choice = quickPreference(e.target.checked);
-                          setChangedConditions((v) => ({
-                            ...v,
-                            [key]: choice,
-                          }));
+                          setFormatsChanged(true);
                           setPrefs((v) => ({
                             ...v,
-                            conditions: { ...v.conditions, [key]: choice },
+                            formats: e.target.checked
+                              ? [...v.formats, f]
+                              : v.formats.filter((x) => x !== f),
                           }));
                         }}
                       >
-                        {label}
-                        {["consult", "decline"].includes(
-                          prefs.conditions[key],
-                        ) && <small> · Preferencia avanzada conservada</small>}
+                        {f}
                       </SelectionRow>
-                    ),
-                  )}
-                </div>
+                    ))}
+                  </div>
+                </FilmattaAccordion>
+                <FilmattaAccordion
+                  title="Condiciones de rodaje"
+                  summary={`${Object.values(prefs.conditions).filter((v) => v === "accept").length} seleccionadas`}
+                >
+                  <div className="activation-options">
+                    {Object.entries(PREFERENCE_GROUPS.conditions).map(
+                      ([key, label]) => (
+                        <SelectionRow
+                          key={key}
+                          checked={prefs.conditions[key] === "accept"}
+                          onChange={(e) => {
+                            const choice = quickPreference(e.target.checked);
+                            setChangedConditions((v) => ({
+                              ...v,
+                              [key]: choice,
+                            }));
+                            setPrefs((v) => ({
+                              ...v,
+                              conditions: { ...v.conditions, [key]: choice },
+                            }));
+                          }}
+                        >
+                          {label}
+                          {["consult", "decline"].includes(
+                            prefs.conditions[key],
+                          ) && (
+                            <small> · Preferencia avanzada conservada</small>
+                          )}
+                        </SelectionRow>
+                      ),
+                    )}
+                  </div>
+                </FilmattaAccordion>
                 <p className="activation-hint">
                   Puedes elegir Consultar o No y ajustar temáticas y
                   participación después, en Editar preferencias de proyectos.

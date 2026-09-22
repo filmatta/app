@@ -833,14 +833,12 @@ export function SectionDialog({
         )}
         {section === "publication" && (
           <>
-            <label className="pe-checkbox">
-              <input
+            <SelectionRow
                 name="is_public"
-                type="checkbox"
                 defaultChecked={profile.is_public}
-              />
+              >
               Perfil público y compartible
-            </label>
+            </SelectionRow>
             <p className="pe-hint">
               Mientras sea público, cada cambio guardado se verá en tu perfil.
               En borrador sólo tú puedes verlo. Los enlaces protegidos ya

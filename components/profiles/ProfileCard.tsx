@@ -25,27 +25,25 @@ export default function ProfileCard({
         </div>
         <div className="profile-card-name">
           <h2>{name}</h2>
-          <p className="profile-card-disciplines">
-            {profile.disciplines.slice(0, 3).join(" · ")}
-          </p>
-          <p className="profile-card-city">
-            {[profile.city, p.work_area].filter(Boolean).join(" · ") ||
-              "Ciudad por confirmar"}
-          </p>
+          <p className="profile-card-disciplines">{profile.disciplines[0]}</p>
+          <StatusBadge
+            tone={
+              profile.availability === "available"
+                ? "success"
+                : profile.availability === "limited"
+                  ? "warning"
+                  : "neutral"
+            }
+          >
+            {AVAILABILITY_LABELS[profile.availability]}
+          </StatusBadge>
         </div>
       </div>
+      <p className="profile-card-city">
+        {[profile.city, p.work_area].filter(Boolean).join(" · ") ||
+          "Ciudad por confirmar"}
+      </p>
       <div className="profile-card-details">
-        <StatusBadge
-          tone={
-            profile.availability === "available"
-              ? "success"
-              : profile.availability === "limited"
-                ? "warning"
-                : "neutral"
-          }
-        >
-          {AVAILABILITY_LABELS[profile.availability]}
-        </StatusBadge>
         <MetaChips labels={profile.disciplines} limit={3} />
       </div>
       <span className="profile-card-cta">

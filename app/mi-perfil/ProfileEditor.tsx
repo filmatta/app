@@ -233,15 +233,6 @@ export default function ProfileEditor({
           >
             Publicar
           </button>
-          <button
-            type="button"
-            className="pe-primary"
-            data-tour-target="identity"
-            onClick={begin}
-            disabled={busy}
-          >
-            {editing ? "Terminar edición" : "Editar perfil"}
-          </button>
         </div>
       </div>
       <section className="activation-owner" aria-label="Completar tu perfil">
@@ -306,7 +297,34 @@ export default function ProfileEditor({
           }
           preview
           signedIn
+          editAction={
+            <button
+              type="button"
+              className="p2-contact-button"
+              data-tour-target="identity"
+              onClick={begin}
+              disabled={busy}
+            >
+              {editing ? "Terminar edición" : "Editar perfil"}
+            </button>
+          }
           preferences={preferences}
+          preferencesNotice={
+            preferences === null ? (
+              <div className="activation-preferences-private">
+                <p>
+                  Preferencias privadas. Sólo aparecerán en tu perfil público si
+                  decides compartirlas.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setDialog({ section: "preferences" })}
+                >
+                  Editar preferencias de proyectos
+                </button>
+              </div>
+            ) : undefined
+          }
           sectionControls={{
             cover: (
               <div
@@ -333,7 +351,7 @@ export default function ProfileEditor({
             identity: section("identity", "identidad"),
             about: section("about", "bio"),
             credits: draft.presentation.credits.length ? (
-              section("credits", "créditos")
+              section("credits", "CV")
             ) : (
               <div className="activation-owner-empty" id="credits">
                 <h2>Trayectoria</h2>
@@ -345,7 +363,7 @@ export default function ProfileEditor({
                   type="button"
                   onClick={() => completeSection("credits")}
                 >
-                  Editar trayectoria
+                  Construir CV
                 </button>
               </div>
             ),

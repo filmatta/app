@@ -397,9 +397,9 @@ export default function PortfolioMedia({
               <div className="pm-empty">
                 <p>
                   {category === "work"
-                    ? "Agrega escenas, proyectos o piezas que muestren tu trabajo."
+                    ? "Agrega escenas, proyectos o trabajos destacados."
                     : category === "book"
-                      ? "Tu portfolio todavía está vacío. Empieza por una fotografía."
+                      ? "Agrega fotografías de trabajos, sesiones o producciones."
                       : "Tu Reel puede presentar tu trabajo en pocos minutos."}
                 </p>
                 <button
