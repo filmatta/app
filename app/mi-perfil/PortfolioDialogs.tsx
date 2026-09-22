@@ -633,6 +633,7 @@ export function SectionDialog({
   const [credits, setCredits] = useState(profile.presentation.credits);
   const [selectedDisciplines, setSelectedDisciplines] = useState(profile.disciplines);
   const titles: Record<string, string> = {
+    cover: "Portada de perfil",
     identity: "Identidad profesional",
     about: "Sobre mí",
     credits: "Trayectoria / CV",
@@ -716,10 +717,11 @@ export function SectionDialog({
             </label>
             <label>Orientación del portafolio<select name="portfolio_mode" defaultValue={profile.presentation.portfolio_mode ?? "unspecified"}><option value="unspecified">Sin especificar</option><option value="audiovisual">Audiovisual · reel prioritario</option><option value="photographic">Fotográfico · Book</option></select></label>
             <IdentityImageEditor kind="portrait" id={profile.presentation.portrait_media_id} fallbackUrl={profile.presentation.portrait_url} done={done} />
-            <IdentityImageEditor kind="cover" id={profile.presentation.cover_media_id} done={done} />
+
 
           </>
         )}
+        {section === "cover" && <IdentityImageEditor kind="cover" id={profile.presentation.cover_media_id} done={done} />}
         {section === "about" && <>
           <label htmlFor="profile-bio">Bio breve</label>
           <textarea id="profile-bio" name="bio" maxLength={1200} value={bioDraft} onChange={e => setBioDraft(e.target.value)} rows={7} aria-describedby={bioAnalysis.blocked ? "bio-contact-warning" : bioAnalysis.hasEmail ? "bio-email-notice" : undefined} />
@@ -865,14 +867,14 @@ export function SectionDialog({
             {error}
           </p>
         )}
-        <footer>
+        {section !== "cover" && <footer>
           <button type="button" onClick={close} disabled={busy}>
             Cancelar
           </button>
           <button type="submit" className="pe-primary" disabled={busy}>
             {busy ? "Guardando…" : "Guardar cambios"}
           </button>
-        </footer>
+        </footer>}
       </form>
     </EditorDialog>
   );

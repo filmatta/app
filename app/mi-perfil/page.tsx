@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import type { MediaItem } from "@/lib/profiles/media";
 import { redirect } from "next/navigation";
-import { shouldStartTour } from "@/lib/profiles/activation";
+import { minimumProfile, shouldStartTour } from "@/lib/profiles/activation";
 import ProfileEditor from "./ProfileEditor";
 import PrivateTools from "@/components/networking/PrivateTools";
 import { parseProjectPreferences } from "@/lib/profiles/project-preferences";
@@ -25,6 +25,7 @@ export default async function EditProfessionalProfilePage({
     getOwnedProfessionalProfile(viewer.id),
     searchParams,
   ]);
+  if (!minimumProfile(profile)) redirect("/onboarding/perfil");
   const displayName = getPublicDisplayName(viewer.fullName);
   const db = await createClient();
   const media = profile

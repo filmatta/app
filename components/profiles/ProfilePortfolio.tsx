@@ -55,7 +55,7 @@ export default function ProfilePortfolio({
   preferences?: ProjectPreferences | null;
   contactAccess?: ContactAccess | null;
   sectionControls?: Partial<
-    Record<"identity" | "about" | "credits" | "skills", ReactNode>
+    Record<"identity" | "cover" | "about" | "credits" | "skills", ReactNode>
   >;
 }) {
   const talent = isTalent(profile.disciplines),
@@ -70,17 +70,14 @@ export default function ProfilePortfolio({
     .slice(0, 2);
   const remaining = work.filter((item) => !secondary.includes(item));
   const location = [profile.city, p.work_area].filter(Boolean).join(" · ");
-  const cover =
-    p.cover_media_id === null
-      ? undefined
-      : p.book.find((item) => item.url !== p.portrait_url)?.url ||
-        (reel ? reelSource(reel.url)?.thumbnail : undefined);
+  const cover = undefined; // Cover never derives from Book or Reel.
   const visual = Boolean(media || reel || p.book.length);
   return (
     <article className={`profile-public-v2 ${talent ? "p2-talent" : ""}`}>
+      {sectionControls.cover}
       <header
         data-tour-target={preview ? "preview" : undefined}
-        className={`p2-hero ${p.cover_media_id || cover ? "p2-hero--image" : ""}`}
+        className={`p2-hero ${p.cover_media_id || cover ? "p2-hero--image" : "p2-hero--neutral"}`}
       >
         {(p.cover_media_id || cover) && (
           <div className="p2-cover" aria-hidden="true">

@@ -22,12 +22,12 @@ test("onboarding requires identity, disciplines, city and availability; optional
     [1, {}],
     [2, { disciplines: [] }],
     [2, { disciplines: Array(6).fill("Actuación") }],
-    [3, { city: " " }],
-    [5, { availability: "not_specified" }],
+    [4, { city: " " }],
+    [6, { availability: "not_specified" }],
   ])
     assert.ok(a.validateOnboardingStep(step, patch));
-  assert.equal(a.validateOnboardingStep(4, {}), null);
-  assert.equal(a.validateOnboardingStep(6, {}), null);
+  assert.equal(a.validateOnboardingStep(5, {}), null);
+  assert.equal(a.validateOnboardingStep(7, {}), null);
   assert.ok(a.minimumProfile(profile));
   assert.equal(a.minimumProfile({ ...profile, city: "" }), false);
 });

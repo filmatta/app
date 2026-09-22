@@ -3,54 +3,54 @@ import { MetaChips } from "@/components/ui/MetaChip";
 import Link from "next/link";
 import type { ProfileSummary } from "@/lib/profiles/catalog";
 import { AVAILABILITY_LABELS } from "@/lib/profiles/constants";
-import { leadReel } from "@/lib/profiles/presentation";
-import ProfileImage from "./ProfileImage";
-import IdentityImage from "./IdentityImage";
+import ProfileAvatar from "./ProfileAvatar";
+import "./profile-card.css";
 export default function ProfileCard({
   profile,
-  talent = false,
 }: {
   profile: ProfileSummary;
   talent?: boolean;
 }) {
-  const reel = leadReel(profile.portfolio_items),
-    p = profile.presentation;
-  const identityUrl = p.portrait_url || null;
-  const imageId = p.portrait_media_id;
+  const p = profile.presentation,
+    name = p.stage_name || profile.display_name;
   return (
-    <Link
-      href={`/perfiles/${profile.slug}`}
-      className={`profile-card ${talent ? "profile-card--talent" : ""}`}
-    >
-      <div className="profile-card-frame">
-        {(imageId || identityUrl) && <IdentityImage id={imageId} fallbackUrl={identityUrl} alt="" interactive={false} />}
-        {/* Legacy fallback retains initials when no saved image exists. */}
-        {!imageId && !identityUrl && <ProfileImage
-          src={null}
-          alt=""
-          fallback="Sin foto de perfil"
-        />}
-        {!talent && (reel || p.book.length > 0) && (
-          <span className="profile-card-material">
-            {reel ? "▷ Reel" : "Book"}
-            {reel && p.book.length > 0 ? " / Book" : ""}
-          </span>
-        )}
-        <span className="profile-card-open" aria-hidden="true">
-          ↗
-        </span>
+    <Link href={`/perfiles/${profile.slug}`} className="profile-card">
+      <div className="profile-card-identity">
+        <div className="profile-card-avatar">
+          <ProfileAvatar
+            id={p.portrait_media_id}
+            fallbackUrl={p.portrait_url}
+            name={name}
+          />
+        </div>
+        <div className="profile-card-name">
+          <h2>{name}</h2>
+          <p className="profile-card-disciplines">
+            {profile.disciplines.slice(0, 3).join(" · ")}
+          </p>
+          <p className="profile-card-city">
+            {[profile.city, p.work_area].filter(Boolean).join(" · ") ||
+              "Ciudad por confirmar"}
+          </p>
+        </div>
       </div>
-      <div className="profile-card-name">
-        <h2>{p.stage_name || profile.display_name}</h2>
-        <span aria-hidden="true">↗</span>
+      <div className="profile-card-details">
+        <StatusBadge
+          tone={
+            profile.availability === "available"
+              ? "success"
+              : profile.availability === "limited"
+                ? "warning"
+                : "neutral"
+          }
+        >
+          {AVAILABILITY_LABELS[profile.availability]}
+        </StatusBadge>
+        <MetaChips labels={profile.disciplines} limit={3} />
       </div>
-
-      <MetaChips labels={profile.disciplines} limit={3} />
-      <p className="profile-card-city">
-        {[profile.city, p.work_area].filter(Boolean).join(" · ") ||
-          "Ciudad por confirmar"}
-      </p>
-      <StatusBadge tone={profile.availability === "available" ? "success" : profile.availability === "limited" ? "warning" : "neutral"}>{AVAILABILITY_LABELS[profile.availability]}</StatusBadge>
+      <span className="profile-card-cta">
+        Ver perfil <span aria-hidden="true">↗</span>
+      </span>
     </Link>
   );
 }

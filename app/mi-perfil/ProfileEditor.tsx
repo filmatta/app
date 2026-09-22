@@ -189,7 +189,10 @@ export default function ProfileEditor({
     }
   }
   function completeSection(key: string) {
-    if (!draft.updated_at) { router.push("/onboarding/perfil"); return; }
+    if (!draft.updated_at) {
+      router.push("/onboarding/perfil");
+      return;
+    }
     activationEvent("profile_completion_cta_clicked");
     if (key === "reel" || key === "book") {
       void addEmpty(key);
@@ -305,6 +308,28 @@ export default function ProfileEditor({
           signedIn
           preferences={preferences}
           sectionControls={{
+            cover: (
+              <div
+                className={`activation-cover-owner ${draft.presentation.cover_media_id ? "activation-cover-owner--saved" : ""}`}
+              >
+                {!draft.presentation.cover_media_id && (
+                  <>
+                    <h2>Portada de perfil</h2>
+                    <p>
+                      Agrega una imagen horizontal para personalizar tu perfil.
+                    </p>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setDialog({ section: "cover" })}
+                >
+                  {draft.presentation.cover_media_id
+                    ? "Cambiar portada"
+                    : "Agregar portada"}
+                </button>
+              </div>
+            ),
             identity: section("identity", "identidad"),
             about: section("about", "bio"),
             credits: draft.presentation.credits.length ? (

@@ -21,9 +21,9 @@ export default function NetworkingHeader({ authenticated }: { authenticated: boo
       <h2 className="network-notification-title">NOTIFICACIONES</h2>{loading && !items.length ? <p role="status" className="network-notification-status">Cargando…</p> : <NotificationList items={items} onRead={() => void refresh()} />}
       {error && <p role="alert" className="network-notification-status">{error}</p>}<Link className="nav-menu-link" href="/notificaciones">Ver todas →</Link>
     </Disclosure>}
-    <Disclosure key={pathname+"-create"} iconOnly label="Crear" align="right" panelClassName="nav-publishing-panel" leading={<svg className="network-create-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 4v16M4 12h16" /></svg>}>
+    {authenticated && <Disclosure key={pathname+"-create"} iconOnly label="Crear" align="right" panelClassName="nav-publishing-panel" leading={<svg className="network-create-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 4v16M4 12h16" /></svg>}>
       <p className="nav-panel-heading">CREAR</p>
       {[["Proyecto","/proyectos/nuevo","M3 6h7l2 2h9v12H3ZM3 6V4h7l2 2"],["Locación","/mis-locaciones/nueva","M3 11 12 3l9 8M5 9v12h14V9M9 21v-7h6v7"],["Servicio","/mis-servicios/nuevo","M3 7h18v14H3ZM8 7V3h8v4M3 12h18M10 12v3h4v-3"]].map(([label,href,path]) => <Link key={href} className="nav-menu-link network-create-link" href={href}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d={path} /></svg>{label}</Link>)}
-    </Disclosure>
+    </Disclosure>}
   </>;
 }

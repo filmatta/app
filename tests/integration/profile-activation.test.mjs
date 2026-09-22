@@ -47,18 +47,19 @@ test(
       owner = client(anonKey),
       other = client(anonKey),
       anon = client(anonKey),
+      student = client(anonKey),
       ids = [];
     const ok = (r) =>
       assert.equal(r.error, null, r.error?.code ?? "request failed");
     const save = async (step, patch) => {
-      const r = await owner.rpc("save_my_profile_onboarding", {
+      const r = await owner.rpc("save_my_profile_activation_step", {
         p_step: step,
         p_patch: patch,
       });
       ok(r);
     };
     try {
-      for (const db of [owner, other]) {
+      for (const db of [owner, other, student]) {
         const email = `activation-${randomUUID()}@example.invalid`,
           password = `QA-${randomUUID()}!`;
         const r = await admin.auth.admin.createUser({
@@ -73,7 +74,7 @@ test(
       }
       assert.ok(
         (
-          await anon.rpc("save_my_profile_onboarding", {
+          await anon.rpc("save_my_profile_activation_step", {
             p_step: 1,
             p_patch: { name: "Anon" },
           })
@@ -81,13 +82,26 @@ test(
       );
       assert.ok(
         (
-          await owner.rpc("save_my_profile_onboarding", {
+          await owner.rpc("save_my_profile_activation_step", {
             p_step: 6,
             p_patch: {},
           })
         ).error,
       );
-      await save(1, { name: "Activación · QA", alias: "Alternativo" });
+      // Login/signup alone (e.g. Learn) does not create or opt into professional identity.
+      const studentProfile = await student
+        .from("professional_profiles")
+        .select("user_id")
+        .eq("user_id", ids[2]);
+      ok(studentProfile);
+      assert.equal(studentProfile.data.length, 0);
+      const studentState = await student
+        .from("profile_private_settings")
+        .select("onboarding_started_at")
+        .eq("owner_id", ids[2]);
+      ok(studentState);
+      assert.ok(studentState.data.every((s) => !s.onboarding_started_at));
+      await save(1, { name: "Activación · QA" });
       let settings = await owner
         .from("profile_private_settings")
         .select("*")
@@ -113,6 +127,20 @@ test(
             .eq("owner_id", ids[0])
         ).error,
       );
+      const noDraft = await owner
+        .from("professional_profiles")
+        .select("user_id")
+        .eq("user_id", ids[0]);
+      ok(noDraft);
+      assert.equal(noDraft.data.length, 0);
+      assert.ok(
+        (
+          await owner.rpc("save_my_profile_activation_step", {
+            p_step: 3,
+            p_patch: {},
+          })
+        ).error,
+      );
       await save(2, { disciplines: ["Actuación", "Dirección"] });
       let pr = await owner
         .from("professional_profiles")
@@ -127,10 +155,46 @@ test(
           .data.length,
         0,
       );
-      await save(3, { city: "Guadalajara", work_area: "Poniente" });
-      await save(4, {});
-      await save(5, { availability: "limited" });
-      await save(6, { night: "consult", travel: "accept" });
+      await save(3, {});
+      await save(4, { city: "Guadalajara", work_area: "Poniente" });
+      await save(5, {});
+      await save(6, { availability: "limited" });
+      ok(
+        await owner.rpc("save_my_project_preferences_visibility", {
+          p_preferences: {
+            formats: [],
+            open_formats: false,
+            themes: { romance: "consult" },
+            participation: { kissing: "decline" },
+            conditions: { animals: "consult", night: "accept" },
+          },
+          p_publish: false,
+        }),
+      );
+      await save(7, {
+        formats: ["Cortometraje"],
+        conditions: { night: "unspecified", travel: "accept" },
+      });
+      const quick = (
+        await owner
+          .from("profile_private_settings")
+          .select("project_preferences")
+          .eq("owner_id", ids[0])
+          .single()
+      ).data.project_preferences;
+      assert.equal(quick.conditions.night, "unspecified");
+      assert.equal(quick.conditions.travel, "accept");
+      assert.equal(quick.conditions.animals, "consult");
+      assert.equal(quick.participation.kissing, "decline");
+      assert.ok(
+        (
+          await owner.rpc("save_my_profile_activation_step", {
+            p_step: 7,
+            p_patch: { conditions: { travel: "decline" } },
+          })
+        ).error,
+      );
+      await save(8, {});
       settings = await owner
         .from("profile_private_settings")
         .select("*")
@@ -138,9 +202,9 @@ test(
         .single();
       assert.ok(settings.data.onboarding_completed_at);
       assert.equal(settings.data.publish_project_preferences, false);
-      assert.equal(settings.data.onboarding_step, 7);
-      await save(4, { bio: "Experiencia en cortometrajes." });
-      await save(4, {});
+      assert.equal(settings.data.onboarding_step, 9);
+      await save(5, { bio: "Experiencia en cortometrajes." });
+      await save(5, {});
       pr = await owner
         .from("professional_profiles")
         .select("*")
@@ -151,7 +215,7 @@ test(
       assert.equal(pr.data.city, "Guadalajara");
       assert.ok(
         (
-          await owner.rpc("save_my_profile_onboarding", {
+          await owner.rpc("save_my_profile_activation_step", {
             p_step: 1,
             p_patch: { name: "Spoof", user_id: ids[1] },
           })
@@ -159,13 +223,13 @@ test(
       );
       assert.ok(
         (
-          await owner.rpc("save_my_profile_onboarding", {
+          await owner.rpc("save_my_profile_activation_step", {
             p_step: 7,
             p_patch: { publish: false },
           })
         ).error,
       );
-      await save(7, { publish: true });
+      await save(9, { publish: true });
       assert.equal(
         (await anon.rpc("get_public_professional_portfolio", { p_slug: slug }))
           .data.length,
@@ -179,6 +243,23 @@ test(
             .eq("user_id", ids[0])
         ).error,
       );
+      // An explicitly chosen crew path has the same ownership boundary and uses existing taxonomy.
+      for (const [p_step, p_patch] of [
+        [1, { name: "Crew QA" }],
+        [2, { disciplines: ["Producción", "Sonido"] }],
+        [3, {}],
+        [4, { city: "Guadalajara" }],
+        [5, {}],
+        [6, { availability: "available" }],
+        [7, {}],
+        [8, {}],
+      ])
+        ok(
+          await other.rpc("save_my_profile_activation_step", {
+            p_step,
+            p_patch,
+          }),
+        );
       ok(await owner.rpc("finish_my_profile_tour"));
       const first = (
         await owner

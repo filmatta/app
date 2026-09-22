@@ -40,7 +40,7 @@ export default async function OnboardingPage({
       intent={intent}
       initialStep={resumeStep(settings.data?.onboarding_step)}
       identity={settings.data?.onboarding_identity ?? {}}
-      conditions={settings.data?.project_preferences?.conditions ?? {}}
+      preferences={settings.data?.project_preferences ?? null}
       preferencesPublic={settings.data?.publish_project_preferences ?? false}
     />
   );

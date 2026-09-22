@@ -11,9 +11,7 @@
       "width": 1800,
       "height": 2700,
       "focalPoint": "50% 55%",
-      "landings": [
-        "talento"
-      ]
+      "landings": ["talento"]
     },
     {
       "file": "/images/editorial/monitor.webp",
@@ -23,11 +21,7 @@
       "width": 1800,
       "height": 1200,
       "focalPoint": "50% 50%",
-      "landings": [
-        "perfiles",
-        "learn",
-        "tools/production-assistant"
-      ]
+      "landings": ["perfiles", "learn", "tools/production-assistant"]
     },
     {
       "file": "/images/editorial/space.webp",
@@ -37,9 +31,7 @@
       "width": 1800,
       "height": 1200,
       "focalPoint": "50% 50%",
-      "landings": [
-        "locaciones"
-      ]
+      "landings": ["locaciones"]
     },
     {
       "file": "/images/editorial/talent-portrait-13306757.webp",
@@ -49,10 +41,77 @@
       "width": 1200,
       "height": 1500,
       "focalPoint": "50% 38%",
-      "landings": [
-        "talento"
-      ],
+      "landings": ["talento"],
       "use": "Editorial illustration only; never a real FILMATTA member. Also used in clearly labeled local test fixtures."
+    },
+    {
+      "file": "/images/profile-covers/camera.webp",
+      "source": "https://www.pexels.com/photo/a-person-filming-11493130/",
+      "author": "Kerem Kaplan",
+      "obtained": "2026-09-16",
+      "width": 1440,
+      "height": 585,
+      "focalPoint": "50% 55%",
+      "use": "Explicitly selected FILMATTA profile cover decoration. Not member portfolio/work. Local optimized asset; no hotlink.",
+      "license": "https://www.pexels.com/license/",
+      "licenseConsulted": "2026-09-22"
+    },
+    {
+      "file": "/images/profile-covers/monitor.webp",
+      "source": "https://www.pexels.com/photo/men-sitting-at-studio-and-working-on-recording-6883796/",
+      "author": "cottonbro studio",
+      "obtained": "2026-09-16",
+      "width": 1440,
+      "height": 585,
+      "focalPoint": "50% 50%",
+      "use": "Explicitly selected FILMATTA profile cover decoration. Not member portfolio/work. Local optimized asset; no hotlink.",
+      "license": "https://www.pexels.com/license/",
+      "licenseConsulted": "2026-09-22"
+    },
+    {
+      "file": "/images/profile-covers/space.webp",
+      "source": "https://www.pexels.com/photo/an-empty-room-7318661/",
+      "author": "MART PRODUCTION",
+      "obtained": "2026-09-16",
+      "width": 1440,
+      "height": 585,
+      "focalPoint": "50% 50%",
+      "use": "Explicitly selected FILMATTA profile cover decoration. Not member portfolio/work. Local optimized asset; no hotlink.",
+      "license": "https://www.pexels.com/license/",
+      "licenseConsulted": "2026-09-22"
+    },
+    {
+      "source": "https://www.pexels.com/photo/profession-camera-on-movie-set-8799978/",
+      "author": "Minh Tri",
+      "obtained": "2026-09-22",
+      "file": "/images/profile-covers/set.webp",
+      "width": 1440,
+      "height": 585,
+      "use": "Explicitly selected FILMATTA profile cover decoration. Not member portfolio/work. Local optimized asset; no hotlink.",
+      "license": "https://www.pexels.com/license/",
+      "licenseConsulted": "2026-09-22"
+    },
+    {
+      "source": "https://www.pexels.com/photo/behind-the-scenes-on-a-film-set-with-camera-equipment-32439173/",
+      "author": "Kyle Loftus",
+      "obtained": "2026-09-22",
+      "file": "/images/profile-covers/rig.webp",
+      "width": 1440,
+      "height": 585,
+      "use": "Explicitly selected FILMATTA profile cover decoration. Not member portfolio/work. Local optimized asset; no hotlink.",
+      "license": "https://www.pexels.com/license/",
+      "licenseConsulted": "2026-09-22"
+    },
+    {
+      "source": "https://www.pexels.com/photo/outdoor-film-set-with-camera-crew-and-equipment-32439171/",
+      "author": "Kyle Loftus",
+      "obtained": "2026-09-22",
+      "file": "/images/profile-covers/outdoors.webp",
+      "width": 1440,
+      "height": 585,
+      "use": "Explicitly selected FILMATTA profile cover decoration. Not member portfolio/work. Local optimized asset; no hotlink.",
+      "license": "https://www.pexels.com/license/",
+      "licenseConsulted": "2026-09-22"
     }
   ]
 }

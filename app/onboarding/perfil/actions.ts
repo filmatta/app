@@ -11,7 +11,7 @@ export async function saveOnboarding(
   const invalid = validateOnboardingStep(step, patch);
   if (invalid) return { error: invalid };
   if (
-    step === 4 &&
+    step === 5 &&
     typeof patch.bio === "string" &&
     analyzeBio(patch.bio).blocked
   )
@@ -25,7 +25,7 @@ export async function saveOnboarding(
       error:
         "Tu sesión terminó. Inicia sesión de nuevo; conservamos los pasos guardados.",
     };
-  const result = await db.rpc("save_my_profile_onboarding", {
+  const result = await db.rpc("save_my_profile_activation_step", {
     p_step: step,
     p_patch: patch,
   });

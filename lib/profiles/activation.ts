@@ -53,7 +53,7 @@ export function resumeStep(value: unknown) {
   return typeof value === "number" &&
     Number.isInteger(value) &&
     value >= 1 &&
-    value <= 7
+    value <= 9
     ? value
     : 1;
 }
@@ -79,24 +79,29 @@ export function validateOnboardingStep(
   )
     return "Selecciona entre una y cinco disciplinas.";
   if (
-    step === 3 &&
+    step === 4 &&
     (typeof patch.city !== "string" ||
       !patch.city.trim() ||
       patch.city.length > 80)
   )
     return "Escribe la ciudad donde trabajas.";
   if (
-    step === 4 &&
+    step === 5 &&
     patch.bio != null &&
     (typeof patch.bio !== "string" || patch.bio.length > 1200)
   )
     return "Tu bio puede tener hasta 1200 caracteres.";
   if (
-    step === 5 &&
+    step === 6 &&
     !["available", "limited", "unavailable"].includes(
       String(patch.availability),
     )
   )
     return "Selecciona tu disponibilidad.";
   return null;
+}
+
+// Unchecked is unknown, never a rejection. Advanced values are only edited in the full editor.
+export function quickPreference(checked: boolean) {
+  return checked ? "accept" : "unspecified";
 }
