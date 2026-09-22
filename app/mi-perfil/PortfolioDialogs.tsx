@@ -369,28 +369,22 @@ export function WorkDialog({
       ) : (
         <form onSubmit={submit}>
           {!item && type === "video" && (
-            <fieldset className="pe-tools">
+            <fieldset className="pe-tools pe-media-source">
               <legend>Fuente del video</legend>
-              <label className="pe-checkbox">
-                <input
+              <SelectionRow
                   type="radio"
                   name="source"
                   checked={source === "external"}
                   onChange={() => setSource("external")}
                   disabled={busy}
-                />
-                Pegar enlace
-              </label>
-              <label className="pe-checkbox">
-                <input
+                >Pegar enlace</SelectionRow>
+              <SelectionRow
                   type="radio"
                   name="source"
                   checked={source === "mux"}
                   onChange={() => setSource("mux")}
                   disabled={busy}
-                />
-                Subir archivo
-              </label>
+                >Subir archivo</SelectionRow>
             </fieldset>
           )}
           {type === "video" && source === "external" && (
@@ -504,18 +498,17 @@ export function WorkDialog({
             />
           </label>
           {category === "reel" && !item && <p className="pe-hint">El video se añade a Otros videos. Cuando esté listo, podrás elegirlo como reel si su duración verificada es de hasta 3 minutos. Los enlaces externos sin duración verificada permanecen en Otros videos.</p>}
-          <label className="pe-checkbox">
-            <input
+          <SelectionRow
               name="featured"
-              type="checkbox"
+              aria-describedby="media-featured-help"
               defaultChecked={item?.featured}
               disabled={busy}
-            />
+            >
             {category === "book"
-              ? "Foto principal del book"
+              ? "Foto principal del Book"
               : "Trabajo destacado"}
-          </label>
-          <p className="pe-hint">
+          </SelectionRow>
+          <p className="pe-hint" id="media-featured-help">
             Un principal por sección. Al destacarlo reemplazas la selección
             anterior.
           </p>
