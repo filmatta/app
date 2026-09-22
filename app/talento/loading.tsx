@@ -1,1 +1,7 @@
-export { default } from "@/components/profiles/ProfileCatalogLoading";
+export default function Loading() {
+  return (
+    <main className="editorial-container" aria-busy="true">
+      <p role="status">Cargando FILMATTA…</p>
+    </main>
+  );
+}

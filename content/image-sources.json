@@ -11,7 +11,9 @@
       "width": 1800,
       "height": 2700,
       "focalPoint": "50% 55%",
-      "landings": ["talento"]
+      "landings": [
+        "talento"
+      ]
     },
     {
       "file": "/images/editorial/monitor.webp",
@@ -21,7 +23,11 @@
       "width": 1800,
       "height": 1200,
       "focalPoint": "50% 50%",
-      "landings": ["perfiles", "learn", "tools/production-assistant"]
+      "landings": [
+        "perfiles",
+        "learn",
+        "tools/production-assistant"
+      ]
     },
     {
       "file": "/images/editorial/space.webp",
@@ -31,7 +37,9 @@
       "width": 1800,
       "height": 1200,
       "focalPoint": "50% 50%",
-      "landings": ["locaciones"]
+      "landings": [
+        "locaciones"
+      ]
     },
     {
       "file": "/images/editorial/talent-portrait-13306757.webp",
@@ -41,7 +49,9 @@
       "width": 1200,
       "height": 1500,
       "focalPoint": "50% 38%",
-      "landings": ["talento"],
+      "landings": [
+        "talento"
+      ],
       "use": "Editorial illustration only; never a real FILMATTA member. Also used in clearly labeled local test fixtures."
     },
     {
@@ -112,6 +122,13 @@
       "use": "Explicitly selected FILMATTA profile cover decoration. Not member portfolio/work. Local optimized asset; no hotlink.",
       "license": "https://www.pexels.com/license/",
       "licenseConsulted": "2026-09-22"
+    },
+    {
+      "file": "/images/talento-catalog-teaser.webp",
+      "source": "OpenAI image_gen; user-provided visual reference",
+      "author": "AI-generated promotional concept",
+      "obtained": "2026-09-22",
+      "use": "Fictional concept only; no real users, results, endorsement or operational catalog. Not a Pexels asset."
     }
   ]
 }
