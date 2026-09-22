@@ -45,7 +45,7 @@ test("desktop panels connect to the header and preserve their editorial widths",
     ["Perfiles", 320, "perfiles"],
     ["Oportunidades", 440, "oportunidades"],
     ["Tools", 600, "tools"],
-    ["Mi cuenta", 280, "mi-cuenta"],
+    ["Cuenta", 280, "mi-cuenta"],
   ] as const) {
     const { panel } = await openPanel(page, name);
     await page.waitForTimeout(200);
@@ -87,7 +87,7 @@ test("desktop dropdown switching, outside click and Escape stay predictable", as
   await expect(opportunities.panel).toBeVisible();
   await page.locator("main").click({ position: { x: 20, y: 200 } });
   await expect(opportunities.panel).toBeHidden();
-  const account = await openPanel(page, "Mi cuenta");
+  const account = await openPanel(page, "Cuenta");
   await expect(account.panel.getByText("Preview User", { exact: true })).toBeVisible();
   await expect(account.panel.locator(".account-avatar")).toHaveText("PU");
   await page.keyboard.press("Escape");

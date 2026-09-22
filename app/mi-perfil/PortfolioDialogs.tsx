@@ -723,7 +723,7 @@ export function SectionDialog({
         {section === "about" && <>
           <label htmlFor="profile-bio">Bio breve</label>
           <textarea id="profile-bio" name="bio" maxLength={1200} value={bioDraft} onChange={e => setBioDraft(e.target.value)} rows={7} aria-describedby={bioAnalysis.blocked ? "bio-contact-warning" : bioAnalysis.hasEmail ? "bio-email-notice" : undefined} />
-          {bioAnalysis.blocked && <div id="bio-contact-warning" ref={bioWarning} tabIndex={-1} className="bio-contact-warning"><strong>⚠ {BIO_CONTACT_TITLE}</strong><p>{BIO_CONTACT_MESSAGE}</p><a href="/cuenta#datos-contacto" target="_blank" rel="noopener noreferrer">Ir a datos de contacto ↗</a>{bioDraft.trim() === (profile.bio ?? "").trim() && <p>Bio histórica: puedes guardar otras secciones. Al modificarla, tendrás que corregir estos datos.</p>}</div>}
+          {bioAnalysis.blocked && <div id="bio-contact-warning" ref={bioWarning} tabIndex={-1} className="bio-contact-warning"><strong>⚠ {BIO_CONTACT_TITLE}</strong><p>{BIO_CONTACT_MESSAGE}</p><a href="/cuenta/configuracion#datos-contacto" target="_blank" rel="noopener noreferrer">Ir a datos de contacto ↗</a>{bioDraft.trim() === (profile.bio ?? "").trim() && <p>Bio histórica: puedes guardar otras secciones. Al modificarla, tendrás que corregir estos datos.</p>}</div>}
           {bioAnalysis.hasEmail && <p id="bio-email-notice" className="pe-hint">{BIO_EMAIL_NOTICE}</p>}
         </>}
         {section === "credits" && (
@@ -844,7 +844,7 @@ export function SectionDialog({
               En borrador sólo tú puedes verlo. Los enlaces protegidos ya
               emitidos pueden tardar hasta 5 minutos en caducar.
             </p>
-            <a href="/cuenta#datos-contacto" target="_blank" rel="noopener noreferrer">Editar datos de contacto ↗</a>
+            <a href="/cuenta/configuracion#datos-contacto" target="_blank" rel="noopener noreferrer">Editar datos de contacto ↗</a>
             <p className="pe-hint">Las consultas internas no dan acceso a Instagram ni WhatsApp.</p>
             <label>
               Contacto

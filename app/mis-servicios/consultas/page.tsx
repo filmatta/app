@@ -47,7 +47,7 @@ export default async function Inquiries({
     };
   return (
     <div className="editorial-page">
-      <SiteHeader contextLink={{ href: "/cuenta", label: "← Mi cuenta" }} />
+      <SiteHeader contextLink={{ href: "/cuenta", label: "← Cuenta" }} />
       <main className="editorial-container py-16">
         <p className="eyebrow">Tu espacio / Contacto</p>
         <h1 className="mt-5 text-4xl font-semibold">Consultas privadas</h1>

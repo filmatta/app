@@ -274,7 +274,7 @@ test("real Test browser owner publishing, non-owner rejection and private contac
       contexts.push(ac);
       const ap = await ac.newPage();
       await ap.goto("/tools");
-      await ap.getByRole("button", { name: "Mi cuenta", exact: true }).click();
+      await ap.getByRole("button", { name: "Cuenta", exact: true }).click();
       await expect(
         ap.getByRole("link", { name: "Administrar FILMATTA" }),
       ).toBeVisible();

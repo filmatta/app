@@ -1,0 +1,711 @@
+import PrivateContactForm from "../PrivateContactForm";
+import { loadPrivateContact } from "../private-profile-actions";
+import "../private-contact.css";
+import Link from "next/link";
+import { getBillingAccess } from "@/lib/billing/access";
+import { billingEnabled } from "@/lib/billing/config";
+import { redirect } from "next/navigation";
+import {
+  logout,
+  requestEmailChange,
+  updateAccountPassword,
+  updatePersonalProfile,
+} from "@/app/cuenta/actions";
+import AuthenticatedHeader from "@/components/student/AuthenticatedHeader";
+import AccountNavigationSidebar from "@/components/student/AccountNavigationSidebar";
+import AuthenticatedWorkspaceLayout from "@/components/student/AuthenticatedWorkspaceLayout";
+import MfaTotpManager from "@/components/auth/MfaTotpManager";
+import LoadingButton from "@/components/ui/LoadingButton";
+import { getViewer } from "@/lib/auth/get-viewer";
+import { buildMfaSnapshot } from "@/lib/auth/mfa-state";
+import { getLearnContentType } from "@/lib/learn/content-type";
+import { getResumeActions, type ResumeAction } from "@/lib/learn/resume";
+import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
+import { createClient } from "@/lib/supabase/server";
+
+type Enrollment = {
+  id: string;
+  course_id: string;
+  status: "active" | "completed";
+  enrolled_at: string;
+  completed_at: string | null;
+};
+
+type EnrolledCourse = {
+  id: string;
+  title: string;
+  slug: string;
+  short_description: string | null;
+  cover_image_url: string | null;
+  category: string | null;
+  level: string | null;
+  duration_minutes: number | null;
+  content_type?: unknown;
+};
+
+type CourseWithEnrollment = Enrollment & { course: EnrolledCourse };
+
+type AccountSearchParams = {
+  profile?: string;
+  profile_error?: string;
+  email?: string;
+  email_error?: string;
+  password?: string;
+  password_error?: string;
+  session_error?: string;
+};
+
+export default async function CuentaPage({
+  searchParams,
+}: {
+  searchParams: Promise<AccountSearchParams>;
+}) {
+  const viewer = await getViewer();
+
+  if (!viewer) {
+    redirect("/acceso?next=%2Fcuenta%2Fconfiguracion");
+  }
+
+  const privateContact = await loadPrivateContact();
+  const feedback = await searchParams;
+  const billing = await getBillingAccess();
+
+  const supabase = await createClient();
+  const [mfaFactors, mfaAssurance] = await Promise.all([
+    supabase.auth.mfa.listFactors(),
+    supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+  ]);
+  const mfaSnapshot = buildMfaSnapshot(mfaFactors, mfaAssurance);
+  const { data: enrollmentData, error: enrollmentError } = await supabase
+    .from("course_enrollments")
+    .select("id, course_id, status, enrolled_at, completed_at")
+    .eq("user_id", viewer.id)
+    .in("status", ["active", "completed"])
+    .order("enrolled_at", { ascending: false });
+
+  const enrollments = (enrollmentData ?? []) as Enrollment[];
+  const courseIds = [...new Set(enrollments.map((item) => item.course_id))];
+  const coursesResult = courseIds.length
+    ? await supabase
+        .from("courses")
+        .select("*")
+        .in("id", courseIds)
+    : { data: [] as EnrolledCourse[], error: null };
+
+  const courseById = new Map(
+    ((coursesResult.data ?? []) as EnrolledCourse[]).map((course) => [
+      course.id,
+      course,
+    ])
+  );
+  const visibleEnrollments = enrollments.flatMap((enrollment) => {
+    const course = courseById.get(enrollment.course_id);
+    return course && getLearnContentType(course) === "course"
+      ? [{ ...enrollment, course }]
+      : [];
+  });
+  const resumeActions = await getResumeActions(
+    viewer.id,
+    visibleEnrollments.map(({ course }) => ({
+      id: course.id,
+      slug: course.slug,
+    }))
+  );
+  const activeCourses = visibleEnrollments.filter(
+    (item) => item.status === "active"
+  );
+  const completedCourses = visibleEnrollments.filter(
+    (item) => item.status === "completed"
+  );
+  const loadingError = enrollmentError || coursesResult.error;
+
+  return (
+    <div className="min-h-screen bg-[#080808] text-white">
+      <AuthenticatedHeader viewer={viewer} breadcrumbs={[{ label: "Cuenta" }]} />
+
+      <AuthenticatedWorkspaceLayout
+        navigation={<AccountNavigationSidebar />}
+        drawerLabel="Navegación de la cuenta"
+      >
+      <section className="mx-auto max-w-7xl py-10 lg:py-16">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
+          CUENTA / CONFIGURACIÓN Y APRENDIZAJE
+        </p>
+        <div className="mt-4 flex flex-col justify-between gap-5 md:flex-row md:items-end">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-[-0.04em] sm:text-3xl">
+              Tu cuenta
+            </h1>
+            {viewer.email && (
+              <p className="mt-3 text-sm text-white/35">{viewer.email}</p>
+            )}
+          </div>
+          <Link
+            href="/cuenta"
+            className="w-fit rounded-full border border-white/15 px-5 py-3 text-sm font-medium text-white/75 transition hover:bg-white/[0.06] hover:text-white"
+          >
+            Ir a Cuenta →
+          </Link>
+        </div>
+
+        {loadingError && (
+          <p className="mt-10 rounded-xl border border-red-500/20 bg-red-500/[0.05] p-4 text-sm text-red-200">
+            No pudimos cargar tus cursos en este momento.
+          </p>
+        )}
+
+        <section
+          id="mis-cursos"
+          aria-labelledby="my-courses-heading"
+          className="scroll-mt-32 pt-16 sm:scroll-mt-24"
+        >
+          <div className="flex items-end justify-between gap-6 border-b border-white/10 pb-5">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-white/30">
+                Biblioteca
+              </p>
+              <h2 id="my-courses-heading" className="mt-2 text-3xl font-semibold">
+                Mis cursos
+              </h2>
+            </div>
+            {visibleEnrollments.length > 0 && (
+              <span className="text-sm text-white/35">
+                {visibleEnrollments.length} en total
+              </span>
+            )}
+          </div>
+
+          {!loadingError && visibleEnrollments.length === 0 ? (
+            <div className="py-16 text-center sm:py-24">
+              <p className="text-2xl font-medium">Tu próxima historia empieza aquí.</p>
+              <p className="mx-auto mt-3 max-w-md leading-7 text-white/40">
+                Aún no tienes cursos. Explora el catálogo y añade el primero a
+                tu cuenta.
+              </p>
+              <Link
+                href="/cursos"
+                className="mt-8 inline-flex rounded-full bg-white px-6 py-3.5 font-semibold text-black transition hover:bg-white/85"
+              >
+                Explorar cursos
+              </Link>
+            </div>
+          ) : (
+            <div className="mt-8 space-y-14">
+              {activeCourses.length > 0 && (
+                <CourseGroup
+                  title="Cursos activos"
+                  courses={activeCourses}
+                  resumeActions={resumeActions}
+                />
+              )}
+              {completedCourses.length > 0 && (
+                <CourseGroup
+                  title="Cursos completados"
+                  courses={completedCourses}
+                  resumeActions={resumeActions}
+                />
+              )}
+            </div>
+          )}
+        </section>
+
+        <section
+          id="actividad"
+          aria-labelledby="activity-heading"
+          className="mt-20 scroll-mt-32 border-t border-white/10 pt-12 sm:scroll-mt-24"
+        >
+          <p className="text-xs uppercase tracking-[0.24em] text-white/30">
+            Aprendizaje
+          </p>
+          <h2 id="activity-heading" className="mt-2 text-3xl font-semibold">
+            Tu actividad
+          </h2>
+
+          {visibleEnrollments.length === 0 ? (
+            <p className="mt-6 max-w-xl leading-7 text-white/40">
+              Tu actividad aparecerá aquí cuando empieces a estudiar.
+            </p>
+          ) : (
+            <div className="mt-8 grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-2">
+              <ActivityMetric label="Cursos activos" value={activeCourses.length} />
+              <ActivityMetric
+                label="Cursos completados"
+                value={completedCourses.length}
+              />
+              <p className="bg-[#0b0b0b] p-6 text-sm leading-6 text-white/35 sm:col-span-2">
+                El tiempo estudiado, las lecciones completadas y las rachas se
+                mostrarán cuando el seguimiento real de aprendizaje esté activo.
+              </p>
+            </div>
+          )}
+        </section>
+
+        <section
+          id="perfil"
+          aria-labelledby="profile-heading"
+          className="mt-20 scroll-mt-32 border-t border-white/10 pt-12 sm:scroll-mt-24"
+        >
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-20">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-white/30">
+                Perfil
+              </p>
+              <h2 id="profile-heading" className="mt-2 text-3xl font-semibold">
+                Información personal
+              </h2>
+              <p className="mt-4 max-w-md leading-7 text-white/40">
+                Este nombre se usa para saludarte y será la base de tu futuro
+                perfil profesional en FILMATTA.
+              </p>
+            </div>
+
+            <form
+              action={updatePersonalProfile}
+              className="rounded-2xl border border-white/10 bg-white/[0.025] p-6 sm:p-8"
+            >
+              <label htmlFor="full_name" className="text-sm text-white/60">
+                Nombre
+              </label>
+              <input
+                id="full_name"
+                name="full_name"
+                type="text"
+                minLength={2}
+                maxLength={80}
+                required
+                autoComplete="name"
+                defaultValue={viewer.fullName ?? ""}
+                className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3.5 outline-none transition focus:border-white/30"
+              />
+
+              {feedback.profile === "saved" && (
+                <Feedback variant="success">Nombre actualizado.</Feedback>
+              )}
+              {feedback.profile_error && (
+                <Feedback variant="error">{feedback.profile_error}.</Feedback>
+              )}
+
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+                <p className="text-xs leading-5 text-white/30">
+                  La información profesional ampliada estará disponible cuando
+                  exista su estructura de perfil.
+                </p>
+                <LoadingButton
+                  type="submit"
+                  loadingText="Guardando…"
+                  className="rounded-full bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-white/85"
+                >
+                  Guardar nombre
+                </LoadingButton>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section id="datos-contacto" aria-labelledby="private-contact-heading" className="mt-12 scroll-mt-28">
+          <p className="text-xs uppercase tracking-widest text-white/40">Información personal</p>
+          <h2 id="private-contact-heading" className="mt-3 text-2xl">Datos de contacto</h2>
+          {"data" in privateContact ? <PrivateContactForm initial={privateContact.data} /> : <p role="alert" className="mt-6 text-amber-200">{privateContact.error}</p>}
+        </section>
+
+        <PlaceholderAccountSection
+          id="avatar"
+          eyebrow="Identidad"
+          title="Avatar"
+          description="Tu imagen identificará tu cuenta y tu futuro perfil profesional."
+        >
+          <div className="flex flex-col gap-5 rounded-2xl border border-white/10 bg-white/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
+            <span className="flex size-16 shrink-0 items-center justify-center rounded-full bg-white text-xl font-semibold text-black">
+              {viewer.displayName.trim().charAt(0).toUpperCase() || "F"}
+            </span>
+            <div>
+              <p className="font-medium">Avatar de cuenta</p>
+              <p className="mt-2 text-sm leading-6 text-white/35">
+                Cambiar avatar se habilitará cuando el perfil profesional tenga
+                almacenamiento propio.
+              </p>
+              <span className="mt-4 inline-flex cursor-not-allowed rounded-full border border-white/10 px-4 py-2 text-sm text-white/25">
+                Cambiar avatar · Próximamente
+              </span>
+            </div>
+          </div>
+        </PlaceholderAccountSection>
+
+        <PlaceholderAccountSection
+          id="pagos"
+          eyebrow="Plan"
+          title="Pagos"
+          description="Consulta el estado comercial de tu cuenta. No hay cobros activos todavía."
+        >
+          <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-6 sm:p-8">
+            <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+              <div>
+                <p className="text-sm text-white/35">Plan actual</p>
+                <p className="mt-2 text-xl font-semibold">FILMATTA {billing.plan === "pro" ? "Pro" : billing.plan === "plus" ? "Plus" : "Free"}</p>
+                {billingEnabled() && <Link href="/cuenta/suscripcion" className="mt-3 inline-block text-sm text-white/70 underline">Administrar suscripción de prueba</Link>}
+              </div>
+              <Link
+                href="/planes#plus"
+                className="w-fit rounded-full border border-white/15 px-5 py-3 text-sm font-medium text-white/70 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                Ver FILMATTA Plus
+              </Link>
+            </div>
+          </div>
+        </PlaceholderAccountSection>
+
+        <PlaceholderAccountSection
+          id="metodos-pago"
+          eyebrow="Pagos"
+          title="Métodos de pago"
+          description="Aquí podrás administrar tus métodos de pago cuando se active la facturación."
+        >
+          <div className="divide-y divide-white/10 rounded-2xl border border-white/10 bg-white/[0.025] px-6 sm:px-8">
+            <PlaceholderRow title="Añadir método de pago" />
+            <PlaceholderRow title="Quitar método de pago" />
+          </div>
+        </PlaceholderAccountSection>
+
+        <PlaceholderAccountSection
+          id="facturacion"
+          eyebrow="Pagos"
+          title="Datos de facturación"
+          description="Los datos fiscales se solicitarán únicamente cuando exista un flujo de facturación seguro."
+        >
+          <dl className="grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-3">
+            <PlaceholderDetail label="RFC" />
+            <PlaceholderDetail label="Nombre o razón social" />
+            <PlaceholderDetail label="Código postal fiscal" />
+          </dl>
+        </PlaceholderAccountSection>
+
+        <section
+          id="configuracion"
+          aria-labelledby="configuration-heading"
+          className="mt-20 scroll-mt-32 border-t border-white/10 pt-12 sm:scroll-mt-24"
+        >
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-20">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-white/30">
+                Cuenta
+              </p>
+              <h2 id="configuration-heading" className="mt-2 text-3xl font-semibold">
+                Configuración
+              </h2>
+              <p className="mt-4 max-w-md leading-7 text-white/40">
+                Administra el correo de acceso y actualiza tu contraseña.
+              </p>
+            </div>
+
+            <div className="divide-y divide-white/10 rounded-2xl border border-white/10 bg-white/[0.025] px-6 sm:px-8">
+              <form action={requestEmailChange} className="py-7">
+                <h3 className="font-medium">Correo de acceso</h3>
+                {viewer.email && (
+                  <p className="mt-2 text-sm text-white/35">
+                    Correo actual: {viewer.email}
+                  </p>
+                )}
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                  <label htmlFor="new_email" className="sr-only">
+                    Nuevo correo
+                  </label>
+                  <input
+                    id="new_email"
+                    name="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    placeholder="Nuevo correo"
+                    className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none transition placeholder:text-white/25 focus:border-white/30"
+                  />
+                  <LoadingButton
+                    type="submit"
+                    loadingText="Cambiando…"
+                    className="rounded-full border border-white/15 px-5 py-3 text-sm font-medium transition hover:bg-white/[0.06]"
+                  >
+                    Cambiar correo
+                  </LoadingButton>
+                </div>
+                {feedback.email === "confirmation" && (
+                  <Feedback variant="success">
+                    Revisa tu correo para confirmar el cambio.
+                  </Feedback>
+                )}
+                {feedback.email === "confirmed" && (
+                  <Feedback variant="success">Correo confirmado.</Feedback>
+                )}
+                {feedback.email_error && (
+                  <Feedback variant="error">{feedback.email_error}.</Feedback>
+                )}
+              </form>
+
+              <form action={updateAccountPassword} className="py-7">
+                <div>
+                  <h3 className="font-medium">Contraseña</h3>
+                  <p className="mt-2 text-sm text-white/35">
+                    Actualiza la contraseña de esta cuenta. No enviaremos ningún
+                    correo.
+                  </p>
+                </div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <PasswordInput
+                    id="account_password"
+                    name="password"
+                    label="Nueva contraseña"
+                  />
+                  <PasswordInput
+                    id="account_password_confirmation"
+                    name="password_confirmation"
+                    label="Confirmar contraseña"
+                  />
+                </div>
+                {feedback.password === "updated" && (
+                  <Feedback variant="success">Contraseña actualizada.</Feedback>
+                )}
+                {feedback.password_error && (
+                  <Feedback variant="error">{feedback.password_error}.</Feedback>
+                )}
+                <div className="mt-5 flex justify-end">
+                  <LoadingButton
+                    type="submit"
+                    loadingText="Guardando…"
+                    className="rounded-full border border-white/15 px-5 py-3 text-sm font-medium transition hover:bg-white/[0.06]"
+                  >
+                    Guardar contraseña
+                  </LoadingButton>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <PlaceholderAccountSection
+          id="seguridad"
+          eyebrow="Cuenta"
+          title="Seguridad"
+          description="Administra las capas adicionales de protección de tu cuenta."
+        >
+          <MfaTotpManager initialSnapshot={mfaSnapshot} />
+        </PlaceholderAccountSection>
+
+        <section
+          id="cerrar-sesion"
+          aria-labelledby="logout-heading"
+          className="mt-20 scroll-mt-32 border-t border-white/10 pb-12 pt-12 sm:scroll-mt-24"
+        >
+          <div className="flex flex-col justify-between gap-6 rounded-2xl border border-white/10 bg-white/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-white/30">
+                Cuenta
+              </p>
+              <h2 id="logout-heading" className="mt-2 text-xl font-semibold">
+                Cerrar sesión
+              </h2>
+              <p className="mt-2 text-sm text-white/35">
+                Cierra tu sesión en este navegador.
+              </p>
+              {feedback.session_error && (
+                <Feedback variant="error">{feedback.session_error}.</Feedback>
+              )}
+            </div>
+            <form action={logout}>
+              <LoadingButton
+                type="submit"
+                loadingText="Saliendo…"
+                className="rounded-full border border-red-500/20 px-5 py-3 text-sm font-medium text-red-200 transition hover:bg-red-500/10"
+              >
+                Cerrar sesión
+              </LoadingButton>
+            </form>
+          </div>
+        </section>
+      </section>
+      </AuthenticatedWorkspaceLayout>
+    </div>
+  );
+}
+
+function PlaceholderAccountSection({
+  id,
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  id: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  const headingId = `${id}-heading`;
+
+  return (
+    <section
+      id={id}
+      aria-labelledby={headingId}
+      className="mt-20 scroll-mt-32 border-t border-white/10 pt-12 sm:scroll-mt-24"
+    >
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-20">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-white/30">
+            {eyebrow}
+          </p>
+          <h2 id={headingId} className="mt-2 text-3xl font-semibold">
+            {title}
+          </h2>
+          <p className="mt-4 max-w-md leading-7 text-white/40">
+            {description}
+          </p>
+        </div>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function PlaceholderRow({ title }: { title: string }) {
+  return (
+    <div className="flex flex-col justify-between gap-3 py-6 sm:flex-row sm:items-center">
+      <p className="font-medium text-white/75">{title}</p>
+      <span className="text-sm text-white/30">
+        Se habilitará al activar pagos
+      </span>
+    </div>
+  );
+}
+
+function PlaceholderDetail({ label }: { label: string }) {
+  return (
+    <div className="bg-[#0b0b0b] p-6">
+      <dt className="text-xs uppercase tracking-[0.18em] text-white/30">
+        {label}
+      </dt>
+      <dd className="mt-3 text-sm text-white/45">Sin configurar</dd>
+    </div>
+  );
+}
+
+function Feedback({
+  variant,
+  children,
+}: {
+  variant: "success" | "error";
+  children: React.ReactNode;
+}) {
+  return (
+    <p
+      role={variant === "error" ? "alert" : "status"}
+      className={`mt-4 text-sm ${
+        variant === "error" ? "text-red-300" : "text-green-200"
+      }`}
+    >
+      {children}
+    </p>
+  );
+}
+
+function PasswordInput({
+  id,
+  name,
+  label,
+}: {
+  id: string;
+  name: string;
+  label: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="mb-2 block text-sm text-white/60">
+        {label}
+      </label>
+      <input
+        id={id}
+        name={name}
+        type="password"
+        minLength={8}
+        required
+        autoComplete="new-password"
+        className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none transition focus:border-white/30"
+      />
+    </div>
+  );
+}
+
+function CourseGroup({
+  title,
+  courses,
+  resumeActions,
+}: {
+  title: string;
+  courses: CourseWithEnrollment[];
+  resumeActions: Map<string, ResumeAction>;
+}) {
+  return (
+    <div>
+      <h3 className="mb-5 text-sm font-medium text-white/50">{title}</h3>
+      <div className="grid gap-5 lg:grid-cols-2">
+        {courses.map(({ id, course }) => {
+          const resumeAction = resumeActions.get(course.id) ?? {
+            kind: "fallback",
+            href: `/cursos/${course.slug}`,
+            label: "Ver curso",
+          } satisfies ResumeAction;
+
+          return (
+            <article
+              key={id}
+              className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025] sm:grid sm:grid-cols-[11rem_minmax(0,1fr)]"
+            >
+              <div className="aspect-video bg-white/[0.04] sm:aspect-auto">
+                {course.cover_image_url ? (
+                  <img
+                    src={course.cover_image_url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full min-h-36 items-center justify-center text-[10px] font-semibold tracking-[0.25em] text-white/15">
+                    FILMATTA
+                  </div>
+                )}
+              </div>
+              <div className="flex min-h-56 flex-col p-6">
+                <p className="text-xs uppercase tracking-[0.18em] text-white/30">
+                  {[course.category, course.level].filter(Boolean).join(" · ") ||
+                    "FILMATTA Learn"}
+                </p>
+                <h4 className="mt-3 text-xl font-semibold">{course.title}</h4>
+                {course.short_description && (
+                  <p className="mt-3 line-clamp-2 text-sm leading-6 text-white/40">
+                    {course.short_description}
+                  </p>
+                )}
+                {resumeAction.kind === "plus" && (
+                  <p className="mt-4 text-sm leading-6 text-emerald-100/55">
+                    {`Ya terminaste las lecciones gratuitas. Accede a todos los cursos regulares desde $${FILMATTA_PLAN_PRICES.plus}/mes.`}
+                  </p>
+                )}
+                <Link
+                  href={resumeAction.href}
+                  className="mt-auto pt-6 text-sm font-semibold text-white/70 transition hover:text-white"
+                >
+                  {resumeAction.label} →
+                </Link>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ActivityMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="bg-[#0b0b0b] p-6 sm:p-8">
+      <p className="text-4xl font-semibold tabular-nums">{value}</p>
+      <p className="mt-2 text-sm text-white/35">{label}</p>
+    </div>
+  );
+}

@@ -259,7 +259,7 @@ export async function savePortfolioSection(
     if (error)
       return {
         error:
-          "No pudimos guardar. Revisa los campos y tu nombre completo en Mi cuenta.",
+          "No pudimos guardar. Revisa los campos y tu nombre completo en Cuenta.",
       };
     const initialized = await db.rpc("initialize_my_profile_media");
     if (initialized.error)

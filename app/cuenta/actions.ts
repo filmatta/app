@@ -34,6 +34,7 @@ export async function updatePersonalProfile(formData: FormData) {
 
   revalidatePath("/", "layout");
   revalidatePath("/cuenta");
+  revalidatePath("/cuenta/configuracion");
   redirect(accountFeedback("profile", "saved", "perfil"));
 }
 
@@ -47,7 +48,7 @@ export async function requestEmailChange(formData: FormData) {
     redirect(accountFeedback("email_error", "Escribe un correo válido", "configuracion"));
   }
 
-  const confirmedPath = "/cuenta?email=confirmed#configuracion";
+  const confirmedPath = "/cuenta/configuracion?email=confirmed#configuracion";
   const { error } = await supabase.auth.updateUser(
     { email },
     origin
@@ -203,7 +204,7 @@ function validateNewPassword(password: string, confirmation: string) {
 
 function accountFeedback(key: string, value: string, anchor: string) {
   const searchParams = new URLSearchParams({ [key]: value });
-  return `/cuenta?${searchParams.toString()}#${anchor}`;
+  return `/cuenta/configuracion?${searchParams.toString()}#${anchor}`;
 }
 
 function passwordFeedback(nextPath: string, error: string) {

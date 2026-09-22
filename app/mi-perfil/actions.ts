@@ -39,7 +39,7 @@ export async function saveProfessionalProfile(formData: FormData) {
     redirect(
       profileFeedback(
         "error",
-        "Agrega primero tu nombre completo en Mi cuenta",
+        "Agrega primero tu nombre completo en Cuenta",
       ),
     );
   }

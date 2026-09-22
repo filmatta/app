@@ -9,7 +9,7 @@ async function signedClient() {
   return !error && data.user ? { db, user: data.user } : null;
 }
 function refresh() {
-  for (const path of ["/mi-cuenta", "/mi-perfil", "/mi-red", "/cuenta/contactos", "/notificaciones", "/proyectos", "/mis-proyectos"]) revalidatePath(path);
+  for (const path of ["/cuenta", "/mi-perfil", "/mi-red", "/cuenta/contactos", "/notificaciones", "/proyectos", "/mis-proyectos"]) revalidatePath(path);
 }
 export async function saveNetworkingProject(id: string | null, input: unknown): Promise<{ data: Project } | { error: string }> {
   if (id !== null && !validUuid(id)) return { error: "El proyecto no es válido." };

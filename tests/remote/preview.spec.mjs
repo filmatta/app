@@ -379,7 +379,7 @@ test("remote populated ecosystem, public/draft details, filters, owner forms and
         op.getByRole("link", { name: /Profesionales/ }),
       ).toHaveAttribute("href", "/perfiles");
       await op.keyboard.press("Escape");
-      await op.getByRole("button", { name: "Mi cuenta", exact: true }).click();
+      await op.getByRole("button", { name: "Cuenta", exact: true }).click();
       await expect(
         op.getByRole("link", { name: "Administrar FILMATTA" }),
       ).toHaveCount(0);
@@ -390,7 +390,7 @@ test("remote populated ecosystem, public/draft details, filters, owner forms and
         expect(new URL(op.url()).origin).toBe(previewBase);
       }
       await op.goto("/tools");
-      await op.getByRole("button", { name: "Mi cuenta", exact: true }).click();
+      await op.getByRole("button", { name: "Cuenta", exact: true }).click();
       await op
         .getByRole("button", { name: "Cerrar sesión", exact: true })
         .click();

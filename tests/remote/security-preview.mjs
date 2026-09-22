@@ -242,7 +242,7 @@ try {
   await page.getByRole("button", { name: "Verificar identidad", exact: true }).click();
   await page.waitForURL(url=>url.pathname === "/admin/planes");
   record("Existing TOTP challenge grants the original nested Admin destination after fresh login");
-  await page.goto(base + "/cuenta#seguridad");
+  await page.goto(base + "/cuenta/configuracion#seguridad");
   await page.locator('section[aria-labelledby="seguridad-heading"]').getByText("Activa", { exact: true }).waitFor();
   record("Account security reflects verified factor and current AAL2 session");
   stage="mfa-aal1-back-button";

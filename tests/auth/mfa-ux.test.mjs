@@ -129,7 +129,7 @@ test("accepted OTP still fails closed when the refreshed session is not AAL2", a
 });
 
 test("Cuenta and Admin use the same live MFA manager without role-gating normal users", () => {
-  const account = fs.readFileSync("app/cuenta/page.tsx", "utf8");
+  const account = fs.readFileSync("app/cuenta/configuracion/page.tsx", "utf8");
   const admin = fs.readFileSync("app/verificar-admin/page.tsx", "utf8");
   const manager = fs.readFileSync("components/auth/MfaTotpManager.tsx", "utf8");
 

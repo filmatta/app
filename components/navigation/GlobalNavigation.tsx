@@ -79,13 +79,13 @@ export function AccountNavigation({ role, displayName, portrait }: { role: strin
   const pathname = usePathname();
   const [hash, setHash] = useState("");
   const accountLinks = getAccountNavigation(role);
-  const personalLinks = ["/mi-perfil", "/cuenta/contactos", "/mi-red", "/proyectos", "/mis-locaciones", "/mis-servicios", "/cuenta#mis-cursos", "/cuenta/suscripcion"]
+  const personalLinks = ["/mi-perfil", "/cuenta/contactos", "/mi-red", "/proyectos", "/mis-locaciones", "/mis-servicios", "/cuenta/configuracion#mis-cursos", "/cuenta/suscripcion"]
     .map(href => accountLinks.find(item => item.href === href)!);
-  const settings = accountLinks.find(item => item.href === "/cuenta#configuracion")!;
+  const settings = accountLinks.find(item => item.href === "/cuenta/configuracion#configuracion")!;
   const admin = accountLinks.find(item => item.href === "/admin");
   const accountLink = (item: NavigationLink, label = item.label) => {
     const active = item.href.includes("#")
-      ? pathname === "/cuenta" && (item.href.endsWith("#mis-cursos") ? hash === "#mis-cursos" : hash !== "#mis-cursos")
+      ? pathname === "/cuenta/configuracion" && (item.href.endsWith("#mis-cursos") ? hash === "#mis-cursos" : hash !== "#mis-cursos")
       : isNavigationActive(pathname, item.href);
     const attributes = {
       "aria-current": active ? (item.href.includes("#") ? "location" as const : "page" as const) : undefined,
@@ -95,7 +95,7 @@ export function AccountNavigation({ role, displayName, portrait }: { role: strin
       ? <a key={item.href} href={item.href} {...attributes}>{label}</a>
       : <Link key={item.href} href={item.href} {...attributes}>{label}</Link>;
   };
-  return <Disclosure key={pathname} label="Mi cuenta" leading={<AccountAvatar name={displayName} small portrait={portrait} />} align="right" panelClassName="account-panel" onOpen={() => setHash(window.location.hash)}>
+  return <Disclosure key={pathname} label="Cuenta" leading={<AccountAvatar name={displayName} small portrait={portrait} />} align="right" panelClassName="account-panel" onOpen={() => setHash(window.location.hash)}>
     <nav aria-label="Menú de cuenta">
       <AccountIdentity name={displayName} portrait={portrait} />
       <div className="account-menu-section">
@@ -104,7 +104,7 @@ export function AccountNavigation({ role, displayName, portrait }: { role: strin
       </div>
       <div className="account-menu-section">
         <p className="account-menu-heading">Cuenta</p>
-        {accountLink(accountLinks.find(item => item.href === "/mi-cuenta")!, "Mi cuenta")}
+        {accountLink(accountLinks.find(item => item.href === "/cuenta")!, "Cuenta")}
         {accountLink(settings, "Configuración / cuenta")}
         <form action={logout}>
           <LoadingButton type="submit" loadingText="Saliendo…" className="account-menu-link account-signout w-full">Cerrar sesión</LoadingButton>
@@ -118,7 +118,7 @@ export function AccountNavigation({ role, displayName, portrait }: { role: strin
   </Disclosure>;
 }
 
-export default function GlobalNavigation({ authenticated, role, accountName = "Mi cuenta", accountPortrait, hasContextLink = false, badge, children }: {
+export default function GlobalNavigation({ authenticated, role, accountName = "Cuenta", accountPortrait, hasContextLink = false, badge, children }: {
   authenticated: boolean; role?: string; accountName?: string; accountPortrait?: AccountPortrait; hasContextLink?: boolean; badge?: ReactNode; children?: ReactNode;
 }) {
   const pathname = usePathname();

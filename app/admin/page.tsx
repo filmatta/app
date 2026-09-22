@@ -46,7 +46,7 @@ export default async function AdminPage() {
           </Link>
           <div className="flex items-center gap-4 text-sm">
             <Link href="/cuenta" className="text-white/50 transition hover:text-white">
-              Mi cuenta
+              Cuenta
             </Link>
             <span className="hidden uppercase tracking-[0.2em] text-white/25 sm:inline">
               Admin

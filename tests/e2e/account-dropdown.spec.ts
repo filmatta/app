@@ -13,7 +13,7 @@ for (const role of ["user", "admin"] as const) {
     for (const width of [1280, 1440, 1920]) {
       await page.setViewportSize({ width, height: 1000 });
       await page.goto("/mis-servicios");
-      const trigger = page.getByRole("button", { name: "Mi cuenta", exact: true });
+      const trigger = page.getByRole("button", { name: "Cuenta", exact: true });
       await trigger.click();
       const panel = page.getByRole("navigation", { name: "Menú de cuenta", exact: true });
       await expect(panel).toBeVisible();
@@ -57,7 +57,7 @@ test("account click outside, Escape, Tab and route navigation", async ({ page, c
   await session(context, "admin");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/tools");
-  const trigger = page.getByRole("button", { name: "Mi cuenta", exact: true });
+  const trigger = page.getByRole("button", { name: "Cuenta", exact: true });
   const panel = page.getByRole("navigation", { name: "Menú de cuenta", exact: true });
   await trigger.focus();
   await page.keyboard.press("Enter");
@@ -71,8 +71,8 @@ test("account click outside, Escape, Tab and route navigation", async ({ page, c
   await expect(panel).not.toBeVisible();
   const links = [
     ["Mi perfil profesional", "/mi-perfil"], ["Mis locaciones", "/mis-locaciones"],
-    ["Mis servicios", "/mis-servicios"], ["Mi aprendizaje", "/cuenta#mis-cursos"],
-    ["Mi suscripción", "/cuenta/suscripcion"], ["Configuración / cuenta", "/cuenta#configuracion"], ["Panel admin", "/admin"],
+    ["Mis servicios", "/mis-servicios"], ["Mi aprendizaje", "/cuenta/configuracion#mis-cursos"],
+    ["Mi suscripción", "/cuenta/suscripcion"], ["Configuración / cuenta", "/cuenta/configuracion#configuracion"], ["Panel admin", "/admin"],
   ];
   for (const [label, href] of links) {
     await page.goto("/tools");
@@ -101,7 +101,7 @@ test("mobile keeps account links in its existing drawer only", async ({ page, co
   await session(context, "user");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/tools");
-  await expect(page.getByRole("button", { name: "Mi cuenta", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cuenta", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Menú", exact: false }).click();
   const drawer = page.getByRole("dialog");
   await expect(drawer.getByRole("link", { name: "Mis servicios", exact: true })).toBeVisible();

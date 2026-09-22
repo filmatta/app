@@ -78,7 +78,7 @@ for (const role of ["user", "admin"] as const)
     await session(context, role);
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/");
-    await page.getByRole("button", { name: "Mi cuenta", exact: true }).click();
+    await page.getByRole("button", { name: "Cuenta", exact: true }).click();
     await expect(
       page.getByRole("link", { name: "Mi aprendizaje", exact: true }),
     ).toBeVisible();
@@ -246,7 +246,7 @@ test("authenticated header stays usable at every requested width", async ({
       ),
     ).toBe(true);
     if (width >= 1280) {
-      await page.getByRole("button", { name: "Mi cuenta", exact: true }).click();
+      await page.getByRole("button", { name: "Cuenta", exact: true }).click();
       await expect(page.getByRole("navigation", { name: "Menú de cuenta", exact: true }).getByRole("link", { name: "Mis servicios", exact: true })).toBeVisible();
     } else {
       await page.getByRole("button", { name: "Menú", exact: false }).click();

@@ -34,7 +34,7 @@ test("account navigation uses exact server role and existing account routes", ()
   assert.ok(
     nav
       .getAccountNavigation("user")
-      .some((item) => item.href === "/cuenta#mis-cursos"),
+      .some((item) => item.href === "/cuenta/configuracion#mis-cursos"),
   );
 });
 test("every enabled navigation and publishing destination has a page", () => {

@@ -6,32 +6,32 @@ import AppNavigationSidebar, {
 export default function AccountNavigationSidebar() {
   return (
     <AppNavigationSidebar currentArea="account">
-      <WorkspaceNavigationGroup label="Tu espacio"><WorkspaceNavigationLink href="/mi-cuenta">Mi cuenta · Dashboard</WorkspaceNavigationLink>
-        <WorkspaceNavigationLink href="/cuenta#mis-cursos">
+      <WorkspaceNavigationGroup label="Tu espacio"><WorkspaceNavigationLink href="/cuenta">Cuenta</WorkspaceNavigationLink>
+        <WorkspaceNavigationLink href="/cuenta/configuracion#mis-cursos">
           Mis cursos
         </WorkspaceNavigationLink>
-        <WorkspaceNavigationLink href="/cuenta#actividad">
+        <WorkspaceNavigationLink href="/cuenta/configuracion#actividad">
           Tu actividad
         </WorkspaceNavigationLink>
-        <WorkspaceNavigationLink href="/cuenta#perfil">
+        <WorkspaceNavigationLink href="/cuenta/configuracion#perfil">
           Datos personales
         </WorkspaceNavigationLink>
-        <WorkspaceNavigationLink href="/cuenta#avatar">
+        <WorkspaceNavigationLink href="/cuenta/configuracion#avatar">
           Avatar
         </WorkspaceNavigationLink>
-        <WorkspaceNavigationLink href="/cuenta#pagos">
+        <WorkspaceNavigationLink href="/cuenta/configuracion#pagos">
           Pagos
         </WorkspaceNavigationLink>
-        <WorkspaceNavigationLink href="/cuenta#metodos-pago">
+        <WorkspaceNavigationLink href="/cuenta/configuracion#metodos-pago">
           Métodos de pago
         </WorkspaceNavigationLink>
-        <WorkspaceNavigationLink href="/cuenta#facturacion">
+        <WorkspaceNavigationLink href="/cuenta/configuracion#facturacion">
           Facturación
         </WorkspaceNavigationLink>
-        <WorkspaceNavigationLink href="/cuenta#configuracion">
+        <WorkspaceNavigationLink href="/cuenta/configuracion#configuracion">
           Configuración
         </WorkspaceNavigationLink>
-        <WorkspaceNavigationLink href="/cuenta#seguridad">
+        <WorkspaceNavigationLink href="/cuenta/configuracion#seguridad">
           Seguridad
         </WorkspaceNavigationLink>
       </WorkspaceNavigationGroup>

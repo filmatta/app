@@ -44,7 +44,7 @@ export default async function ResetPasswordPage({
             FILMATTA
           </Link>
           <Link href="/cuenta" className="text-sm text-white/50 hover:text-white">
-            Mi cuenta
+            Cuenta
           </Link>
         </div>
       </header>

@@ -60,7 +60,7 @@ export default async function SubscriptionPage({ searchParams }: {
     ) || invoiceResult.data?.status === "open";
   return <main className="min-h-screen bg-[#080808] px-6 py-12 text-white">
     <div className="mx-auto max-w-3xl">
-      <Link href="/cuenta#pagos" className="text-sm text-white/60 hover:text-white">← Cuenta</Link>
+      <Link href="/cuenta/configuracion#pagos" className="text-sm text-white/60 hover:text-white">← Cuenta</Link>
       <h1 className="mt-8 text-4xl font-semibold">Tu suscripción</h1>
       {mode === "test" ? <div role="status" className="mt-5 rounded-xl border border-amber-300/35 bg-amber-300/10 px-4 py-3 text-amber-100">
         <p className="text-sm font-semibold tracking-[0.16em]">STRIPE TEST MODE</p>

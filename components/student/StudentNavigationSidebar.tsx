@@ -48,7 +48,7 @@ export default function StudentNavigationSidebar({
         <WorkspaceNavigationLink href="/cursos">
           Inicio de Aprender
         </WorkspaceNavigationLink>
-        <WorkspaceNavigationLink href="/cuenta#mis-cursos">
+        <WorkspaceNavigationLink href="/cuenta/configuracion#mis-cursos">
           Mis cursos
         </WorkspaceNavigationLink>
         <WorkspaceNavigationLink href="/cursos#guias-rapidas">

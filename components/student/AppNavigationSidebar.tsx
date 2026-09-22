@@ -14,7 +14,7 @@ const APP_LINKS: Array<{
   label: string;
 }> = [
   { area: "learn", href: "/cursos", label: "Aprender" },
-  { area: "profile", href: "/cuenta#perfil", label: "Perfil" },
+  { area: "profile", href: "/cuenta/configuracion#perfil", label: "Perfil" },
   { area: "opportunities", href: "/oportunidades", label: "Oportunidades" },
   { area: "community", href: "/comunidad", label: "Comunidad" },
   { area: "professionals", href: "/perfiles", label: "Profesionales" },

@@ -75,7 +75,7 @@ test("recovered password update is allowed with a valid session", async () => {
   await assert.rejects(
     actions.updateRecoveredPassword(passwordForm()),
     (error) =>
-      error.destination === "/cuenta?password=updated#configuracion",
+      error.destination === "/cuenta/configuracion?password=updated#configuracion",
   );
   assert.equal(updates.length, 1);
   assert.equal(updates[0].password, "secure-password");

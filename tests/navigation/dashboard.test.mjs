@@ -9,8 +9,8 @@ test('dashboard uses owned exact counts, handles empty and partial data without 
  fail=true;d=await getAccountDashboard('qa-owner');assert.equal(d.active,null);assert.equal(d.profile,undefined);assert.equal(d.summary,null);assert.equal(d.partial,true);
 });
 test('dashboard routes are real, privacy-gated, compact and not Learn-centric',()=>{
- const p=read('app/mi-cuenta/page.tsx');assert.match(p,/if\(!viewer\)redirect/);
- for(const href of ['/mi-perfil','/mis-proyectos','/cuenta/contactos','/mi-red','/mis-locaciones','/cuenta#mis-cursos','/cuenta#configuracion','/cuenta#seguridad','/cuenta/suscripcion']){assert.ok(p.includes('href="'+href+'"'));assert.ok(fs.existsSync('app'+href.split('#')[0]+'/page.tsx'));}
+ const p=read('app/cuenta/page.tsx');assert.match(p,/if\(!viewer\)redirect/);
+ for(const href of ['/mi-perfil','/mis-proyectos','/cuenta/contactos','/mi-red','/mis-locaciones','/cuenta/configuracion#mis-cursos','/cuenta/configuracion#configuracion','/cuenta/configuracion#seguridad','/cuenta/suscripcion']){assert.ok(p.includes('href="'+href+'"'));assert.ok(fs.existsSync('app'+href.split('#')[0]+'/page.tsx'));}
  assert.match(p,/Accesos rápidos/);assert.doesNotMatch(p,/FILMATTA Learn|Tu próxima historia|course_enrollments|viewer.email/);
  assert.match(p,/d.latest&&/);assert.match(p,/billing.plan&&/);
 });
