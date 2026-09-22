@@ -63,7 +63,7 @@ export default async function TalentPage() {
         </div>
         <figure className="talent-teaser-preview">
           <Image
-            src="/images/talento-catalog-teaser.webp"
+            src="/images/talent-portrait-8089657.webp"
             width={1672}
             height={941}
             sizes="(max-width: 768px) 100vw, 1280px"

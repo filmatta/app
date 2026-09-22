@@ -45,7 +45,7 @@ export default async function Home() {
       text: "Crea un perfil profesional con fotos, Reel, experiencia y disponibilidad.",
       cta: "Crear perfil de talento",
       href: profileHref("talent"),
-      image: "talent-portrait-13306757.webp",
+      image: "talent-portrait-8089657.webp",
       tag: "TALENTO",
     },
     {
@@ -171,7 +171,7 @@ export default async function Home() {
                 category={card.intent}
               >
                 <Image
-                  src={`/images/editorial/${card.image}`}
+                  src={i === 0 ? `/images/${card.image}` : `/images/editorial/${card.image}`}
                   alt=""
                   fill
                   sizes="(max-width: 700px) 100vw, 50vw"

@@ -47,12 +47,12 @@ export default function ProfilesLanding({
             <Image
               src={
                 talent
-                  ? "/images/editorial/talent-portrait-13306757.webp"
+                  ? "/images/talent-portrait-8089657.webp"
                   : "/images/editorial/monitor.webp"
               }
               alt={
                 talent
-                  ? "Retrato editorial en blanco y negro"
+                  ? "Actriz en set de producción audiovisual frente a cámara"
                   : "Equipo audiovisual revisando una escena en un monitor"
               }
               width={talent ? 1200 : 1800}
