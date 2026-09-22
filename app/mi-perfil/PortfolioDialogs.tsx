@@ -773,7 +773,7 @@ export function SectionDialog({
                     />
                   </label>
                 </div>
-                <label className="pe-checkbox"><input type="checkbox" checked={c.ongoing ?? false} onChange={e => setCredits(v => v.map((r,j) => j === i ? { ...r, ongoing: e.target.checked, end: e.target.checked ? "" : r.end } : r))} />En curso</label>
+                <SelectionRow checked={c.ongoing ?? false} onChange={e => setCredits(v => v.map((r,j) => j === i ? { ...r, ongoing: e.target.checked, end: e.target.checked ? "" : r.end } : r))}>En curso</SelectionRow>
                 {!c.ongoing && <label>Fin (opcional, año o año-mes)<input maxLength={7} pattern="(19|20)[0-9]{2}(-(0[1-9]|1[0-2]))?" value={c.end ?? ""} onChange={e => setCredits(v => v.map((r,j) => j === i ? { ...r, end: e.target.value } : r))} /></label>}
                 <label>Productora / cliente (opcional)<input maxLength={100} value={c.company ?? ""} onChange={e => setCredits(v => v.map((r,j) => j === i ? { ...r, company: e.target.value } : r))} /></label>
                 <label>Tipo de producción<select value={c.production_type ?? ""} onChange={e => setCredits(v => v.map((r,j) => j === i ? { ...r, production_type: e.target.value } : r))}>{PRODUCTION_TYPES.map(t => <option key={t} value={t}>{t || "Sin especificar"}</option>)}</select></label>
@@ -819,7 +819,7 @@ export function SectionDialog({
               <label>Moneda<select name="currency" defaultValue={profile.presentation.rate?.currency ?? "MXN"}>{RATE_CURRENCIES.map(c => <option key={c}>{c}</option>)}</select></label></div>
               <label>Unidad<select name="unit" defaultValue={profile.presentation.rate?.unit ?? "day"}><option value="hour">Por hora</option><option value="day">Por día</option></select></label>
               <p className="pe-hint">Referencia orientativa. No activa cobros ni reservas.</p>
-              {profile.presentation.rate_range && <><p className="pe-hint">Valor anterior: {profile.presentation.rate_range}. Completa moneda y unidad sin asumirlas.</p><label className="pe-checkbox"><input type="checkbox" name="clear_legacy_rate" />Quitar el texto histórico al guardar</label></>}
+              {profile.presentation.rate_range && <><p className="pe-hint">Valor anterior: {profile.presentation.rate_range}. Completa moneda y unidad sin asumirlas.</p><SelectionRow name="clear_legacy_rate">Quitar el texto histórico al guardar</SelectionRow></>}
             </fieldset>
 
           </FilmattaAccordion>
