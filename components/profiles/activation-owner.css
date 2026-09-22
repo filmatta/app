@@ -1,7 +1,9 @@
 .activation-owner {
-  padding: 20px 0 24px;
-  border-bottom: 1px solid #ffffff18;
-  margin-bottom: 25px;
+  padding: 20px;
+  border: 1px solid #ffffff18;
+  border-radius: 8px;
+  background: #ffffff03;
+  margin-block: 20px 24px;
 }
 .activation-owner h2 {
   font-size: 15px;
@@ -20,9 +22,10 @@
 .activation-owner ul {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 18px;
+  gap: 10px;
   list-style: none;
-  margin: 12px 0;
+  margin: 16px 0;
+  padding: 0;
   font-size: 12px;
   color: #b9dceb;
 }
@@ -296,3 +299,14 @@
 .activation-cover-placeholder p {font-size: 13px; line-height: 1.6; color: #b7c0c3;}
 .pe-image-preview > .p2-identity-image {width:100%; height:100%;}
 .pe-publication-choice .selection-row-check {order:-1;}
+
+.activation-owner-secondary {display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; border-top:1px solid #ffffff18; padding-top:14px;}
+.activation-owner-help {display:flex; flex-wrap:wrap; align-items:center; gap:10px; font-size:12px; color:#a8b3b8;}
+.pe-shell .activation-owner-help .activation-tour-replay {border:0; background:none; padding:0; margin:0; font-size:12px; color:#b9dceb; text-decoration:underline; text-underline-offset:3px;}
+.p2-cover > .activation-cover-owner--saved {position:absolute; z-index:1; right:12px; bottom:12px; margin:0; padding:0;}
+.p2-cover > .activation-cover-owner--saved button {background:#101718eb;}
+@media(max-width:600px) {
+  .activation-owner ul {display:grid; grid-template-columns:minmax(0,1fr);}
+  .activation-owner li button {width:100%;}
+  .activation-owner-secondary {align-items:flex-start; flex-direction:column;}
+}

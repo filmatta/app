@@ -17,7 +17,7 @@ export const metadata = {
 export default async function EditProfessionalProfilePage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; edit?: string }>;
 }) {
   const viewer = await getViewer();
   if (!viewer) redirect("/login?next=%2Fmi-perfil");
@@ -63,6 +63,7 @@ export default async function EditProfessionalProfilePage({
           </p>
         )}
         <ProfileEditor
+          initialEdit={feedback.edit === "1"}
           profile={profile}
           displayName={displayName}
           initialItems={media.data as MediaItem[] | null}

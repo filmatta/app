@@ -76,19 +76,20 @@ export default function ProfilePortfolio({
   const visual = Boolean(media || reel || p.book.length);
   return (
     <article className={`profile-public-v2 ${talent ? "p2-talent" : ""}`}>
-      {sectionControls.cover}
+      {!p.cover_media_id && sectionControls.cover}
       <header
         data-tour-target={preview ? "preview" : undefined}
         className={`p2-hero ${p.cover_media_id || cover ? "p2-hero--image" : "p2-hero--neutral"}`}
       >
         {(p.cover_media_id || cover) && (
-          <div className="p2-cover" aria-hidden="true">
+          <div className="p2-cover">
             <IdentityImage
               id={p.cover_media_id}
               fallbackUrl={cover}
               alt=""
               eager
             />
+            {p.cover_media_id && sectionControls.cover}
           </div>
         )}
         <div className="p2-availability" data-state={profile.availability}>
@@ -122,7 +123,7 @@ export default function ProfilePortfolio({
           <div className="p2-actions">
             {editAction}
             {preview ? null : owner ? (
-              <Link className="p2-contact-button" href="/mi-perfil">
+              <Link className="p2-contact-button" href="/mi-perfil?edit=1">
                 Editar perfil
               </Link>
             ) : null}

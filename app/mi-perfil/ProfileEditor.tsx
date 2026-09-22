@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ProfilePortfolio from "@/components/profiles/ProfilePortfolio";
@@ -34,6 +34,7 @@ export default function ProfileEditor({
   initialPreferences,
   completionPreferences,
   startTour = false,
+  initialEdit = false,
 }: {
   profile: ProfessionalProfile | null;
   displayName: string;
@@ -41,6 +42,7 @@ export default function ProfileEditor({
   initialPreferences: ProjectPreferences | null;
   completionPreferences: ProjectPreferences | null;
   startTour?: boolean;
+  initialEdit?: boolean;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<ProfessionalProfile>(
@@ -103,11 +105,7 @@ export default function ProfileEditor({
       clearInterval(timer);
     };
   }, [pending]);
-  async function begin() {
-    if (editing) {
-      setEditing(false);
-      return;
-    }
+  const enterEditing = useCallback(async () => {
     if (!profile && !draft.updated_at) {
       setEditing(true);
       setDialog({ section: "identity" });
@@ -129,6 +127,16 @@ export default function ProfileEditor({
     } finally {
       setBusy(false);
     }
+  }, [profile, draft.updated_at]);
+  const requestedEdit = useRef(false);
+  useEffect(() => {
+    if (!initialEdit || requestedEdit.current) return;
+    requestedEdit.current = true;
+    void enterEditing();
+  }, [initialEdit, enterEditing]);
+  function begin() {
+    if (editing) setEditing(false);
+    else void enterEditing();
   }
   async function action(item: MediaItem, name: string) {
     if (
@@ -236,6 +244,7 @@ export default function ProfileEditor({
         </div>
       </div>
       <section className="activation-owner" aria-label="Completar tu perfil">
+        <p className="eyebrow">Completa tu perfil</p>
         <h2>Perfil {completion.percent}% completo</h2>
         <progress
           aria-label="Completitud del perfil"
@@ -254,16 +263,21 @@ export default function ProfileEditor({
               </li>
             ))}
         </ul>
-        <Link
-          href="/onboarding/perfil"
-          onClick={() => activationEvent("profile_completion_cta_clicked")}
-        >
-          {minimumProfile(draft)
-            ? "Revisar lo esencial"
-            : "Completar perfil · continuar paso a paso"}
-        </Link>
+        <div className="activation-owner-secondary">
+          <Link
+            href="/onboarding/perfil"
+            onClick={() => activationEvent("profile_completion_cta_clicked")}
+          >
+            {minimumProfile(draft)
+              ? "Revisar lo esencial"
+              : "Completar perfil · continuar paso a paso"}
+          </Link>
+          <div className="activation-owner-help">
+            <span>Ayuda</span>
+            <ProfileTour autoStart={startTour} />
+          </div>
+        </div>
       </section>
-      <ProfileTour autoStart={startTour} />
       {message && (
         <p role="status" className="pe-message">
           {message}
