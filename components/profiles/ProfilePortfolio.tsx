@@ -1,7 +1,6 @@
 import ProfileAvatar from "./ProfileAvatar";
 import "./activation-owner.css";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { MetaChips } from "@/components/ui/MetaChip";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import {
@@ -63,6 +62,9 @@ export default function ProfilePortfolio({
   const talent = isTalent(profile.disciplines),
     p = profile.presentation;
   const name = professionalName(profile);
+  const primaryDiscipline = profile.disciplines.find(
+    (discipline) => discipline.trim().length > 0,
+  );
   const reel = leadReel(profile.portfolio_items);
   const work = profile.portfolio_items.filter(
     (item) => item !== reel && portfolioWebUrl(item.url),
@@ -92,19 +94,6 @@ export default function ProfilePortfolio({
             {p.cover_media_id && sectionControls.cover}
           </div>
         )}
-        <div className="p2-availability" data-state={profile.availability}>
-          <StatusBadge
-            tone={
-              profile.availability === "available"
-                ? "success"
-                : profile.availability === "limited"
-                  ? "warning"
-                  : "neutral"
-            }
-          >
-            {AVAILABILITY_LABELS[profile.availability]}
-          </StatusBadge>
-        </div>
         <p className="eyebrow">FILMATTA / {talent ? "Talento" : "Perfiles"}</p>
         <div className="p2-identity">
           <div className="p2-portrait profile-portrait">
@@ -114,10 +103,27 @@ export default function ProfilePortfolio({
               name={name}
             />
           </div>
+          <div className="p2-identity-controls">
+            <div className="p2-availability" data-state={profile.availability}>
+              <StatusBadge
+                tone={
+                  profile.availability === "available"
+                    ? "success"
+                    : profile.availability === "limited"
+                      ? "warning"
+                      : "neutral"
+                }
+              >
+                {AVAILABILITY_LABELS[profile.availability]}
+              </StatusBadge>
+            </div>
+            {follow}
+          </div>
           <div className="p2-name">
             <h1>{name}</h1>
-            {follow}
-            <MetaChips labels={profile.disciplines} limit={3} />
+            {primaryDiscipline && (
+              <p className="p2-primary-discipline">{primaryDiscipline}</p>
+            )}
             <div className="p2-meta">{location && <span>{location}</span>}</div>
           </div>
           <div className="p2-actions">

@@ -716,17 +716,20 @@
 .p2-hero > .eyebrow {grid-column:1/-1; grid-row:2;}
 .p2-hero .p2-identity {display:contents;}
 .p2-hero .p2-portrait {grid-column:1; grid-row:3/5;}
-.p2-hero > .p2-availability {grid-column:2; grid-row:3; justify-self:start; margin:0; min-width:0;}
+.p2-hero .p2-identity-controls {grid-column:2; grid-row:3; display:flex; align-items:center; gap:10px; min-width:0;}
+.p2-hero .p2-identity-controls .p2-follow {margin:0;}
 .p2-hero .p2-name {grid-column:2; grid-row:4;}
 .p2-hero .p2-actions {grid-column:3; grid-row:3/5;}
 .p2-hero > .pe-edit-sections {grid-column:1/-1;}
 @media(max-width:767px) {
- .p2-hero {grid-template-columns:88px minmax(0,1fr); column-gap:14px;}
- .p2-hero > .p2-availability {grid-column:1/-1; grid-row:2; justify-self:end; max-width:100%;}
- .p2-hero > .eyebrow {grid-row:3;}
- .p2-hero .p2-portrait {grid-column:1; grid-row:4;}
- .p2-hero .p2-name {grid-column:2; grid-row:4;}
- .p2-hero .p2-actions {grid-column:1/-1; grid-row:5;}
+ .p2-hero {grid-template-columns:88px minmax(0,1fr); column-gap:14px; row-gap:12px;}
+ .p2-hero > .p2-cover {margin-bottom:0;}
+ .p2-hero > .eyebrow {display:none;}
+ .p2-hero .p2-portrait {grid-column:1; grid-row:2; align-self:start; margin-top:-12px;}
+ .p2-hero .p2-identity-controls {grid-column:2; grid-row:2; justify-self:end; align-self:start; flex-wrap:wrap; justify-content:flex-end; gap:8px;}
+ .p2-hero .p2-name {grid-column:1/-1; grid-row:3;}
+ .p2-name .p2-primary-discipline {margin-top:6px; color:#d0d1cd;}
+ .p2-hero .p2-actions {grid-column:1/-1; grid-row:4;}
 }
 
 .p2-contact-section .network-credit-title{margin:24px 0 12px}
