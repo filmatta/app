@@ -12,7 +12,7 @@ export async function loadProjectPreferences() {
     return { error: "Inicia sesión para ver tus preferencias." };
   const result = await db
     .from("profile_private_settings")
-    .select("project_preferences,publish_project_preferences")
+    .select("project_preferences")
     .eq("owner_id", auth.user.id)
     .maybeSingle();
   if (result.error)
@@ -23,22 +23,16 @@ export async function loadProjectPreferences() {
     data: result.data?.project_preferences
       ? parseProjectPreferences(result.data.project_preferences)
       : EMPTY_PREFERENCES,
-    published: Boolean(result.data?.publish_project_preferences),
   };
 }
-export async function saveProjectPreferences(
-  input: unknown,
-  published: boolean,
-) {
+export async function saveProjectPreferences(input: unknown) {
   const parsed = parseProjectPreferences(input);
-  if (!parsed || typeof published !== "boolean")
-    return { error: "Revisa las preferencias." };
+  if (!parsed) return { error: "Revisa las preferencias." };
   const db = await createClient();
   const { data: auth, error } = await db.auth.getUser();
   if (error || !auth.user) return { error: "Inicia sesión para guardar." };
-  const result = await db.rpc("save_my_project_preferences_visibility", {
+  const result = await db.rpc("save_my_project_preferences", {
     p_preferences: parsed,
-    p_publish: published,
   });
   if (result.error) return { error: "No pudimos guardar tus preferencias." };
   revalidatePath("/mi-perfil");

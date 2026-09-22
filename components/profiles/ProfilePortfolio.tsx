@@ -43,7 +43,6 @@ export default function ProfilePortfolio({
   preferences = null,
   contactAccess,
   editAction,
-  preferencesNotice,
   sectionControls = {},
 }: {
   profile: PublicProfessionalProfile;
@@ -57,7 +56,6 @@ export default function ProfilePortfolio({
   preferences?: ProjectPreferences | null;
   contactAccess?: ContactAccess | null;
   editAction?: ReactNode;
-  preferencesNotice?: ReactNode;
   sectionControls?: Partial<
     Record<"identity" | "cover" | "about" | "credits" | "skills", ReactNode>
   >;
@@ -93,6 +91,19 @@ export default function ProfilePortfolio({
             />
           </div>
         )}
+        <div className="p2-availability" data-state={profile.availability}>
+          <StatusBadge
+            tone={
+              profile.availability === "available"
+                ? "success"
+                : profile.availability === "limited"
+                  ? "warning"
+                  : "neutral"
+            }
+          >
+            {AVAILABILITY_LABELS[profile.availability]}
+          </StatusBadge>
+        </div>
         <p className="eyebrow">FILMATTA / {talent ? "Talento" : "Perfiles"}</p>
         <div className="p2-identity">
           <div className="p2-portrait profile-portrait">
@@ -145,19 +156,6 @@ export default function ProfilePortfolio({
             {profile.bio && <ProfileBio text={profile.bio} />}
           </div>
         )}
-        <div className="p2-availability" data-state={profile.availability}>
-          <StatusBadge
-            tone={
-              profile.availability === "available"
-                ? "success"
-                : profile.availability === "limited"
-                  ? "warning"
-                  : "neutral"
-            }
-          >
-            {AVAILABILITY_LABELS[profile.availability]}
-          </StatusBadge>
-        </div>
         <aside className="p2-aside">
           {sectionControls.skills}
           <ProfessionalDetails>
@@ -350,7 +348,6 @@ export default function ProfilePortfolio({
               <p className="p2-empty">El portfolio aún está en preparación.</p>
             )}
           <ProfileProjectPreferences value={preferences} />
-          {preview && preferencesNotice}
           <ProfileContactSection
             slug={profile.slug}
             name={name}

@@ -24,7 +24,6 @@ export default function ProjectPreferencesDialog({
   saved: (value: ProjectPreferences | null) => void;
   privateSaved?: (value: ProjectPreferences) => void;
 }) {
-  const [published, setPublished] = useState(false);
   const [value, setValue] = useState<ProjectPreferences | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -36,7 +35,6 @@ export default function ProjectPreferencesDialog({
         if (!live) return;
         if (r.data) {
           setValue(r.data);
-          setPublished(Boolean(r.published));
         } else setError(r.error ?? "No pudimos cargar las preferencias.");
       })
       .catch(() => {
@@ -49,7 +47,7 @@ export default function ProjectPreferencesDialog({
   return (
     <EditorDialog title="Preferencias de proyectos" close={close} busy={busy}>
       <p className="pe-hint">
-        Tus preferencias permanecen privadas salvo que elijas publicarlas.
+        Las preferencias configuradas forman parte de tu perfil público.
         Trabajar técnicamente en una producción no significa representar
         personalmente sus escenas.
       </p>
@@ -67,15 +65,11 @@ export default function ProjectPreferencesDialog({
             setError("");
             setMessage("");
             try {
-              const result = await saveProjectPreferences(value, published);
+              const result = await saveProjectPreferences(value);
               if (result.error) setError(result.error);
               else {
-                setMessage(
-                  published
-                    ? "Preferencias guardadas para mostrar en tu perfil público."
-                    : "Preferencias privadas guardadas.",
-                );
-                saved(published ? value : null);
+                setMessage("Preferencias guardadas en tu perfil.");
+                saved(value);
                 privateSaved?.(value);
               }
             } catch {
@@ -85,13 +79,6 @@ export default function ProjectPreferencesDialog({
             }
           }}
         >
-          <SelectionRow
-            checked={published}
-            onChange={(e) => setPublished(e.target.checked)}
-          >
-            Quiero publicar estas preferencias, incluidos mis límites de
-            participación, en mi perfil público.
-          </SelectionRow>
           <FilmattaAccordion
             title="Formatos"
             summary={

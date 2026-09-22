@@ -710,12 +710,23 @@
 }
 @media(prefers-reduced-motion:reduce) { .p2-follow { transition: none; } }
 
-.p2-layout > .p2-availability {justify-content:flex-end; margin:18px 0; min-width:0;}
-@media(min-width:1024px) {
- .p2-layout > .p2-availability {grid-column:2; grid-row:1;}
-}
-@media(max-width:1023px) {
- .p2-layout > .p2-availability {margin:0;}
+/* One badge, repositioned by the identity grid without overlaying the cover. */
+.p2-hero {display:grid; grid-template-columns:max-content minmax(0,1fr) auto; column-gap:22px; row-gap:16px; align-items:center;}
+.p2-hero > .p2-cover {grid-column:1/-1; grid-row:1; margin-bottom:8px; width:100%;}
+.p2-hero > .eyebrow {grid-column:1/-1; grid-row:2;}
+.p2-hero .p2-identity {display:contents;}
+.p2-hero .p2-portrait {grid-column:1; grid-row:3/5;}
+.p2-hero > .p2-availability {grid-column:2; grid-row:3; justify-self:start; margin:0; min-width:0;}
+.p2-hero .p2-name {grid-column:2; grid-row:4;}
+.p2-hero .p2-actions {grid-column:3; grid-row:3/5;}
+.p2-hero > .pe-edit-sections {grid-column:1/-1;}
+@media(max-width:767px) {
+ .p2-hero {grid-template-columns:88px minmax(0,1fr); column-gap:14px;}
+ .p2-hero > .p2-availability {grid-column:1/-1; grid-row:2; justify-self:end; max-width:100%;}
+ .p2-hero > .eyebrow {grid-row:3;}
+ .p2-hero .p2-portrait {grid-column:1; grid-row:4;}
+ .p2-hero .p2-name {grid-column:2; grid-row:4;}
+ .p2-hero .p2-actions {grid-column:1/-1; grid-row:5;}
 }
 
 .p2-contact-section .network-credit-title{margin:24px 0 12px}

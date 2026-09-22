@@ -35,7 +35,7 @@ export default async function EditProfessionalProfilePage({
   const preferences = await db
     .from("profile_private_settings")
     .select(
-      "project_preferences,publish_project_preferences,onboarding_completed_at,profile_tour_completed_at",
+      "project_preferences,onboarding_completed_at,profile_tour_completed_at",
     )
     .eq("owner_id", viewer.id)
     .maybeSingle();
@@ -73,11 +73,9 @@ export default async function EditProfessionalProfilePage({
             preferences.data?.onboarding_completed_at,
             preferences.data?.profile_tour_completed_at,
           )}
-          initialPreferences={
-            preferences.data?.publish_project_preferences
-              ? parseProjectPreferences(preferences.data.project_preferences)
-              : null
-          }
+          initialPreferences={parseProjectPreferences(
+            preferences.data?.project_preferences,
+          )}
         />
         <PrivateTools />
       </main>

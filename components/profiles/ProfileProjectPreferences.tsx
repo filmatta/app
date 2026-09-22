@@ -3,7 +3,7 @@ import { MetaChips } from "@/components/ui/MetaChip";
 import { PREFERENCE_GROUPS, type ProjectPreferences } from "@/lib/profiles/project-preferences";
 import ProfileDetailIcon from "./ProfileDetailIcon";
 export default function ProfileProjectPreferences({ value }: { value: ProjectPreferences | null }) {
-  if (!value) return null;
+  if (!value || (!value.open_formats && !value.formats.length && !Object.keys(PREFERENCE_GROUPS).some(group => Object.values(value[group as keyof typeof PREFERENCE_GROUPS]).some(choice => choice !== "unspecified")))) return null;
   const states = { accept: "Sí ✓", consult: "Consultar ?", decline: "No ×" };
   return <section className="p2-foundation-box" id="project-preferences"><h2>Preferencias de proyectos</h2>
     {(value.open_formats || value.formats.length>0) && <p className="p2-preference-formats"><ProfileDetailIcon kind="formats" />{value.open_formats ? "Abierto a distintos formatos" : "Formatos de interés"}</p>}

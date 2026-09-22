@@ -45,14 +45,12 @@ export default function Onboarding({
   initialStep,
   identity,
   preferences,
-  preferencesPublic,
 }: {
   profile: ProfessionalProfile | null;
   intent: ProfileIntent;
   initialStep: number;
   identity: { name?: string };
   preferences: unknown;
-  preferencesPublic: boolean;
 }) {
   const [profile, setProfile] = useState(initial),
     [step, setStep] = useState(initialStep),
@@ -319,10 +317,9 @@ export default function Onboarding({
             {step === 7 && (
               <>
                 <p className="activation-hint">
-                  {preferencesPublic
-                    ? "Conservamos tu elección de compartir estas preferencias."
-                    : "Son privadas. Sólo se compartirán si lo decides después desde el editor."}{" "}
-                  Sin marcar significa sin especificar; no es un rechazo.
+                  Las preferencias configuradas forman parte de tu perfil
+                  público. Sin marcar significa sin especificar; no es un
+                  rechazo.
                 </p>
                 <FilmattaAccordion
                   title="Formatos de proyecto"

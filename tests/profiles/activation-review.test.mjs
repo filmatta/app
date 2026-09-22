@@ -67,7 +67,7 @@ test("publication selection preserves native form value and one accessible label
   const modal = read("app/mi-perfil/PortfolioDialogs.tsx");
   assert.match(modal, /<SelectionRow\s+name="is_public"/);
 });
-test("consent save invalidates public preview only after authenticated successful mutation", async () => {
+test("preference save invalidates public preview only after authenticated successful mutation", async () => {
   const prefs = load("lib/profiles/project-preferences.ts");
   for (const state of ["signed-out", "failed", "saved"]) {
     const calls = [];
@@ -90,14 +90,13 @@ test("consent save invalidates public preview only after authenticated successfu
     });
     const result = await actions.saveProjectPreferences(
       prefs.EMPTY_PREFERENCES,
-      true,
     );
     assert.equal(Boolean(result.error), state !== "saved");
     assert.equal(
       calls.some((c) => c[0] === "/perfiles/[slug]"),
       state === "saved",
     );
-    if (state === "saved") assert.equal(calls[0][1].p_publish, true);
+    if (state === "saved") assert.equal(calls[0][0], "save_my_project_preferences");
     if (state === "signed-out") assert.equal(calls.length, 0);
   }
 });
@@ -111,12 +110,30 @@ test("owner editing has one full-mode action while empty sections stay actionabl
   const profile = read("components/profiles/ProfilePortfolio.tsx");
   assert.equal((profile.match(/className="p2-availability"/g) ?? []).length, 1);
   assert.ok(
-    profile.indexOf("<ProfileBio") <
-      profile.indexOf('className="p2-availability"'),
+    profile.indexOf('className="p2-availability"') <
+      profile.indexOf("<h1"),
   );
-  assert.match(profile, /preview && preferencesNotice/);
+  assert.doesNotMatch(profile, /preferencesNotice/);
   assert.match(
     read("app/perfiles/[slug]/page.tsx"),
     /get_public_project_preferences/,
   );
+});
+
+test("public preferences show real values and omit unspecified without publication controls", () => {
+  const prefs = load("lib/profiles/project-preferences.ts");
+  const View = component("components/profiles/ProfileProjectPreferences.tsx", {
+    "@/components/ui/StatusBadge": ({children}) => React.createElement("span", null, children),
+    "@/components/ui/MetaChip": { MetaChips: () => null },
+    "@/lib/profiles/project-preferences": prefs,
+    "./ProfileDetailIcon": () => null,
+  });
+  const render = value => renderToStaticMarkup(React.createElement(View, {value}));
+  assert.equal(render({...prefs.EMPTY_PREFERENCES, themes: {romance:"unspecified"}}), "");
+  const html = render({...prefs.EMPTY_PREFERENCES, themes: {romance:"accept", comedy:"consult", drama:"decline", horror:"unspecified"}});
+  for (const label of ["Sí ✓", "Consultar ?", "No ×"]) assert.ok(html.includes(label));
+  assert.doesNotMatch(html, /Terror|Sin especificar/);
+  const dialog = read("app/mi-perfil/ProjectPreferencesDialog.tsx");
+  assert.doesNotMatch(dialog, /setPublished|Quiero publicar|permanecen privadas/);
+  assert.doesNotMatch(read("app/onboarding/perfil/Onboarding.tsx"), /Sólo las compartirás|Son privadas/);
 });

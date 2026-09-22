@@ -229,24 +229,20 @@ test(
           })
         ).error,
       );
+      for (const db of [owner, other, anon]) {
+        const hidden = await db.rpc("get_public_project_preferences", { p_slug: slug });
+        ok(hidden);
+        assert.equal(hidden.data, null);
+      }
       await save(9, { publish: true });
-      // Public projection is consent-gated for owner, another member and anonymous visitors alike.
-      for (const db of [owner, other, anon]) {
-        const hidden = await db.rpc("get_public_project_preferences", { p_slug: slug });
-        ok(hidden);
-        assert.equal(hidden.data, null);
-      }
-      ok(await owner.rpc("save_my_project_preferences_visibility", { p_preferences: quick, p_publish: true }));
-      for (const db of [owner, other, anon]) {
-        const visible = await db.rpc("get_public_project_preferences", { p_slug: slug });
-        ok(visible);
-        assert.deepEqual(visible.data, quick);
-      }
-      ok(await owner.rpc("save_my_project_preferences_visibility", { p_preferences: quick, p_publish: false }));
-      for (const db of [owner, other, anon]) {
-        const hidden = await db.rpc("get_public_project_preferences", { p_slug: slug });
-        ok(hidden);
-        assert.equal(hidden.data, null);
+      // Historical consent is ignored for every viewer of a published profile.
+      for (const historical of [false, true]) {
+        ok(await owner.rpc("save_my_project_preferences_visibility", { p_preferences: quick, p_publish: historical }));
+        for (const db of [owner, other, anon]) {
+          const visible = await db.rpc("get_public_project_preferences", { p_slug: slug });
+          ok(visible);
+          assert.deepEqual(visible.data, quick);
+        }
       }
       assert.equal(
         (await anon.rpc("get_public_professional_portfolio", { p_slug: slug }))

@@ -295,6 +295,4 @@
 }
 .activation-cover-placeholder p {font-size: 13px; line-height: 1.6; color: #b7c0c3;}
 .pe-image-preview > .p2-identity-image {width:100%; height:100%;}
-.activation-preferences-private {margin:24px 0; padding:20px; border:1px solid #ffffff20; border-radius:6px; font-size:13px; color:#b7c0c3; line-height:1.6;}
-.activation-preferences-private button {margin-top:12px; color:#b9dceb; cursor:pointer;}
 .pe-publication-choice .selection-row-check {order:-1;}

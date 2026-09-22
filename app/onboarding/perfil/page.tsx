@@ -27,7 +27,7 @@ export default async function OnboardingPage({
     db
       .from("profile_private_settings")
       .select(
-        "onboarding_step,onboarding_identity,onboarding_completed_at,project_preferences,publish_project_preferences",
+        "onboarding_step,onboarding_identity,onboarding_completed_at,project_preferences",
       )
       .eq("owner_id", viewer.id)
       .maybeSingle(),
@@ -41,7 +41,6 @@ export default async function OnboardingPage({
       initialStep={resumeStep(settings.data?.onboarding_step)}
       identity={settings.data?.onboarding_identity ?? {}}
       preferences={settings.data?.project_preferences ?? null}
-      preferencesPublic={settings.data?.publish_project_preferences ?? false}
     />
   );
 }

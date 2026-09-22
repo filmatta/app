@@ -309,22 +309,6 @@ export default function ProfileEditor({
             </button>
           }
           preferences={preferences}
-          preferencesNotice={
-            preferences === null ? (
-              <div className="activation-preferences-private">
-                <p>
-                  Preferencias privadas. Sólo aparecerán en tu perfil público si
-                  decides compartirlas.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setDialog({ section: "preferences" })}
-                >
-                  Editar preferencias de proyectos
-                </button>
-              </div>
-            ) : undefined
-          }
           sectionControls={{
             cover: (
               <div
