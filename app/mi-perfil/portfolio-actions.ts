@@ -205,6 +205,7 @@ export async function savePortfolioSection(
     };
     const next = { ...base, presentation: { ...base.presentation } };
     if (section === "identity") {
+      if (Array.isArray(input.disciplines) && input.disciplines.length > 5) return { error: "Ya seleccionaste 5 disciplinas. Quita una para agregar otra." };
       next.disciplines = Array.isArray(input.disciplines)
         ? input.disciplines.filter((v): v is string => typeof v === "string")
         : [];

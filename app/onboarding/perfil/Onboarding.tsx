@@ -56,6 +56,7 @@ export default function Onboarding({
     [step, setStep] = useState(initialStep),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [disciplineError, setDisciplineError] = useState("");
   const [values, setValues] = useState({
     name: initial ? professionalName(initial) : (identity.name ?? ""),
     disciplines: initial?.disciplines ?? [],
@@ -203,23 +204,27 @@ export default function Onboarding({
                   Selecciona de una a cinco. Puedes combinar talento y equipo
                   técnico.
                 </p>
+                <p className="activation-hint">Puedes seleccionar hasta 5 disciplinas.</p>
+                <p role="status">{values.disciplines.length} de 5 seleccionadas</p>
+                {disciplineError && <p role="alert">{disciplineError}</p>}
                 <div className="activation-options">
                   {disciplines.map((d) => (
                     <SelectionRow
                       key={d}
                       checked={values.disciplines.includes(d)}
-                      disabled={
-                        !values.disciplines.includes(d) &&
-                        values.disciplines.length >= 5
-                      }
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        if (e.target.checked && values.disciplines.length >= 5) {
+                          setDisciplineError("Ya seleccionaste 5 disciplinas. Quita una para agregar otra.");
+                          return;
+                        }
+                        setDisciplineError("");
                         setValues((v) => ({
                           ...v,
                           disciplines: e.target.checked
                             ? [...v.disciplines, d]
                             : v.disciplines.filter((x) => x !== d),
-                        }))
-                      }
+                        }));
+                      }}
                     >
                       {d}
                     </SelectionRow>
@@ -317,9 +322,7 @@ export default function Onboarding({
             {step === 7 && (
               <>
                 <p className="activation-hint">
-                  Las preferencias configuradas forman parte de tu perfil
-                  público. Sin marcar significa sin especificar; no es un
-                  rechazo.
+                  Las opciones que marques aparecerán en tu perfil público. Podrás cambiarlas después.
                 </p>
                 <FilmattaAccordion
                   title="Formatos de proyecto"

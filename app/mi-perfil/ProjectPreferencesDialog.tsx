@@ -47,7 +47,7 @@ export default function ProjectPreferencesDialog({
   return (
     <EditorDialog title="Preferencias de proyectos" close={close} busy={busy}>
       <p className="pe-hint">
-        Las preferencias configuradas forman parte de tu perfil público.
+        Las preferencias que configures se mostrarán en tu perfil público. Deja sin especificar aquellas que no quieras mostrar.
         Trabajar técnicamente en una producción no significa representar
         personalmente sus escenas.
       </p>

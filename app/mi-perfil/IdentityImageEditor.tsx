@@ -22,6 +22,7 @@ export default function IdentityImageEditor({
   fallbackUrl,
   done,
   continueRef,
+  allowRemoval = false,
   name = "F",
 }: {
   kind: "portrait" | "cover";
@@ -29,6 +30,7 @@ export default function IdentityImageEditor({
   fallbackUrl?: string;
   done: (state: EditorState) => void;
   continueRef?: Ref<IdentityImageHandle>;
+  allowRemoval?: boolean;
   name?: string;
 }) {
   const [file, setFile] = useState<File | null>(null),
@@ -305,15 +307,17 @@ export default function IdentityImageEditor({
         </p>
       )}
       {busy && <p role="status">Guardando imagen…</p>}
-      {!continueRef && (
+      {(!continueRef || allowRemoval) && (
         <div className="pe-tools">
-          <button
-            type="button"
-            disabled={(!file && !preset) || busy}
-            onClick={() => void save()}
-          >
-            {busy ? "Guardando…" : "Guardar cambios"}
-          </button>
+          {!continueRef && (
+            <button
+              type="button"
+              disabled={(!file && !preset) || busy}
+              onClick={() => void save()}
+            >
+              {busy ? "Guardando…" : "Guardar cambios"}
+            </button>
+          )}
           {(stored.id || stored.fallbackUrl) && (
             <button
               type="button"

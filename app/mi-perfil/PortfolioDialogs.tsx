@@ -28,7 +28,7 @@ import {
 } from "./portfolio-actions";
 import { analyzeBio, BIO_CONTACT_TITLE, BIO_CONTACT_MESSAGE, BIO_EMAIL_NOTICE } from "@/lib/profiles/bio-policy";
 import "@/app/cuenta/private-contact.css";
-import IdentityImageEditor from "./IdentityImageEditor";
+import IdentityImageEditor, { type IdentityImageHandle } from "./IdentityImageEditor";
 import { PRODUCTION_TYPES } from "@/lib/profiles/credits";
 import { DEFAULT_CROP } from "@/lib/profiles/image-input";
 import { RATE_CURRENCIES } from "@/lib/profiles/rate";
@@ -620,6 +620,8 @@ export function SectionDialog({
   close: () => void;
 }) {
   const bioWarning = useRef<HTMLDivElement>(null);
+  const identityImage = useRef<IdentityImageHandle>(null);
+  const [disciplineError, setDisciplineError] = useState("");
   const bioAnalysis = analyzeBio(bioDraft);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -645,6 +647,7 @@ export function SectionDialog({
     input.is_public = form.get("is_public") === "on";
     input.credits = credits;
     try {
+      if (section === "identity" && identityImage.current && !(await identityImage.current.save())) return;
       const result = await savePortfolioSection(section, input);
       if ("error" in result) setError(result.error);
       else {
@@ -673,12 +676,21 @@ export function SectionDialog({
                 }
               />
             </label>
-            <FilmattaAccordion title="Disciplinas" summary={selectedDisciplines.length + " seleccionadas · máximo 5"} defaultOpen>
+            <FilmattaAccordion title="Disciplinas" summary={selectedDisciplines.length + " de 5 seleccionadas"} defaultOpen>
+              <p className="pe-hint">Puedes seleccionar hasta 5 disciplinas.</p>
+              {disciplineError && <p role="alert" className="pe-error">{disciplineError}</p>}
               <div className="pe-disciplines">
                 {Array.from(
                   new Set([...PROFILE_DISCIPLINES, ...profile.disciplines]),
                 ).map((d) => (
-                  <SelectionRow key={d} name="disciplines" value={d} checked={selectedDisciplines.includes(d)} onChange={e => setSelectedDisciplines(e.target.checked ? [...selectedDisciplines, d] : selectedDisciplines.filter(v => v !== d))}>{d}</SelectionRow>
+                  <SelectionRow key={d} name="disciplines" value={d} checked={selectedDisciplines.includes(d)} onChange={e => {
+                    if (e.target.checked && selectedDisciplines.length >= 5) {
+                      setDisciplineError("Ya seleccionaste 5 disciplinas. Quita una para agregar otra.");
+                      return;
+                    }
+                    setDisciplineError("");
+                    setSelectedDisciplines(e.target.checked ? [...selectedDisciplines, d] : selectedDisciplines.filter(v => v !== d));
+                  }}>{d}</SelectionRow>
                 ))}
               </div>
             </FilmattaAccordion>
@@ -709,7 +721,7 @@ export function SectionDialog({
               </select>
             </label>
             <label>Orientación del portafolio<select name="portfolio_mode" defaultValue={profile.presentation.portfolio_mode ?? "unspecified"}><option value="unspecified">Sin especificar</option><option value="audiovisual">Audiovisual · reel prioritario</option><option value="photographic">Fotográfico · Book</option></select></label>
-            <IdentityImageEditor kind="portrait" id={profile.presentation.portrait_media_id} fallbackUrl={profile.presentation.portrait_url} done={done} />
+            <IdentityImageEditor kind="portrait" continueRef={identityImage} allowRemoval id={profile.presentation.portrait_media_id} fallbackUrl={profile.presentation.portrait_url} done={done} />
 
 
           </>
