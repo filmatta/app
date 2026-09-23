@@ -38,6 +38,9 @@ before(async () => {
 after(() => db.close());
 
 test("shared taxonomy keeps the eight requested categories and historical keys", () => {
+  const options = preferences.PROFILE_PREFERENCE_CATEGORIES.flatMap((category) =>
+    category.sections.flatMap((section) => section.options),
+  );
   assert.deepEqual(
     Array.from(preferences.PROFILE_PREFERENCE_CATEGORIES, (category) => category.title),
     [
@@ -55,6 +58,10 @@ test("shared taxonomy keeps the eight requested categories and historical keys",
   assert.equal(preferences.PROFILE_PREFERENCE_GROUPS.conditions.travel, "Desplazamientos");
   assert.equal(preferences.PROFILE_PREFERENCE_GROUPS.participation.camera_presenting, "Presentación a cámara");
   assert.ok(preferences.PROJECT_FORMATS.includes("Proyecto estudiantil"));
+  assert.equal(options.length, 139);
+  assert.equal(new Set(options.map((item) => `${item.group}:${item.key}`)).size, options.length);
+  for (const item of options)
+    assert.equal(preferences.PROFILE_PREFERENCE_GROUPS[item.group][item.key], item.label);
 });
 
 test("parser accepts new keys while preserving all four states and rejecting unknown keys", () => {
