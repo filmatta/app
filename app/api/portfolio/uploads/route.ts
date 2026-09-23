@@ -6,6 +6,11 @@ import {
 } from "@/lib/profiles/media";
 import { readBoundedBody } from "@/lib/security/bounded-body";
 import { portfolioRequestOrigin } from "@/lib/profiles/request-origin";
+import { getBillingAccess } from "@/lib/billing/access";
+import {
+  isFreeProfilePlan,
+  profileMediaErrorMessage,
+} from "@/lib/profiles/media-limits";
 export const runtime = "nodejs";
 export async function POST(request: Request) {
   const origin = portfolioRequestOrigin(request);
@@ -35,6 +40,7 @@ export async function POST(request: Request) {
   const declarationError = validateUploadDeclaration(
     input.media_type === "image" ? "image" : "video",
     body.file,
+    { freeProfile: isFreeProfilePlan((await getBillingAccess()).plan) },
   );
   if (declarationError)
     return Response.json({ error: declarationError }, { status: 400 });
@@ -62,7 +68,7 @@ export async function POST(request: Request) {
     if (error || !id)
       return Response.json(
         {
-          error:
+          error: profileMediaErrorMessage(error) ??
             "No pudimos iniciar la subida. Guarda tu identidad y comprueba que no tengas dos subidas pendientes ni hayas alcanzado la cuota.",
         },
         { status: 429 },

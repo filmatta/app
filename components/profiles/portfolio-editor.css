@@ -221,6 +221,12 @@
   gap: 16px;
   margin-bottom: 16px;
 }
+.pm-limit {
+  margin-left: auto;
+  color: #a8b0b7;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
 .pm-empty {
   border: 1px dashed #b9dceb35;
   background: #b9dceb03;

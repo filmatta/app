@@ -1,3 +1,5 @@
+import { MAX_VIDEO_DURATION_SECONDS } from "./media-limits";
+
 // Provider timeouts, not background time, determine abandonment.
 export type UploadSnapshot = { status: string; asset_id?: string };
 export function uploadDecision(upload: UploadSnapshot) {
@@ -10,7 +12,11 @@ export function terminalUploadReason(status: string) {
   return status === "cancelled" ? "cancelled" : status === "timed_out" ? "expired" : "provider-error";
 }
 export function reelEligible(item: { media_type: string; status: string; source: string; duration_seconds?: number | null }) {
-  return item.media_type === "video" && item.status === "ready" && item.source === "mux" &&
-    typeof item.duration_seconds === "number" && Number.isFinite(item.duration_seconds) &&
-    item.duration_seconds > 0 && item.duration_seconds <= 180;
+  return item.media_type === "video" && item.status === "ready" && (
+    item.source === "external" || (
+      item.source === "mux" && typeof item.duration_seconds === "number" &&
+      Number.isFinite(item.duration_seconds) && item.duration_seconds > 0 &&
+      item.duration_seconds <= MAX_VIDEO_DURATION_SECONDS
+    )
+  );
 }

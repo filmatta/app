@@ -45,7 +45,6 @@ function harness(patch = {}) {
   };
   const db = {
     from() {
-      let update;
       const q = {
         select() {
           return q;
@@ -55,7 +54,6 @@ function harness(patch = {}) {
         },
         maybeSingle: async () => ({ data: row, error: null }),
         update(v) {
-          update = v;
           writes.push(v);
           return q;
         },
@@ -69,14 +67,14 @@ function harness(patch = {}) {
       return q;
     },
   };
-  const module = load("lib/profiles/mux-media.ts", {
+  const portfolioModule = load("lib/profiles/mux-media.ts", {
     "@/lib/mux/server": {
       createValidatedMuxContext: async () => ({ mux, environment }),
       isMuxNotFoundError: (e) => e?.status === 404,
     },
     "@/lib/supabase/admin": { createAdminClient: () => db },
   });
-  return { module, writes, deleted, mux, row };
+  return { module: portfolioModule, writes, deleted, mux, row };
 }
 test("portfolio namespace never accepts Learn or malformed IDs", () => {
   const { module: m } = harness();
@@ -138,13 +136,33 @@ test("cancelled and expired attempts cannot resurrect from late ready events", a
   }
 });
 test("real duration is attested without rounding; long video remains ready", async () => {
-  for (const duration of [179.9, 180, 180.01, 900]) {
+  for (const duration of [299.9, 300, 300.01, 900]) {
     const h = harness({ asset: { duration, aspect_ratio: "16:9" } });
     await h.module.syncPortfolioAsset("asset");
     assert.equal(h.writes[0].duration_seconds, duration);
     assert.equal(h.writes[0].status, "ready");
     assert.equal(h.deleted.length, 0);
   }
+});
+
+test("new Free uploads are rejected when Mux reports over 300 seconds or no duration", async () => {
+  for (const duration of [300.01, undefined]) {
+    const h = harness({
+      row: { review_reason: "free-video-limits" },
+      asset: { duration },
+    });
+    await h.module.syncPortfolioAsset("asset");
+    assert.equal(h.writes[0].status, "rejected");
+    assert.equal(h.writes[0].review_reason, "FREE_VIDEO_DURATION_LIMIT");
+    assert.equal(h.writes[0].mux_playback_id, null);
+  }
+  const exact = harness({
+    row: { review_reason: "free-video-limits" },
+    asset: { duration: 300 },
+  });
+  await exact.module.syncPortfolioAsset("asset");
+  assert.equal(exact.writes[0].status, "ready");
+  assert.equal(exact.writes[0].review_reason, null);
 });
 
 

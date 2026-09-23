@@ -6,6 +6,10 @@ import { reelSource, portfolioWebUrl } from "@/lib/profiles/presentation";
 import ProfileImage from "./ProfileImage";
 import { portfolioGroups } from "@/lib/profiles/portfolio-order";
 import { reelEligible } from "@/lib/profiles/upload-lifecycle";
+import {
+  FREE_PROFILE_MEDIA_LIMITS,
+  getProfileMediaCounts,
+} from "@/lib/profiles/media-limits";
 import "./portfolio-editor.css";
 
 type Resource = {
@@ -319,11 +323,13 @@ export default function PortfolioMedia({
   talent,
   controls,
   emptyAdd,
+  isFreePlan = false,
 }: {
   items: MediaItem[];
   talent: boolean;
   controls?: MediaControls;
   emptyAdd?: (category: MediaCategory) => void;
+  isFreePlan?: boolean;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const visible = items.filter((i) =>
@@ -333,6 +339,7 @@ export default function PortfolioMedia({
   );
   const categories: MediaCategory[] = ["reel", "work", "book"];
   const groups = portfolioGroups(visible);
+  const counts = getProfileMediaCounts(items);
   return (
     <div
       className={`pm-portfolio ${controls ? "pm-portfolio--editing" : ""}`}
@@ -348,6 +355,9 @@ export default function PortfolioMedia({
       )}
       {categories.map((category) => {
         const group = groups[category];
+        const atLimit =
+          isFreePlan &&
+          counts[category] >= FREE_PROFILE_MEDIA_LIMITS[category];
         if (!group.length && !controls && !emptyAdd) return null;
         if (
           category === "book" &&
@@ -378,11 +388,16 @@ export default function PortfolioMedia({
                     ? "Reel"
                     : "Otros videos"}
               </h2>
+              {isFreePlan && (
+                <span className="pm-limit">
+                  {counts[category]} de {FREE_PROFILE_MEDIA_LIMITS[category]}
+                </span>
+              )}
               {controls && (
                 <button
                   type="button"
                   onClick={() => controls.add(category)}
-                  disabled={controls.busy}
+                  disabled={controls.busy || atLimit}
                 >
                   +{" "}
                   {category === "book"
@@ -405,6 +420,7 @@ export default function PortfolioMedia({
                 <button
                   type="button"
                   onClick={() => (controls?.add ?? emptyAdd)?.(category)}
+                  disabled={atLimit}
                 >
                   {category === "work"
                     ? "Agregar video"
@@ -464,7 +480,7 @@ export default function PortfolioMedia({
                     {controls && category === "reel" && !reelEligible(item) && (
                       <p>
                         Selección histórica: duración no verificada o superior a
-                        3 minutos. Puedes conservarla o elegir otro reel.
+                        5 minutos. Puedes conservarla o elegir otro reel.
                       </p>
                     )}
                   </figcaption>

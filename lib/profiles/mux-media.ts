@@ -6,6 +6,7 @@ import {
 } from "@/lib/mux/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { uploadDecision, terminalUploadReason } from "./upload-lifecycle";
+import { MAX_VIDEO_DURATION_SECONDS } from "./media-limits";
 
 export function portfolioId(passthrough?: string) {
   return (
@@ -77,6 +78,14 @@ export async function syncPortfolioAsset(assetId: string) {
   const playbackId =
     asset.playback_ids?.find((p) => p.policy === "signed")?.id ?? null;
   if (status === "ready" && !playbackId) status = "rejected";
+  const invalidFreeDuration =
+    status === "ready" &&
+    row.review_reason === "free-video-limits" &&
+    (typeof asset.duration !== "number" ||
+      !Number.isFinite(asset.duration) ||
+      asset.duration <= 0 ||
+      asset.duration > MAX_VIDEO_DURATION_SECONDS);
+  if (invalidFreeDuration) status = "rejected";
   const updated = await db
     .from("profile_media")
     .update({
@@ -85,7 +94,14 @@ export async function syncPortfolioAsset(assetId: string) {
       mux_playback_id: status === "ready" ? playbackId : null,
       duration_seconds: asset.duration && Number.isFinite(asset.duration) ? asset.duration : null,
       aspect_ratio: asset.aspect_ratio ?? null,
-      review_reason: status === "rejected" ? "provider-validation-rejected" : null,
+      review_reason:
+        status === "rejected"
+          ? invalidFreeDuration
+            ? "FREE_VIDEO_DURATION_LIMIT"
+            : "provider-validation-rejected"
+          : status === "ready"
+            ? null
+            : row.review_reason,
       cleanup_after: null,
     })
     .eq("id", id)

@@ -56,6 +56,22 @@ test("canonical providers preserve Vimeo privacy hash and reject hostile URLs", 
 });
 test("declaration boundaries, MIME and extensions are validated without claiming Mux enforcement", () => {
   assert.equal(
+    m.validateUploadDeclaration(
+      "video",
+      { name: "reel.mp4", type: "video/mp4", size: 2_000_000_000 },
+      { freeProfile: true },
+    ),
+    null,
+  );
+  assert.match(
+    m.validateUploadDeclaration(
+      "video",
+      { name: "reel.mp4", type: "video/mp4", size: 2_000_000_001 },
+      { freeProfile: true },
+    ),
+    /2 GB/,
+  );
+  assert.equal(
     m.validateUploadDeclaration("video", {
       name: "reel.mp4",
       type: "video/mp4",

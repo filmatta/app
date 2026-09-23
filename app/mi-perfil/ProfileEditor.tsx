@@ -35,6 +35,7 @@ export default function ProfileEditor({
   completionPreferences,
   startTour = false,
   initialEdit = false,
+  isFreePlan,
 }: {
   profile: ProfessionalProfile | null;
   displayName: string;
@@ -43,6 +44,7 @@ export default function ProfileEditor({
   completionPreferences: ProjectPreferences | null;
   startTour?: boolean;
   initialEdit?: boolean;
+  isFreePlan: boolean;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<ProfessionalProfile>(
@@ -394,6 +396,7 @@ export default function ProfileEditor({
                 <PortfolioMedia
                   items={items ?? []}
                   talent={isTalent(draft.disciplines)}
+                  isFreePlan={isFreePlan}
                   emptyAdd={addEmpty}
                   controls={
                     editing
@@ -478,6 +481,7 @@ export default function ProfileEditor({
             category={dialog.category}
             item={dialog.item}
             items={items ?? []}
+            isFreePlan={isFreePlan}
             done={accept}
             close={() => setDialog(null)}
           />

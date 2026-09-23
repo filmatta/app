@@ -1,4 +1,5 @@
 import { parseImageCrop, type ImageCrop } from "./image-input";
+import { MAX_VIDEO_FILE_BYTES } from "./media-limits";
 // Decimal product limits. The video limit validates a declaration, not Mux bytes.
 export const VIDEO_LIMIT = 5_000_000_000;
 export const IMAGE_LIMIT = 20_000_000;
@@ -97,11 +98,17 @@ export function externalVideo(value: unknown) {
 export function validateUploadDeclaration(
   type: "image" | "video",
   file: { name: string; type: string; size: number },
+  options: { freeProfile?: boolean } = {},
 ) {
   if (!Number.isSafeInteger(file.size) || file.size <= 0)
     return "El archivo está vacío o su tamaño no es válido.";
-  if (file.size > (type === "video" ? VIDEO_LIMIT : IMAGE_LIMIT))
-    return type === "video" ? VIDEO_TOO_LARGE : "La imagen supera 20 MB.";
+  const videoLimit = options.freeProfile ? MAX_VIDEO_FILE_BYTES : VIDEO_LIMIT;
+  if (file.size > (type === "video" ? videoLimit : IMAGE_LIMIT))
+    return type === "video"
+      ? options.freeProfile
+        ? "El archivo supera el máximo de 2 GB."
+        : VIDEO_TOO_LARGE
+      : "La imagen supera 20 MB.";
   const allowed: Record<string, RegExp> =
     type === "image"
       ? {

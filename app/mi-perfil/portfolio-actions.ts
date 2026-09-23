@@ -13,6 +13,7 @@ import { parseMediaInput } from "@/lib/profiles/media";
 import type { MediaItem } from "@/lib/profiles/media";
 import type { ProfessionalProfile } from "@/lib/profiles/types";
 import { cleanDiscardedReelCovers } from "@/lib/profiles/reel-cover-cleanup";
+import { profileMediaErrorMessage } from "@/lib/profiles/media-limits";
 
 async function session() {
   const db = await createClient();
@@ -134,7 +135,7 @@ export async function savePortfolioItem(
     });
     if (error)
       return {
-        error:
+        error: profileMediaErrorMessage(error) ??
           "No pudimos guardar el trabajo. Revisa sus datos y vuelve a intentar.",
       };
     const data = await state();
@@ -171,7 +172,10 @@ export async function managePortfolioItem(
       p_action: action,
       p_target: target,
     });
-    if (error) return { error: "No pudimos cambiar este trabajo." };
+    if (error)
+      return {
+        error: profileMediaErrorMessage(error) ?? "No pudimos cambiar este trabajo.",
+      };
     const data = await state();
     invalidate(data.profile.slug);
     return { data };

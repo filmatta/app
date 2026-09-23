@@ -9,6 +9,8 @@ import SiteHeader from "@/components/SiteHeader";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getPublicDisplayName } from "@/lib/profiles/display-name";
 import { getOwnedProfessionalProfile } from "@/lib/profiles/data";
+import { getBillingAccess } from "@/lib/billing/access";
+import { isFreeProfilePlan } from "@/lib/profiles/media-limits";
 export const metadata = {
   title: "Editar perfil profesional",
   description: "Crea y publica tu perfil profesional en FILMATTA.",
@@ -21,9 +23,10 @@ export default async function EditProfessionalProfilePage({
 }) {
   const viewer = await getViewer();
   if (!viewer) redirect("/login?next=%2Fmi-perfil");
-  const [profile, feedback] = await Promise.all([
+  const [profile, feedback, billingAccess] = await Promise.all([
     getOwnedProfessionalProfile(viewer.id),
     searchParams,
+    getBillingAccess(),
   ]);
   if (!minimumProfile(profile)) redirect("/onboarding/perfil");
   const displayName = getPublicDisplayName(viewer.fullName);
@@ -67,6 +70,7 @@ export default async function EditProfessionalProfilePage({
           profile={profile}
           displayName={displayName}
           initialItems={media.data as MediaItem[] | null}
+          isFreePlan={isFreeProfilePlan(billingAccess.plan)}
           completionPreferences={parseProjectPreferences(
             preferences.data?.project_preferences,
           )}

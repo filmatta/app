@@ -12,6 +12,12 @@ import {
   VIDEO_GUIDANCE,
   validateUploadDeclaration,
 } from "@/lib/profiles/media";
+import {
+  EXTERNAL_VIDEO_GUIDANCE,
+  FREE_VIDEO_GUIDANCE,
+  profileMediaQuotaError,
+  validateVideoDuration,
+} from "@/lib/profiles/media-limits";
 import type { ProfessionalProfile } from "@/lib/profiles/types";
 import {
   AVAILABILITY_LABELS,
@@ -87,12 +93,14 @@ export function WorkDialog({
   category,
   item,
   items,
+  isFreePlan,
   done,
   close,
 }: {
   category: MediaCategory;
   item?: MediaItem;
   items: MediaItem[];
+  isFreePlan: boolean;
   done: (v: EditorState) => void;
   close: () => void;
 }) {
@@ -113,6 +121,7 @@ export function WorkDialog({
   const upload = useRef<XMLHttpRequest | null>(null);
   const reserved = useRef<string | null>(null);
   const inFlight = useRef(false);
+  const [readingDuration, setReadingDuration] = useState(false);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if (inFlight.current) {
@@ -167,7 +176,7 @@ export function WorkDialog({
     const selectedSource =
       type === "image" ? (item?.source ?? "storage") : source;
     const value: MediaInput = {
-      category: !item && category === "reel" ? "work" : category,
+      category,
       title: String(form.get("title")),
       role: String(form.get("role") ?? "") || (category === "reel" ? "Reel" : ""),
       year: String(form.get("year") ?? ""),
@@ -179,6 +188,18 @@ export function WorkDialog({
       featured: form.get("featured") === "on",
     };
     const thumbnail = String(form.get("thumbnail") ?? "");
+    if (isFreePlan) {
+      const quotaError = profileMediaQuotaError({
+        items,
+        category,
+        mediaType: type,
+        editingExisting: Boolean(item),
+      });
+      if (quotaError) {
+        setError(quotaError);
+        return;
+      }
+    }
     if (coverFile) {
       const invalid = validateUploadDeclaration("image", coverFile);
       if (invalid) { setError(invalid); return; }
@@ -191,10 +212,30 @@ export function WorkDialog({
       const err = validateUploadDeclaration(
         type === "image" ? "image" : "video",
         file,
+        { freeProfile: isFreePlan },
       );
       if (err) {
         setError(err);
         return;
+      }
+      if (type === "video" && isFreePlan) {
+        setReadingDuration(true);
+        try {
+          const durationError = validateVideoDuration(
+            await readLocalVideoDuration(file),
+          );
+          if (durationError) {
+            setError(durationError);
+            return;
+          }
+        } catch {
+          setError(
+            "No pudimos determinar la duración del video. Elige otro archivo.",
+          );
+          return;
+        } finally {
+          setReadingDuration(false);
+        }
       }
     }
     setError("");
@@ -388,17 +429,22 @@ export function WorkDialog({
             </fieldset>
           )}
           {type === "video" && source === "external" && (
-            <label>
-              Enlace de YouTube o Vimeo
-              <input
-                name="url"
-                type="url"
-                required
-                defaultValue={item?.url}
-                placeholder="https://vimeo.com/…"
-                disabled={busy}
-              />
-            </label>
+            <>
+              <label>
+                Enlace de YouTube o Vimeo
+                <input
+                  name="url"
+                  type="url"
+                  required
+                  defaultValue={item?.url}
+                  placeholder="https://vimeo.com/…"
+                  disabled={busy}
+                />
+              </label>
+              {isFreePlan && (
+                <p className="pe-hint">{EXTERNAL_VIDEO_GUIDANCE}</p>
+              )}
+            </>
           )}
           {!item && (type === "image" || source === "mux") && (
             <div className="pe-upload">
@@ -418,9 +464,10 @@ export function WorkDialog({
                     setError(
                       f
                         ? (validateUploadDeclaration(
-                            type === "image" ? "image" : "video",
-                            f,
-                          ) ?? "")
+                          type === "image" ? "image" : "video",
+                          f,
+                          { freeProfile: isFreePlan },
+                        ) ?? "")
                         : "",
                     );
                   }}
@@ -429,7 +476,9 @@ export function WorkDialog({
               <p>
                 {type === "image"
                   ? "JPG, PNG o WebP · Máximo 20 MB"
-                  : VIDEO_GUIDANCE}
+                  : isFreePlan
+                    ? FREE_VIDEO_GUIDANCE
+                    : VIDEO_GUIDANCE}
               </p>
               {file && (
                 <p>
@@ -497,7 +546,7 @@ export function WorkDialog({
               disabled={busy}
             />
           </label>
-          {category === "reel" && !item && <p className="pe-hint">El video se añade a Otros videos. Cuando esté listo, podrás elegirlo como reel si su duración verificada es de hasta 3 minutos. Los enlaces externos sin duración verificada permanecen en Otros videos.</p>}
+          {category === "reel" && !item && <p className="pe-hint">El Reel se publica cuando el archivo termina de procesarse y su duración verificada no supera 5 minutos. Los enlaces externos no se descargan ni se miden.</p>}
           <SelectionRow
               name="featured"
               aria-describedby="media-featured-help"
@@ -581,12 +630,13 @@ export function WorkDialog({
               type="submit"
               className="pe-primary"
               disabled={
-                busy ||
+                busy || readingDuration ||
                 Boolean(
                   file &&
                   validateUploadDeclaration(
                     type === "image" ? "image" : "video",
                     file,
+                    { freeProfile: isFreePlan },
                   ),
                 )
               }
@@ -602,6 +652,37 @@ export function WorkDialog({
       )}
     </EditorDialog>
   );
+}
+
+function readLocalVideoDuration(file: File) {
+  return new Promise<number>((resolve, reject) => {
+    const video = document.createElement("video");
+    const url = URL.createObjectURL(file);
+    const cleanup = () => {
+      video.onloadedmetadata = null;
+      video.onerror = null;
+      URL.revokeObjectURL(url);
+      video.removeAttribute("src");
+      video.load();
+    };
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("duration-timeout"));
+    }, 10_000);
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      window.clearTimeout(timeout);
+      const duration = video.duration;
+      cleanup();
+      resolve(duration);
+    };
+    video.onerror = () => {
+      window.clearTimeout(timeout);
+      cleanup();
+      reject(new Error("duration-unavailable"));
+    };
+    video.src = url;
+  });
 }
 
 export function SectionDialog({

@@ -41,7 +41,11 @@ before(async () => {
  create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);
  alter table storage.objects enable row level security;
  grant usage on schema public,auth,storage to anon,authenticated,service_role;
- grant select,insert on storage.objects to anon,authenticated;`);
+ grant select,insert on storage.objects to anon,authenticated;
+ create function public.get_my_billing_plan() returns text language sql stable as $$
+   select nullif(current_setting('app.test.billing_plan',true),'')
+ $$;
+ select set_config('app.test.billing_plan','plus',false);`);
   for (const file of [
     "20260910120000_create_professional_profiles.sql",
     "20260916010000_public_profile_catalog.sql",
@@ -54,6 +58,7 @@ before(async () => {
     "20260923050000_profile_preferences_credits.sql",
     "20260923060000_profile_media_attestation_grant.sql", "20260923070000_profile_bio_professional_references.sql",
     "20260924010000_profile_reel_cover_projection.sql", "20260924020000_custom_reel_cover.sql",
+    "20260927010000_free_profile_media_limits.sql",
   ])
     await db.exec(fs.readFileSync("supabase/migrations/" + file, "utf8"));
   await db.query("insert into auth.users values ($1,$3),($2,$4)", [
@@ -278,25 +283,188 @@ test("storage write paths are owner-scoped, immutable and public reads require r
   );
 });
 
-test("reel selection uses attested exact duration, serial replacement, owner-only and preserves long works", async () => {
+test("reel selection accepts external links and verified duration through 300 seconds", async () => {
   await as("authenticated", owner);
-  await assert.rejects(save({...metadata, category: "reel"}), /duration/);
-  for (const duration of [179.9, 180, 180.01, null]) {
+  const externalReel = (await save({...metadata, category: "reel"})).rows[0].id;
+  assert.ok(externalReel);
+  for (const duration of [299.9, 300, 300.01, null]) {
     await as("postgres");
     const id=(await db.query("insert into profile_media(owner_id,category,title,media_type,source,status,duration_seconds) values($1,'work','Duration test','video','mux','ready',$2) returning id", [owner,duration])).rows[0].id;
     await as("authenticated", other); await assert.rejects(manage(id,"reel"));
     await as("authenticated", owner);
-    if(duration !== null && duration <= 180) {
+    if(duration !== null && duration <= 300) {
       await manage(id,"reel");
       assert.equal((await db.query("select count(*)::int n from profile_media where category='reel'")).rows[0].n,1);
       assert.equal((await db.query("select id from profile_media where category='reel'")).rows[0].id,id);
     } else {
       const before=(await db.query("select id from profile_media where category='reel'")).rows[0].id;
-      await assert.rejects(manage(id,"reel"),/duration/);
+      await assert.rejects(manage(id,"reel"),/DURATION/);
       assert.equal((await db.query("select status from profile_media where id=$1",[id])).rows[0].status,"ready");
       assert.equal((await db.query("select id from profile_media where category='reel'")).rows[0].id,before);
     }
   }
+});
+
+test("Free quotas are atomic for Reel, mixed Videos and Book without deleting historical media", async () => {
+  await as("postgres");
+  await db.query("delete from profile_media where owner_id=$1", [other]);
+  await db.query("select set_config('app.test.billing_plan','',false)");
+  await as("authenticated", other);
+  await db.query(
+    "select save_my_professional_profile(array['Dirección'],'City','Bio','available','{}','{}','[]',false,'members_only')",
+  );
+
+  const freeReserve = (data, size, mime, extension) =>
+    db.query("select reserve_my_profile_upload($1,$2,$3,$4) id", [
+      data,
+      size,
+      mime,
+      extension,
+    ]);
+  const muxWork = { ...metadata, source: "mux" };
+  const exact = await freeReserve(muxWork, 2_000_000_000, "video/mp4", "mp4");
+  assert.ok(exact.rows[0].id);
+  await assert.rejects(
+    freeReserve(muxWork, 2_000_000_001, "video/mp4", "mp4"),
+    /FREE_VIDEO_FILE_LIMIT/,
+  );
+  await as("postgres");
+  await db.query("delete from profile_media where owner_id=$1", [other]);
+  await as("authenticated", other);
+
+  const uploaded = (
+    await freeReserve(muxWork, 1_000, "video/mp4", "mp4")
+  ).rows[0].id;
+  await as("postgres");
+  await db.query(
+    "update profile_media set status='ready',duration_seconds=300 where id=$1",
+    [uploaded],
+  );
+  await as("authenticated", other);
+  const external = (await save({ ...metadata, title: "External" })).rows[0].id;
+  await assert.rejects(save({ ...metadata, title: "Third" }), /FREE_VIDEO_LIMIT/);
+
+  await manage(uploaded, "archive");
+  await assert.rejects(
+    save({ ...metadata, title: "Archived asset still counts" }),
+    /FREE_VIDEO_LIMIT/,
+  );
+  await manage(uploaded, "restore");
+
+  const externalReel = (
+    await save({ ...metadata, category: "reel", title: "External Reel" })
+  ).rows[0].id;
+  await assert.rejects(
+    save({ ...metadata, category: "reel", title: "Second Reel" }),
+    /FREE_REEL_LIMIT/,
+  );
+  await manage(uploaded, "reel");
+  assert.deepEqual(
+    (
+      await db.query(
+        "select category,count(*)::int n from profile_media where owner_id=$1 and media_type='video' group by category order by category",
+        [other],
+      )
+    ).rows,
+    [
+      { category: "reel", n: 1 },
+      { category: "work", n: 2 },
+    ],
+  );
+  await assert.rejects(manage(uploaded, "other-video"), /FREE_VIDEO_LIMIT/);
+  assert.ok(external);
+  assert.ok(externalReel);
+
+  await as("postgres");
+  await db.query("delete from profile_media where owner_id=$1", [other]);
+  await as("authenticated", other);
+  await save({ ...metadata, title: "Existing slot" });
+  const concurrent = await Promise.allSettled([
+    save({ ...metadata, title: "Concurrent A" }),
+    save({ ...metadata, title: "Concurrent B" }),
+  ]);
+  assert.equal(concurrent.filter((result) => result.status === "fulfilled").length, 1);
+  assert.equal(concurrent.filter((result) => result.status === "rejected").length, 1);
+
+  await as("postgres");
+  await db.query("delete from profile_media where owner_id=$1", [other]);
+  const bookInput = {
+    ...metadata,
+    category: "book",
+    media_type: "image",
+    source: "storage",
+    role: "",
+  };
+  for (let index = 0; index < 6; index++) {
+    await as("authenticated", other);
+    const id = (
+      await freeReserve(bookInput, 1_000, "image/jpeg", "jpg")
+    ).rows[0].id;
+    await as("postgres");
+    await db.query("update profile_media set status='ready' where id=$1", [id]);
+  }
+  await as("authenticated", other);
+  await assert.rejects(
+    freeReserve(bookInput, 1_000, "image/jpeg", "jpg"),
+    /FREE_BOOK_LIMIT/,
+  );
+
+  await as("postgres");
+  const archivedBook = (
+    await db.query(
+      "select id from profile_media where owner_id=$1 and media_type='image' order by created_at,id limit 1",
+      [other],
+    )
+  ).rows[0].id;
+  await as("authenticated", other);
+  await manage(archivedBook, "archive");
+  await assert.rejects(
+    freeReserve(bookInput, 1_000, "image/jpeg", "jpg"),
+    /FREE_BOOK_LIMIT/,
+  );
+  await as("postgres");
+  await db.query(
+    "update profile_media set status='deleted' where id=$1 and owner_id=$2",
+    [archivedBook, other],
+  );
+  await as("authenticated", other);
+  const releasedSlot = (
+    await freeReserve(bookInput, 1_000, "image/jpeg", "jpg")
+  ).rows[0].id;
+  assert.ok(releasedSlot);
+  await as("postgres");
+  await db.query("delete from profile_media where id=$1", [releasedSlot]);
+
+  await db.query(
+    "insert into profile_media(owner_id,category,title,media_type,source,status,purpose) values ($1,'book','Historical 7','image','storage','ready','portfolio'),($1,'book','Historical 8','image','storage','ready','portfolio')",
+    [other],
+  );
+  assert.equal(
+    (
+      await db.query(
+        "select count(*)::int n from profile_media where owner_id=$1 and media_type='image'",
+        [other],
+      )
+    ).rows[0].n,
+    8,
+  );
+  await as("authenticated", other);
+  await assert.rejects(
+    freeReserve(bookInput, 1_000, "image/jpeg", "jpg"),
+    /FREE_BOOK_LIMIT/,
+  );
+  await as("postgres");
+  assert.equal(
+    (
+      await db.query(
+        "select count(*)::int n from profile_media where owner_id=$1 and media_type='image'",
+        [other],
+      )
+    ).rows[0].n,
+    8,
+  );
+  await db.query("delete from profile_media where owner_id=$1", [other]);
+  await db.query("select set_config('app.test.billing_plan','plus',false)");
 });
 
 test("identity references require owner validated derivatives; originals and unreferenced candidates remain private", async () => {
