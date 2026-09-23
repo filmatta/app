@@ -688,6 +688,10 @@
 .p2-preference-group [data-choice="accept"] { color: #95d2ad; }
 .p2-preference-group [data-choice="consult"] { color: #e5c184; }
 .p2-preference-group [data-choice="decline"] { color: #e5a2a2; }
+.p2-preferences > .filmatta-accordion + .filmatta-accordion { margin-top: 10px; }
+.p2-preferences .p2-preference-group { margin-top: 0; }
+.p2-preferences .p2-preference-group + .p2-preference-group { margin-top: 22px; }
+.p2-preferences .p2-preference-help { margin-top: 18px; font-size: 12px; }
 .p2-pro-link { color: #b9dceb; font-size: 13px; }
 .p2-social-proof { display: flex; align-items: center; gap: 16px; margin: 28px 0 12px; color: #a2abad; font-size: 12px; }
 .p2-social-proof > div { display: flex; gap: 7px; }

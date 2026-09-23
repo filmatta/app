@@ -37,8 +37,8 @@ test("quick preferences never infer rejection and retain the existing taxonomy",
   assert.equal(a.quickPreference(false), "unspecified");
   const ui = read("app/onboarding/perfil/Onboarding.tsx");
   assert.match(ui, /PROJECT_FORMATS\.map/);
-  assert.match(ui, /PREFERENCE_GROUPS\.conditions/);
-  assert.match(ui, /changedConditions/);
+  assert.match(ui, /PROFILE_PREFERENCE_CATEGORIES\.map/);
+  assert.match(ui, /changedPreferences/);
   assert.match(ui, /formatsChanged/);
 });
 test("identity UX has no alias, and Continue controls photo persistence", () => {

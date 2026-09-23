@@ -42,14 +42,8 @@ test("preference groups are initially collapsed with named regions and selection
   assert.match(html, /role="region"[^>]*hidden=""/);
   assert.match(html, /3 seleccionados/);
   const onboarding = read("app/onboarding/perfil/Onboarding.tsx");
-  assert.match(
-    onboarding,
-    /FilmattaAccordion[^>]*title="Formatos de proyecto"/,
-  );
-  assert.match(
-    onboarding,
-    /FilmattaAccordion[^>]*title="Condiciones de rodaje"/,
-  );
+  assert.match(onboarding, /PROFILE_PREFERENCE_CATEGORIES\.map/);
+  assert.match(onboarding, /closedLabel="Ver opciones"/);
   assert.doesNotMatch(onboarding, /defaultOpen/);
 });
 test("publication selection preserves native form value and one accessible label", () => {
@@ -123,6 +117,7 @@ test("owner editing has one full-mode action while empty sections stay actionabl
 test("public preferences show real values and omit unspecified without publication controls", () => {
   const prefs = load("lib/profiles/project-preferences.ts");
   const View = component("components/profiles/ProfileProjectPreferences.tsx", {
+    "@/components/ui/FilmattaAccordion": ({children}) => React.createElement("section", null, children),
     "@/components/ui/StatusBadge": ({children}) => React.createElement("span", null, children),
     "@/components/ui/MetaChip": { MetaChips: () => null },
     "@/lib/profiles/project-preferences": prefs,

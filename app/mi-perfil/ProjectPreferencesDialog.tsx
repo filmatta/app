@@ -2,6 +2,7 @@
 import FilmattaAccordion from "@/components/ui/FilmattaAccordion";
 import SelectionRow from "@/components/ui/SelectionRow";
 import StatusBadge from "@/components/ui/StatusBadge";
+import ProfileDetailIcon from "@/components/profiles/ProfileDetailIcon";
 import { useEffect, useState } from "react";
 import { EditorDialog } from "./PortfolioDialogs";
 import {
@@ -10,8 +11,9 @@ import {
 } from "./preference-actions";
 import {
   PROJECT_FORMATS,
-  PREFERENCE_GROUPS,
+  PROFILE_PREFERENCE_CATEGORIES,
   PREFERENCE_CHOICES,
+  preferenceCategoryCount,
   type ProjectPreferences,
   type PreferenceChoice,
 } from "@/lib/profiles/project-preferences";
@@ -79,99 +81,33 @@ export default function ProjectPreferencesDialog({
             }
           }}
         >
-          <FilmattaAccordion
-            title="Formatos"
-            summary={
-              value.open_formats
-                ? "Abierto a distintos formatos"
-                : value.formats.length + " seleccionados"
-            }
-          >
-            <SelectionRow
-              checked={value.open_formats}
-              onChange={(e) =>
-                setValue({ ...value, open_formats: e.target.checked })
-              }
-            >
-              Abierto a distintos formatos
-            </SelectionRow>
-            <p className="pe-hint">
-              Esta opción sólo afecta formatos; no acepta escenas ni
-              condiciones.
-            </p>
-            <div className="selection-grid">
-              {PROJECT_FORMATS.map((f) => (
-                <SelectionRow
-                  key={f}
-                  checked={value.formats.includes(f)}
-                  onChange={(e) =>
-                    setValue({
-                      ...value,
-                      formats: e.target.checked
-                        ? [...value.formats, f]
-                        : value.formats.filter((v) => v !== f),
-                    })
-                  }
-                >
-                  {f}
-                </SelectionRow>
-              ))}
-            </div>
-          </FilmattaAccordion>
-          {(
-            Object.keys(PREFERENCE_GROUPS) as (keyof typeof PREFERENCE_GROUPS)[]
-          ).map((group) => (
+          {PROFILE_PREFERENCE_CATEGORIES.map((category) => (
             <FilmattaAccordion
-              key={group}
-              title={
-                group === "themes"
-                  ? "Temáticas"
-                  : group === "participation"
-                    ? "Participación personal frente a cámara"
-                    : "Condiciones de trabajo"
-              }
-              summary={
-                Object.values(value[group]).filter((v) => v !== "unspecified")
-                  .length + " definidas"
-              }
+              key={category.key}
+              title={category.title}
+              icon={<ProfileDetailIcon kind={category.icon} />}
+              summary={`${preferenceCategoryCount(category, value)} respondidas`}
+              closedLabel="Ver opciones"
+              openLabel="Ocultar opciones"
             >
-              {Object.entries(PREFERENCE_GROUPS[group]).map(([key, label]) => (
-                <label key={key}>
-                  {label}
-                  <StatusBadge
-                    tone={
-                      value[group][key] === "accept"
-                        ? "success"
-                        : value[group][key] === "consult"
-                          ? "warning"
-                          : value[group][key] === "decline"
-                            ? "danger"
-                            : "neutral"
-                    }
-                  >
-                    {PREFERENCE_CHOICES[value[group][key] ?? "unspecified"]}
-                  </StatusBadge>
-                  <select
-                    aria-label={label}
-                    value={value[group][key] ?? "unspecified"}
-                    onChange={(e) =>
-                      setValue({
-                        ...value,
-                        [group]: {
-                          ...value[group],
-                          [key]: e.target.value as PreferenceChoice,
-                        },
-                      })
-                    }
-                  >
-                    {Object.entries(PREFERENCE_CHOICES).map(([v, l]) => (
-                      <option value={v} key={v}>
-                        {l}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
+              {category.format ? <>
+                <SelectionRow checked={value.open_formats} onChange={(e) => setValue({ ...value, open_formats: e.target.checked })}>Abierto a distintos formatos</SelectionRow>
+                <p className="pe-hint">Esta opción sólo afecta formatos; no acepta escenas ni condiciones.</p>
+                <div className="selection-grid">{PROJECT_FORMATS.map((format) => <SelectionRow key={format} checked={value.formats.includes(format)} onChange={(e) => setValue({ ...value, formats: e.target.checked ? [...value.formats, format] : value.formats.filter((item) => item !== format) })}>{format}</SelectionRow>)}</div>
+              </> : category.sections.map((section, index) => <section className="preference-subgroup" key={section.title ?? index}>
+                {section.title && <h3>{section.title}</h3>}
+                <div className="preference-options-grid">{section.options.map((item) => {
+                  const choice = value[item.group][item.key] ?? "unspecified";
+                  return <label className="preference-choice" key={item.key}>
+                    <span>{item.label}</span>
+                    <StatusBadge tone={choice === "accept" ? "success" : choice === "consult" ? "warning" : choice === "decline" ? "danger" : "neutral"}>{PREFERENCE_CHOICES[choice]}</StatusBadge>
+                    <select aria-label={item.label} value={choice} onChange={(e) => setValue({ ...value, [item.group]: { ...value[item.group], [item.key]: e.target.value as PreferenceChoice } })}>
+                      {Object.entries(PREFERENCE_CHOICES).map(([choiceValue, label]) => <option value={choiceValue} key={choiceValue}>{label}</option>)}
+                    </select>
+                  </label>;
+                })}</div>
+              </section>)}
+              {category.help && <p className="pe-hint">{category.help}</p>}
             </FilmattaAccordion>
           ))}
           <footer>

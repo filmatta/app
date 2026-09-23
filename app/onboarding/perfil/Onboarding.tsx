@@ -10,10 +10,12 @@ import {
   type ProfileIntent,
 } from "@/lib/profiles/activation";
 import {
-  PREFERENCE_GROUPS,
+  PROFILE_PREFERENCE_CATEGORIES,
   PROJECT_FORMATS,
   parseProjectPreferences,
   EMPTY_PREFERENCES,
+  preferenceCategoryCount,
+  type PreferenceGroup,
 } from "@/lib/profiles/project-preferences";
 import { professionalName } from "@/lib/profiles/presentation";
 import type { ProfessionalProfile } from "@/lib/profiles/types";
@@ -21,6 +23,7 @@ import { activationEvent } from "@/lib/profiles/activation-events";
 import ProfileAvatar from "@/components/profiles/ProfileAvatar";
 import IdentityImage from "@/components/profiles/IdentityImage";
 import SelectionRow from "@/components/ui/SelectionRow";
+import ProfileDetailIcon from "@/components/profiles/ProfileDetailIcon";
 import IdentityImageEditor, {
   type IdentityImageHandle,
 } from "@/app/mi-perfil/IdentityImageEditor";
@@ -68,8 +71,8 @@ export default function Onboarding({
   const [prefs, setPrefs] = useState(
     () => parseProjectPreferences(preferences) ?? EMPTY_PREFERENCES,
   );
-  const [changedConditions, setChangedConditions] = useState<
-      Record<string, string>
+  const [changedPreferences, setChangedPreferences] = useState<
+      Partial<Record<PreferenceGroup, Record<string, string>>>
     >({}),
     [formatsChanged, setFormatsChanged] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null),
@@ -100,9 +103,7 @@ export default function Onboarding({
       case 7:
         return {
           ...(formatsChanged ? { formats: prefs.formats } : {}),
-          ...(Object.keys(changedConditions).length
-            ? { conditions: changedConditions }
-            : {}),
+          ...changedPreferences,
         };
       default:
         return {};
@@ -322,70 +323,44 @@ export default function Onboarding({
             {step === 7 && (
               <>
                 <p className="activation-hint">
-                  Las opciones que marques aparecerán en tu perfil público. Podrás cambiarlas después.
+                  Las preferencias que configures se mostrarán en tu perfil público. Deja sin especificar aquellas que no quieras mostrar.
                 </p>
-                <FilmattaAccordion
-                  title="Formatos de proyecto"
-                  summary={`${prefs.formats.length} seleccionados`}
+                {PROFILE_PREFERENCE_CATEGORIES.map((category) => <FilmattaAccordion
+                  key={category.key}
+                  title={category.title}
+                  icon={<ProfileDetailIcon kind={category.icon} />}
+                  summary={`${preferenceCategoryCount(category, prefs)} respondidas`}
+                  closedLabel="Ver opciones"
+                  openLabel="Ocultar opciones"
                 >
-                  <div className="activation-options">
-                    {PROJECT_FORMATS.map((f) => (
-                      <SelectionRow
-                        key={f}
-                        checked={prefs.formats.includes(f)}
-                        onChange={(e) => {
-                          setFormatsChanged(true);
-                          setPrefs((v) => ({
-                            ...v,
-                            formats: e.target.checked
-                              ? [...v.formats, f]
-                              : v.formats.filter((x) => x !== f),
-                          }));
-                        }}
-                      >
-                        {f}
-                      </SelectionRow>
-                    ))}
-                  </div>
-                </FilmattaAccordion>
-                <FilmattaAccordion
-                  title="Condiciones de rodaje"
-                  summary={`${Object.values(prefs.conditions).filter((v) => v === "accept").length} seleccionadas`}
-                >
-                  <div className="activation-options">
-                    {Object.entries(PREFERENCE_GROUPS.conditions).map(
-                      ([key, label]) => (
-                        <SelectionRow
-                          key={key}
-                          checked={prefs.conditions[key] === "accept"}
-                          onChange={(e) => {
-                            const choice = quickPreference(e.target.checked);
-                            setChangedConditions((v) => ({
-                              ...v,
-                              [key]: choice,
-                            }));
-                            setPrefs((v) => ({
-                              ...v,
-                              conditions: { ...v.conditions, [key]: choice },
-                            }));
-                          }}
-                        >
-                          {label}
-                          {["consult", "decline"].includes(
-                            prefs.conditions[key],
-                          ) && (
-                            <small> · Preferencia avanzada conservada</small>
-                          )}
-                        </SelectionRow>
-                      ),
-                    )}
-                  </div>
-                </FilmattaAccordion>
+                  {category.format ? <div className="activation-options">
+                    {PROJECT_FORMATS.map((format) => <SelectionRow
+                      key={format}
+                      checked={prefs.formats.includes(format)}
+                      onChange={(event) => {
+                        setFormatsChanged(true);
+                        setPrefs((current) => ({ ...current, formats: event.target.checked ? [...current.formats, format] : current.formats.filter((item) => item !== format) }));
+                      }}
+                    >{format}</SelectionRow>)}
+                  </div> : category.sections.map((section, index) => <section className="preference-subgroup" key={section.title ?? index}>
+                    {section.title && <h3>{section.title}</h3>}
+                    <div className="activation-options">{section.options.map((item) => <SelectionRow
+                      key={item.key}
+                      checked={prefs[item.group][item.key] === "accept"}
+                      onChange={(event) => {
+                        const choice = quickPreference(event.target.checked);
+                        setChangedPreferences((current) => ({ ...current, [item.group]: { ...current[item.group], [item.key]: choice } }));
+                        setPrefs((current) => ({ ...current, [item.group]: { ...current[item.group], [item.key]: choice } }));
+                      }}
+                    >
+                      {item.label}
+                      {["consult", "decline"].includes(prefs[item.group][item.key]) && <small> · Preferencia avanzada conservada</small>}
+                    </SelectionRow>)}</div>
+                  </section>)}
+                  {category.help && <p className="activation-hint">{category.help}</p>}
+                </FilmattaAccordion>)}
                 <p className="activation-hint">
-                  Puedes elegir Consultar o No y ajustar temáticas y
-                  participación después, en Editar preferencias de proyectos.
-                  Las preferencias avanzadas existentes se conservan mientras no
-                  las cambies.
+                  Puedes elegir Consultar o No después, en Editar preferencias de proyectos. Las respuestas avanzadas existentes se conservan mientras no las cambies.
                 </p>
               </>
             )}

@@ -25,9 +25,19 @@ export async function saveOnboarding(
       error:
         "Tu sesión terminó. Inicia sesión de nuevo; conservamos los pasos guardados.",
     };
+  if (step === 7 && Object.keys(patch).length) {
+    const preferences = await db.rpc("save_my_profile_quick_preferences", {
+      p_patch: patch,
+    });
+    if (preferences.error)
+      return {
+        error:
+          "No pudimos guardar estas preferencias. Revisa las opciones e inténtalo de nuevo.",
+      };
+  }
   const result = await db.rpc("save_my_profile_activation_step", {
     p_step: step,
-    p_patch: patch,
+    p_patch: step === 7 ? {} : patch,
   });
   if (result.error)
     return {
