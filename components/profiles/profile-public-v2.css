@@ -728,12 +728,13 @@
  .p2-hero--image .p2-identity-controls > .p2-follow-control {grid-column:3; grid-row:1; align-self:end; justify-self:end; z-index:1; margin:0 16px 16px 0;}
 }
 @media(max-width:767px) {
- .p2-hero {grid-template-columns:88px minmax(0,1fr); column-gap:14px; row-gap:12px;}
+ .p2-hero {grid-template-columns:88px minmax(0,1fr); column-gap:14px; row-gap:10px;}
  .p2-hero > .p2-cover {margin-bottom:0;}
  .p2-hero > .eyebrow {display:none;}
- .p2-hero .p2-portrait {grid-column:1; grid-row:2; align-self:start; margin-top:-2px;}
+ .p2-hero .p2-portrait {grid-column:1; grid-row:3; align-self:start; margin-top:0;}
  .p2-hero .p2-identity-controls {grid-column:2; grid-row:2; justify-self:end; align-self:start; flex-wrap:wrap; justify-content:flex-end; gap:8px;}
- .p2-hero .p2-name {grid-column:1/-1; grid-row:3;}
+ .p2-hero .p2-name {grid-column:2; grid-row:3; align-self:start; min-width:0; padding-top:2px;}
+ .p2-hero .p2-name h1 {display:-webkit-box; overflow:hidden; overflow-wrap:anywhere; -webkit-box-orient:vertical; -webkit-line-clamp:2;}
  .p2-name .p2-primary-discipline {margin-top:6px; color:#d0d1cd;}
  .p2-hero .p2-actions {grid-column:1/-1; grid-row:4;}
 }
