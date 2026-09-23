@@ -16,9 +16,10 @@ function MenuLinks({ items, descriptions = true }: { items: NavigationLink[]; de
       <span>{item.label}</span>
       {descriptions && item.description && <span className="nav-menu-description">{item.description}</span>}
     </>;
+    const className = `nav-menu-link${item.label === "Buscar talento" ? " nav-menu-link--featured" : ""}`;
     return item.href === "/admin"
-      ? <a key={item.href} href={item.href} className="nav-menu-link">{content}</a>
-      : <Link key={item.href} href={item.href} className="nav-menu-link">{content}</Link>;
+      ? <a key={item.href} href={item.href} className={className}>{content}</a>
+      : <Link key={item.href} href={item.href} className={className}>{content}</Link>;
   })}</>;
 }
 

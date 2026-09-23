@@ -75,6 +75,8 @@ html {
 .nav-panel-heading { padding-bottom: .875rem; border-bottom: 1px solid #ffffff14; font-size: .625rem; font-weight: 650; line-height: 1.5; letter-spacing: .18em; text-transform: uppercase; color: #ffffff78; }
 .nav-product-menu--profiles .nav-menu-link { padding: .85rem .125rem; }
 .nav-product-menu--profiles .nav-menu-link + .nav-menu-link { border-top: 1px solid #ffffff12; }
+.nav-product-menu--profiles .nav-menu-link--featured { margin: .5rem 0 .25rem; padding: .75rem; border: 1px solid #d6a74a38; border-radius: 3px; background: #d6a74a0c; color: #f2dfb8; }
+.nav-product-menu--profiles .nav-menu-link--featured:hover { border-color: #d6a74a66; background: #d6a74a18; color: #fff1cf; }
 .nav-opportunities-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .nav-opportunities-grid .nav-menu-link { padding: .85rem .75rem; border-bottom: 1px solid #ffffff10; }
 .nav-opportunities-grid .nav-menu-link:nth-child(odd) { border-right: 1px solid #ffffff10; }

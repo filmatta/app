@@ -25,6 +25,15 @@ export function getPrimaryNavigation(authenticated: boolean): NavigationItem[] {
       label: "Perfiles",
       href: destination("perfiles", "/perfiles"),
       children: [
+        ...(navigationFeatures.talent
+          ? [
+              {
+                label: "Buscar talento",
+                href: "/talento",
+                description: "Ir directamente al catálogo de talento.",
+              },
+            ]
+          : []),
         {
           label: "Profesionales",
           href: destination("perfiles", "/perfiles"),
@@ -36,11 +45,6 @@ export function getPrimaryNavigation(authenticated: boolean): NavigationItem[] {
                 label: "Talento",
                 href: "/descubre/talento",
                 description: "Actuación y modelaje, con una misma identidad.",
-              },
-              {
-                label: "Buscar talento",
-                href: "/talento",
-                description: "Ir directamente al catálogo de talento.",
               },
             ]
           : []),
