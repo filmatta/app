@@ -28,7 +28,7 @@ export default async function NewLocationPage({
         contextLink={{ href: "/mis-locaciones", label: "← Mis locaciones" }}
       />
 
-      <section className="mx-auto max-w-3xl px-6 py-16 lg:py-20">
+      <section className="mx-auto max-w-5xl px-6 py-16 lg:py-20">
         <Link
           href="/mis-locaciones"
           className="inline-flex rounded-full border border-white/10 px-4 py-2 text-sm text-white/50 transition hover:border-white/20 hover:bg-white/[0.03] hover:text-white"

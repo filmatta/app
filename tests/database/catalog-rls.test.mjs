@@ -41,6 +41,7 @@ before(async () => {
     "20260916020000_opportunity_owner_publishing.sql",
     "20260916030000_services_directory.sql",
     "20260916040000_jobs_specialization.sql",
+    "20260928010000_locations_beta_v1.sql",
   ]) {
     await db.exec(fs.readFileSync(`supabase/migrations/${file}`, "utf8"));
   }
@@ -151,9 +152,34 @@ test("existing Locations ownership denies cross-user mutation and draft disclosu
     /row-level security/,
   );
   await as("anon");
-  assert.equal((await db.query("select * from locations")).rows.length, 0);
+  await assert.rejects(db.query("select * from locations"), /permission denied/);
+  assert.equal((await db.query("select * from list_public_locations()")).rows.length, 0);
   await as("authenticated", admin);
   assert.equal((await db.query("select * from locations")).rows.length, 1);
+});
+
+test("Locations public projection exposes only published, explicit fields and contact", async () => {
+  await as("authenticated", owner);
+  await db.query("update locations set status='published', characteristics=$1, shooting_conditions=$2, tour_video_url='https://www.youtube.com/watch?v=abcdefghijk' where slug='space-private'", [
+    { surface_m2: 120, wifi: true },
+    { day_shoots: "yes", pyrotechnics: "consult" },
+  ]);
+  const locationId = (await db.query("select id from locations where slug='space-private'")).rows[0].id;
+  await db.query("insert into location_public_contacts(location_id,owner_id,email,is_public) values($1,$2,'locacion@example.com',false)", [locationId, owner]);
+  await as("anon");
+  const hidden = (await db.query("select get_public_location('space-private') value")).rows[0].value;
+  assert.equal(hidden.contact, null);
+  assert.equal(hidden.owner_id, undefined);
+  assert.equal(hidden.characteristics.surface_m2, 120);
+  assert.equal(hidden.shooting_conditions.pyrotechnics, "consult");
+  await assert.rejects(db.query("select * from location_photos"), /permission denied/);
+  await assert.rejects(db.query("select * from location_public_contacts"), /permission denied/);
+  await as("authenticated", owner);
+  await db.query("update location_public_contacts set is_public=true where location_id=$1", [locationId]);
+  await as("anon");
+  const visible = (await db.query("select get_public_location('space-private') value")).rows[0].value;
+  assert.equal(visible.contact.email, "locacion@example.com");
+  assert.equal((await db.query("select * from list_public_locations()")).rows.length, 1);
 });
 test("opportunities require a published project and retain compound ownership", async () => {
   await as("authenticated", owner);

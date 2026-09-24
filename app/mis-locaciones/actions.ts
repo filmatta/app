@@ -9,6 +9,7 @@ import {
   type LocationStatus,
   type LocationSuccess,
 } from "@/lib/locations/form";
+import { parseLocationPublicContact, type LocationPublicContact } from "@/lib/locations/contact";
 import { createClient } from "@/lib/supabase/server";
 
 const UUID_PATTERN =
@@ -34,6 +35,8 @@ export async function createLocation(formData: FormData) {
   if (!parsed.ok) {
     redirect(newLocationFeedback(parsed.error));
   }
+  const contact = parseLocationPublicContact(formData);
+  if (!contact.ok) redirect(newLocationFeedback("invalid-contact"));
 
   const { data, error } = await supabase
     .from("locations")
@@ -48,6 +51,13 @@ export async function createLocation(formData: FormData) {
   if (error || !data) {
     logLocationError("Error creando la locación:", error);
     redirect(newLocationFeedback(getLocationDatabaseError(error)));
+  }
+
+  const contactError = await saveLocationContact(supabase, userId, data.id, contact.value);
+  if (contactError) {
+    logLocationError("Error guardando el contacto de la locación:", contactError);
+    await supabase.from("locations").delete().eq("id", data.id).eq("owner_id", userId);
+    redirect(newLocationFeedback("save-failed"));
   }
 
   revalidateLocationPaths(data.slug);
@@ -75,6 +85,8 @@ export async function updateLocation(locationId: string, formData: FormData) {
   if (!parsed.ok) {
     redirect(editLocationFeedback(locationId, "error", parsed.error));
   }
+  const contact = parseLocationPublicContact(formData);
+  if (!contact.ok) redirect(editLocationFeedback(locationId, "error", "invalid-contact"));
 
   const intent = getText(formData, "intent");
   const nextStatus = getUpdateStatus(intent, existing.status);
@@ -106,6 +118,12 @@ export async function updateLocation(locationId: string, formData: FormData) {
 
   if (!data) {
     redirect(locationsErrorFeedback("not-found"));
+  }
+
+  const contactError = await saveLocationContact(supabase, userId, locationId, contact.value);
+  if (contactError) {
+    logLocationError("Error guardando el contacto de la locación:", contactError);
+    redirect(editLocationFeedback(locationId, "error", "save-failed"));
   }
 
   revalidateLocationPaths(existing.slug, data.slug, locationId);
@@ -279,4 +297,32 @@ function logLocationError(
     code: error?.code ?? "unknown",
     message: error?.message ?? "Unknown database error",
   });
+}
+
+async function saveLocationContact(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  locationId: string,
+  contact: LocationPublicContact,
+) {
+  const hasChannel = Boolean(contact.email || contact.phone || contact.whatsapp || contact.website);
+  if (!hasChannel) {
+    const { error } = await supabase
+      .from("location_public_contacts")
+      .delete()
+      .eq("location_id", locationId)
+      .eq("owner_id", userId);
+    return error;
+  }
+
+  const { error } = await supabase.from("location_public_contacts").upsert({
+    location_id: locationId,
+    owner_id: userId,
+    email: contact.email,
+    phone: contact.phone,
+    whatsapp: contact.whatsapp,
+    website: contact.website,
+    is_public: contact.isPublic,
+  });
+  return error;
 }

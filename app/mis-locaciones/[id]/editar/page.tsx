@@ -9,10 +9,12 @@ import type {
   LocationStatus,
 } from "@/lib/locations/form";
 import { createClient } from "@/lib/supabase/server";
+import { normalizeLocationCharacteristics } from "@/lib/locations/characteristics";
+import { normalizeLocationConditions } from "@/lib/locations/conditions";
 import { archiveLocation, updateLocation } from "../../actions";
 import ArchiveLocationButton from "../../ArchiveLocationButton";
 import LocationFeedback from "../../LocationFeedback";
-import LocationForm, { type EditableLocation } from "../../LocationForm";
+import LocationForm, { type EditableLocation, type EditableLocationContact, type EditableLocationPhoto } from "../../LocationForm";
 
 export const metadata: Metadata = {
   title: "Editar locación",
@@ -56,7 +58,7 @@ export default async function EditLocationPage({
   const { data, error } = await supabase
     .from("locations")
     .select(
-      "id, title, slug, summary, description, city, area, space_type, environment, price_amount, price_currency, price_unit, restrictions, status"
+      "id, title, slug, summary, description, city, area, space_type, environment, price_amount, price_currency, price_unit, restrictions, characteristics, shooting_conditions, tour_video_url, operational_notes, status"
     )
     .eq("id", id)
     .eq("owner_id", viewer.id)
@@ -77,7 +79,19 @@ export default async function EditLocationPage({
     notFound();
   }
 
-  const location = data as LocationRow;
+  const [contactResult, photosResult] = await Promise.all([
+    supabase.from("location_public_contacts").select("email, phone, whatsapp, website, is_public").eq("location_id", id).eq("owner_id", viewer.id).maybeSingle(),
+    supabase.from("location_photos").select("id, image_url, alt_text").eq("location_id", id).eq("owner_id", viewer.id).neq("status", "archived").order("sort_order", { ascending: true }).order("id", { ascending: true }),
+  ]);
+  if (contactResult.error || photosResult.error) {
+    console.error("Error cargando contenido de una locación propia:", { contact: contactResult.error?.code, photos: photosResult.error?.code });
+    return <PrivateLocationLoadError message="No pudimos cargar el contenido de esta locación. Inténtalo de nuevo." />;
+  }
+
+  const raw = data as LocationRow & { characteristics: unknown; shooting_conditions: unknown };
+  const location = { ...raw, characteristics: normalizeLocationCharacteristics(raw.characteristics), shooting_conditions: normalizeLocationConditions(raw.shooting_conditions) };
+  const contact = (contactResult.data as EditableLocationContact | null) ?? null;
+  const photos = (photosResult.data ?? []) as EditableLocationPhoto[];
   const updateAction = updateLocation.bind(null, location.id);
   const archiveAction = archiveLocation.bind(null, location.id);
 
@@ -87,7 +101,7 @@ export default async function EditLocationPage({
         contextLink={{ href: "/mis-locaciones", label: "← Mis locaciones" }}
       />
 
-      <section className="mx-auto max-w-3xl px-6 py-16 lg:py-20">
+      <section className="mx-auto max-w-5xl px-6 py-16 lg:py-20">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <Link
             href="/mis-locaciones"
@@ -122,7 +136,7 @@ export default async function EditLocationPage({
         </h1>
 
         <LocationFeedback error={feedback.error} success={feedback.success} />
-        <LocationForm action={updateAction} mode="edit" location={location} />
+        <LocationForm action={updateAction} mode="edit" location={location} contact={contact} photos={photos} />
 
         {location.status !== "archived" && (
           <section className="mt-16 border-t border-white/10 pt-9">
@@ -147,7 +161,7 @@ function PrivateLocationLoadError({ message }: { message: string }) {
       <SiteHeader
         contextLink={{ href: "/mis-locaciones", label: "← Mis locaciones" }}
       />
-      <section className="mx-auto max-w-3xl px-6 py-20">
+      <section className="mx-auto max-w-5xl px-6 py-20">
         <div
           role="alert"
           className="rounded-2xl border border-red-500/20 bg-red-500/[0.05] p-7 text-red-200"

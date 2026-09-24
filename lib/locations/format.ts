@@ -11,7 +11,8 @@ const PRICE_UNIT_LABELS: Record<
   string
 > = {
   hour: "hora",
-  day: "día",
+  half_day: "media jornada",
+  day: "jornada",
   project: "proyecto",
 };
 
@@ -32,7 +33,7 @@ export function formatLocationPrice(
     !location.priceCurrency ||
     !location.priceUnit
   ) {
-    return "Precio por consultar";
+    return "Consultar tarifa";
   }
 
   const amount = new Intl.NumberFormat("es-MX", {

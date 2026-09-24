@@ -1,190 +1,97 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import LocationGallery from "@/components/locations/LocationGallery";
+import LocationTourVideo from "@/components/locations/LocationTourVideo";
+import styles from "@/components/locations/locations.module.css";
 import SiteHeader from "@/components/SiteHeader";
 import { PublicDataError } from "@/components/verticals/PublicDataState";
-import {
-  formatLocationMetadataDescription,
-  formatLocationPrice,
-  getLocationEnvironmentLabel,
-} from "@/lib/locations/format";
-import { getPublishedLocation } from "@/lib/locations/public";
+import { LOCATION_BOOLEAN_CHARACTERISTICS, LOCATION_NUMERIC_CHARACTERISTICS, LOCATION_TEXT_CHARACTERISTICS } from "@/lib/locations/characteristics";
+import { LOCATION_CONDITION_GROUPS, LOCATION_CONDITION_LABELS, LOCATION_CONDITIONS_NOTICE } from "@/lib/locations/conditions";
+import { formatLocationMetadataDescription, formatLocationPrice, getLocationEnvironmentLabel } from "@/lib/locations/format";
+import { getPublishedLocation, type PublicLocation, type PublicLocationContact } from "@/lib/locations/public";
 
-type LocationPageProps = {
-  params: Promise<{ slug: string }>;
-};
+type Props = { params: Promise<{ slug: string }> };
 
-export async function generateMetadata({
-  params,
-}: LocationPageProps): Promise<Metadata> {
-  const { slug } = await params;
-  const result = await getPublishedLocation(slug);
-
-  if (result.kind !== "found") {
-    return {
-      title:
-        result.kind === "error"
-          ? "Locación no disponible"
-          : "Locación no encontrada",
-      robots: { index: false, follow: false },
-    };
-  }
-
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const result = await getPublishedLocation((await params).slug);
+  if (result.kind !== "found") return { title: result.kind === "error" ? "Locación no disponible" : "Locación no encontrada", robots: { index: false, follow: false } };
   const { location } = result;
   const description = formatLocationMetadataDescription(location);
   const cover = location.photos[0];
-
-  return {
-    title: location.title,
-    description,
-    openGraph: {
-      title: location.title,
-      description,
-      type: "website",
-      images: cover
-        ? [{ url: cover.imageUrl, alt: cover.altText || location.title }]
-        : undefined,
-    },
-  };
+  return { title: location.title, description, openGraph: { title: location.title, description, type: "website", images: cover ? [{ url: cover.imageUrl, alt: cover.altText || location.title }] : undefined } };
 }
 
-export default async function LocationPage({ params }: LocationPageProps) {
-  const { slug } = await params;
-  const result = await getPublishedLocation(slug);
-
-  if (result.kind === "not-found") {
-    notFound();
-  }
-
-  if (result.kind === "error") {
-    return (
-      <PublicDataError
-        backHref="/locaciones"
-        backLabel="← Todas las locaciones"
-        title="No pudimos cargar esta locación."
-      />
-    );
-  }
-
+export default async function LocationPage({ params }: Props) {
+  const result = await getPublishedLocation((await params).slug);
+  if (result.kind === "not-found") notFound();
+  if (result.kind === "error") return <PublicDataError backHref="/locaciones" backLabel="← Todas las locaciones" title="No pudimos cargar esta locación." />;
   const { location } = result;
   const cover = location.photos[0];
-  const remainingPhotos = location.photos.slice(1);
-  const details = [
-    { label: "Tipo de espacio", value: location.spaceType },
-    {
-      label: "Entorno",
-      value: getLocationEnvironmentLabel(location.environment),
-    },
-    {
-      label: "Zona",
-      value: [location.area, location.city].filter(Boolean).join(", "),
-    },
-    { label: "Precio orientativo", value: formatLocationPrice(location) },
-  ];
+  const characteristics = getCharacteristics(location);
+  const conditionGroups = LOCATION_CONDITION_GROUPS.map((group) => ({
+    ...group,
+    options: group.options.flatMap((option) => {
+      const state = location.shootingConditions[option.key];
+      return state ? [{ ...option, state }] : [];
+    }),
+  })).filter((group) => group.options.length > 0);
 
-  return (
-    <main className="min-h-screen bg-[#080808] text-white">
-      <SiteHeader
-        contextLink={{ href: "/locaciones", label: "← Todas las locaciones" }}
-      />
-
-      <article className="mx-auto max-w-7xl px-6 pb-24 pt-12 lg:px-8 lg:pb-32 lg:pt-16">
-        <div className="relative aspect-[16/9] overflow-hidden rounded-2xl bg-white/[0.04]">
-          {cover ? (
-            <img
-              src={cover.imageUrl}
-              alt={cover.altText || `Vista de ${location.title}`}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm font-semibold uppercase tracking-[0.35em] text-white/15">
-              FILMATTA Locations
-            </div>
-          )}
+  return <main className={styles.page}>
+    <SiteHeader contextLink={{ href: "/locaciones", label: "← Todas las locaciones" }} />
+    <article className={styles.article}>
+      <div className={styles.hero}>{cover ? <img src={cover.imageUrl} alt={cover.altText || `Vista de ${location.title}`} /> : <div className={styles.heroEmpty}>FILMATTA Locations</div>}</div>
+      <header className={styles.identity}>
+        <div>
+          <p className={styles.eyebrow}>{location.spaceType} · {getLocationEnvironmentLabel(location.environment)}</p>
+          <h1>{location.title}</h1>
+          <p className={styles.locationLine}>{location.city}{location.area ? ` · ${location.area}` : ""}</p>
+          {location.summary && <p className={styles.summary}>{location.summary}</p>}
         </div>
+        <aside className={styles.aside}>
+          <div className={styles.availability}>Consultar disponibilidad</div>
+          {location.contact && <a href="#contacto" className={styles.contactButton}>Contactar por esta locación</a>}
+          <p className={styles.asideNote}>La disponibilidad, las fechas y cualquier permiso deben confirmarse directamente con el responsable.</p>
+        </aside>
+      </header>
 
-        <div className="grid gap-14 pt-14 lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-24 lg:pt-20">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
-              {location.spaceType} ·{" "}
-              {getLocationEnvironmentLabel(location.environment)}
-            </p>
-            <h1 className="mt-5 max-w-4xl text-5xl font-semibold tracking-[-0.04em] sm:text-7xl">
-              {location.title}
-            </h1>
-            {location.summary && (
-              <p className="mt-8 max-w-3xl text-xl leading-8 text-white/60 sm:text-2xl sm:leading-9">
-                {location.summary}
-              </p>
-            )}
-            {location.description && (
-              <section className="mt-14 border-t border-white/10 pt-10">
-                <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-white/35">
-                  Sobre la locación
-                </h2>
-                <p className="mt-6 max-w-3xl whitespace-pre-line text-lg leading-8 text-white/60">
-                  {location.description}
-                </p>
-              </section>
-            )}
-            {location.restrictions && (
-              <section className="mt-12 border-t border-white/10 pt-10">
-                <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-white/35">
-                  Restricciones básicas
-                </h2>
-                <p className="mt-5 max-w-3xl whitespace-pre-line leading-7 text-white/55">
-                  {location.restrictions}
-                </p>
-              </section>
-            )}
-          </div>
+      {location.description && <Section title="Descripción"><p className={styles.bodyCopy}>{location.description}</p></Section>}
+      {characteristics.length > 0 && <Section title="Características" description="Datos declarados por el responsable. No constituyen certificación técnica, de aforo, accesibilidad o seguridad."><dl className={styles.characteristicGrid}>{characteristics.map((item) => <div key={item.label} className={styles.characteristic}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></Section>}
+      {location.photos.length > 1 && <Section title="Galería"><LocationGallery photos={location.photos.slice(1)} title={location.title} /></Section>}
+      {location.tourVideoUrl && <Section title="Video recorrido"><LocationTourVideo url={location.tourVideoUrl} title={location.title} /></Section>}
+      {conditionGroups.length > 0 && <Section title="Condiciones de rodaje" description={LOCATION_CONDITIONS_NOTICE}><div className={styles.conditionPublic}>{conditionGroups.map((group) => <section key={group.id} className={styles.conditionGroup}><h3>{group.title} · {group.options.length}</h3><div className={styles.conditionList}>{group.options.map((option) => <div key={option.key} className={styles.conditionItem}><span>{option.label}</span><span className={styles.conditionBadge} data-state={option.state}>{LOCATION_CONDITION_LABELS[option.state]}</span></div>)}</div></section>)}</div></Section>}
+      <Section title="Tarifa y condiciones operativas"><p className={styles.rate}>{formatLocationPrice(location)}</p>{location.restrictions && <p className={styles.operational}>{location.restrictions}</p>}{location.operationalNotes && <p className={styles.operational}>{location.operationalNotes}</p>}<p className={styles.asideNote}>Tarifas, fechas y condiciones se acuerdan directamente con el responsable de la locación.</p></Section>
+      {location.contact && <section id="contacto" className={styles.section}><div className={styles.sectionHeader}><h2>Contacto</h2><p>Canales publicados expresamente para esta locación. FILMATTA no procesa reservas, pagos ni cotizaciones.</p></div><ContactLinks contact={location.contact} /></section>}
+    </article>
+  </main>;
+}
 
-          <aside className="h-fit rounded-2xl border border-white/10 bg-white/[0.025] p-7 lg:sticky lg:top-8">
-            <dl className="space-y-7">
-              {details.map((detail) => (
-                <div key={detail.label}>
-                  <dt className="text-xs uppercase tracking-[0.2em] text-white/30">
-                    {detail.label}
-                  </dt>
-                  <dd className="mt-2 text-base text-white/75">{detail.value}</dd>
-                </div>
-              ))}
-            </dl>
-            <p className="mt-8 border-t border-white/10 pt-6 text-xs leading-5 text-white/30">
-              Información orientativa. La reserva y el pago no se gestionan en
-              FILMATTA en esta etapa.
-            </p>
-          </aside>
-        </div>
+function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+  return <section className={styles.section}><div className={styles.sectionHeader}><h2>{title}</h2>{description && <p>{description}</p>}</div>{children}</section>;
+}
 
-        {remainingPhotos.length > 0 && (
-          <section
-            aria-labelledby="gallery-heading"
-            className="mt-24 border-t border-white/10 pt-14"
-          >
-            <h2
-              id="gallery-heading"
-              className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl"
-            >
-              Más vistas
-            </h2>
-            <div className="mt-9 grid gap-5 md:grid-cols-2">
-              {remainingPhotos.map((photo) => (
-                <div
-                  key={photo.id}
-                  className="aspect-[4/3] overflow-hidden rounded-2xl bg-white/[0.04]"
-                >
-                  <img
-                    src={photo.imageUrl}
-                    alt={photo.altText || `Vista de ${location.title}`}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-      </article>
-    </main>
-  );
+function getCharacteristics(location: PublicLocation) {
+  const result: { label: string; value: string }[] = [];
+  for (const field of LOCATION_NUMERIC_CHARACTERISTICS) {
+    const value = location.characteristics[field.key];
+    if (typeof value === "number") result.push({ label: field.label, value: `${new Intl.NumberFormat("es-MX").format(value)} ${field.unit}` });
+  }
+  for (const field of LOCATION_BOOLEAN_CHARACTERISTICS) {
+    const value = location.characteristics[field.key];
+    if (typeof value === "boolean") result.push({ label: field.label, value: value ? "Sí" : "No" });
+  }
+  for (const field of LOCATION_TEXT_CHARACTERISTICS) {
+    const value = location.characteristics[field.key];
+    if (typeof value === "string") result.push({ label: field.label, value });
+  }
+  return result;
+}
+
+function ContactLinks({ contact }: { contact: PublicLocationContact }) {
+  const links = [
+    contact.email && { label: "Email", href: `mailto:${contact.email}` },
+    contact.phone && { label: "Llamar", href: `tel:${contact.phone.replace(/[^+0-9]/g, "")}` },
+    contact.whatsapp && { label: "WhatsApp", href: `https://wa.me/${contact.whatsapp.replace(/\D/g, "")}` },
+    contact.website && { label: "Sitio web", href: contact.website },
+  ].filter((link): link is { label: string; href: string } => Boolean(link));
+  return <div className={styles.contactGrid}>{links.map((link) => <a key={link.label} href={link.href} className={styles.contactLink} rel={link.href.startsWith("http") ? "noopener noreferrer" : undefined} target={link.href.startsWith("http") ? "_blank" : undefined}>{link.label} →</a>)}</div>;
 }

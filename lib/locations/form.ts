@@ -1,4 +1,7 @@
 import { slugify } from "@/lib/slugify";
+import { parseLocationCharacteristics, type LocationCharacteristics } from "@/lib/locations/characteristics";
+import { parseLocationConditions, type LocationConditions } from "@/lib/locations/conditions";
+import { externalVideo } from "@/lib/profiles/media";
 
 export const LOCATION_ENVIRONMENTS = [
   { value: "interior", label: "Interior" },
@@ -8,7 +11,8 @@ export const LOCATION_ENVIRONMENTS = [
 
 export const LOCATION_PRICE_UNITS = [
   { value: "hour", label: "Por hora" },
-  { value: "day", label: "Por día" },
+  { value: "half_day", label: "Media jornada" },
+  { value: "day", label: "Por jornada" },
   { value: "project", label: "Por proyecto" },
 ] as const;
 
@@ -32,6 +36,10 @@ export type LocationFormValues = {
   price_currency: string | null;
   price_unit: LocationPriceUnit | null;
   restrictions: string | null;
+  characteristics: LocationCharacteristics;
+  shooting_conditions: LocationConditions;
+  tour_video_url: string | null;
+  operational_notes: string | null;
 };
 
 export type LocationFormError =
@@ -48,6 +56,10 @@ export type LocationFormError =
   | "invalid-currency"
   | "invalid-price-unit"
   | "invalid-restrictions"
+  | "invalid-characteristics"
+  | "invalid-video"
+  | "invalid-operational-notes"
+  | "invalid-contact"
   | "invalid-action"
   | "slug-taken"
   | "not-found"
@@ -82,6 +94,11 @@ const LOCATION_ERROR_MESSAGES: Record<LocationFormError, string> = {
   "invalid-price-unit": "Selecciona una unidad de tarifa válida.",
   "invalid-restrictions":
     "Las restricciones y notas no pueden superar 10,000 caracteres.",
+  "invalid-characteristics": "Revisa los valores de características.",
+  "invalid-video": "Usa un enlace válido de YouTube o Vimeo.",
+  "invalid-operational-notes":
+    "Las condiciones operativas no pueden superar 5,000 caracteres.",
+  "invalid-contact": "Revisa los canales públicos de contacto.",
   "invalid-action": "La acción solicitada no es válida.",
   "slug-taken": "Ese slug ya está en uso. Prueba con otro.",
   "not-found": "La locación no existe o no pertenece a tu cuenta.",
@@ -158,6 +175,22 @@ export function parseLocationFormData(
     return priceResult;
   }
 
+  const characteristics = parseLocationCharacteristics(formData);
+  if (!characteristics.ok) {
+    return { ok: false, error: "invalid-characteristics" };
+  }
+
+  const videoInput = getOptionalText(formData, "tour_video_url");
+  const video = videoInput ? externalVideo(videoInput) : null;
+  if (videoInput && !video) {
+    return { ok: false, error: "invalid-video" };
+  }
+
+  const operationalNotes = getOptionalText(formData, "operational_notes");
+  if (operationalNotes && operationalNotes.length > 5_000) {
+    return { ok: false, error: "invalid-operational-notes" };
+  }
+
   return {
     ok: true,
     values: {
@@ -173,6 +206,10 @@ export function parseLocationFormData(
       price_currency: priceResult.priceCurrency,
       price_unit: priceResult.priceUnit,
       restrictions,
+      characteristics: characteristics.value,
+      shooting_conditions: parseLocationConditions(formData),
+      tour_video_url: video?.url ?? null,
+      operational_notes: operationalNotes,
     },
   };
 }
@@ -207,6 +244,10 @@ export function getLocationDatabaseError(
 
   if (message.includes("locations_slug_check")) {
     return "invalid-slug";
+  }
+
+  if (message.includes("locations_beta_v1")) {
+    return "save-failed";
   }
 
   return "save-failed";

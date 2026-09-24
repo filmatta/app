@@ -59,11 +59,13 @@ function clientFixture(data = [], error = null) {
     },
   };
 }
-test("location filters and stable pagination run on the server before photos", async () => {
+test("location filters and stable pagination use the explicit public projection", async () => {
   const f = clientFixture();
   const mod = load("lib/locations/public.ts", {
     react: { cache: (fn) => fn },
     "@/lib/catalogs/filters": filters,
+    "@/lib/locations/characteristics": load("lib/locations/characteristics.ts"),
+    "@/lib/locations/conditions": load("lib/locations/conditions.ts"),
     "@/lib/supabase/server": { createClient: async () => f.client },
   });
   const result = await mod.getPublishedLocations(
@@ -74,22 +76,12 @@ test("location filters and stable pagination run on the server before photos", a
     }),
   );
   assert.equal(result.ok, true);
-  assert.ok(
-    f.calls.some(
-      (c) => c[0] === "eq" && c[1] === "status" && c[2] === "published",
-    ),
-  );
-  assert.ok(f.calls.some((c) => c[0] === "ilike" && c[2] === "%100\\%%"));
-  assert.ok(
-    f.calls.some((c) => c[0] === "range" && c[1] === 24 && c[2] === 48),
-  );
-  assert.equal(
-    f.calls
-      .filter((c) => c[0] === "order")
-      .map((c) => c[1])
-      .join(","),
-    "published_at,id",
-  );
+  const call = f.calls.find((c) => c[0] === "rpc");
+  assert.equal(call[1], "list_public_locations");
+  assert.equal(call[2].p_city, "100%");
+  assert.equal(call[2].p_environment, "interior");
+  assert.equal(call[2].p_offset, 24);
+  assert.equal(call[2].p_limit, 25);
 });
 test("opportunity pagination excludes unpublished projects before the range", async () => {
   const f = clientFixture();

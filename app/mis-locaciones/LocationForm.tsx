@@ -1,4 +1,9 @@
 import Link from "next/link";
+import LocationCharacteristicsEditor from "@/components/locations/LocationCharacteristicsEditor";
+import LocationConditionsEditor from "@/components/locations/LocationConditionsEditor";
+import styles from "@/components/locations/locations.module.css";
+import type { LocationCharacteristics } from "@/lib/locations/characteristics";
+import { LOCATION_CONDITIONS_NOTICE, type LocationConditions } from "@/lib/locations/conditions";
 import {
   LOCATION_ENVIRONMENTS,
   LOCATION_PRICE_UNITS,
@@ -8,6 +13,7 @@ import {
 } from "@/lib/locations/form";
 import LocationFormButtons from "./LocationFormButtons";
 import LocationIdentityFields from "./LocationIdentityFields";
+import LocationFormShell from "./LocationFormShell";
 
 export type EditableLocation = {
   title: string;
@@ -22,20 +28,38 @@ export type EditableLocation = {
   price_currency: string | null;
   price_unit: LocationPriceUnit | null;
   restrictions: string | null;
+  characteristics: LocationCharacteristics;
+  shooting_conditions: LocationConditions;
+  tour_video_url: string | null;
+  operational_notes: string | null;
   status: LocationStatus;
 };
+
+export type EditableLocationContact = {
+  email: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  website: string | null;
+  is_public: boolean;
+};
+
+export type EditableLocationPhoto = { id: string; image_url: string; alt_text: string | null };
 
 export default function LocationForm({
   action,
   mode,
   location,
+  contact,
+  photos = [],
 }: {
   action: (formData: FormData) => void | Promise<void>;
   mode: "create" | "edit";
   location?: EditableLocation;
+  contact?: EditableLocationContact | null;
+  photos?: EditableLocationPhoto[];
 }) {
   return (
-    <form action={action} className="mt-12 space-y-12">
+    <LocationFormShell action={action} storageKey={`filmatta:location-form:${mode}:${location?.slug ?? "new"}`}>
       <section aria-labelledby="location-basic-heading" className="space-y-7">
         <div className="border-b border-white/10 pb-4">
           <h2 id="location-basic-heading" className="text-xl font-semibold">
@@ -215,6 +239,60 @@ export default function LocationForm({
             placeholder="Horarios, ruido, acceso de vehículos, humo u otras condiciones."
           />
         </Field>
+        <Field label="Tarifa y condiciones operativas">
+          <textarea
+            name="operational_notes"
+            defaultValue={location?.operational_notes ?? ""}
+            maxLength={5_000}
+            rows={6}
+            className={inputClass}
+            placeholder="Contratación mínima, horas extra, visita técnica, depósito, seguro, contrato, identificación o limpieza."
+          />
+        </Field>
+      </section>
+
+      <section aria-labelledby="location-characteristics-heading" className="space-y-7">
+        <SectionHeading id="location-characteristics-heading" title="Características" description="Declara únicamente lo que existe en el espacio. Deja vacío lo que no conozcas; una capacidad indicada no representa un aforo certificado." />
+        <LocationCharacteristicsEditor value={location?.characteristics} />
+      </section>
+
+      <section aria-labelledby="location-gallery-heading" className="space-y-7">
+        <SectionHeading id="location-gallery-heading" title="Portada y galería" description="La primera foto publicada y ordenada funciona como portada; no se duplica el archivo." />
+        {photos.length > 0 ? (
+          <div className={styles.ownerGallery}>
+            {photos.map((photo, index) => <div key={photo.id} className={styles.ownerPhoto}><img src={photo.image_url} alt={photo.alt_text || `Foto ${index + 1}`} loading="lazy" /></div>)}
+          </div>
+        ) : (
+          <div className={styles.ownerPlaceholder}>Aún no hay fotos. La subida segura y el orden de imágenes siguen pendientes para Locaciones; no se creó un flujo sin límites ni validación.</div>
+        )}
+      </section>
+
+      <section aria-labelledby="location-video-heading" className="space-y-7">
+        <SectionHeading id="location-video-heading" title="Video recorrido" description="Una sola pieza por locación. Reemplazar el enlace cambia el recorrido; dejarlo vacío lo elimina." />
+        <Field label="Agregar enlace de recorrido">
+          <input name="tour_video_url" type="url" maxLength={500} defaultValue={location?.tour_video_url ?? ""} className={inputClass} placeholder="https://www.youtube.com/watch?v=…" />
+        </Field>
+        <p className="text-xs leading-5 text-white/45">Se aceptan enlaces HTTPS de YouTube o Vimeo. No se admite HTML ni un iframe pegado.</p>
+      </section>
+
+      <section aria-labelledby="location-conditions-heading" className="space-y-7">
+        <SectionHeading id="location-conditions-heading" title="Condiciones de rodaje" description={LOCATION_CONDITIONS_NOTICE} />
+        <LocationConditionsEditor initialValue={location?.shooting_conditions} />
+        <p className={styles.contactDisclosure}>Las condiciones que especifiques se mostrarán en la ficha pública cuando publiques la locación.</p>
+      </section>
+
+      <section aria-labelledby="location-contact-heading" className="space-y-7">
+        <SectionHeading id="location-contact-heading" title="Contacto" description="Añade canales específicos para esta locación. Nunca se completan automáticamente desde tu cuenta o perfil." />
+        <div className="grid gap-6 sm:grid-cols-2">
+          <Field label="Email de la locación"><input name="contact_email" type="email" maxLength={254} defaultValue={contact?.email ?? ""} className={inputClass} placeholder="locacion@ejemplo.com" /></Field>
+          <Field label="Teléfono"><input name="contact_phone" type="tel" maxLength={40} defaultValue={contact?.phone ?? ""} className={inputClass} placeholder="+52 55 0000 0000" /></Field>
+          <Field label="WhatsApp"><input name="contact_whatsapp" inputMode="tel" maxLength={20} defaultValue={contact?.whatsapp ?? ""} className={inputClass} placeholder="+525500000000" /></Field>
+          <Field label="Sitio web"><input name="contact_website" type="url" maxLength={500} defaultValue={contact?.website ?? ""} className={inputClass} placeholder="https://…" /></Field>
+        </div>
+        <label className={styles.contactDisclosure}>
+          <input type="checkbox" name="contact_is_public" value="yes" defaultChecked={contact?.is_public ?? false} className="mr-3" />
+          Mostrar estos canales en la ficha pública. Cualquier visitante podrá verlos y usarlos para contactar directamente.
+        </label>
       </section>
 
       <div className="flex flex-col justify-between gap-5 border-t border-white/10 pt-8 md:flex-row md:items-center">
@@ -233,7 +311,7 @@ export default function LocationForm({
           Cancelar
         </Link>
       </div>
-    </form>
+    </LocationFormShell>
   );
 }
 
@@ -256,4 +334,8 @@ function Field({
       {children}
     </label>
   );
+}
+
+function SectionHeading({ id, title, description }: { id: string; title: string; description: string }) {
+  return <div className="border-b border-white/10 pb-4"><h2 id={id} className="text-xl font-semibold">{title}</h2><p className="mt-2 text-sm leading-6 text-white/50">{description}</p></div>;
 }
