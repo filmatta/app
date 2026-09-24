@@ -12,10 +12,11 @@ import { createClient } from "@/lib/supabase/server";
 import { normalizeLocationCharacteristics } from "@/lib/locations/characteristics";
 import { normalizeLocationConditions } from "@/lib/locations/conditions";
 import { normalizeLocationRateMode, normalizeLocationRateTiers } from "@/lib/locations/pricing";
-import { archiveLocation, updateLocation } from "../../actions";
+import { archiveLocation, updateLocationSection, updateLocationStatus, type LocationEditorSection } from "../../actions";
 import ArchiveLocationButton from "../../ArchiveLocationButton";
 import LocationFeedback from "../../LocationFeedback";
-import LocationForm, { type EditableLocation, type EditableLocationContact } from "../../LocationForm";
+import type { EditableLocationContact } from "../../LocationForm";
+import LocationOwnerEditor, { type OwnerEditableLocation } from "../../LocationOwnerEditor";
 import type { OwnerLocationPhoto } from "@/components/locations/LocationPhotoManager";
 import type { OwnerLocationTour, LocationTourStatus } from "@/lib/locations/tour-types";
 import { locationCameraRecordingEnabled } from "@/lib/locations/camera-pilot";
@@ -28,8 +29,7 @@ export const metadata: Metadata = {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-type LocationRow = EditableLocation & {
-  id: string;
+type LocationRow = OwnerEditableLocation & {
   environment: LocationEnvironment;
   price_unit: LocationPriceUnit | null;
   status: LocationStatus;
@@ -40,7 +40,7 @@ export default async function EditLocationPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; success?: string }>;
+  searchParams: Promise<{ error?: string; success?: string; section?: string }>;
 }) {
   const [{ id }, feedback, viewer] = await Promise.all([
     params,
@@ -62,7 +62,7 @@ export default async function EditLocationPage({
   const { data, error } = await supabase
     .from("locations")
     .select(
-      "id, title, slug, summary, description, city, area, space_type, environment, price_amount, price_currency, price_unit, rate_mode, rate_tiers, minimum_hours, restrictions, characteristics, shooting_conditions, tour_video_url, active_tour_attempt_id, operational_notes, status"
+      "id, title, slug, summary, description, city, area, space_type, environment, price_amount, price_currency, price_unit, rate_mode, rate_tiers, minimum_hours, restrictions, characteristics, shooting_conditions, tour_video_url, active_tour_attempt_id, operational_notes, status, country_code, region_code, region_name, municipality_code, municipality_name, locality_code, geography_source"
     )
     .eq("id", id)
     .eq("owner_id", viewer.id)
@@ -113,8 +113,10 @@ export default async function EditLocationPage({
     durationSeconds: selectedTour.duration_seconds,
     isActive: selectedTour.id === raw.active_tour_attempt_id && selectedTour.status === "ready",
   } : null;
-  const updateAction = updateLocation.bind(null, location.id);
   const archiveAction = archiveLocation.bind(null, location.id);
+  const statusAction = updateLocationStatus.bind(null, location.id);
+  const sections: LocationEditorSection[] = ["identity", "location", "pricing", "description", "characteristics", "conditions", "notes", "contact"];
+  const sectionActions = Object.fromEntries(sections.map((section) => [section, updateLocationSection.bind(null, location.id, section)])) as Record<LocationEditorSection, (formData: FormData) => Promise<void>>;
 
   return (
     <main className="min-h-screen bg-[#080808] text-white">
@@ -152,20 +154,16 @@ export default async function EditLocationPage({
                 : "Borrador"}
           </span>
         </div>
-        <h1 className="mt-5 [overflow-wrap:anywhere] text-5xl font-semibold tracking-[-0.04em] sm:text-6xl">
-          {location.title}
-        </h1>
-
         <LocationFeedback error={feedback.error} success={feedback.success} />
-        <LocationForm
-          action={updateAction}
-          mode="edit"
-          location={location}
+        <LocationOwnerEditor
+          location={location as OwnerEditableLocation}
           contact={contact}
           photos={photos}
-          locationId={location.id}
           tour={tour}
           cameraRecordingEnabled={locationCameraRecordingEnabled()}
+          activeSection={feedback.section}
+          actions={sectionActions}
+          statusAction={statusAction}
         />
 
         {location.status !== "archived" && (

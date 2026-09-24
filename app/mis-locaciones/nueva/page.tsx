@@ -5,8 +5,7 @@ import SiteHeader from "@/components/SiteHeader";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { createLocation } from "../actions";
 import LocationFeedback from "../LocationFeedback";
-import LocationForm from "../LocationForm";
-import { locationCameraRecordingEnabled } from "@/lib/locations/camera-pilot";
+import NewLocationWizard from "./NewLocationWizard";
 
 export const metadata: Metadata = {
   title: "Nueva locación",
@@ -29,7 +28,7 @@ export default async function NewLocationPage({
         contextLink={{ href: "/mis-locaciones", label: "← Mis locaciones" }}
       />
 
-      <section className="mx-auto max-w-5xl px-6 py-16 lg:py-20">
+      <section className="mx-auto max-w-3xl px-6 py-16 lg:py-20">
         <Link
           href="/mis-locaciones"
           className="inline-flex rounded-full border border-white/10 px-4 py-2 text-sm text-white/50 transition hover:border-white/20 hover:bg-white/[0.03] hover:text-white"
@@ -43,16 +42,12 @@ export default async function NewLocationPage({
           Nueva locación
         </h1>
         <p className="mt-5 max-w-2xl leading-7 text-white/45">
-          Guarda un borrador o publica directamente. Podrás cambiar el estado
-          después.
+          Tres pasos breves para crear el borrador. Después completarás fotos,
+          descripción, condiciones y contacto sobre tu propia ficha.
         </p>
 
         <LocationFeedback error={params.error} />
-        <LocationForm
-          action={createLocation}
-          mode="create"
-          cameraRecordingEnabled={locationCameraRecordingEnabled()}
-        />
+        <NewLocationWizard action={createLocation} />
       </section>
     </main>
   );

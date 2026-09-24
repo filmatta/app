@@ -56,6 +56,8 @@ export type LocationFormError =
   | "invalid-description"
   | "invalid-city"
   | "invalid-area"
+  | "invalid-geography"
+  | "geography-unavailable"
   | "invalid-space-type"
   | "invalid-environment"
   | "incomplete-price"
@@ -92,6 +94,8 @@ const LOCATION_ERROR_MESSAGES: Record<LocationFormError, string> = {
   "invalid-description": "La descripción no puede superar 20,000 caracteres.",
   "invalid-city": "Escribe una ciudad de entre 1 y 120 caracteres.",
   "invalid-area": "La zona no puede superar 120 caracteres.",
+  "invalid-geography": "Selecciona un país, estado, municipio y localidad válidos.",
+  "geography-unavailable": "No pudimos validar el catálogo geográfico. Inténtalo de nuevo.",
   "invalid-space-type":
     "Escribe un tipo de espacio de entre 1 y 120 caracteres.",
   "invalid-environment": "Selecciona un tipo de entorno válido.",
