@@ -11,6 +11,7 @@ import type {
 import { createClient } from "@/lib/supabase/server";
 import { normalizeLocationCharacteristics } from "@/lib/locations/characteristics";
 import { normalizeLocationConditions } from "@/lib/locations/conditions";
+import { normalizeLocationRateMode, normalizeLocationRateTiers } from "@/lib/locations/pricing";
 import { archiveLocation, updateLocation } from "../../actions";
 import ArchiveLocationButton from "../../ArchiveLocationButton";
 import LocationFeedback from "../../LocationFeedback";
@@ -59,7 +60,7 @@ export default async function EditLocationPage({
   const { data, error } = await supabase
     .from("locations")
     .select(
-      "id, title, slug, summary, description, city, area, space_type, environment, price_amount, price_currency, price_unit, restrictions, characteristics, shooting_conditions, tour_video_url, operational_notes, status"
+      "id, title, slug, summary, description, city, area, space_type, environment, price_amount, price_currency, price_unit, rate_mode, rate_tiers, minimum_hours, restrictions, characteristics, shooting_conditions, tour_video_url, operational_notes, status"
     )
     .eq("id", id)
     .eq("owner_id", viewer.id)
@@ -89,8 +90,8 @@ export default async function EditLocationPage({
     return <PrivateLocationLoadError message="No pudimos cargar el contenido de esta locación. Inténtalo de nuevo." />;
   }
 
-  const raw = data as LocationRow & { characteristics: unknown; shooting_conditions: unknown };
-  const location = { ...raw, characteristics: normalizeLocationCharacteristics(raw.characteristics), shooting_conditions: normalizeLocationConditions(raw.shooting_conditions) };
+  const raw = data as LocationRow & { characteristics: unknown; shooting_conditions: unknown; rate_mode: unknown; rate_tiers: unknown };
+  const location = { ...raw, rate_mode: normalizeLocationRateMode(raw.rate_mode), rate_tiers: normalizeLocationRateTiers(raw.rate_tiers), characteristics: normalizeLocationCharacteristics(raw.characteristics), shooting_conditions: normalizeLocationConditions(raw.shooting_conditions) };
   const contact = (contactResult.data as EditableLocationContact | null) ?? null;
   const photos = ((photosResult.data ?? []) as { id: string; image_url: string | null; storage_path: string | null; alt_text: string | null; is_cover: boolean; lifecycle_status: OwnerLocationPhoto["lifecycle"] }[]).map((photo) => ({
     id: photo.id,

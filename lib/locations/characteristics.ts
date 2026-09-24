@@ -25,13 +25,25 @@ export type LocationCharacteristics = Record<string, number | boolean | string>;
 
 export function parseLocationCharacteristics(
   formData: FormData,
+  existing: LocationCharacteristics = {},
 ): { ok: true; value: LocationCharacteristics } | { ok: false } {
   const value: LocationCharacteristics = {};
   for (const field of LOCATION_NUMERIC_CHARACTERISTICS) {
     const raw = String(formData.get(`characteristic.${field.key}`) ?? "").trim();
-    if (!raw) continue;
+    if (!raw) {
+      const historical = existing[field.key];
+      if (
+        field.key === "declared_capacity" &&
+        typeof historical === "number" &&
+        (!Number.isInteger(historical) || historical < 1)
+      ) value[field.key] = historical;
+      continue;
+    }
     const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed < 0 || parsed > field.max) return { ok: false };
+    if (
+      !Number.isFinite(parsed) || parsed < 0 || parsed > field.max ||
+      (field.key === "declared_capacity" && (!Number.isInteger(parsed) || parsed < 1))
+    ) return { ok: false };
     value[field.key] = parsed;
   }
   for (const field of LOCATION_BOOLEAN_CHARACTERISTICS) {

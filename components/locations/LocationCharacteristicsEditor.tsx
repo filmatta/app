@@ -10,7 +10,7 @@ export default function LocationCharacteristicsEditor({ value = {} }: { value?: 
   return (
     <div className={styles.editorStack}>
       <div className={styles.editorGrid}>
-        {LOCATION_NUMERIC_CHARACTERISTICS.map((field) => {
+        {LOCATION_NUMERIC_CHARACTERISTICS.filter((field) => field.key !== "declared_capacity").map((field) => {
           const current = value[field.key];
           return <label key={field.key} className={styles.editorField}>
             <span>{field.label} <small>({field.unit})</small></span>

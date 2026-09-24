@@ -12,6 +12,7 @@ import {
   type LocationPriceUnit,
   type LocationStatus,
 } from "@/lib/locations/form";
+import type { LocationRateMode, LocationRateTier } from "@/lib/locations/pricing";
 import { createClient } from "@/lib/supabase/server";
 import LocationFeedback from "./LocationFeedback";
 
@@ -30,6 +31,8 @@ type LocationRow = {
   price_amount: number | null;
   price_currency: string | null;
   price_unit: LocationPriceUnit | null;
+  rate_mode: LocationRateMode;
+  rate_tiers: LocationRateTier[];
   status: LocationStatus;
   updated_at: string;
 };
@@ -48,7 +51,7 @@ export default async function MyLocationsPage({
   const { data, error } = await supabase
     .from("locations")
     .select(
-      "id, title, slug, city, area, space_type, price_amount, price_currency, price_unit, status, updated_at"
+      "id, title, slug, city, area, space_type, price_amount, price_currency, price_unit, rate_mode, rate_tiers, status, updated_at"
     )
     .eq("owner_id", viewer.id)
     .order("updated_at", { ascending: false })
@@ -137,6 +140,8 @@ function LocationListItem({ location }: { location: LocationRow }) {
     priceAmount: location.price_amount,
     priceCurrency: location.price_currency,
     priceUnit: location.price_unit,
+    rateMode: location.rate_mode,
+    rateTiers: location.rate_tiers,
   });
 
   return (

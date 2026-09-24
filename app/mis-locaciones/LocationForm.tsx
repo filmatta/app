@@ -2,16 +2,18 @@ import Link from "next/link";
 import LocationCharacteristicsEditor from "@/components/locations/LocationCharacteristicsEditor";
 import LocationConditionsEditor from "@/components/locations/LocationConditionsEditor";
 import LocationPhotoManager, { type OwnerLocationPhoto } from "@/components/locations/LocationPhotoManager";
+import LocationPricingEditor from "@/components/locations/LocationPricingEditor";
 import styles from "@/components/locations/locations.module.css";
 import type { LocationCharacteristics } from "@/lib/locations/characteristics";
 import { LOCATION_CONDITIONS_NOTICE, type LocationConditions } from "@/lib/locations/conditions";
 import {
   LOCATION_ENVIRONMENTS,
-  LOCATION_PRICE_UNITS,
   type LocationEnvironment,
   type LocationPriceUnit,
   type LocationStatus,
 } from "@/lib/locations/form";
+import { formatLegacyLocationPrice } from "@/lib/locations/format";
+import type { LocationRateMode, LocationRateTier } from "@/lib/locations/pricing";
 import LocationFormButtons from "./LocationFormButtons";
 import LocationIdentityFields from "./LocationIdentityFields";
 import LocationFormShell from "./LocationFormShell";
@@ -28,6 +30,9 @@ export type EditableLocation = {
   price_amount: number | string | null;
   price_currency: string | null;
   price_unit: LocationPriceUnit | null;
+  rate_mode: LocationRateMode;
+  rate_tiers: LocationRateTier[];
+  minimum_hours: number | string | null;
   restrictions: string | null;
   characteristics: LocationCharacteristics;
   shooting_conditions: LocationConditions;
@@ -171,6 +176,17 @@ export default function LocationForm({
         <LocationCharacteristicsEditor value={location?.characteristics} />
       </section>
 
+      <section aria-labelledby="location-price-heading" className="space-y-7">
+        <SectionHeading id="location-price-heading" title="Capacidad y tarifas por asistentes" description="La capacidad incluye a todas las personas presentes. Cada importe es el precio total por hora para ese rango; no se multiplica por asistente." />
+        <LocationPricingEditor
+          initialCapacity={typeof location?.characteristics.declared_capacity === "number" ? location.characteristics.declared_capacity : null}
+          initialMode={location?.rate_mode ?? "inquire"}
+          initialTiers={location?.rate_tiers ?? []}
+          initialMinimumHours={location?.minimum_hours === null || location?.minimum_hours === undefined ? null : Number(location.minimum_hours)}
+          legacyPrice={location ? formatLegacyLocationPrice({ priceAmount: numberOrNull(location.price_amount), priceCurrency: location.price_currency, priceUnit: location.price_unit }) : null}
+        />
+      </section>
+
       <section aria-labelledby="location-gallery-heading" className="space-y-7">
         <SectionHeading id="location-gallery-heading" title="Portada y galería" description="La primera foto publicada y ordenada funciona como portada; no se duplica el archivo." />
         {locationId ? <LocationPhotoManager locationId={locationId} photos={photos} />
@@ -189,15 +205,6 @@ export default function LocationForm({
         <SectionHeading id="location-conditions-heading" title="Condiciones de rodaje" description={LOCATION_CONDITIONS_NOTICE} />
         <LocationConditionsEditor initialValue={location?.shooting_conditions} />
         <p className={styles.contactDisclosure}>Las condiciones que especifiques se mostrarán en la ficha pública cuando publiques la locación.</p>
-      </section>
-
-      <section aria-labelledby="location-price-heading" className="space-y-7">
-        <SectionHeading id="location-price-heading" title="Tarifa orientativa" description="Completa los tres campos o déjalos vacíos. FILMATTA no gestiona el pago en esta etapa." />
-        <div className="grid gap-6 sm:grid-cols-3">
-          <Field label="Importe"><input name="price_amount" type="number" inputMode="decimal" min="0" max="9999999999.99" step="0.01" defaultValue={location?.price_amount ?? ""} className={inputClass} placeholder="5000" /></Field>
-          <Field label="Moneda"><input name="price_currency" maxLength={3} defaultValue={location?.price_currency ?? ""} className={`${inputClass} uppercase`} placeholder="MXN" autoComplete="off" /></Field>
-          <Field label="Unidad"><select name="price_unit" defaultValue={location?.price_unit ?? ""} className={selectClass}><option value="">Seleccionar</option>{LOCATION_PRICE_UNITS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
-        </div>
       </section>
 
       <section aria-labelledby="location-notes-heading" className="space-y-7">
@@ -261,4 +268,10 @@ function Field({
 
 function SectionHeading({ id, title, description }: { id: string; title: string; description: string }) {
   return <div className="border-b border-white/10 pb-4"><h2 id={id} className="text-xl font-semibold">{title}</h2><p className="mt-2 text-sm leading-6 text-white/50">{description}</p></div>;
+}
+
+function numberOrNull(value: number | string | null) {
+  if (value === null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }

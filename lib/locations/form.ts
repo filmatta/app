@@ -2,6 +2,11 @@ import { slugify } from "@/lib/slugify";
 import { parseLocationCharacteristics, type LocationCharacteristics } from "@/lib/locations/characteristics";
 import { parseLocationConditions, type LocationConditions } from "@/lib/locations/conditions";
 import { externalVideo } from "@/lib/profiles/media";
+import {
+  parseLocationPricingForm,
+  type LocationRateMode,
+  type LocationRateTier,
+} from "@/lib/locations/pricing";
 
 export const LOCATION_ENVIRONMENTS = [
   { value: "interior", label: "Interior" },
@@ -35,6 +40,9 @@ export type LocationFormValues = {
   price_amount: number | null;
   price_currency: string | null;
   price_unit: LocationPriceUnit | null;
+  rate_mode: LocationRateMode;
+  rate_tiers: LocationRateTier[];
+  minimum_hours: number | null;
   restrictions: string | null;
   characteristics: LocationCharacteristics;
   shooting_conditions: LocationConditions;
@@ -55,6 +63,8 @@ export type LocationFormError =
   | "invalid-price"
   | "invalid-currency"
   | "invalid-price-unit"
+  | "invalid-pricing"
+  | "incomplete-pricing"
   | "invalid-restrictions"
   | "invalid-characteristics"
   | "invalid-video"
@@ -92,6 +102,8 @@ const LOCATION_ERROR_MESSAGES: Record<LocationFormError, string> = {
     "La tarifa debe ser un número válido, no negativo y con hasta dos decimales.",
   "invalid-currency": "Usa un código de moneda de tres letras, por ejemplo MXN.",
   "invalid-price-unit": "Selecciona una unidad de tarifa válida.",
+  "invalid-pricing": "Revisa la capacidad y los rangos: deben ser enteros, consecutivos y terminar en la capacidad máxima.",
+  "incomplete-pricing": "Completa la tarifa total por hora de cada rango, incluso cuando el importe sea cero.",
   "invalid-restrictions":
     "Las restricciones y notas no pueden superar 10,000 caracteres.",
   "invalid-characteristics": "Revisa los valores de características.",
@@ -121,7 +133,8 @@ const PRICE_PATTERN = /^\d+(?:\.\d{1,2})?$/;
 const MAX_PRICE = 9_999_999_999.99;
 
 export function parseLocationFormData(
-  formData: FormData
+  formData: FormData,
+  existing?: Pick<LocationFormValues, "price_amount" | "price_currency" | "price_unit" | "rate_mode" | "characteristics">,
 ):
   | { ok: true; values: LocationFormValues }
   | { ok: false; error: LocationFormError } {
@@ -170,15 +183,27 @@ export function parseLocationFormData(
     return { ok: false, error: "invalid-restrictions" };
   }
 
-  const priceResult = parsePrice(formData);
+  const priceResult = existing ? {
+    ok: true as const,
+    priceAmount: existing.price_amount,
+    priceCurrency: existing.price_currency,
+    priceUnit: existing.price_unit,
+  } : parsePrice(formData);
   if (!priceResult.ok) {
     return priceResult;
   }
 
-  const characteristics = parseLocationCharacteristics(formData);
+  const characteristics = parseLocationCharacteristics(formData, existing?.characteristics);
   if (!characteristics.ok) {
     return { ok: false, error: "invalid-characteristics" };
   }
+  const rawCapacity = characteristics.value.declared_capacity;
+  const pricing = parseLocationPricingForm(
+    formData,
+    typeof rawCapacity === "number" ? rawCapacity : null,
+    existing?.rate_mode === "legacy",
+  );
+  if (!pricing.ok) return pricing;
 
   const videoInput = getOptionalText(formData, "tour_video_url");
   const video = videoInput ? externalVideo(videoInput) : null;
@@ -205,6 +230,9 @@ export function parseLocationFormData(
       price_amount: priceResult.priceAmount,
       price_currency: priceResult.priceCurrency,
       price_unit: priceResult.priceUnit,
+      rate_mode: pricing.value.rateMode,
+      rate_tiers: pricing.value.rateTiers,
+      minimum_hours: pricing.value.minimumHours,
       restrictions,
       characteristics: characteristics.value,
       shooting_conditions: parseLocationConditions(formData),
@@ -244,6 +272,10 @@ export function getLocationDatabaseError(
 
   if (message.includes("locations_slug_check")) {
     return "invalid-slug";
+  }
+
+  if (message.includes("locations_attendee_pricing_check") || message.includes("locations_minimum_hours_check")) {
+    return "invalid-pricing";
   }
 
   if (message.includes("locations_beta_v1")) {

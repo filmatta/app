@@ -3,12 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 import { catalogErrorKind, PAGE_SIZE, parseCatalogFilters, type CatalogFilters } from "@/lib/catalogs/filters";
 import { normalizeLocationCharacteristics, type LocationCharacteristics } from "@/lib/locations/characteristics";
 import { normalizeLocationConditions, type LocationConditions } from "@/lib/locations/conditions";
+import { normalizeLocationRateMode, normalizeLocationRateTiers, type LocationRateMode, type LocationRateTier } from "@/lib/locations/pricing";
 
 export type PublicLocationPhoto = { id: string; imageUrl: string; altText: string | null };
 export type PublicLocation = {
   id: string; title: string; slug: string; summary: string | null; description: string | null;
   city: string; area: string | null; spaceType: string; environment: "interior" | "exterior" | "both";
   priceAmount: number | null; priceCurrency: string | null; priceUnit: "hour" | "half_day" | "day" | "project" | null;
+  rateMode: LocationRateMode; rateTiers: LocationRateTier[]; minimumHours: number | null;
   restrictions: string | null; characteristics: LocationCharacteristics; shootingConditions: LocationConditions;
   tourVideoUrl: string | null; operationalNotes: string | null; publishedAt: string;
   photos: PublicLocationPhoto[]; contactAvailable: boolean;
@@ -21,6 +23,7 @@ type PublicRow = {
   id: string; title: string; slug: string; summary: string | null; description?: string | null;
   city: string; area: string | null; space_type: string; environment: PublicLocation["environment"];
   price_amount: number | null; price_currency: string | null; price_unit: PublicLocation["priceUnit"];
+  rate_mode?: unknown; rate_tiers?: unknown; minimum_hours?: number | null;
   restrictions?: string | null; characteristics?: unknown; shooting_conditions?: unknown;
   tour_video_url?: string | null; operational_notes?: string | null; published_at: string;
   photos?: unknown; contact_available?: boolean;
@@ -42,7 +45,10 @@ function mapSummary(row: PublicRow): PublicLocationSummary {
   return {
     id: row.id, title: row.title, slug: row.slug, summary: row.summary, city: row.city, area: row.area,
     spaceType: row.space_type, environment: row.environment, priceAmount: row.price_amount,
-    priceCurrency: row.price_currency, priceUnit: row.price_unit, publishedAt: row.published_at,
+    priceCurrency: row.price_currency, priceUnit: row.price_unit,
+    rateMode: normalizeLocationRateMode(row.rate_mode), rateTiers: normalizeLocationRateTiers(row.rate_tiers),
+    minimumHours: typeof row.minimum_hours === "number" && Number.isFinite(row.minimum_hours) ? row.minimum_hours : null,
+    publishedAt: row.published_at,
     photos: mapPhotos(row.photos),
   };
 }

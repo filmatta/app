@@ -19,6 +19,11 @@ type ExistingLocation = {
   id: string;
   slug: string;
   status: LocationStatus;
+  price_amount: number | null;
+  price_currency: string | null;
+  price_unit: import("@/lib/locations/form").LocationPriceUnit | null;
+  rate_mode: import("@/lib/locations/pricing").LocationRateMode;
+  characteristics: import("@/lib/locations/characteristics").LocationCharacteristics;
 };
 
 export async function createLocation(formData: FormData) {
@@ -81,7 +86,7 @@ export async function updateLocation(locationId: string, formData: FormData) {
     redirect(locationsErrorFeedback("not-found"));
   }
 
-  const parsed = parseLocationFormData(formData);
+  const parsed = parseLocationFormData(formData, existing);
   if (!parsed.ok) {
     redirect(editLocationFeedback(locationId, "error", parsed.error));
   }
@@ -188,7 +193,7 @@ async function getOwnedLocation(
 ) {
   const { data, error } = await supabase
     .from("locations")
-    .select("id, slug, status")
+    .select("id, slug, status, price_amount, price_currency, price_unit, rate_mode, characteristics")
     .eq("id", locationId)
     .eq("owner_id", userId)
     .maybeSingle();

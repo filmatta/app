@@ -25,8 +25,23 @@ export function getLocationEnvironmentLabel(
 export function formatLocationPrice(
   location: Pick<
     PublicLocation,
-    "priceAmount" | "priceCurrency" | "priceUnit"
+    "priceAmount" | "priceCurrency" | "priceUnit" | "rateMode" | "rateTiers"
   >
+) {
+  if (location.rateMode === "tiers") {
+    const first = location.rateTiers[0];
+    if (!first || location.rateTiers.length > 3) return "Consultar tarifa";
+    const amount = formatMoney(first.price, first.currency);
+    return location.rateTiers.length === 1 ? `${amount} / hora` : `Desde ${amount} / hora`;
+  }
+
+  if (location.rateMode === "inquire") return "Consultar tarifa";
+
+  return formatLegacyLocationPrice(location);
+}
+
+export function formatLegacyLocationPrice(
+  location: Pick<PublicLocation, "priceAmount" | "priceCurrency" | "priceUnit">
 ) {
   if (
     location.priceAmount === null ||
@@ -36,13 +51,22 @@ export function formatLocationPrice(
     return "Consultar tarifa";
   }
 
-  const amount = new Intl.NumberFormat("es-MX", {
-    style: "currency",
-    currency: location.priceCurrency,
-    maximumFractionDigits: 0,
-  }).format(location.priceAmount);
+  const amount = formatMoney(location.priceAmount, location.priceCurrency);
 
   return `${amount} / ${PRICE_UNIT_LABELS[location.priceUnit]}`;
+}
+
+export function formatLocationRateAmount(amount: number, currency: string) {
+  return `${formatMoney(amount, currency)} por hora`;
+}
+
+function formatMoney(amount: number, currency: string) {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
 }
 
 export function formatLocationMetadataDescription(location: PublicLocation) {
