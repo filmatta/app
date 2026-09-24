@@ -35,6 +35,19 @@ test("recorder is camera-only and waits for the final stop event", () => {
   assert.doesNotMatch(recorder, /type="file"|capture=|youtube|vimeo/i);
 });
 
+test("camera startup keeps optional constraints flexible and reports safe failure stages", () => {
+  assert.match(recorder, /deviceId: \{ ideal: requestedDevice \}/);
+  assert.doesNotMatch(recorder, /deviceId: \{ exact:/);
+  assert.match(recorder, /document\.visibilityState !== "visible"/);
+  assert.match(recorder, /permissionsPolicy\.allowsFeature\("camera"\)/);
+  assert.match(recorder, /OverconstrainedError/);
+  assert.match(recorder, /NotFoundError/);
+  assert.match(recorder, /NotReadableError/);
+  assert.match(recorder, /Location tour camera failed/);
+  assert.match(recorder, /stage,/);
+  assert.doesNotMatch(recorder, /permissions\.query/);
+});
+
 test("database lifecycle serializes pending attempts and only promotes validated generations", () => {
   assert.match(migration, /unique index location_tour_one_pending/);
   assert.match(migration, /where status in \('authorizing','uploading','processing'\)/);

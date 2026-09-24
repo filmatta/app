@@ -47,3 +47,12 @@ test("modal and uploader expose no side-effect before explicit submit", () => {
   assert.match(uploader, /x-upsert/);
   assert.match(uploader, /Reintentar/);
 });
+
+test("uploader distinguishes occupied quota from ready photos and preserves a local preview", () => {
+  assert.match(uploader, /URL\.createObjectURL\(file\)/);
+  assert.match(uploader, /URL\.revokeObjectURL/);
+  assert.match(uploader, /persistedUploads/);
+  assert.match(uploader, /en proceso/);
+  assert.match(uploader, /Renovar acceso/);
+  assert.match(uploader, /router\.refresh\(\)/);
+});

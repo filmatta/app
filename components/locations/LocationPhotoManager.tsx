@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -22,6 +22,7 @@ export type OwnerLocationPhoto = {
 type UploadItem = {
   key: string;
   file: File;
+  previewUrl: string;
   progress: number;
   state: "waiting" | "uploading" | "verifying" | "ready" | "error";
   error?: string;
@@ -30,13 +31,30 @@ type UploadItem = {
 export default function LocationPhotoManager({ locationId, photos }: { locationId: string; photos: OwnerLocationPhoto[] }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
+  const previewUrls = useRef(new Set<string>());
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const activeUploads = uploads.filter((item) => !["ready", "error"].includes(item.state)).length;
   const occupied = photos.length + activeUploads;
   const ready = photos.filter((photo) => photo.lifecycle === "ready");
+  const persistedUploads = photos.filter((photo) => photo.lifecycle === "uploading");
   const failedDeletes = photos.filter((photo) => photo.lifecycle === "delete_failed" || photo.lifecycle === "deleting");
+
+  useEffect(() => {
+    const readyIds = new Set(photos.filter((photo) => photo.lifecycle === "ready").map((photo) => photo.id));
+    setUploads((current) => current.filter((item) => {
+      if (item.state !== "ready" || !readyIds.has(item.key)) return true;
+      URL.revokeObjectURL(item.previewUrl);
+      previewUrls.current.delete(item.previewUrl);
+      return false;
+    }));
+  }, [photos]);
+
+  useEffect(() => () => {
+    for (const url of previewUrls.current) URL.revokeObjectURL(url);
+    previewUrls.current.clear();
+  }, []);
 
   async function choose(files: FileList | null) {
     if (!files?.length) return;
@@ -51,8 +69,10 @@ export default function LocationPhotoManager({ locationId, photos }: { locationI
     for (const file of selected) {
       const declaration = validateLocationPhotoDeclaration(file);
       const signature = declaration ? false : await validateLocationPhotoSignature(file);
+      const previewUrl = URL.createObjectURL(file);
+      previewUrls.current.add(previewUrl);
       next.push({
-        key: crypto.randomUUID(), file, progress: 0,
+        key: crypto.randomUUID(), file, previewUrl, progress: 0,
         state: declaration || !signature ? "error" : "waiting",
         error: declaration ?? (!signature ? "El contenido del archivo no coincide con JPG, PNG o WebP." : undefined),
       });
@@ -115,15 +135,20 @@ export default function LocationPhotoManager({ locationId, photos }: { locationI
 
   return <div className={styles.photoManager}>
     <div className={styles.photoToolbar}>
-      <div><strong>{occupied} / {LOCATION_PHOTO_LIMIT}</strong><span> fotos ocupadas, incluida la portada</span></div>
+      <div><strong>{occupied} / {LOCATION_PHOTO_LIMIT}</strong><span> espacios ocupados, incluida la portada</span></div>
       <button type="button" onClick={() => input.current?.click()} disabled={occupied >= LOCATION_PHOTO_LIMIT}>Añadir fotografías</button>
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(event) => void choose(event.target.files)} />
     </div>
+    <p className={styles.photoStatus}>
+      {ready.length} {ready.length === 1 ? "lista" : "listas"}
+      {persistedUploads.length + activeUploads > 0 ? ` · ${persistedUploads.length + activeUploads} en proceso` : ""}
+      {failedDeletes.length > 0 ? ` · ${failedDeletes.length} pendiente${failedDeletes.length === 1 ? "" : "s"} de limpieza` : ""}
+    </p>
     <p className={styles.photoHint}>JPG, PNG o WebP · máximo 10 MB por archivo. La portada ocupa uno de los 20 espacios.</p>
     {notice && <p role="alert" className={styles.photoError}>{notice}</p>}
     {ready.length ? <div className={styles.ownerGallery}>
       {ready.map((photo, index) => <article key={photo.id} className={styles.ownerPhotoCard}>
-        <div className={styles.ownerPhoto}>{photo.src && <img src={photo.src} alt={photo.altText || `Foto ${index + 1}`} loading="lazy" />}</div>
+        <div className={styles.ownerPhoto}>{photo.src && <PhotoThumbnail src={photo.src} alt={photo.altText || `Foto ${index + 1}`} />}</div>
         <div className={styles.photoMeta}>{photo.isCover ? <strong>Portada</strong> : <span>Foto {index + 1}</span>}<span>{index + 1} / {ready.length}</span></div>
         <div className={styles.photoActions}>
           <button type="button" disabled={busyId === photo.id || index === 0} onClick={() => void manage(photo.id, "up")} aria-label="Mover foto antes">←</button>
@@ -133,7 +158,12 @@ export default function LocationPhotoManager({ locationId, photos }: { locationI
         </div>
       </article>)}
     </div> : <div className={styles.ownerPlaceholder}>Aún no hay fotos. Guarda archivos reales para construir la portada y la galería.</div>}
+    {persistedUploads.map((photo) => <div key={photo.id} className={styles.persistedUpload} role="status">
+      <span>Una foto conserva su espacio mientras termina o vence la subida.</span>
+      <strong>En proceso</strong>
+    </div>)}
     {uploads.length > 0 && <div className={styles.uploadList}>{uploads.map((item) => <div key={item.key} className={styles.uploadRow}>
+      <img className={styles.uploadPreview} src={item.previewUrl} alt="Vista previa local de la foto seleccionada" />
       <div><strong>{item.file.name}</strong><span>{item.state === "uploading" ? `Subiendo · ${item.progress}%` : item.state === "verifying" ? "Verificando formato…" : item.state === "ready" ? "Lista" : item.state === "error" ? item.error : "En espera"}</span></div>
       <progress max={100} value={item.progress} />
       {item.state === "error" && <button type="button" onClick={() => void upload(item)}>Reintentar</button>}
@@ -143,6 +173,16 @@ export default function LocationPhotoManager({ locationId, photos }: { locationI
       <button type="button" disabled={busyId === photo.id} onClick={() => void remove(photo.id)}>Reintentar eliminación</button>
     </div>)}
   </div>;
+}
+
+function PhotoThumbnail({ src, alt }: { src: string; alt: string }) {
+  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const resolved = attempt ? `${src}${src.includes("?") ? "&" : "?"}refresh=${attempt}` : src;
+  return failed ? <div className={styles.photoLoadError}>
+    <span>No pudimos cargar la miniatura.</span>
+    <button type="button" onClick={() => { setFailed(false); setAttempt((value) => value + 1); }}>Renovar acceso</button>
+  </div> : <img src={resolved} alt={alt} loading="lazy" onError={() => setFailed(true)} />;
 }
 
 function xhrUpload(url: string, file: File, token: string, progress: (value: number) => void) {
