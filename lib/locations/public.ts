@@ -4,6 +4,7 @@ import { catalogErrorKind, PAGE_SIZE, parseCatalogFilters, type CatalogFilters }
 import { normalizeLocationCharacteristics, type LocationCharacteristics } from "@/lib/locations/characteristics";
 import { normalizeLocationConditions, type LocationConditions } from "@/lib/locations/conditions";
 import { normalizeLocationRateMode, normalizeLocationRateTiers, type LocationRateMode, type LocationRateTier } from "@/lib/locations/pricing";
+import type { PublicLocationCameraTour } from "@/lib/locations/tour-types";
 
 export type PublicLocationPhoto = { id: string; imageUrl: string; altText: string | null };
 export type PublicLocation = {
@@ -13,9 +14,10 @@ export type PublicLocation = {
   rateMode: LocationRateMode; rateTiers: LocationRateTier[]; minimumHours: number | null;
   restrictions: string | null; characteristics: LocationCharacteristics; shootingConditions: LocationConditions;
   tourVideoUrl: string | null; operationalNotes: string | null; publishedAt: string;
+  cameraTour: PublicLocationCameraTour | null;
   photos: PublicLocationPhoto[]; contactAvailable: boolean;
 };
-export type PublicLocationSummary = Omit<PublicLocation, "description" | "restrictions" | "characteristics" | "shootingConditions" | "tourVideoUrl" | "operationalNotes" | "contactAvailable">;
+export type PublicLocationSummary = Omit<PublicLocation, "description" | "restrictions" | "characteristics" | "shootingConditions" | "tourVideoUrl" | "cameraTour" | "operationalNotes" | "contactAvailable">;
 export type PublicLocationsResult = { ok: true; locations: PublicLocationSummary[]; hasNext: boolean } | { ok: false; locations: []; kind: "unconfigured" | "error" };
 export type PublicLocationResult = { kind: "found"; location: PublicLocation } | { kind: "not-found" } | { kind: "error" };
 
@@ -26,6 +28,7 @@ type PublicRow = {
   rate_mode?: unknown; rate_tiers?: unknown; minimum_hours?: number | null;
   restrictions?: string | null; characteristics?: unknown; shooting_conditions?: unknown;
   tour_video_url?: string | null; operational_notes?: string | null; published_at: string;
+  camera_tour?: unknown;
   photos?: unknown; contact_available?: boolean;
 };
 
@@ -82,6 +85,14 @@ export const getPublishedLocation = cache(async (slug: string): Promise<PublicLo
     characteristics: normalizeLocationCharacteristics(row.characteristics),
     shootingConditions: normalizeLocationConditions(row.shooting_conditions),
     tourVideoUrl: row.tour_video_url ?? null, operationalNotes: row.operational_notes ?? null,
+    cameraTour: normalizeCameraTour(row.camera_tour),
     contactAvailable: row.contact_available === true,
   } };
 });
+
+function normalizeCameraTour(value: unknown): PublicLocationCameraTour | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.id !== "string") return null;
+  return { id: row.id, recordedAt: typeof row.recorded_at === "string" ? row.recorded_at : null };
+}

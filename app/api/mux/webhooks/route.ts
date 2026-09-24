@@ -11,6 +11,12 @@ import {
   markPortfolioAssetDeleted,
 } from "@/lib/profiles/mux-media";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  markLocationTourAssetDeleted,
+  parseLocationTourPassthrough,
+  syncLocationTourAsset,
+  syncLocationTourUpload,
+} from "@/lib/locations/mux-tours";
 import { BodyReadError, readBoundedBody, validateContentLength } from "@/lib/security/bounded-body";
 
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
@@ -79,6 +85,7 @@ export async function POST(request: Request) {
 
     if (event.type === "video.asset.deleted") {
       await markPortfolioAssetDeleted(event.data.id, expectedEnvironment);
+      await markLocationTourAssetDeleted(event.data.id, expectedEnvironment);
       return Response.json({ received: true });
     }
 
@@ -86,12 +93,22 @@ export async function POST(request: Request) {
       event.type === "video.upload.cancelled" ||
       event.type === "video.upload.errored"
     ) {
-      await syncPortfolioUpload(event.data.id);
+      const upload = await mux.video.uploads.retrieve(event.data.id);
+      if (parseLocationTourPassthrough(upload.new_asset_settings?.passthrough)) {
+        await syncLocationTourUpload(upload.id);
+      } else {
+        await syncPortfolioUpload(upload.id);
+      }
       return Response.json({ received: true });
     }
 
     if (event.type === "video.upload.asset_created") {
       const upload = await mux.video.uploads.retrieve(event.data.id);
+      if (parseLocationTourPassthrough(upload.new_asset_settings?.passthrough)) {
+        await syncLocationTourUpload(upload.id);
+        console.info("Mux location tour webhook handled", { eventId: event.id, type: event.type });
+        return Response.json({ received: true });
+      }
       if (portfolioId(upload.new_asset_settings?.passthrough)) {
         await syncPortfolioUpload(upload.id);
         console.info("Mux portfolio webhook handled", { eventId: event.id, type: event.type });
@@ -115,6 +132,11 @@ export async function POST(request: Request) {
 
     // Retrieve current Mux state so late/duplicate created events cannot regress ready.
     const asset = await mux.video.assets.retrieve(event.data.id);
+    if (parseLocationTourPassthrough(asset.passthrough)) {
+      await syncLocationTourAsset(asset.id);
+      console.info("Mux location tour webhook handled", { eventId: event.id, type: event.type });
+      return Response.json({ received: true });
+    }
     if (portfolioId(asset.passthrough)) {
       await syncPortfolioAsset(asset.id);
       console.info("Mux portfolio webhook handled", { eventId: event.id, type: event.type });

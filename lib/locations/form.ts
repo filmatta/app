@@ -1,7 +1,6 @@
 import { slugify } from "@/lib/slugify";
 import { parseLocationCharacteristics, type LocationCharacteristics } from "@/lib/locations/characteristics";
 import { parseLocationConditions, type LocationConditions } from "@/lib/locations/conditions";
-import { externalVideo } from "@/lib/profiles/media";
 import {
   parseLocationPricingForm,
   type LocationRateMode,
@@ -134,7 +133,7 @@ const MAX_PRICE = 9_999_999_999.99;
 
 export function parseLocationFormData(
   formData: FormData,
-  existing?: Pick<LocationFormValues, "price_amount" | "price_currency" | "price_unit" | "rate_mode" | "characteristics">,
+  existing?: Pick<LocationFormValues, "price_amount" | "price_currency" | "price_unit" | "rate_mode" | "characteristics" | "tour_video_url">,
 ):
   | { ok: true; values: LocationFormValues }
   | { ok: false; error: LocationFormError } {
@@ -205,12 +204,6 @@ export function parseLocationFormData(
   );
   if (!pricing.ok) return pricing;
 
-  const videoInput = getOptionalText(formData, "tour_video_url");
-  const video = videoInput ? externalVideo(videoInput) : null;
-  if (videoInput && !video) {
-    return { ok: false, error: "invalid-video" };
-  }
-
   const operationalNotes = getOptionalText(formData, "operational_notes");
   if (operationalNotes && operationalNotes.length > 5_000) {
     return { ok: false, error: "invalid-operational-notes" };
@@ -236,7 +229,9 @@ export function parseLocationFormData(
       restrictions,
       characteristics: characteristics.value,
       shooting_conditions: parseLocationConditions(formData),
-      tour_video_url: video?.url ?? null,
+      // Historical external tours are immutable from this editor. New tours
+      // can only become active after Mux/provider attestation.
+      tour_video_url: existing?.tour_video_url ?? null,
       operational_notes: operationalNotes,
     },
   };

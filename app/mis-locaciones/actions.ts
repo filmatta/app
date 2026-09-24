@@ -24,6 +24,7 @@ type ExistingLocation = {
   price_unit: import("@/lib/locations/form").LocationPriceUnit | null;
   rate_mode: import("@/lib/locations/pricing").LocationRateMode;
   characteristics: import("@/lib/locations/characteristics").LocationCharacteristics;
+  tour_video_url: string | null;
 };
 
 export async function createLocation(formData: FormData) {
@@ -193,7 +194,7 @@ async function getOwnedLocation(
 ) {
   const { data, error } = await supabase
     .from("locations")
-    .select("id, slug, status, price_amount, price_currency, price_unit, rate_mode, characteristics")
+    .select("id, slug, status, price_amount, price_currency, price_unit, rate_mode, characteristics, tour_video_url")
     .eq("id", locationId)
     .eq("owner_id", userId)
     .maybeSingle();

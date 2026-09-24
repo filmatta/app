@@ -3,6 +3,7 @@ import LocationCharacteristicsEditor from "@/components/locations/LocationCharac
 import LocationConditionsEditor from "@/components/locations/LocationConditionsEditor";
 import LocationPhotoManager, { type OwnerLocationPhoto } from "@/components/locations/LocationPhotoManager";
 import LocationPricingEditor from "@/components/locations/LocationPricingEditor";
+import LocationTourRecorder from "@/components/locations/LocationTourRecorder";
 import styles from "@/components/locations/locations.module.css";
 import type { LocationCharacteristics } from "@/lib/locations/characteristics";
 import { LOCATION_CONDITIONS_NOTICE, type LocationConditions } from "@/lib/locations/conditions";
@@ -14,6 +15,7 @@ import {
 } from "@/lib/locations/form";
 import { formatLegacyLocationPrice } from "@/lib/locations/format";
 import type { LocationRateMode, LocationRateTier } from "@/lib/locations/pricing";
+import type { OwnerLocationTour } from "@/lib/locations/tour-types";
 import LocationFormButtons from "./LocationFormButtons";
 import LocationIdentityFields from "./LocationIdentityFields";
 import LocationFormShell from "./LocationFormShell";
@@ -56,6 +58,7 @@ export default function LocationForm({
   contact,
   photos = [],
   locationId,
+  tour,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   mode: "create" | "edit";
@@ -63,6 +66,7 @@ export default function LocationForm({
   contact?: EditableLocationContact | null;
   photos?: OwnerLocationPhoto[];
   locationId?: string;
+  tour?: OwnerLocationTour | null;
 }) {
   return (
     <LocationFormShell action={action} storageKey={`filmatta:location-form:${mode}:${location?.slug ?? "new"}`}>
@@ -194,11 +198,10 @@ export default function LocationForm({
       </section>
 
       <section aria-labelledby="location-video-heading" className="space-y-7">
-        <SectionHeading id="location-video-heading" title="Video recorrido" description="Una sola pieza por locación. Reemplazar el enlace cambia el recorrido; dejarlo vacío lo elimina." />
-        <Field label="Agregar enlace de recorrido">
-          <input name="tour_video_url" type="url" maxLength={500} defaultValue={location?.tour_video_url ?? ""} className={inputClass} placeholder="https://www.youtube.com/watch?v=…" />
-        </Field>
-        <p className="text-xs leading-5 text-white/45">Se aceptan enlaces HTTPS de YouTube o Vimeo. No se admite HTML ni un iframe pegado.</p>
+        <SectionHeading id="location-video-heading" title="Recorrido con cámara" description="Los recorridos nuevos se graban aquí, en una sola toma. No se admiten archivos ni enlaces nuevos." />
+        {locationId && location ? <LocationTourRecorder locationId={locationId} locationTitle={location.title} published={location.status === "published"} initialTour={tour ?? null} />
+          : <div className={styles.ownerPlaceholder}>Guarda primero la locación. Después podrás abrir la cámara y grabar un recorrido de hasta 180 segundos.</div>}
+        {location?.tour_video_url && !tour?.isActive && <p className="text-xs leading-5 text-white/45">Esta ficha conserva un recorrido externo histórico. No puede editarse ni certificarse como grabado desde FILMATTA; seguirá mostrándose hasta que una grabación nueva quede lista.</p>}
       </section>
 
       <section aria-labelledby="location-conditions-heading" className="space-y-7">

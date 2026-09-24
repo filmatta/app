@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import LocationGallery from "@/components/locations/LocationGallery";
 import LocationTourVideo from "@/components/locations/LocationTourVideo";
+import LocationCameraTourPlayer from "@/components/locations/LocationCameraTourPlayer";
 import LocationContactPanel, { type LocationContactAccess } from "@/components/locations/LocationContactPanel";
 import styles from "@/components/locations/locations.module.css";
 import SiteHeader from "@/components/SiteHeader";
@@ -69,7 +70,8 @@ export default async function LocationPage({ params }: Props) {
       {isPositiveIntegerCapacity(location.characteristics.declared_capacity) && <Section title="Capacidad máxima" description="Personas presentes simultáneamente, según lo declarado por el responsable; no constituye un aforo certificado."><p className={styles.rate}>{new Intl.NumberFormat("es-MX").format(location.characteristics.declared_capacity)} personas</p></Section>}
       {characteristics.length > 0 && <Section title="Características" description="Datos declarados por el responsable. No constituyen certificación técnica, de aforo, accesibilidad o seguridad."><dl className={styles.characteristicGrid}>{characteristics.map((item) => <div key={item.label} className={styles.characteristic}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></Section>}
       {location.photos.length > 1 && <Section title="Galería"><LocationGallery photos={location.photos.slice(1)} title={location.title} /></Section>}
-      {location.tourVideoUrl && <Section title="Video recorrido"><LocationTourVideo url={location.tourVideoUrl} title={location.title} /></Section>}
+      {location.cameraTour ? <Section title="Video recorrido"><div className="overflow-hidden rounded-2xl border border-white/10"><LocationCameraTourPlayer tourId={location.cameraTour.id} title={location.title} /><div className="border-t border-white/10 p-5"><p className="text-sm font-semibold">Grabado desde FILMATTA</p><p className="mt-2 text-xs leading-5 text-white/45">Recorrido enviado mediante la herramienta de grabación. No implica verificación de propiedad o de las condiciones del inmueble.</p>{location.cameraTour.recordedAt && <p className="mt-2 text-xs text-white/35">Registrado por el sistema: {new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(new Date(location.cameraTour.recordedAt))}</p>}</div></div></Section>
+        : location.tourVideoUrl && <Section title="Video recorrido"><LocationTourVideo url={location.tourVideoUrl} title={location.title} /></Section>}
       {conditionGroups.length > 0 && <Section title="Condiciones de rodaje" description={LOCATION_CONDITIONS_NOTICE}><div className={styles.conditionPublic}>{conditionGroups.map((group) => <section key={group.id} className={styles.conditionGroup}><h3>{group.title} · {group.options.length}</h3><div className={styles.conditionList}>{group.options.map((option) => <div key={option.key} className={styles.conditionItem}><span>{option.label}</span><span className={styles.conditionBadge} data-state={option.state}>{LOCATION_CONDITION_LABELS[option.state]}</span></div>)}</div></section>)}</div></Section>}
       <Section title="Tarifa y condiciones operativas">
         {location.rateMode === "tiers" && location.rateTiers.length > 0 ? <div className="overflow-hidden rounded-2xl border border-white/10">

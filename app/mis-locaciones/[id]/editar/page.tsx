@@ -17,6 +17,7 @@ import ArchiveLocationButton from "../../ArchiveLocationButton";
 import LocationFeedback from "../../LocationFeedback";
 import LocationForm, { type EditableLocation, type EditableLocationContact } from "../../LocationForm";
 import type { OwnerLocationPhoto } from "@/components/locations/LocationPhotoManager";
+import type { OwnerLocationTour, LocationTourStatus } from "@/lib/locations/tour-types";
 
 export const metadata: Metadata = {
   title: "Editar locación",
@@ -60,7 +61,7 @@ export default async function EditLocationPage({
   const { data, error } = await supabase
     .from("locations")
     .select(
-      "id, title, slug, summary, description, city, area, space_type, environment, price_amount, price_currency, price_unit, rate_mode, rate_tiers, minimum_hours, restrictions, characteristics, shooting_conditions, tour_video_url, operational_notes, status"
+      "id, title, slug, summary, description, city, area, space_type, environment, price_amount, price_currency, price_unit, rate_mode, rate_tiers, minimum_hours, restrictions, characteristics, shooting_conditions, tour_video_url, active_tour_attempt_id, operational_notes, status"
     )
     .eq("id", id)
     .eq("owner_id", viewer.id)
@@ -81,16 +82,17 @@ export default async function EditLocationPage({
     notFound();
   }
 
-  const [contactResult, photosResult] = await Promise.all([
+  const [contactResult, photosResult, toursResult] = await Promise.all([
     supabase.rpc("get_my_location_contact_channels", { p_location_id: id }),
     supabase.from("location_photos").select("id, image_url, storage_path, alt_text, is_cover, lifecycle_status").eq("location_id", id).eq("owner_id", viewer.id).order("sort_order", { ascending: true }).order("id", { ascending: true }),
+    supabase.from("location_tour_attempts").select("id,status,recorded_at,duration_seconds,generation").eq("location_id", id).eq("owner_id", viewer.id).order("generation", { ascending: false }).limit(5),
   ]);
-  if (contactResult.error || photosResult.error) {
-    console.error("Error cargando contenido de una locación propia:", { contact: contactResult.error?.code, photos: photosResult.error?.code });
+  if (contactResult.error || photosResult.error || toursResult.error) {
+    console.error("Error cargando contenido de una locación propia:", { contact: contactResult.error?.code, photos: photosResult.error?.code, tours: toursResult.error?.code });
     return <PrivateLocationLoadError message="No pudimos cargar el contenido de esta locación. Inténtalo de nuevo." />;
   }
 
-  const raw = data as LocationRow & { characteristics: unknown; shooting_conditions: unknown; rate_mode: unknown; rate_tiers: unknown };
+  const raw = data as LocationRow & { characteristics: unknown; shooting_conditions: unknown; rate_mode: unknown; rate_tiers: unknown; active_tour_attempt_id: string | null };
   const location = { ...raw, rate_mode: normalizeLocationRateMode(raw.rate_mode), rate_tiers: normalizeLocationRateTiers(raw.rate_tiers), characteristics: normalizeLocationCharacteristics(raw.characteristics), shooting_conditions: normalizeLocationConditions(raw.shooting_conditions) };
   const contact = (contactResult.data as EditableLocationContact | null) ?? null;
   const photos = ((photosResult.data ?? []) as { id: string; image_url: string | null; storage_path: string | null; alt_text: string | null; is_cover: boolean; lifecycle_status: OwnerLocationPhoto["lifecycle"] }[]).map((photo) => ({
@@ -100,6 +102,16 @@ export default async function EditLocationPage({
     isCover: photo.is_cover,
     lifecycle: photo.lifecycle_status,
   }));
+  const tourRows = (toursResult.data ?? []) as { id: string; status: LocationTourStatus; recorded_at: string | null; duration_seconds: number | null }[];
+  const selectedTour = tourRows.find((item) => ["authorizing", "uploading", "processing"].includes(item.status))
+    ?? tourRows.find((item) => item.id === raw.active_tour_attempt_id) ?? null;
+  const tour: OwnerLocationTour | null = selectedTour ? {
+    id: selectedTour.id,
+    status: selectedTour.status,
+    recordedAt: selectedTour.recorded_at,
+    durationSeconds: selectedTour.duration_seconds,
+    isActive: selectedTour.id === raw.active_tour_attempt_id && selectedTour.status === "ready",
+  } : null;
   const updateAction = updateLocation.bind(null, location.id);
   const archiveAction = archiveLocation.bind(null, location.id);
 
@@ -144,7 +156,7 @@ export default async function EditLocationPage({
         </h1>
 
         <LocationFeedback error={feedback.error} success={feedback.success} />
-        <LocationForm action={updateAction} mode="edit" location={location} contact={contact} photos={photos} locationId={location.id} />
+        <LocationForm action={updateAction} mode="edit" location={location} contact={contact} photos={photos} locationId={location.id} tour={tour} />
 
         {location.status !== "archived" && (
           <section className="mt-16 border-t border-white/10 pt-9">

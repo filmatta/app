@@ -10,6 +10,13 @@ const nextConfig: NextConfig = {
         process.env.VERCEL_ENV === "preview",
       ) },
       {
+        source: "/mis-locaciones/:id/editar",
+        headers: [{
+          key: "Permissions-Policy",
+          value: "camera=(self), microphone=(self), geolocation=(), payment=()",
+        }],
+      },
+      {
         source: "/admin/:path*",
         headers: [{
           key: "Cache-Control",
