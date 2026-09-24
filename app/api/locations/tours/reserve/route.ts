@@ -10,6 +10,7 @@ import {
   retryLocationTourCleanup,
 } from "@/lib/locations/mux-tours";
 import { LOCATION_TOUR_MAX_BLOB_BYTES } from "@/lib/locations/tour-limits";
+import { locationCameraPilotEnabled } from "@/lib/locations/camera-pilot";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,12 @@ export async function POST(request: Request) {
   const db = await createClient();
   const { data: auth, error: authError } = await db.auth.getUser();
   if (authError || !auth.user) return Response.json({ error: "Inicia sesión." }, { status: 401 });
+  if (!locationCameraPilotEnabled(auth.user.id)) {
+    return Response.json(
+      { error: "La grabación de recorridos todavía no está habilitada para esta cuenta." },
+      { status: 403 },
+    );
+  }
   let body: { locationId?: unknown; size?: unknown; type?: unknown };
   try { body = JSON.parse(await readBoundedBody(request, 4096)); }
   catch { return Response.json({ error: "Solicitud no válida." }, { status: 400 }); }

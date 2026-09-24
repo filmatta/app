@@ -9,6 +9,10 @@ const recorder = fs.readFileSync("components/locations/LocationTourRecorder.tsx"
 const webhook = fs.readFileSync("app/api/mux/webhooks/route.ts", "utf8");
 const form = fs.readFileSync("lib/locations/form.ts", "utf8");
 const headers = fs.readFileSync("next.config.ts", "utf8");
+const pilot = fs.readFileSync("lib/locations/camera-pilot.ts", "utf8");
+const reserveRoute = fs.readFileSync("app/api/locations/tours/reserve/route.ts", "utf8");
+const editor = fs.readFileSync("app/mis-locaciones/[id]/editar/page.tsx", "utf8");
+const locationForm = fs.readFileSync("app/mis-locaciones/LocationForm.tsx", "utf8");
 
 test("camera tour limits distinguish valid, empty, oversized and over-duration blobs", () => {
   assert.equal(limits.LOCATION_TOUR_MAX_DURATION_SECONDS, 180);
@@ -56,4 +60,14 @@ test("historical external URL stays server-preserved and camera policy is route-
   assert.doesNotMatch(form, /formData, "tour_video_url"/);
   assert.match(headers, /source: "\/mis-locaciones\/:id\/editar"/);
   assert.match(headers, /camera=\(self\), microphone=\(self\)/);
+});
+
+test("camera pilot is server-gated by one owner UUID and closed by default", () => {
+  assert.match(pilot, /import "server-only"/);
+  assert.match(pilot, /LOCATION_CAMERA_PILOT_OWNER_ID/);
+  assert.match(pilot, /allowedOwnerId === userId/);
+  assert.match(reserveRoute, /locationCameraPilotEnabled\(auth\.user\.id\)/);
+  assert.match(reserveRoute, /status: 403/);
+  assert.match(editor, /cameraRecordingEnabled=\{locationCameraPilotEnabled\(viewer\.id\)\}/);
+  assert.match(locationForm, /grabación de recorridos está cerrada durante la prueba controlada/);
 });

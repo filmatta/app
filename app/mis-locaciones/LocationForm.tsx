@@ -59,6 +59,7 @@ export default function LocationForm({
   photos = [],
   locationId,
   tour,
+  cameraRecordingEnabled,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   mode: "create" | "edit";
@@ -67,6 +68,7 @@ export default function LocationForm({
   photos?: OwnerLocationPhoto[];
   locationId?: string;
   tour?: OwnerLocationTour | null;
+  cameraRecordingEnabled: boolean;
 }) {
   return (
     <LocationFormShell action={action} storageKey={`filmatta:location-form:${mode}:${location?.slug ?? "new"}`}>
@@ -199,8 +201,13 @@ export default function LocationForm({
 
       <section aria-labelledby="location-video-heading" className="space-y-7">
         <SectionHeading id="location-video-heading" title="Recorrido con cámara" description="Los recorridos nuevos se graban aquí, en una sola toma. No se admiten archivos ni enlaces nuevos." />
-        {locationId && location ? <LocationTourRecorder locationId={locationId} locationTitle={location.title} published={location.status === "published"} initialTour={tour ?? null} />
-          : <div className={styles.ownerPlaceholder}>Guarda primero la locación. Después podrás abrir la cámara y grabar un recorrido de hasta 180 segundos.</div>}
+        {!cameraRecordingEnabled ? (
+          <div className={styles.ownerPlaceholder}>La grabación de recorridos está cerrada durante la prueba controlada.</div>
+        ) : locationId && location ? (
+          <LocationTourRecorder locationId={locationId} locationTitle={location.title} published={location.status === "published"} initialTour={tour ?? null} />
+        ) : (
+          <div className={styles.ownerPlaceholder}>Guarda primero la locación. Después podrás abrir la cámara y grabar un recorrido de hasta 180 segundos.</div>
+        )}
         {location?.tour_video_url && !tour?.isActive && <p className="text-xs leading-5 text-white/45">Esta ficha conserva un recorrido externo histórico. No puede editarse ni certificarse como grabado desde FILMATTA; seguirá mostrándose hasta que una grabación nueva quede lista.</p>}
       </section>
 
