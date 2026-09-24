@@ -202,7 +202,7 @@ export default function LocationForm({
       <section aria-labelledby="location-video-heading" className="space-y-7">
         <SectionHeading id="location-video-heading" title="Recorrido con cámara" description="Los recorridos nuevos se graban aquí, en una sola toma. No se admiten archivos ni enlaces nuevos." />
         {!cameraRecordingEnabled ? (
-          <div className={styles.ownerPlaceholder}>La grabación de recorridos está cerrada durante la prueba controlada.</div>
+          <div className={styles.ownerPlaceholder}>La grabación de recorridos está temporalmente deshabilitada.</div>
         ) : locationId && location ? (
           <LocationTourRecorder locationId={locationId} locationTitle={location.title} published={location.status === "published"} initialTour={tour ?? null} />
         ) : (

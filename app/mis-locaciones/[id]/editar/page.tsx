@@ -18,7 +18,7 @@ import LocationFeedback from "../../LocationFeedback";
 import LocationForm, { type EditableLocation, type EditableLocationContact } from "../../LocationForm";
 import type { OwnerLocationPhoto } from "@/components/locations/LocationPhotoManager";
 import type { OwnerLocationTour, LocationTourStatus } from "@/lib/locations/tour-types";
-import { locationCameraPilotEnabled } from "@/lib/locations/camera-pilot";
+import { locationCameraRecordingEnabled } from "@/lib/locations/camera-pilot";
 
 export const metadata: Metadata = {
   title: "Editar locación",
@@ -165,7 +165,7 @@ export default async function EditLocationPage({
           photos={photos}
           locationId={location.id}
           tour={tour}
-          cameraRecordingEnabled={locationCameraPilotEnabled(viewer.id)}
+          cameraRecordingEnabled={locationCameraRecordingEnabled()}
         />
 
         {location.status !== "archived" && (

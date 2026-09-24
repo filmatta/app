@@ -62,12 +62,14 @@ test("historical external URL stays server-preserved and camera policy is route-
   assert.match(headers, /camera=\(self\), microphone=\(self\)/);
 });
 
-test("camera pilot is server-gated by one owner UUID and closed by default", () => {
+test("camera recording is enabled by default with a server-side kill switch", () => {
   assert.match(pilot, /import "server-only"/);
-  assert.match(pilot, /LOCATION_CAMERA_PILOT_OWNER_ID/);
-  assert.match(pilot, /allowedOwnerId === userId/);
-  assert.match(reserveRoute, /locationCameraPilotEnabled\(auth\.user\.id\)/);
+  assert.match(pilot, /LOCATION_CAMERA_RECORDING_ENABLED/);
+  assert.match(pilot, /return !DISABLED_VALUES\.has\(value \?\? ""\)/);
+  assert.match(reserveRoute, /locationCameraRecordingEnabled\(\)/);
   assert.match(reserveRoute, /status: 403/);
-  assert.match(editor, /cameraRecordingEnabled=\{locationCameraPilotEnabled\(viewer\.id\)\}/);
-  assert.match(locationForm, /grabación de recorridos está cerrada durante la prueba controlada/);
+  assert.ok(reserveRoute.indexOf("auth.getUser()") < reserveRoute.indexOf("locationCameraRecordingEnabled()"));
+  assert.ok(reserveRoute.indexOf("locationCameraRecordingEnabled()") < reserveRoute.indexOf('db.rpc("reserve_my_location_tour"'));
+  assert.match(editor, /cameraRecordingEnabled=\{locationCameraRecordingEnabled\(\)\}/);
+  assert.match(locationForm, /grabación de recorridos está temporalmente deshabilitada/);
 });

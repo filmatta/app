@@ -6,7 +6,7 @@ import { getViewer } from "@/lib/auth/get-viewer";
 import { createLocation } from "../actions";
 import LocationFeedback from "../LocationFeedback";
 import LocationForm from "../LocationForm";
-import { locationCameraPilotEnabled } from "@/lib/locations/camera-pilot";
+import { locationCameraRecordingEnabled } from "@/lib/locations/camera-pilot";
 
 export const metadata: Metadata = {
   title: "Nueva locación",
@@ -51,7 +51,7 @@ export default async function NewLocationPage({
         <LocationForm
           action={createLocation}
           mode="create"
-          cameraRecordingEnabled={locationCameraPilotEnabled(viewer.id)}
+          cameraRecordingEnabled={locationCameraRecordingEnabled()}
         />
       </section>
     </main>
