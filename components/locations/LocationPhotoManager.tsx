@@ -209,6 +209,7 @@ export default function LocationPhotoManager({ locationId, photos }: { locationI
     {persistedUploads.map((photo) => <div key={photo.id} className={styles.persistedUpload} role="status">
       <span>La foto está guardada y conserva su espacio, pero falta confirmar el formato.</span>
       <button type="button" disabled={busyId === photo.id} onClick={() => void retryPersisted(photo.id)}>Reintentar confirmación</button>
+      <button type="button" disabled={busyId === photo.id} onClick={() => void remove(photo.id)}>Eliminar</button>
     </div>)}
     {uploads.length > 0 && <div className={styles.uploadList}>{uploads.map((item) => <div key={item.key} className={styles.uploadRow}>
       <img className={styles.uploadPreview} src={item.previewUrl} alt="Vista previa local de la foto seleccionada" />

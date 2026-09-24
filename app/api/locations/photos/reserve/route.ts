@@ -1,9 +1,7 @@
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { readBoundedBody } from "@/lib/security/bounded-body";
 import { portfolioRequestOrigin } from "@/lib/profiles/request-origin";
 import { validateLocationPhotoDeclaration } from "@/lib/locations/media";
-import { cleanupLocationPhotoRows } from "@/lib/locations/photo-storage";
 
 export const runtime = "nodejs";
 
@@ -24,9 +22,6 @@ export async function POST(request: Request) {
   }
   const declarationError = validateLocationPhotoDeclaration(file as { name: string; size: number; type: string });
   if (declarationError) return Response.json({ error: declarationError }, { status: 400 });
-  const admin = createAdminClient();
-  const cleanup = await cleanupLocationPhotoRows(db, admin, body.locationId);
-  if (cleanup.error) return Response.json({ error: "No pudimos revisar las subidas pendientes." }, { status: 409 });
   const extension = file.name.split(".").pop()!.toLowerCase();
   const reserved = await db.rpc("reserve_my_location_photo", {
     p_location_id: body.locationId,

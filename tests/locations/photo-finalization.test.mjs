@@ -5,6 +5,7 @@ import load from "../load.mjs";
 
 const finalization = load("lib/locations/photo-finalization.ts");
 const route = readFileSync("app/api/locations/photos/[id]/complete/route.ts", "utf8");
+const reserve = readFileSync("app/api/locations/photos/reserve/route.ts", "utf8");
 const proxy = readFileSync("proxy.ts", "utf8");
 const uploader = readFileSync("components/locations/LocationPhotoManager.tsx", "utf8");
 
@@ -33,6 +34,8 @@ test("photo finalization has a bounded exit and reaches the route before session
   assert.match(route, /AbortSignal\.timeout\(LOCATION_PHOTO_FINALIZATION_TIMEOUT_MS\)/);
   assert.match(proxy, /api\\\/locations\\\/photos\\\/\[\^\/\]\+\\\/complete/);
   assert.match(route, /if \(row\.lifecycle_status === "ready"\) return Response\.json\(\{ ready: true \}\)/);
+  assert.match(route, /El archivo sigue conservado y necesita revisión/);
+  assert.doesNotMatch(reserve, /cleanupLocationPhotoRows/);
 });
 
 test("stored photos reconcile and retry finalization without another upload or reservation", () => {

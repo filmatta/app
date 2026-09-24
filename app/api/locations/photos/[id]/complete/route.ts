@@ -35,12 +35,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!auth.user) return new Response(null, { status: 401 });
   const { id } = await params;
   const rowResult = await db.from("location_photos")
-    .select("id,owner_id,storage_path,lifecycle_status,expected_size_bytes,mime_type")
+    .select("id,owner_id,storage_path,lifecycle_status,expected_size_bytes,mime_type,expires_at")
     .eq("id", id).eq("owner_id", auth.user.id).maybeSingle();
   const row = rowResult.data;
   if (!row || !row.storage_path) return new Response(null, { status: 409 });
   if (row.lifecycle_status === "ready") return Response.json({ ready: true });
   if (row.lifecycle_status !== "uploading") return new Response(null, { status: 409 });
+  if (row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) {
+    return Response.json({
+      error: "La confirmación venció. El archivo sigue conservado y necesita revisión antes de publicarse.",
+      pending: true,
+      expired: true,
+    }, { status: 409, headers: { "Cache-Control": "no-store" } });
+  }
 
   const admin = createAdminClient();
   let infoResult: Awaited<ReturnType<ReturnType<typeof admin.storage.from>["info"]>>;
