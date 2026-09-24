@@ -301,28 +301,13 @@ function logLocationError(
 
 async function saveLocationContact(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
+  _userId: string,
   locationId: string,
   contact: LocationPublicContact,
 ) {
-  const hasChannel = Boolean(contact.email || contact.phone || contact.whatsapp || contact.website);
-  if (!hasChannel) {
-    const { error } = await supabase
-      .from("location_public_contacts")
-      .delete()
-      .eq("location_id", locationId)
-      .eq("owner_id", userId);
-    return error;
-  }
-
-  const { error } = await supabase.from("location_public_contacts").upsert({
-    location_id: locationId,
-    owner_id: userId,
-    email: contact.email,
-    phone: contact.phone,
-    whatsapp: contact.whatsapp,
-    website: contact.website,
-    is_public: contact.isPublic,
+  const { error } = await supabase.rpc("save_my_location_contact_channels", {
+    p_location_id: locationId,
+    p_channels: contact,
   });
   return error;
 }

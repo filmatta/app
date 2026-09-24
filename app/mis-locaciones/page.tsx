@@ -84,12 +84,15 @@ export default async function MyLocationsPage({
             </p>
           </div>
 
-          <Link
-            href="/mis-locaciones/nueva"
-            className="w-fit rounded-full bg-white px-6 py-3 font-semibold text-black transition hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
-          >
-            + Nueva locación
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/cuenta/contactos/locaciones" className="w-fit rounded-full border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/[0.07]">Solicitudes de Locaciones</Link>
+            <Link
+              href="/mis-locaciones/nueva"
+              className="w-fit rounded-full bg-white px-6 py-3 font-semibold text-black transition hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+            >
+              + Nueva locación
+            </Link>
+          </div>
         </div>
 
         <LocationFeedback error={params.error} success={params.success} />

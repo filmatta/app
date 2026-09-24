@@ -1,6 +1,7 @@
 import Link from "next/link";
 import LocationCharacteristicsEditor from "@/components/locations/LocationCharacteristicsEditor";
 import LocationConditionsEditor from "@/components/locations/LocationConditionsEditor";
+import LocationPhotoManager, { type OwnerLocationPhoto } from "@/components/locations/LocationPhotoManager";
 import styles from "@/components/locations/locations.module.css";
 import type { LocationCharacteristics } from "@/lib/locations/characteristics";
 import { LOCATION_CONDITIONS_NOTICE, type LocationConditions } from "@/lib/locations/conditions";
@@ -39,11 +40,9 @@ export type EditableLocationContact = {
   email: string | null;
   phone: string | null;
   whatsapp: string | null;
+  instagram: string | null;
   website: string | null;
-  is_public: boolean;
 };
-
-export type EditableLocationPhoto = { id: string; image_url: string; alt_text: string | null };
 
 export default function LocationForm({
   action,
@@ -51,12 +50,14 @@ export default function LocationForm({
   location,
   contact,
   photos = [],
+  locationId,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   mode: "create" | "edit";
   location?: EditableLocation;
   contact?: EditableLocationContact | null;
-  photos?: EditableLocationPhoto[];
+  photos?: OwnerLocationPhoto[];
+  locationId?: string;
 }) {
   return (
     <LocationFormShell action={action} storageKey={`filmatta:location-form:${mode}:${location?.slug ?? "new"}`}>
@@ -172,13 +173,8 @@ export default function LocationForm({
 
       <section aria-labelledby="location-gallery-heading" className="space-y-7">
         <SectionHeading id="location-gallery-heading" title="Portada y galería" description="La primera foto publicada y ordenada funciona como portada; no se duplica el archivo." />
-        {photos.length > 0 ? (
-          <div className={styles.ownerGallery}>
-            {photos.map((photo, index) => <div key={photo.id} className={styles.ownerPhoto}><img src={photo.image_url} alt={photo.alt_text || `Foto ${index + 1}`} loading="lazy" /></div>)}
-          </div>
-        ) : (
-          <div className={styles.ownerPlaceholder}>Aún no hay fotos. La subida segura y el orden de imágenes siguen pendientes para Locaciones; no se creó un flujo sin límites ni validación.</div>
-        )}
+        {locationId ? <LocationPhotoManager locationId={locationId} photos={photos} />
+          : <div className={styles.ownerPlaceholder}>Guarda primero la locación. Después podrás subir hasta 20 fotografías reales, elegir portada y ordenar la galería.</div>}
       </section>
 
       <section aria-labelledby="location-video-heading" className="space-y-7">
@@ -216,12 +212,10 @@ export default function LocationForm({
           <Field label="Email de la locación"><input name="contact_email" type="email" maxLength={254} defaultValue={contact?.email ?? ""} className={inputClass} placeholder="locacion@ejemplo.com" /></Field>
           <Field label="Teléfono"><input name="contact_phone" type="tel" maxLength={40} defaultValue={contact?.phone ?? ""} className={inputClass} placeholder="+52 55 0000 0000" /></Field>
           <Field label="WhatsApp"><input name="contact_whatsapp" inputMode="tel" maxLength={20} defaultValue={contact?.whatsapp ?? ""} className={inputClass} placeholder="+525500000000" /></Field>
-          <Field label="Sitio web"><input name="contact_website" type="url" maxLength={500} defaultValue={contact?.website ?? ""} className={inputClass} placeholder="https://…" /></Field>
+          <Field label="Instagram"><input name="contact_instagram" maxLength={30} defaultValue={contact?.instagram ?? ""} className={inputClass} placeholder="usuario" /></Field>
         </div>
-        <label className={styles.contactDisclosure}>
-          <input type="checkbox" name="contact_is_public" value="yes" defaultChecked={contact?.is_public ?? false} className="mr-3" />
-          Mostrar estos canales en la ficha pública. Cualquier visitante podrá verlos y usarlos para contactar directamente.
-        </label>
+        <input type="hidden" name="contact_website" value={contact?.website ?? ""} />
+        <p className={styles.contactDisclosure}>Estos canales se compartirán únicamente cuando aceptes una solicitud de contacto para esta locación.</p>
       </section>
 
       <div className="flex flex-col justify-between gap-5 border-t border-white/10 pt-8 md:flex-row md:items-center">

@@ -2,8 +2,8 @@ export type LocationPublicContact = {
   email: string | null;
   phone: string | null;
   whatsapp: string | null;
+  instagram: string | null;
   website: string | null;
-  isPublic: boolean;
 };
 
 export function parseLocationPublicContact(
@@ -12,6 +12,7 @@ export function parseLocationPublicContact(
   const email = optional(formData, "contact_email");
   const phone = optional(formData, "contact_phone");
   const whatsapp = optional(formData, "contact_whatsapp");
+  const instagram = optional(formData, "contact_instagram")?.replace(/^@/, "") ?? null;
   const website = optional(formData, "contact_website");
 
   if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
@@ -23,11 +24,12 @@ export function parseLocationPublicContact(
   if (whatsapp && (whatsapp.length > 20 || !/^\+?[1-9][0-9]{6,19}$/.test(whatsapp))) {
     return { ok: false };
   }
+  if (instagram && (instagram.length > 30 || !/^[A-Za-z0-9._]+$/.test(instagram))) {
+    return { ok: false };
+  }
   if (website && !safeHttpsUrl(website)) return { ok: false };
 
-  const hasChannel = Boolean(email || phone || whatsapp || website);
-  const isPublic = formData.get("contact_is_public") === "yes" && hasChannel;
-  return { ok: true, value: { email, phone, whatsapp, website, isPublic } };
+  return { ok: true, value: { email, phone, whatsapp, instagram, website } };
 }
 
 function optional(formData: FormData, key: string) {

@@ -5,16 +5,15 @@ import { normalizeLocationCharacteristics, type LocationCharacteristics } from "
 import { normalizeLocationConditions, type LocationConditions } from "@/lib/locations/conditions";
 
 export type PublicLocationPhoto = { id: string; imageUrl: string; altText: string | null };
-export type PublicLocationContact = { email: string | null; phone: string | null; whatsapp: string | null; website: string | null };
 export type PublicLocation = {
   id: string; title: string; slug: string; summary: string | null; description: string | null;
   city: string; area: string | null; spaceType: string; environment: "interior" | "exterior" | "both";
   priceAmount: number | null; priceCurrency: string | null; priceUnit: "hour" | "half_day" | "day" | "project" | null;
   restrictions: string | null; characteristics: LocationCharacteristics; shootingConditions: LocationConditions;
   tourVideoUrl: string | null; operationalNotes: string | null; publishedAt: string;
-  photos: PublicLocationPhoto[]; contact: PublicLocationContact | null;
+  photos: PublicLocationPhoto[]; contactAvailable: boolean;
 };
-export type PublicLocationSummary = Omit<PublicLocation, "description" | "restrictions" | "characteristics" | "shootingConditions" | "tourVideoUrl" | "operationalNotes" | "contact">;
+export type PublicLocationSummary = Omit<PublicLocation, "description" | "restrictions" | "characteristics" | "shootingConditions" | "tourVideoUrl" | "operationalNotes" | "contactAvailable">;
 export type PublicLocationsResult = { ok: true; locations: PublicLocationSummary[]; hasNext: boolean } | { ok: false; locations: []; kind: "unconfigured" | "error" };
 export type PublicLocationResult = { kind: "found"; location: PublicLocation } | { kind: "not-found" } | { kind: "error" };
 
@@ -24,7 +23,7 @@ type PublicRow = {
   price_amount: number | null; price_currency: string | null; price_unit: PublicLocation["priceUnit"];
   restrictions?: string | null; characteristics?: unknown; shooting_conditions?: unknown;
   tour_video_url?: string | null; operational_notes?: string | null; published_at: string;
-  photos?: unknown; contact?: PublicLocationContact | null;
+  photos?: unknown; contact_available?: boolean;
 };
 
 function mapPhotos(value: unknown): PublicLocationPhoto[] {
@@ -32,8 +31,10 @@ function mapPhotos(value: unknown): PublicLocationPhoto[] {
   return value.flatMap((photo) => {
     if (!photo || typeof photo !== "object") return [];
     const row = photo as Record<string, unknown>;
-    if (typeof row.id !== "string" || typeof row.image_url !== "string") return [];
-    return [{ id: row.id, imageUrl: row.image_url, altText: typeof row.alt_text === "string" ? row.alt_text : null }];
+    if (typeof row.id !== "string") return [];
+    const managed = row.managed === true;
+    if (!managed && typeof row.image_url !== "string") return [];
+    return [{ id: row.id, imageUrl: managed ? `/api/locations/photos/${row.id}/image` : String(row.image_url), altText: typeof row.alt_text === "string" ? row.alt_text : null }];
   });
 }
 
@@ -75,6 +76,6 @@ export const getPublishedLocation = cache(async (slug: string): Promise<PublicLo
     characteristics: normalizeLocationCharacteristics(row.characteristics),
     shootingConditions: normalizeLocationConditions(row.shooting_conditions),
     tourVideoUrl: row.tour_video_url ?? null, operationalNotes: row.operational_notes ?? null,
-    contact: row.contact ?? null,
+    contactAvailable: row.contact_available === true,
   } };
 });

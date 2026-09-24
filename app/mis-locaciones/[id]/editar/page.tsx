@@ -14,7 +14,8 @@ import { normalizeLocationConditions } from "@/lib/locations/conditions";
 import { archiveLocation, updateLocation } from "../../actions";
 import ArchiveLocationButton from "../../ArchiveLocationButton";
 import LocationFeedback from "../../LocationFeedback";
-import LocationForm, { type EditableLocation, type EditableLocationContact, type EditableLocationPhoto } from "../../LocationForm";
+import LocationForm, { type EditableLocation, type EditableLocationContact } from "../../LocationForm";
+import type { OwnerLocationPhoto } from "@/components/locations/LocationPhotoManager";
 
 export const metadata: Metadata = {
   title: "Editar locación",
@@ -80,8 +81,8 @@ export default async function EditLocationPage({
   }
 
   const [contactResult, photosResult] = await Promise.all([
-    supabase.from("location_public_contacts").select("email, phone, whatsapp, website, is_public").eq("location_id", id).eq("owner_id", viewer.id).maybeSingle(),
-    supabase.from("location_photos").select("id, image_url, alt_text").eq("location_id", id).eq("owner_id", viewer.id).neq("status", "archived").order("sort_order", { ascending: true }).order("id", { ascending: true }),
+    supabase.rpc("get_my_location_contact_channels", { p_location_id: id }),
+    supabase.from("location_photos").select("id, image_url, storage_path, alt_text, is_cover, lifecycle_status").eq("location_id", id).eq("owner_id", viewer.id).order("sort_order", { ascending: true }).order("id", { ascending: true }),
   ]);
   if (contactResult.error || photosResult.error) {
     console.error("Error cargando contenido de una locación propia:", { contact: contactResult.error?.code, photos: photosResult.error?.code });
@@ -91,7 +92,13 @@ export default async function EditLocationPage({
   const raw = data as LocationRow & { characteristics: unknown; shooting_conditions: unknown };
   const location = { ...raw, characteristics: normalizeLocationCharacteristics(raw.characteristics), shooting_conditions: normalizeLocationConditions(raw.shooting_conditions) };
   const contact = (contactResult.data as EditableLocationContact | null) ?? null;
-  const photos = (photosResult.data ?? []) as EditableLocationPhoto[];
+  const photos = ((photosResult.data ?? []) as { id: string; image_url: string | null; storage_path: string | null; alt_text: string | null; is_cover: boolean; lifecycle_status: OwnerLocationPhoto["lifecycle"] }[]).map((photo) => ({
+    id: photo.id,
+    src: photo.storage_path ? `/api/locations/photos/${photo.id}/image` : photo.image_url,
+    altText: photo.alt_text,
+    isCover: photo.is_cover,
+    lifecycle: photo.lifecycle_status,
+  }));
   const updateAction = updateLocation.bind(null, location.id);
   const archiveAction = archiveLocation.bind(null, location.id);
 
@@ -136,7 +143,7 @@ export default async function EditLocationPage({
         </h1>
 
         <LocationFeedback error={feedback.error} success={feedback.success} />
-        <LocationForm action={updateAction} mode="edit" location={location} contact={contact} photos={photos} />
+        <LocationForm action={updateAction} mode="edit" location={location} contact={contact} photos={photos} locationId={location.id} />
 
         {location.status !== "archived" && (
           <section className="mt-16 border-t border-white/10 pt-9">
