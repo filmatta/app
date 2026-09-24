@@ -165,92 +165,6 @@ export default function LocationForm({
         </div>
       </section>
 
-      <section aria-labelledby="location-price-heading" className="space-y-7">
-        <div className="border-b border-white/10 pb-4">
-          <h2 id="location-price-heading" className="text-xl font-semibold">
-            Tarifa orientativa
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-white/50">
-            Completa los tres campos o déjalos vacíos. FILMATTA no gestiona el
-            pago en esta etapa.
-          </p>
-        </div>
-
-        <div className="grid gap-6 sm:grid-cols-3">
-          <Field label="Importe">
-            <input
-              name="price_amount"
-              type="number"
-              inputMode="decimal"
-              min="0"
-              max="9999999999.99"
-              step="0.01"
-              defaultValue={location?.price_amount ?? ""}
-              className={inputClass}
-              placeholder="5000"
-            />
-          </Field>
-
-          <Field label="Moneda">
-            <input
-              name="price_currency"
-              maxLength={3}
-              defaultValue={location?.price_currency ?? ""}
-              className={`${inputClass} uppercase`}
-              placeholder="MXN"
-              autoComplete="off"
-            />
-          </Field>
-
-          <Field label="Unidad">
-            <select
-              name="price_unit"
-              defaultValue={location?.price_unit ?? ""}
-              className={selectClass}
-            >
-              <option value="">Seleccionar</option>
-              {LOCATION_PRICE_UNITS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-      </section>
-
-      <section aria-labelledby="location-notes-heading" className="space-y-7">
-        <div className="border-b border-white/10 pb-4">
-          <h2 id="location-notes-heading" className="text-xl font-semibold">
-            Restricciones y notas
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-white/50">
-            Añade las condiciones básicas que una producción debería conocer.
-          </p>
-        </div>
-
-        <Field label="Restricciones básicas">
-          <textarea
-            name="restrictions"
-            defaultValue={location?.restrictions ?? ""}
-            maxLength={10_000}
-            rows={5}
-            className={inputClass}
-            placeholder="Horarios, ruido, acceso de vehículos, humo u otras condiciones."
-          />
-        </Field>
-        <Field label="Tarifa y condiciones operativas">
-          <textarea
-            name="operational_notes"
-            defaultValue={location?.operational_notes ?? ""}
-            maxLength={5_000}
-            rows={6}
-            className={inputClass}
-            placeholder="Contratación mínima, horas extra, visita técnica, depósito, seguro, contrato, identificación o limpieza."
-          />
-        </Field>
-      </section>
-
       <section aria-labelledby="location-characteristics-heading" className="space-y-7">
         <SectionHeading id="location-characteristics-heading" title="Características" description="Declara únicamente lo que existe en el espacio. Deja vacío lo que no conozcas; una capacidad indicada no representa un aforo certificado." />
         <LocationCharacteristicsEditor value={location?.characteristics} />
@@ -279,6 +193,21 @@ export default function LocationForm({
         <SectionHeading id="location-conditions-heading" title="Condiciones de rodaje" description={LOCATION_CONDITIONS_NOTICE} />
         <LocationConditionsEditor initialValue={location?.shooting_conditions} />
         <p className={styles.contactDisclosure}>Las condiciones que especifiques se mostrarán en la ficha pública cuando publiques la locación.</p>
+      </section>
+
+      <section aria-labelledby="location-price-heading" className="space-y-7">
+        <SectionHeading id="location-price-heading" title="Tarifa orientativa" description="Completa los tres campos o déjalos vacíos. FILMATTA no gestiona el pago en esta etapa." />
+        <div className="grid gap-6 sm:grid-cols-3">
+          <Field label="Importe"><input name="price_amount" type="number" inputMode="decimal" min="0" max="9999999999.99" step="0.01" defaultValue={location?.price_amount ?? ""} className={inputClass} placeholder="5000" /></Field>
+          <Field label="Moneda"><input name="price_currency" maxLength={3} defaultValue={location?.price_currency ?? ""} className={`${inputClass} uppercase`} placeholder="MXN" autoComplete="off" /></Field>
+          <Field label="Unidad"><select name="price_unit" defaultValue={location?.price_unit ?? ""} className={selectClass}><option value="">Seleccionar</option>{LOCATION_PRICE_UNITS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
+        </div>
+      </section>
+
+      <section aria-labelledby="location-notes-heading" className="space-y-7">
+        <SectionHeading id="location-notes-heading" title="Restricciones y condiciones operativas" description="Aclara restricciones, contratación mínima, horas extra, visita técnica, depósito, seguro, contrato, identificación o limpieza." />
+        <Field label="Restricciones básicas"><textarea name="restrictions" defaultValue={location?.restrictions ?? ""} maxLength={10_000} rows={5} className={inputClass} placeholder="Horarios, ruido, acceso de vehículos, humo u otras condiciones." /></Field>
+        <Field label="Tarifa y condiciones operativas"><textarea name="operational_notes" defaultValue={location?.operational_notes ?? ""} maxLength={5_000} rows={6} className={inputClass} placeholder="Contratación mínima, horas extra, visita técnica, depósito, seguro, contrato, identificación o limpieza." /></Field>
       </section>
 
       <section aria-labelledby="location-contact-heading" className="space-y-7">
