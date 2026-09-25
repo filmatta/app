@@ -28,6 +28,7 @@ import {
 import { loadLocalWriterDrafts } from "@/lib/writer/storage";
 import { startWriterTabLease, type WriterTabLease } from "@/lib/writer/tab-lease";
 import { ScreenplayBlockExtension } from "@/lib/writer/tiptap";
+import { writerTimelineHref } from "@/lib/writer/routes";
 
 type ScriptInput = {
   id: string;
@@ -378,6 +379,7 @@ export default function WriterWorkspace({
         />
         <div className="writer-header-actions">
           <SaveStatus state={saveState} />
+          <Link className="writer-timeline-link" href={writerTimelineHref(script.id)}>Timeline</Link>
           <div className="writer-export-wrap">
             <button type="button" onClick={() => setExportMenu((open) => !open)} aria-expanded={exportMenu}>Exportar</button>
             {exportMenu && (
@@ -402,6 +404,7 @@ export default function WriterWorkspace({
           <small>Guion</small>
           <strong>{title || "Guion sin título"}</strong>
         </div>
+        <Link className="writer-timeline-mobile-link" href={writerTimelineHref(script.id)}>Timeline</Link>
         <nav aria-label="Escenas del guion">
           <p className="writer-sidebar-heading">Escenas <span>{scenes.length}</span></p>
           {scenes.length ? (

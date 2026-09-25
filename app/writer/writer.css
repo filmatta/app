@@ -58,6 +58,9 @@
 .writer-header-actions { display: flex; align-items: center; gap: 7px; padding-right: 14px; }
 .writer-header-actions > button,
 .writer-export-wrap > button { padding: 9px 11px; white-space: nowrap; font-size: .75rem; }
+.writer-timeline-link { padding: 9px 11px; border: 1px solid var(--writer-border); border-radius: 8px; color: var(--writer-muted); text-decoration: none; white-space: nowrap; font-size: .75rem; transition: border-color .18s, color .18s, background .18s; }
+.writer-timeline-link:hover,
+.writer-timeline-link:focus-visible { border-color: rgba(237, 90, 85, .5); color: #fff; background: rgba(237, 90, 85, .08); }
 .writer-focus-button { border-color: rgba(237, 90, 85, .5) !important; }
 .writer-save-status { max-width: 210px; overflow: hidden; color: var(--writer-muted); font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
 .writer-save-status--error,
@@ -89,6 +92,7 @@
 .writer-character-section li { display: flex; justify-content: space-between; padding: 8px 0; color: rgba(241,239,233,.64); font-size: .75rem; }
 .writer-character-section li span { color: rgba(241,239,233,.3); }
 .writer-sidebar-mobile-head { display: none; }
+.writer-timeline-mobile-link { display: none; }
 
 .writer-editor-area { display: grid; grid-row: 2; grid-template-rows: 50px auto minmax(0, 1fr); min-width: 0; min-height: 0; background: #11161a; }
 .writer-toolbar { z-index: 15; display: flex; align-items: center; gap: 5px; min-width: 0; padding: 7px 16px; border-bottom: 1px solid var(--writer-border); background: #0d1115; }
@@ -170,6 +174,9 @@
   .writer-script-card { grid-template-columns: 1fr; }
   .writer-script-actions { padding-left: 64px; overflow-x: auto; }
   .writer-script-actions button { white-space: nowrap; }
+  .writer-timeline-link { display: none; }
+  .writer-timeline-mobile-link { display: flex; align-items: center; justify-content: space-between; margin: 12px; padding: 11px 10px; border: 1px solid var(--writer-border); border-radius: 7px; color: #ffc0bd; text-decoration: none; font-size: .76rem; }
+  .writer-timeline-mobile-link::after { content: "→"; color: var(--writer-muted); }
   .writer-paper { padding: 18px 10px 90px; }
   .writer-paper .tiptap { min-height: calc(100dvh - 144px); padding: 44px 24px 80px; border-radius: 2px; font-size: .88rem; }
   .writer-screenplay-block[data-screenplay-kind="character"] { width: 48%; margin-left: 42%; }
