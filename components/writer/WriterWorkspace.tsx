@@ -30,6 +30,19 @@ import { startWriterTabLease, type WriterTabLease } from "@/lib/writer/tab-lease
 import { ScreenplayBlockExtension } from "@/lib/writer/tiptap";
 import { writerTimelineHref } from "@/lib/writer/routes";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
+import {
+  WriterCharacterPanel,
+  WriterContextMenu,
+  WriterInsertPanel,
+  WRITER_KIND_LABELS,
+  type WriterContextMenuState,
+  type WriterInsertState,
+} from "@/components/writer/WriterWritingTools";
+import {
+  currentWriterBlock,
+  findWriterBlockAtPosition,
+  selectionSpansWriterBlocks,
+} from "@/lib/writer/editor-actions";
 
 type ScriptInput = {
   id: string;
@@ -38,16 +51,6 @@ type ScriptInput = {
   schemaVersion: number;
   revision: number;
   updatedAt: string;
-};
-
-const kindLabels: Record<ScreenplayKind, string> = {
-  sceneHeading: "Encabezado de escena",
-  action: "Acción",
-  character: "Personaje",
-  dialogue: "Diálogo",
-  parenthetical: "Acotación",
-  transition: "Transición",
-  authorNote: "Nota del autor",
 };
 
 const initialSaveState: WriterPersistenceState = {
@@ -73,15 +76,21 @@ export default function WriterWorkspace({
   });
   const [ready, setReady] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
-  const [mobileSidebar, setMobileSidebar] = useState(false);
+  const [mobileSidebar, setMobileSidebar] = useState<"scenes" | "characters" | null>(null);
   const [activeScene, setActiveScene] = useState<string | null>(null);
   const [exportMenu, setExportMenu] = useState(false);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<WriterContextMenuState | null>(null);
+  const [insertState, setInsertState] = useState<WriterInsertState | null>(null);
   const [conflictBusy, setConflictBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const controllerRef = useRef<WriterPersistenceController | null>(null);
   const leaseRef = useRef<WriterTabLease | null>(null);
   const sessionIdRef = useRef(crypto.randomUUID());
+  const openContextMenu = useCallback((next: WriterContextMenuState) => {
+    setInsertState(null);
+    setContextMenu(next);
+  }, []);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -126,6 +135,45 @@ export default function WriterWorkspace({
           ),
         );
         view.dispatch(view.state.tr.replaceSelection(new Slice(Fragment.fromArray(blocks), 0, 0)).scrollIntoView());
+        return true;
+      },
+      handleDOMEvents: {
+        contextmenu: (view, event) => {
+          const contextEvent = event as MouseEvent;
+          const pointerType = "pointerType" in contextEvent
+            ? (contextEvent as PointerEvent).pointerType
+            : "mouse";
+          if (contextEvent.shiftKey || (pointerType && pointerType !== "mouse")) return false;
+          const result = view.posAtCoords({ left: contextEvent.clientX, top: contextEvent.clientY });
+          if (!result) return false;
+          const target = findWriterBlockAtPosition(view.state.doc, result.pos);
+          if (!target) return false;
+          contextEvent.preventDefault();
+          openContextMenu({
+            targetId: target.id,
+            kind: target.kind,
+            x: contextEvent.clientX,
+            y: contextEvent.clientY,
+            multipleBlocks: selectionSpansWriterBlocks(view.state),
+          });
+          return true;
+        },
+      },
+      handleKeyDown: (view, event) => {
+        if (view.composing || event.isComposing || !((event.shiftKey && event.key === "F10") || event.key === "ContextMenu")) {
+          return false;
+        }
+        const target = findWriterBlockAtPosition(view.state.doc, view.state.selection.from);
+        if (!target) return false;
+        event.preventDefault();
+        const coordinates = view.coordsAtPos(view.state.selection.from);
+        openContextMenu({
+          targetId: target.id,
+          kind: target.kind,
+          x: coordinates.left,
+          y: coordinates.bottom,
+          multipleBlocks: selectionSpansWriterBlocks(view.state),
+        });
         return true;
       },
     },
@@ -353,7 +401,7 @@ export default function WriterWorkspace({
     if (position !== null) {
       editor.chain().focus().setTextSelection(position).scrollIntoView().run();
       setActiveScene(id);
-      setMobileSidebar(false);
+      setMobileSidebar(null);
     }
   }
 
@@ -365,8 +413,11 @@ export default function WriterWorkspace({
           <span aria-hidden="true" />
           <Link href="/writer">Writer</Link>
         </div>
-        <button className="writer-mobile-scenes" type="button" onClick={() => setMobileSidebar(true)} aria-expanded={mobileSidebar}>
+        <button className="writer-mobile-scenes" type="button" onClick={() => setMobileSidebar("scenes")} aria-expanded={mobileSidebar === "scenes"}>
           Escenas
+        </button>
+        <button className="writer-mobile-characters" type="button" onClick={() => setMobileSidebar("characters")} aria-expanded={mobileSidebar === "characters"}>
+          Personajes
         </button>
         <input
           className="writer-title-input"
@@ -401,10 +452,10 @@ export default function WriterWorkspace({
         </div>
       </header>
 
-      <aside className={`writer-sidebar ${mobileSidebar ? "writer-sidebar--open" : ""}`}>
+      <aside className={`writer-sidebar ${mobileSidebar ? "writer-sidebar--open" : ""} writer-sidebar--mobile-${mobileSidebar ?? "closed"}`}>
         <div className="writer-sidebar-mobile-head">
-          <strong>Navegación</strong>
-          <button type="button" onClick={() => setMobileSidebar(false)}>Cerrar</button>
+          <strong>{mobileSidebar === "characters" ? "Personajes" : "Escenas"}</strong>
+          <button type="button" onClick={() => setMobileSidebar(null)}>Cerrar</button>
         </div>
         <div className="writer-sidebar-title">
           <small>Guion</small>
@@ -425,22 +476,40 @@ export default function WriterWorkspace({
             </ol>
           ) : <p className="writer-sidebar-empty">Añade un encabezado para crear una escena.</p>}
         </nav>
-        <section className="writer-character-section" aria-labelledby="writer-character-heading">
-          <p id="writer-character-heading" className="writer-sidebar-heading">Personajes <span>{characters.length}</span></p>
-          {characters.length ? (
-            <ul>{characters.map((character) => <li key={character.key}>{character.name}<span>{character.occurrences}</span></li>)}</ul>
-          ) : <p className="writer-sidebar-empty">Los nombres aparecerán al usar bloques de personaje.</p>}
-        </section>
+        <WriterCharacterPanel document={document} />
       </aside>
 
       <main className="writer-editor-area">
-        <WriterToolbar editor={editor} words={words} characters={characters.map((item) => item.name)} />
+        <WriterToolbar
+          editor={editor}
+          words={words}
+          characters={characters.map((item) => item.name)}
+          onInsert={(next) => {
+            setContextMenu(null);
+            setInsertState(next);
+          }}
+        />
         {feedback && <div className="writer-editor-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback(null)}>Cerrar</button></div>}
         <div className="writer-paper" aria-busy={!ready}>
           {!ready && <div className="writer-loading">Preparando tu guion…</div>}
           <EditorContent editor={editor} />
         </div>
       </main>
+
+      {editor && contextMenu && document.content.some((block) => block.attrs.id === contextMenu.targetId) && (
+        <WriterContextMenu
+          editor={editor}
+          state={contextMenu}
+          onClose={() => setContextMenu(null)}
+          onInsert={(view) => {
+            setInsertState({ targetId: contextMenu.targetId, x: contextMenu.x, y: contextMenu.y, view });
+            setContextMenu(null);
+          }}
+        />
+      )}
+      {editor && insertState && document.content.some((block) => block.attrs.id === insertState.targetId) && (
+        <WriterInsertPanel editor={editor} state={insertState} onClose={() => setInsertState(null)} />
+      )}
 
       {saveState.status === "tabBlocked" && (
         <div className="writer-tab-notice" role="alert">
@@ -479,7 +548,17 @@ export default function WriterWorkspace({
   );
 }
 
-function WriterToolbar({ editor, words, characters }: { editor: Editor | null; words: number; characters: string[] }) {
+function WriterToolbar({
+  editor,
+  words,
+  characters,
+  onInsert,
+}: {
+  editor: Editor | null;
+  words: number;
+  characters: string[];
+  onInsert: (state: WriterInsertState) => void;
+}) {
   const state = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
@@ -507,8 +586,20 @@ function WriterToolbar({ editor, words, characters }: { editor: Editor | null; w
         value={state.kind}
         onChange={(event) => editor.chain().focus().updateAttributes("screenplayBlock", { kind: event.target.value }).run()}
       >
-        {SCREENPLAY_KINDS.map((kind) => <option key={kind} value={kind}>{kindLabels[kind]}</option>)}
+        {SCREENPLAY_KINDS.map((kind) => <option key={kind} value={kind}>{WRITER_KIND_LABELS[kind]}</option>)}
       </select>
+      <button
+        className="writer-insert-button"
+        type="button"
+        onMouseDown={preserveSelection}
+        onClick={(event) => {
+          const target = currentWriterBlock(editor);
+          if (!target) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          onInsert({ targetId: target.id, x: rect.left, y: rect.bottom + 6, view: "menu" });
+        }}
+        aria-label="Insertar en el guion"
+      >Insertar</button>
       <span className="writer-toolbar-divider" aria-hidden="true" />
       <button type="button" aria-label="Negrita" aria-pressed={state.bold} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleBold().run()}><strong>B</strong></button>
       <button type="button" aria-label="Cursiva" aria-pressed={state.italic} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleItalic().run()}><em>I</em></button>
