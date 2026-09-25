@@ -15,8 +15,10 @@ if (process.env.FILMATTA_WRITER_PREVIEW !== TEST_REF) {
 const keys = JSON.parse(execFileSync(SUPABASE_CLI, [
   "projects", "api-keys", "--project-ref", TEST_REF, "--reveal", "--output", "json",
 ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
-const anonKey = keys.find((key) => key.name === "anon")?.api_key;
-if (!anonKey) throw new Error("Supabase Test publishable key unavailable.");
+const publishableKey = keys.find((key) => key.name === "default" && key.type === "publishable")?.api_key
+  ?? keys.find((key) => key.name === "anon")?.api_key;
+if (!publishableKey) throw new Error("Supabase Test publishable key unavailable.");
+const commitSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 
 fs.mkdirSync(".vercel", { recursive: true });
 fs.writeFileSync(".vercel/project.json", JSON.stringify({ orgId: TEAM_ID, projectId: PROJECT_ID }));
@@ -24,13 +26,16 @@ fs.writeFileSync(".vercel/project.json", JSON.stringify({ orgId: TEAM_ID, projec
 const preview = await deploy({
   ...process.env,
   NEXT_PUBLIC_SUPABASE_URL: `https://${TEST_REF}.supabase.co`,
-  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: anonKey,
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: publishableKey,
   BILLING_ENABLED: "false",
   BILLING_MODE: "test",
   BILLING_TEST_SUPABASE_PROJECT_REF: TEST_REF,
-});
+}, commitSha);
 const deployment = await vercel(`/v13/deployments/${new URL(preview).hostname}`);
-if (deployment.projectId !== PROJECT_ID || deployment.target === "production" || deployment.readyState !== "READY") {
+if (deployment.projectId !== PROJECT_ID
+  || deployment.target === "production"
+  || deployment.readyState !== "READY"
+  || deployment.meta?.githubCommitSha !== commitSha) {
   throw new Error("Preview target verification failed.");
 }
 console.log(JSON.stringify({
@@ -43,7 +48,7 @@ console.log(JSON.stringify({
   backend: TEST_REF,
 }));
 
-function deploy(env) {
+function deploy(env, commitSha) {
   return new Promise((resolve, reject) => {
     let output = "";
     const child = spawn(process.execPath, [
@@ -52,6 +57,7 @@ function deploy(env) {
       "--yes",
       "--target", "preview",
       "--scope", "filmatta",
+      "--meta", `githubCommitSha=${commitSha}`,
       "--env", "NEXT_PUBLIC_SUPABASE_URL",
       "--env", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
       "--env", "BILLING_ENABLED",
