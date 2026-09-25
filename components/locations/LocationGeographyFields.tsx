@@ -13,11 +13,20 @@ type InitialGeography = {
   regionCode?: string | null;
   municipalityCode?: string | null;
   localityCode?: string | null;
+  postalCode?: string | null;
   city?: string | null;
   area?: string | null;
 };
 
-export default function LocationGeographyFields({ initial, required = true }: { initial?: InitialGeography; required?: boolean }) {
+export default function LocationGeographyFields({
+  initial,
+  required = true,
+  municipalityOnly = false,
+}: {
+  initial?: InitialGeography;
+  required?: boolean;
+  municipalityOnly?: boolean;
+}) {
   const [country, setCountry] = useState(initial?.countryCode ?? "MX");
   const [region, setRegion] = useState(initial?.regionCode ?? "");
   const [municipality, setMunicipality] = useState(initial?.municipalityCode ?? "");
@@ -38,13 +47,13 @@ export default function LocationGeographyFields({ initial, required = true }: { 
   }, [country, region]);
 
   useEffect(() => {
-    if (country !== "MX" || !region || !municipality) return;
+    if (municipalityOnly || country !== "MX" || !region || !municipality) return;
     let active = true;
     void loadCatalog<MexicoLocality>(`level=localities&region=${region}&municipality=${municipality}`)
       .then((items) => { if (active) setLocalities(items); })
       .catch(() => { if (active) setError("No pudimos cargar las localidades. Inténtalo de nuevo."); });
     return () => { active = false; };
-  }, [country, region, municipality]);
+  }, [country, municipality, municipalityOnly, region]);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("es-MX");
@@ -79,16 +88,30 @@ export default function LocationGeographyFields({ initial, required = true }: { 
           {municipalities.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
         </select>
       </Field>
-      <Field label="Buscar ciudad o localidad">
+      {!municipalityOnly && <Field label="Buscar ciudad o localidad">
         <input value={query} onChange={(event) => setQuery(event.target.value)} disabled={!municipality} className={inputClass} placeholder="Escribe para filtrar" />
-      </Field>
+      </Field>}
+      {municipalityOnly && <Field label="Código postal">
+        <input
+          name="postal_code"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]{5}"
+          minLength={5}
+          maxLength={5}
+          required={required}
+          defaultValue={initial?.postalCode ?? ""}
+          className={inputClass}
+          placeholder="Ej. 44160"
+        />
+      </Field>}
     </div>
-    <Field label="Ciudad o localidad">
+    {!municipalityOnly && <Field label="Ciudad o localidad">
       <select name="locality_code" required={required} value={locality} disabled={!municipality} onChange={(event) => setLocality(event.target.value)} className={inputClass}>
         <option value="">Seleccionar una opción válida</option>
         {filtered.map((item) => <option key={item.code} value={item.code}>{item.name}{item.scope ? ` · ${sentenceCase(item.scope)}` : ""}</option>)}
       </select>
-    </Field>
+    </Field>}
     <Field label="Zona aproximada (opcional)">
       <input name="area" maxLength={120} defaultValue={initial?.area ?? ""} className={inputClass} placeholder="Colonia, barrio o referencia general" />
     </Field>

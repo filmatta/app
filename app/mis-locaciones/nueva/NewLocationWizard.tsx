@@ -63,6 +63,7 @@ export type ActivationWizardLocation = {
   regionCode: string | null;
   municipalityCode: string | null;
   localityCode: string | null;
+  postalCode: string | null;
   onboardingCompleted: boolean;
   status: string;
 };
@@ -244,9 +245,10 @@ export default function NewLocationWizard({
           regionCode: location.regionCode,
           municipalityCode: location.municipalityCode,
           localityCode: location.localityCode,
+          postalCode: location.postalCode,
           city: location.city,
           area: location.area,
-        } : undefined} /></div>
+        } : undefined} municipalityOnly /></div>
         <div data-step-panel="3" hidden={step !== 3}><div className={styles.capacityControl}>
           <label htmlFor="activation-capacity">Personas</label>
           <input id="activation-capacity" name="characteristic.declared_capacity" value={capacity} onChange={(event) => setCapacity(event.target.value)} required type="number" min="1" max="1000000" step="1" inputMode="numeric" placeholder="30" />
@@ -388,16 +390,16 @@ function getSummary(
     const value = String(data?.get(`condition.${key}`) ?? location?.conditions[key] ?? "");
     return value in LOCATION_CONDITION_LABELS;
   }).length;
-  const localitySelect = form?.elements.namedItem("locality_code");
-  const locality = localitySelect instanceof HTMLSelectElement
-    ? localitySelect.selectedOptions[0]?.textContent?.split(" · ")[0] ?? ""
+  const placeSelect = form?.elements.namedItem("municipality_code");
+  const place = placeSelect instanceof HTMLSelectElement
+    ? placeSelect.selectedOptions[0]?.textContent ?? ""
     : location?.city ?? "";
   const area = String(data?.get("area") ?? location?.area ?? "");
   const currentCapacity = String(data?.get("characteristic.declared_capacity") ?? capacity);
   return {
     title: String(data?.get("title") ?? location?.title ?? ""),
     spaceType: String(data?.get("space_type") ?? location?.spaceType ?? ""),
-    location: [area, locality].filter(Boolean).join(" · "),
+    location: [area, place].filter(Boolean).join(" · "),
     capacity: currentCapacity ? `${currentCapacity} personas` : "Pendiente",
     rate: mode === "inquire" ? "Consultar" : firstPrice ? `$${firstPrice} MXN / h` : location?.rateTiers.length ? "Tarifas por rangos" : "Pendiente",
     photos,

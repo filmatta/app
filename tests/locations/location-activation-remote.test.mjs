@@ -19,9 +19,10 @@ test("Locations Activation schema and ownership contract hold in Supabase Test",
   withTestUsers(async ({ prefix, owner, stranger }) => {
     const historical = checked(await owner.client.from("locations").insert(
       baseLocation(prefix, owner.id, "historical"),
-    ).select("id,onboarding_step,onboarding_completed_at").single());
+    ).select("id,onboarding_step,onboarding_completed_at,postal_code").single());
     assert.equal(historical.onboarding_step, null);
     assert.equal(historical.onboarding_completed_at, null);
+    assert.equal(historical.postal_code, null, "historical locations are not backfilled");
 
     const creationKey = randomUUID();
     const active = checked(await owner.client.from("locations").insert({
@@ -29,9 +30,11 @@ test("Locations Activation schema and ownership contract hold in Supabase Test",
       creation_key: creationKey,
       onboarding_step: 3,
       onboarding_completed_at: null,
-    }).select("id,status,onboarding_step,onboarding_completed_at").single());
+      postal_code: "04160",
+    }).select("id,status,onboarding_step,onboarding_completed_at,postal_code").single());
     assert.equal(active.onboarding_step, 3);
     assert.equal(active.status, "draft");
+    assert.equal(active.postal_code, "04160", "postal code remains a string with its leading zero");
 
     const resumed = checked(await owner.client.from("locations")
       .select("id,onboarding_step,onboarding_completed_at")

@@ -15,7 +15,7 @@ import {
   type LocationConditionValue,
 } from "@/lib/locations/conditions";
 import { LOCATION_ENVIRONMENTS } from "@/lib/locations/form";
-import { resolveMexicoGeography } from "@/lib/locations/geography";
+import { resolveMexicoMunicipality } from "@/lib/locations/geography";
 import {
   locationPricingProblem,
   normalizeLocationRateMode,
@@ -72,7 +72,7 @@ export async function createLocationActivationDraft(formData: FormData): Promise
     slug,
     summary: null,
     description: null,
-    city: geography.value.localityName,
+    city: geography.value.municipalityName,
     area,
     space_type: spaceType,
     environment,
@@ -91,8 +91,9 @@ export async function createLocationActivationDraft(formData: FormData): Promise
     region_name: geography.value.regionName,
     municipality_code: geography.value.municipalityCode,
     municipality_name: geography.value.municipalityName,
-    locality_code: geography.value.localityCode,
-    geography_source: geography.value.source,
+    locality_code: null,
+    geography_source: null,
+    postal_code: geography.value.postalCode,
     creation_key: creationKey,
     owner_id: userId,
     status: "draft",
@@ -161,15 +162,16 @@ export async function saveLocationActivationStep(
     const geography = await activationGeography(formData);
     if (!geography.ok) return geography.result;
     values = {
-      city: geography.value.localityName,
+      city: geography.value.municipalityName,
       area,
       country_code: geography.value.countryCode,
       region_code: geography.value.regionCode,
       region_name: geography.value.regionName,
       municipality_code: geography.value.municipalityCode,
       municipality_name: geography.value.municipalityName,
-      locality_code: geography.value.localityCode,
-      geography_source: geography.value.source,
+      locality_code: null,
+      geography_source: null,
+      postal_code: geography.value.postalCode,
     };
   } else if (step === 3) {
     const capacity = positiveInteger(text(formData, "characteristic.declared_capacity"));
@@ -253,18 +255,21 @@ async function activationUser() {
 }
 
 async function activationGeography(formData: FormData): Promise<
-  | { ok: true; value: NonNullable<Awaited<ReturnType<typeof resolveMexicoGeography>>> }
+  | { ok: true; value: NonNullable<Awaited<ReturnType<typeof resolveMexicoMunicipality>>> & { postalCode: string } }
   | { ok: false; result: LocationActivationResult }
 > {
+  const postalCode = text(formData, "postal_code");
+  if (!/^\d{5}$/.test(postalCode)) {
+    return { ok: false, result: failure("Escribe un código postal válido de 5 dígitos.", "postal_code") };
+  }
   try {
-    const geography = await resolveMexicoGeography({
+    const geography = await resolveMexicoMunicipality({
       countryCode: text(formData, "country_code"),
       regionCode: text(formData, "region_code"),
       municipalityCode: text(formData, "municipality_code"),
-      localityCode: text(formData, "locality_code"),
     });
     return geography
-      ? { ok: true, value: geography }
+      ? { ok: true, value: { ...geography, postalCode } }
       : { ok: false, result: failure("Selecciona una ubicación válida del catálogo.", "region_code") };
   } catch (error) {
     console.error("Error validando geografía de Location Activation:", { name: error instanceof Error ? error.name : "UnknownError" });

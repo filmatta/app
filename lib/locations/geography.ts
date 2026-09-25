@@ -26,6 +26,14 @@ export type NormalizedLocationGeography = {
   source: typeof MEXICO_GEOGRAPHY_SOURCE;
 };
 
+export type NormalizedLocationMunicipality = {
+  countryCode: "MX";
+  regionCode: string;
+  regionName: string;
+  municipalityCode: string;
+  municipalityName: string;
+};
+
 type InegiRow = {
   cve_ent?: unknown;
   cve_mun?: unknown;
@@ -82,6 +90,26 @@ export async function resolveMexicoGeography(input: {
     localityCode: locality.code,
     localityName: locality.name,
     source: MEXICO_GEOGRAPHY_SOURCE,
+  };
+}
+
+export async function resolveMexicoMunicipality(input: {
+  countryCode: string;
+  regionCode: string;
+  municipalityCode: string;
+}): Promise<NormalizedLocationMunicipality | null> {
+  if (input.countryCode !== "MX" || !validRegion(input.regionCode)) return null;
+  const region = MEXICO_REGIONS.find((item) => item.code === input.regionCode);
+  if (!region) return null;
+  const municipalities = await getMexicoMunicipalities(input.regionCode);
+  const municipality = municipalities.find((item) => item.code === input.municipalityCode);
+  if (!municipality) return null;
+  return {
+    countryCode: "MX",
+    regionCode: region.code,
+    regionName: region.name,
+    municipalityCode: municipality.code,
+    municipalityName: municipality.name,
   };
 }
 

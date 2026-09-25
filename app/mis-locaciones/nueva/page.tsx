@@ -39,6 +39,7 @@ type LocationRow = {
   region_code: string | null;
   municipality_code: string | null;
   locality_code: string | null;
+  postal_code: string | null;
   creation_key: string | null;
   onboarding_step: number | null;
   onboarding_completed_at: string | null;
@@ -66,7 +67,7 @@ export default async function NewLocationPage({
   if (!UUID_PATTERN.test(params.location)) notFound();
   const supabase = await createClient();
   const locationResult = await supabase.from("locations")
-    .select("id,title,slug,city,area,space_type,environment,characteristics,shooting_conditions,rate_mode,rate_tiers,minimum_hours,country_code,region_code,municipality_code,locality_code,creation_key,onboarding_step,onboarding_completed_at,status")
+    .select("id,title,slug,city,area,space_type,environment,characteristics,shooting_conditions,rate_mode,rate_tiers,minimum_hours,country_code,region_code,municipality_code,locality_code,postal_code,creation_key,onboarding_step,onboarding_completed_at,status")
     .eq("id", params.location)
     .eq("owner_id", viewer.id)
     .maybeSingle();
@@ -121,6 +122,7 @@ export default async function NewLocationPage({
     regionCode: row.region_code,
     municipalityCode: row.municipality_code,
     localityCode: row.locality_code,
+    postalCode: row.postal_code,
     onboardingCompleted: completed,
     status: row.status,
   };
