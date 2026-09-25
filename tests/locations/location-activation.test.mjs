@@ -11,7 +11,6 @@ const actions = readFileSync("app/mis-locaciones/nueva/activation-actions.ts", "
 const page = readFileSync("app/mis-locaciones/nueva/page.tsx", "utf8");
 const wizard = readFileSync("app/mis-locaciones/nueva/NewLocationWizard.tsx", "utf8");
 const geographyFields = readFileSync("components/locations/LocationGeographyFields.tsx", "utf8");
-const activationGeographyFields = readFileSync("components/locations/LocationActivationGeographyFields.tsx", "utf8");
 const ownerEditor = readFileSync("app/mis-locaciones/LocationOwnerEditor.tsx", "utf8");
 const ownerActions = readFileSync("app/mis-locaciones/actions.ts", "utf8");
 const listing = readFileSync("app/mis-locaciones/page.tsx", "utf8");
@@ -31,12 +30,13 @@ test("schema models exactly historical, active and completed activation states",
 test("activation location step stores a separate structured Mexico postal code", () => {
   assert.match(postalMigration, /add column postal_code text/);
   assert.doesNotMatch(postalMigration, /update public\.locations|default|policy|row level security/i);
-  assert.match(wizard, /LocationActivationGeographyFields/);
-  assert.doesNotMatch(activationGeographyFields, /Buscar ciudad o localidad|Ciudad o localidad/);
-  assert.match(activationGeographyFields, /label="Código postal"/);
-  assert.match(activationGeographyFields, /placeholder="Ej\. 44160"/);
-  assert.match(activationGeographyFields, /pattern="\[0-9\]\{5\}"/);
-  assert.match(activationGeographyFields, /label="Zona aproximada \(opcional\)"/);
+  assert.match(wizard, /data-step-panel="2"[\s\S]*?<StepTwoGeography/);
+  assert.doesNotMatch(wizard, /Buscar ciudad o localidad|Ciudad o localidad/);
+  assert.match(wizard, />Código postal<\/span>/);
+  assert.match(wizard, /name="postal_code"/);
+  assert.match(wizard, /placeholder="Ej\. 44160"/);
+  assert.match(wizard, /pattern="\[0-9\]\{5\}"/);
+  assert.match(wizard, />Zona aproximada \(opcional\)<\/span>/);
   assert.match(actions, /\^\\d\{5\}\$/);
   assert.match(actions, /postal_code: geography\.value\.postalCode/);
   assert.match(actions, /resolveMexicoMunicipality/);

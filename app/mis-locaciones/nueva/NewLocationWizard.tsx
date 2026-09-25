@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import LocationActivationGeographyFields from "@/components/locations/LocationActivationGeographyFields";
 import LocationPhotoManager, { type OwnerLocationPhoto } from "@/components/locations/LocationPhotoManager";
 import LocationStarterPricing from "@/components/locations/LocationStarterPricing";
 import {
@@ -19,6 +18,11 @@ import {
   type LocationConditions,
 } from "@/lib/locations/conditions";
 import { LOCATION_ENVIRONMENTS, type LocationEnvironment } from "@/lib/locations/form";
+import {
+  MEXICO_COUNTRY,
+  MEXICO_REGIONS,
+  type MexicoMunicipality,
+} from "@/lib/locations/geography";
 import type { LocationRateMode, LocationRateTier } from "@/lib/locations/pricing";
 import type { EditableLocationContact } from "../LocationForm";
 import {
@@ -240,13 +244,7 @@ export default function NewLocationWizard({
         </div>
 
         <div data-step-panel="1" hidden={step !== 1}><StepOne location={location} /></div>
-        <div data-step-panel="2" hidden={step !== 2}><LocationActivationGeographyFields initial={location ? {
-          countryCode: location.countryCode,
-          regionCode: location.regionCode,
-          municipalityCode: location.municipalityCode,
-          postalCode: location.postalCode,
-          area: location.area,
-        } : undefined} /></div>
+        <div data-step-panel="2" hidden={step !== 2}><StepTwoGeography location={location} /></div>
         <div data-step-panel="3" hidden={step !== 3}><div className={styles.capacityControl}>
           <label htmlFor="activation-capacity">Personas</label>
           <input id="activation-capacity" name="characteristic.declared_capacity" value={capacity} onChange={(event) => setCapacity(event.target.value)} required type="number" min="1" max="1000000" step="1" inputMode="numeric" placeholder="30" />
@@ -322,6 +320,93 @@ function StepConditions({ conditions }: { conditions: LocationConditions }) {
     <p className={styles.note}>Estas son sólo las más comunes. Podrás configurar todas las condiciones después.</p>
   </div>;
 }
+
+function StepTwoGeography({ location }: { location?: ActivationWizardLocation }) {
+  const [country, setCountry] = useState(location?.countryCode ?? "MX");
+  const [region, setRegion] = useState(location?.regionCode ?? "");
+  const [municipality, setMunicipality] = useState(location?.municipalityCode ?? "");
+  const [postalCode, setPostalCode] = useState(location?.postalCode ?? "");
+  const [area, setArea] = useState(location?.area ?? "");
+  const [municipalities, setMunicipalities] = useState<MexicoMunicipality[]>([]);
+  const [geographyError, setGeographyError] = useState("");
+
+  useEffect(() => {
+    if (country !== "MX" || !region) return;
+    let active = true;
+    void loadActivationMunicipalities(region)
+      .then((items) => { if (active) setMunicipalities(items); })
+      .catch(() => { if (active) setGeographyError("No pudimos cargar los municipios. Inténtalo de nuevo."); });
+    return () => { active = false; };
+  }, [country, region]);
+
+  return <div className="space-y-5">
+    <div className="grid gap-5 sm:grid-cols-2">
+      <label className="block">
+        <span className="mb-2 block text-sm text-white/55">País</span>
+        <select name="country_code" required value={country} onChange={(event) => {
+          setCountry(event.target.value);
+          setRegion("");
+          setMunicipality("");
+          setMunicipalities([]);
+          setGeographyError("");
+        }} className={geographyInputClass}>
+          <option value="MX">{MEXICO_COUNTRY.name}</option>
+        </select>
+      </label>
+      <label className="block">
+        <span className="mb-2 block text-sm text-white/55">Estado o región</span>
+        <select name="region_code" required value={region} onChange={(event) => {
+          setRegion(event.target.value);
+          setMunicipality("");
+          setMunicipalities([]);
+          setGeographyError("");
+        }} className={geographyInputClass}>
+          <option value="">Seleccionar</option>
+          {MEXICO_REGIONS.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
+        </select>
+      </label>
+      <label className="block">
+        <span className="mb-2 block text-sm text-white/55">Municipio o demarcación</span>
+        <select name="municipality_code" required value={municipality} disabled={!region} onChange={(event) => setMunicipality(event.target.value)} className={geographyInputClass}>
+          <option value="">Seleccionar</option>
+          {municipalities.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
+        </select>
+      </label>
+      <label className="block">
+        <span className="mb-2 block text-sm text-white/55">Código postal</span>
+        <input
+          name="postal_code"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]{5}"
+          minLength={5}
+          maxLength={5}
+          required
+          value={postalCode}
+          onChange={(event) => setPostalCode(event.target.value.replace(/\D/g, "").slice(0, 5))}
+          className={geographyInputClass}
+          placeholder="Ej. 44160"
+        />
+      </label>
+    </div>
+    <label className="block">
+      <span className="mb-2 block text-sm text-white/55">Zona aproximada (opcional)</span>
+      <input name="area" maxLength={120} value={area} onChange={(event) => setArea(event.target.value)} className={geographyInputClass} placeholder="Colonia, barrio o referencia general" />
+    </label>
+    {region && municipalities.length === 0 && !geographyError && <p role="status" className="text-xs text-white/45">Cargando catálogo geográfico…</p>}
+    {geographyError && <p role="alert" className="text-sm text-red-200">{geographyError}</p>}
+    <p className="text-xs leading-5 text-white/40">Al cambiar país o estado debes seleccionar de nuevo el municipio. No solicitamos GPS ni dirección exacta.</p>
+  </div>;
+}
+
+async function loadActivationMunicipalities(region: string): Promise<MexicoMunicipality[]> {
+  const response = await fetch(`/api/locations/geography/mexico?level=municipalities&region=${region}`);
+  const payload = await response.json() as { items?: MexicoMunicipality[]; error?: string };
+  if (!response.ok || !Array.isArray(payload.items)) throw new Error(payload.error ?? "Catalog unavailable");
+  return payload.items;
+}
+
+const geographyInputClass = "w-full rounded-xl border border-white/10 bg-[#111111] px-4 py-3 text-white outline-none transition disabled:cursor-wait disabled:opacity-45 focus:border-white/35 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60";
 
 function StepContact({ contact }: { contact: EditableLocationContact | null }) {
   return <div className={styles.contactGrid}>
