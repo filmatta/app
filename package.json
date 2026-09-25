@@ -22,6 +22,7 @@
   "dependencies": {
     "@mux/mux-node": "^15.1.0",
     "@mux/mux-player-react": "^3.13.3",
+    "@react-pdf/renderer": "^4.5.1",
     "@supabase/ssr": "^0.12.6",
     "@supabase/supabase-js": "^2.115.0",
     "@tiptap/pm": "^3.31.3",

@@ -1,0 +1,133 @@
+{
+  "format": "filmatta-writer-backup",
+  "formatVersion": 1,
+  "schemaVersion": 1,
+  "exportedAt": "2026-09-25T12:12:51.435Z",
+  "title": "La señal — Prueba ñáéíóúü",
+  "document": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "screenplayBlock",
+        "attrs": {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "kind": "sceneHeading"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "INT. CAFÉ & BAR — DÍA"
+          }
+        ]
+      },
+      {
+        "type": "screenplayBlock",
+        "attrs": {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "kind": "action"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "¿Lista? "
+          },
+          {
+            "type": "text",
+            "text": "La luz roja",
+            "marks": [
+              {
+                "type": "bold"
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "text": " parpadea; alguien dice “acción”."
+          },
+          {
+            "type": "hardBreak"
+          },
+          {
+            "type": "text",
+            "text": "La cámara avanza 1 y conserva cada detalle. La cámara avanza 2 y conserva cada detalle. La cámara avanza 3 y conserva cada detalle. La cámara avanza 4 y conserva cada detalle. La cámara avanza 5 y conserva cada detalle. La cámara avanza 6 y conserva cada detalle. La cámara avanza 7 y conserva cada detalle. La cámara avanza 8 y conserva cada detalle. La cámara avanza 9 y conserva cada detalle. La cámara avanza 10 y conserva cada detalle. La cámara avanza 11 y conserva cada detalle. La cámara avanza 12 y conserva cada detalle. La cámara avanza 13 y conserva cada detalle. La cámara avanza 14 y conserva cada detalle. La cámara avanza 15 y conserva cada detalle. La cámara avanza 16 y conserva cada detalle. La cámara avanza 17 y conserva cada detalle. La cámara avanza 18 y conserva cada detalle. La cámara avanza 19 y conserva cada detalle. La cámara avanza 20 y conserva cada detalle. La cámara avanza 21 y conserva cada detalle. La cámara avanza 22 y conserva cada detalle. La cámara avanza 23 y conserva cada detalle. La cámara avanza 24 y conserva cada detalle. La cámara avanza 25 y conserva cada detalle. La cámara avanza 26 y conserva cada detalle. La cámara avanza 27 y conserva cada detalle. La cámara avanza 28 y conserva cada detalle. La cámara avanza 29 y conserva cada detalle. La cámara avanza 30 y conserva cada detalle. La cámara avanza 31 y conserva cada detalle. La cámara avanza 32 y conserva cada detalle.",
+            "marks": [
+              {
+                "type": "italic"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "screenplayBlock",
+        "attrs": {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "kind": "character"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "ANA"
+          }
+        ]
+      },
+      {
+        "type": "screenplayBlock",
+        "attrs": {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "parenthetical"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "(sin perder la calma)"
+          }
+        ]
+      },
+      {
+        "type": "screenplayBlock",
+        "attrs": {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "kind": "dialogue"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "palabra1 palabra2 palabra3 palabra4 palabra5 palabra6 palabra7 palabra8 palabra9 palabra10 palabra11 palabra12 palabra13 palabra14 palabra15 palabra16 palabra17 palabra18 palabra19 palabra20 palabra21 palabra22 palabra23 palabra24 palabra25 palabra26 palabra27 palabra28 palabra29 palabra30 palabra31 palabra32 palabra33 palabra34 palabra35 palabra36 palabra37 palabra38 palabra39 palabra40 palabra41 palabra42 palabra43 palabra44 palabra45 palabra46 palabra47 palabra48 palabra49 palabra50 palabra51 palabra52 palabra53 palabra54 palabra55 palabra56 palabra57 palabra58 palabra59 palabra60 palabra61 palabra62 palabra63 palabra64 palabra65 palabra66 palabra67 palabra68 palabra69 palabra70 palabra71 palabra72 palabra73 palabra74 palabra75 palabra76 palabra77 palabra78 palabra79 palabra80 palabra81 palabra82 palabra83 palabra84 palabra85 palabra86 palabra87 palabra88 palabra89 palabra90 palabra91 palabra92"
+          }
+        ]
+      },
+      {
+        "type": "screenplayBlock",
+        "attrs": {
+          "id": "00000000-0000-4000-8000-000000000006",
+          "kind": "transition"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "CORTE A:",
+            "marks": [
+              {
+                "type": "underline"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "screenplayBlock",
+        "attrs": {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "kind": "authorNote"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Nota privada: no debe aparecer en PDF ni FDX 🎬"
+          }
+        ]
+      }
+    ]
+  }
+}

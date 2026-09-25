@@ -28,6 +28,7 @@ import {
 import { loadLocalWriterDrafts } from "@/lib/writer/storage";
 import { startWriterTabLease, type WriterTabLease } from "@/lib/writer/tab-lease";
 import { ScreenplayBlockExtension } from "@/lib/writer/tiptap";
+import WriterPdfExportDialog from "./WriterPdfExportDialog";
 
 type ScriptInput = {
   id: string;
@@ -74,6 +75,7 @@ export default function WriterWorkspace({
   const [mobileSidebar, setMobileSidebar] = useState(false);
   const [activeScene, setActiveScene] = useState<string | null>(null);
   const [exportMenu, setExportMenu] = useState(false);
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const [conflictBusy, setConflictBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const controllerRef = useRef<WriterPersistenceController | null>(null);
@@ -382,6 +384,10 @@ export default function WriterWorkspace({
             <button type="button" onClick={() => setExportMenu((open) => !open)} aria-expanded={exportMenu}>Exportar</button>
             {exportMenu && (
               <div className="writer-export-menu">
+                <button type="button" onClick={() => {
+                  setExportMenu(false);
+                  setPdfExportOpen(true);
+                }}>PDF de guion</button>
                 <button type="button" onClick={() => downloadBackup("json")}>Respaldo JSON</button>
                 <button type="button" onClick={() => downloadBackup("fdx")}>FDX básico</button>
               </div>
@@ -438,6 +444,14 @@ export default function WriterWorkspace({
           <div><strong>Abierto en otra pestaña</strong><p>Esta copia permanece protegida y no enviará cambios hasta tomar el control.</p></div>
           <button type="button" onClick={() => leaseRef.current?.takeOver()}>Editar aquí</button>
         </div>
+      )}
+
+      {pdfExportOpen && (
+        <WriterPdfExportDialog
+          initialTitle={title}
+          getSnapshot={currentSnapshot}
+          onClose={() => setPdfExportOpen(false)}
+        />
       )}
 
       {["conflict", "deleted", "sessionExpired"].includes(saveState.status) && (
