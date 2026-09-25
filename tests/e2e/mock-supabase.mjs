@@ -5,6 +5,8 @@ import {profileFixture,resetProfileFixture} from "./profiles-fixture.mjs";
 const id = "11111111-1111-4111-8111-111111111111";
 let scenario = "empty";
 let profileDelayMs = 0;
+let writerRevision = 1;
+let writerDocument = makeWriterDocument();
 const profile = {
   slug: "test-profile",
   display_name: "Persona P.",
@@ -72,6 +74,10 @@ http
       scenario = url.searchParams.get("value") ?? "empty";
       profileDelayMs = Math.min(5000, Math.max(0, Number(url.searchParams.get("delay")) || 0));
       if (scenario === "profiles-polish") resetProfileFixture();
+      if (scenario === "writer-ux") {
+        writerRevision = 1;
+        writerDocument = makeWriterDocument();
+      }
       return res.end("{}");
     }
     if (url.pathname === "/auth/v1/user") {
@@ -99,6 +105,25 @@ http
     }
     if (profileDelayMs && url.pathname.endsWith("/list_public_professional_portfolios")) await new Promise(resolve => setTimeout(resolve, profileDelayMs));
     if (scenario === "profiles-polish" && await profileFixture(req,res,url,token)) return;
+    if (scenario === "writer-ux") {
+      if (url.pathname === "/rest/v1/writer_scripts" && req.method === "GET") {
+        const row = {
+          id,
+          title: "Guion de prueba UX",
+          document: writerDocument,
+          schema_version: 1,
+          revision: writerRevision,
+          updated_at: "2026-09-25T12:00:00Z",
+        };
+        return res.end(req.headers.accept?.includes("vnd.pgrst.object") ? JSON.stringify(row) : JSON.stringify([row]));
+      }
+      if (url.pathname.endsWith("/writer_save_script") && req.method === "POST") {
+        const body = await readJson(req);
+        writerDocument = body.p_document;
+        writerRevision += 1;
+        return res.end(JSON.stringify([{ revision: writerRevision }]));
+      }
+    }
     if (scenario === "unconfigured") {
       res.statusCode = 404;
       return res.end('{"code":"PGRST202","message":"fixture missing schema"}');
@@ -156,3 +181,31 @@ http
   .listen(54329, "127.0.0.1", () =>
     console.log("Local fixture listening on 54329"),
   );
+
+async function readJson(req) {
+  return JSON.parse(await new Promise((resolve) => {
+    let text = "";
+    req.on("data", (chunk) => (text += chunk));
+    req.on("end", () => resolve(text || "{}"));
+  }));
+}
+
+function makeWriterDocument() {
+  const block = (suffix, kind, text) => ({
+    type: "screenplayBlock",
+    attrs: { id: `11111111-1111-4111-8111-1111111111${suffix}`, kind },
+    ...(text ? { content: [{ type: "text", text }] } : {}),
+  });
+  return {
+    type: "doc",
+    content: [
+      block("01", "sceneHeading", "INT. ESTUDIO - DÍA"),
+      block("02", "action", "ANA observa la VENTANA."),
+      block("03", "character", "ANA"),
+      block("04", "dialogue", "Hola, ANA MARÍA."),
+      block("05", "character", "ANA MARÍA"),
+      block("06", "parenthetical", "(sonríe)"),
+      block("07", "dialogue", "Hola, Ana."),
+    ],
+  };
+}
