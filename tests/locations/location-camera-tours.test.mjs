@@ -4,6 +4,7 @@ import test from "node:test";
 import load from "../load.mjs";
 
 const limits = load("lib/locations/tour-limits.ts");
+const diagnostics = load("lib/locations/camera-diagnostics.ts");
 const migration = fs.readFileSync("supabase/migrations/20260928080000_location_camera_tours.sql", "utf8");
 const recorder = fs.readFileSync("components/locations/LocationTourRecorder.tsx", "utf8");
 const webhook = fs.readFileSync("app/api/mux/webhooks/route.ts", "utf8");
@@ -40,18 +41,38 @@ test("camera startup keeps optional constraints flexible and reports safe failur
   assert.doesNotMatch(recorder, /deviceId: \{ exact:/);
   assert.match(recorder, /document\.visibilityState !== "visible"/);
   assert.match(recorder, /!window\.isSecureContext\s*\|\|/);
-  assert.match(recorder, /cameraPolicyBlocksCamera\(\)/);
-  assert.ok(recorder.indexOf("getCameraStream(audio") < recorder.indexOf("cameraPolicyBlocksCamera()"), "policy diagnostics must not block the real camera request");
-  assert.match(recorder, /OverconstrainedError/);
-  assert.match(recorder, /NotFoundError/);
-  assert.match(recorder, /NotReadableError/);
+  assert.match(recorder, /collectCameraDiagnostic\(reason\)/);
+  const directRequest = recorder.indexOf("const stream = await navigator.mediaDevices.getUserMedia");
+  const directCatchDiagnostic = recorder.indexOf("const diagnostic = await collectCameraDiagnostic(reason)", directRequest);
+  assert.ok(directRequest > -1 && directRequest < directCatchDiagnostic, "the original getUserMedia error is captured only after the real request fails");
   assert.match(recorder, /Location tour camera failed/);
   assert.match(recorder, /stage,/);
-  assert.match(recorder, /política de seguridad de esta página bloqueó la cámara/);
+  assert.match(recorder, /CAMERA_POLICY_BLOCKED/);
   assert.match(recorder, /Revisa el permiso de cámara para este sitio/);
-  assert.match(recorder, /audio: false/);
-  assert.match(recorder, /micrófono no estuvo disponible/);
+  assert.match(recorder, /getUserMedia\(\{ video: true, audio: false \}\)/);
+  assert.equal((recorder.match(/navigator\.mediaDevices\.getUserMedia\(/g) ?? []).length, 2, "normal request plus at most one simple fallback");
+  assert.match(recorder, /usedSimpleFallback/);
+  assert.match(recorder, /ok: true, stream, audioEnabled: false, usedSimpleFallback: true/);
+  assert.ok(recorder.indexOf("if (!camera.ok)") < recorder.indexOf('setPhase("preview")'), "simple fallback success continues the normal preview flow");
+  assert.match(recorder, /Diagnóstico de cámara/);
+  assert.match(recorder, /Browser error:/);
+  assert.match(recorder, /Policy camera:/);
   assert.doesNotMatch(recorder, /useEffect\(\(\) => \{\s*void requestCamera/);
+});
+
+test("camera diagnostics classify explicit evidence and allow one reasonable simple retry", () => {
+  const base = {
+    errorName: "NotAllowedError", errorMessage: "Access failed", errorConstructor: "DOMException",
+    secureContext: true, topLevel: true, origin: "https://app.filmatta.com",
+    mediaDevicesAvailable: true, permission: "granted", policyCamera: true, policyMicrophone: true,
+  };
+  assert.equal(diagnostics.locationCameraErrorCode(base), "CAMERA_ACCESS_FAILED");
+  assert.equal(diagnostics.locationCameraErrorCode({ ...base, policyCamera: false }), "CAMERA_POLICY_BLOCKED");
+  assert.equal(diagnostics.shouldRetrySimpleCamera({ ...base, errorName: "OverconstrainedError" }, false), true);
+  assert.equal(diagnostics.shouldRetrySimpleCamera({ ...base, errorName: "NotFoundError" }, true), true);
+  assert.equal(diagnostics.shouldRetrySimpleCamera(base, true), true);
+  assert.equal(diagnostics.shouldRetrySimpleCamera({ ...base, permission: "denied" }, true), false);
+  assert.equal(diagnostics.shouldRetrySimpleCamera({ ...base, policyCamera: false }, true), false);
 });
 
 test("database lifecycle serializes pending attempts and only promotes validated generations", () => {
