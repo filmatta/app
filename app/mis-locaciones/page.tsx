@@ -8,6 +8,11 @@ import {
   formatLocationUpdatedAt,
 } from "@/lib/locations/format";
 import {
+  locationActivationHref,
+  locationActivationInProgress,
+  locationActivationStep,
+} from "@/lib/locations/activation";
+import {
   getLocationStatusLabel,
   type LocationPriceUnit,
   type LocationStatus,
@@ -34,6 +39,8 @@ type LocationRow = {
   rate_mode: LocationRateMode;
   rate_tiers: LocationRateTier[];
   status: LocationStatus;
+  onboarding_step: number | null;
+  onboarding_completed_at: string | null;
   updated_at: string;
 };
 
@@ -51,7 +58,7 @@ export default async function MyLocationsPage({
   const { data, error } = await supabase
     .from("locations")
     .select(
-      "id, title, slug, city, area, space_type, price_amount, price_currency, price_unit, rate_mode, rate_tiers, status, updated_at"
+      "id, title, slug, city, area, space_type, price_amount, price_currency, price_unit, rate_mode, rate_tiers, status, onboarding_step, onboarding_completed_at, updated_at"
     )
     .eq("owner_id", viewer.id)
     .order("updated_at", { ascending: false })
@@ -143,6 +150,11 @@ function LocationListItem({ location }: { location: LocationRow }) {
     rateMode: location.rate_mode,
     rateTiers: location.rate_tiers,
   });
+  const activationStep = locationActivationStep(location.onboarding_step);
+  const activationInProgress = locationActivationInProgress(
+    location.onboarding_step,
+    location.onboarding_completed_at,
+  );
 
   return (
     <article className="flex flex-col gap-6 border-b border-white/10 p-6 last:border-b-0 md:flex-row md:items-center">
@@ -173,10 +185,12 @@ function LocationListItem({ location }: { location: LocationRow }) {
           </Link>
         )}
         <Link
-          href={`/mis-locaciones/${location.id}/editar`}
+          href={activationInProgress
+            ? locationActivationHref(location.id, activationStep ?? 1)
+            : `/mis-locaciones/${location.id}/editar`}
           className="rounded-full border border-white/15 px-5 py-2 text-sm font-medium transition hover:bg-white/[0.07] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
-          Editar
+          {activationInProgress ? "Continuar configuración" : "Editar"}
         </Link>
       </div>
     </article>

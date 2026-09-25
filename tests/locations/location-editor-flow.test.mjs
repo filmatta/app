@@ -7,6 +7,7 @@ const geography = load("lib/locations/geography.ts");
 const completeness = load("lib/locations/completeness.ts");
 const migration = readFileSync("supabase/migrations/20260928090000_location_geography_creation.sql", "utf8");
 const wizard = readFileSync("app/mis-locaciones/nueva/NewLocationWizard.tsx", "utf8");
+const activationActions = readFileSync("app/mis-locaciones/nueva/activation-actions.ts", "utf8");
 const editor = readFileSync("app/mis-locaciones/LocationOwnerEditor.tsx", "utf8");
 const actions = readFileSync("app/mis-locaciones/actions.ts", "utf8");
 
@@ -20,15 +21,17 @@ test("Mexico geography preserves official entity, municipality and locality leve
   assert.match(actions, /city: geography\.localityName/);
 });
 
-test("short creation flow always creates an idempotent draft before media", () => {
-  assert.match(wizard, /Paso 1 de 3/);
-  assert.match(wizard, /Paso 2 de 3/);
-  assert.match(wizard, /Paso 3 de 3/);
-  assert.match(wizard, /Crear mi locación/);
-  assert.match(actions, /creation_key: creationKey/);
+test("activation creates an idempotent draft only after identity and geography", () => {
+  assert.match(wizard, /Paso \{step\} de \{LOCATION_ACTIVATION_STEPS\}/);
+  assert.match(wizard, /data-step-panel="1"/);
+  assert.match(wizard, /data-step-panel="8"/);
+  assert.match(activationActions, /createLocationActivationDraft/);
+  assert.match(activationActions, /creation_key: creationKey/);
   assert.match(migration, /locations_owner_creation_key_unique/);
-  assert.match(actions, /status: "draft"/);
-  assert.doesNotMatch(wizard, /LocationPhotoManager|LocationTourRecorder/);
+  assert.match(activationActions, /status: "draft"/);
+  assert.match(activationActions, /onboarding_step: 3/);
+  assert.match(wizard, /LocationPhotoManager/);
+  assert.doesNotMatch(wizard, /LocationTourRecorder/);
 });
 
 test("owner editor uses section-scoped actions instead of one fallback form", () => {

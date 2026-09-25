@@ -39,7 +39,15 @@ class PhotoFinalizationError extends Error {
   }
 }
 
-export default function LocationPhotoManager({ locationId, photos }: { locationId: string; photos: OwnerLocationPhoto[] }) {
+export default function LocationPhotoManager({
+  locationId,
+  photos,
+  onPendingChange,
+}: {
+  locationId: string;
+  photos: OwnerLocationPhoto[];
+  onPendingChange?: (pending: boolean) => void;
+}) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const previewUrls = useRef(new Set<string>());
@@ -66,6 +74,10 @@ export default function LocationPhotoManager({ locationId, photos }: { locationI
     for (const url of previewUrls.current) URL.revokeObjectURL(url);
     previewUrls.current.clear();
   }, []);
+
+  useEffect(() => {
+    onPendingChange?.(activeUploads > 0 || persistedUploads.length > 0);
+  }, [activeUploads, onPendingChange, persistedUploads.length]);
 
   async function choose(files: FileList | null) {
     if (!files?.length) return;
