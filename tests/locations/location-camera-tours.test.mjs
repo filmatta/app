@@ -39,13 +39,19 @@ test("camera startup keeps optional constraints flexible and reports safe failur
   assert.match(recorder, /deviceId: \{ ideal: requestedDevice \}/);
   assert.doesNotMatch(recorder, /deviceId: \{ exact:/);
   assert.match(recorder, /document\.visibilityState !== "visible"/);
-  assert.match(recorder, /permissionsPolicy\.allowsFeature\("camera"\)/);
+  assert.match(recorder, /!window\.isSecureContext\s*\|\|/);
+  assert.match(recorder, /cameraPolicyBlocksCamera\(\)/);
+  assert.ok(recorder.indexOf("getCameraStream(audio") < recorder.indexOf("cameraPolicyBlocksCamera()"), "policy diagnostics must not block the real camera request");
   assert.match(recorder, /OverconstrainedError/);
   assert.match(recorder, /NotFoundError/);
   assert.match(recorder, /NotReadableError/);
   assert.match(recorder, /Location tour camera failed/);
   assert.match(recorder, /stage,/);
-  assert.doesNotMatch(recorder, /permissions\.query/);
+  assert.match(recorder, /política de seguridad de esta página bloqueó la cámara/);
+  assert.match(recorder, /Revisa el permiso de cámara para este sitio/);
+  assert.match(recorder, /audio: false/);
+  assert.match(recorder, /micrófono no estuvo disponible/);
+  assert.doesNotMatch(recorder, /useEffect\(\(\) => \{\s*void requestCamera/);
 });
 
 test("database lifecycle serializes pending attempts and only promotes validated generations", () => {

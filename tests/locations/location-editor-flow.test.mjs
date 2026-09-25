@@ -10,6 +10,8 @@ const wizard = readFileSync("app/mis-locaciones/nueva/NewLocationWizard.tsx", "u
 const activationActions = readFileSync("app/mis-locaciones/nueva/activation-actions.ts", "utf8");
 const editor = readFileSync("app/mis-locaciones/LocationOwnerEditor.tsx", "utf8");
 const actions = readFileSync("app/mis-locaciones/actions.ts", "utf8");
+const editorShell = readFileSync("app/mis-locaciones/LocationOwnerEditorShell.tsx", "utf8");
+const publicPage = readFileSync("app/locaciones/[slug]/page.tsx", "utf8");
 
 test("Mexico geography preserves official entity, municipality and locality levels", () => {
   assert.equal(geography.MEXICO_REGIONS.length, 32);
@@ -43,6 +45,44 @@ test("owner editor uses section-scoped actions instead of one fallback form", ()
   assert.match(editor, /actions\.pricing/);
   assert.match(editor, /LocationPhotoManager/);
   assert.match(editor, /LocationTourRecorder/);
+  assert.match(editor, /LocationSectionForm/);
+  assert.match(actions, /Promise<LocationEditorActionResult>/);
+});
+
+test("tour is the first functional owner block and photos follow without duplication", () => {
+  const tour = editor.indexOf('section="tour"');
+  const photos = editor.indexOf('section="photos"');
+  const identity = editor.indexOf('section="identity"');
+  assert.ok(tour > -1 && tour < photos && photos < identity);
+  assert.equal((editor.match(/section="tour"/g) ?? []).length, 1);
+  assert.match(editor, /Grabar recorrido/);
+  assert.match(editor, /LocationTourRecorder/);
+});
+
+test("public ready tour precedes photos and visitors get no tour empty state", () => {
+  const tour = publicPage.indexOf("location.cameraTour ?");
+  const photos = publicPage.indexOf('title="Fotos del lugar"');
+  const description = publicPage.indexOf('title="Descripción"');
+  assert.ok(tour > -1 && tour < photos && photos < description);
+  assert.match(publicPage, /location\.cameraTour \? <Section title="Recorrido"/);
+  assert.match(publicPage, /: location\.tourVideoUrl && <Section title="Recorrido"/);
+  assert.doesNotMatch(publicPage, /Grabar recorrido|Añade un recorrido|Recorrido pendiente/);
+});
+
+test("owner-only bottom bar reuses section actions and preserves dirty state semantics", () => {
+  assert.match(editor, /LocationOwnerEditorShell/);
+  assert.doesNotMatch(wizard, /LocationOwnerEditorShell/);
+  assert.match(editorShell, /Cambios sin guardar/);
+  assert.match(editorShell, /Guardando…/);
+  assert.match(editorShell, /Guardado/);
+  assert.match(editorShell, /status === "published" \? "draft" : "published"/);
+  assert.match(editorShell, /status === "published" \? "Despublicar" : "Publicar"/);
+  assert.match(editorShell, /Guarda los cambios pendientes antes de cambiar la publicación/);
+  assert.match(editorShell, /¿Despublicar esta locación\?/);
+  assert.match(editorShell, /env\(safe-area-inset-bottom\)/);
+  assert.match(editorShell, /pb-36 sm:pb-32/);
+  assert.doesNotMatch(actions, /getLocationPublicationRequirements|getLocationCompleteness/);
+  assert.match(actions, /status: updated\.data\.status/);
 });
 
 test("completeness is derived from persisted content and keeps tour optional", () => {

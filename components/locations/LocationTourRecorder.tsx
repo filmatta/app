@@ -56,9 +56,9 @@ export default function LocationTourRecorder({
   useEffect(() => {
     const supportCheck = window.setTimeout(() => {
       setSupported(Boolean(
-        window.isSecureContext
-        && typeof navigator.mediaDevices?.getUserMedia === "function"
-        && "MediaRecorder" in window,
+        !window.isSecureContext
+        || (typeof navigator.mediaDevices?.getUserMedia === "function"
+          && "MediaRecorder" in window),
       ));
     }, 0);
     return () => { window.clearTimeout(supportCheck); cleanupAll(); };
@@ -134,7 +134,8 @@ export default function LocationTourRecorder({
       return;
     }
     try {
-      const stream = await getCameraStream(audio, requestedDevice);
+      const camera = await getCameraStream(audio, requestedDevice);
+      const { stream } = camera;
       if (version !== requestVersionRef.current || !open) { stream.getTracks().forEach((track) => track.stop()); return; }
       streamRef.current = stream;
       stream.getVideoTracks().forEach((track) => { track.onended = () => { if (recorderRef.current?.state === "recording") stopRecording("La cámara se interrumpió. Revisa la toma disponible."); }; });
@@ -153,7 +154,9 @@ export default function LocationTourRecorder({
       }
       const current = stream.getVideoTracks()[0]?.getSettings().deviceId;
       if (current) setDeviceId(current);
-      setWithAudio(audio); setPhase("preview");
+      setWithAudio(camera.audioEnabled);
+      if (audio && !camera.audioEnabled) setNotice("El micrófono no estuvo disponible. Puedes grabar el recorrido sin audio.");
+      setPhase("preview");
     } catch (reason) {
       if (version !== requestVersionRef.current) return;
       logCameraFailure("getUserMedia", reason);
@@ -329,14 +332,6 @@ function cameraPreflightError() {
   if (typeof navigator.mediaDevices?.getUserMedia !== "function" || !("MediaRecorder" in window)) {
     return "Este navegador o contexto no ofrece las funciones necesarias para cámara y grabación.";
   }
-  const policy = document as Document & {
-    permissionsPolicy?: { allowsFeature(feature: string): boolean };
-    featurePolicy?: { allowsFeature(feature: string): boolean };
-  };
-  const permissionsPolicy = policy.permissionsPolicy ?? policy.featurePolicy;
-  if (permissionsPolicy && !permissionsPolicy.allowsFeature("camera")) {
-    return "La configuración de este sitio no permite usar la cámara en esta página.";
-  }
   return null;
 }
 
@@ -350,16 +345,30 @@ async function getCameraStream(audio: boolean, requestedDevice: string) {
       : { facingMode: { ideal: "environment" } }),
   };
   try {
-    return await navigator.mediaDevices.getUserMedia({ video: preferredVideo, audio });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: preferredVideo, audio });
+    return { stream, audioEnabled: audio };
   } catch (reason) {
+    if (audio && isAudioFallbackError(reason)) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: preferredVideo, audio: false });
+        return { stream, audioEnabled: false };
+      } catch (videoOnlyReason) {
+        if (!isNamedCameraError(videoOnlyReason, "OverconstrainedError")) throw videoOnlyReason;
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        return { stream, audioEnabled: false };
+      }
+    }
     if (!isNamedCameraError(reason, "OverconstrainedError")) throw reason;
-    // Some mobile browsers reject optional preferences. Retry once with video only.
-    return await navigator.mediaDevices.getUserMedia({ video: true, audio });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio });
+    return { stream, audioEnabled: audio };
   }
 }
 
 function cameraErrorMessage(reason: unknown, audio: boolean) {
   const name = cameraErrorName(reason);
+  if (name === "SecurityError" || ((name === "NotAllowedError" || name === "PermissionDeniedError") && cameraPolicyBlocksCamera())) {
+    return "La política de seguridad de esta página bloqueó la cámara. Abre FILMATTA directamente y vuelve a intentarlo.";
+  }
   if (name === "NotAllowedError" || name === "PermissionDeniedError") {
     return audio
       ? "El navegador o el sistema bloqueó el acceso a cámara o micrófono. Revisa los permisos del sitio; también puedes intentar sin audio."
@@ -371,13 +380,23 @@ function cameraErrorMessage(reason: unknown, audio: boolean) {
   if (name === "NotReadableError" || name === "TrackStartError" || name === "AbortError") {
     return "La cámara está ocupada o el sistema no pudo iniciarla. Cierra otras apps que la estén usando e inténtalo de nuevo.";
   }
-  if (name === "SecurityError") {
-    return "La configuración del navegador o del sitio impide abrir la cámara en esta página.";
-  }
   if (name === "OverconstrainedError") {
     return "La cámara disponible no admite una configuración compatible para grabar.";
   }
   return "No pudimos iniciar la cámara en este navegador o dispositivo.";
+}
+
+function cameraPolicyBlocksCamera() {
+  const policyDocument = document as Document & {
+    permissionsPolicy?: { allowsFeature(feature: string): boolean };
+    featurePolicy?: { allowsFeature(feature: string): boolean };
+  };
+  const policy = policyDocument.permissionsPolicy ?? policyDocument.featurePolicy;
+  return policy ? !policy.allowsFeature("camera") : false;
+}
+
+function isAudioFallbackError(reason: unknown) {
+  return ["NotAllowedError", "PermissionDeniedError", "NotFoundError", "DevicesNotFoundError", "NotReadableError", "TrackStartError", "OverconstrainedError"].includes(cameraErrorName(reason));
 }
 
 function cameraErrorName(reason: unknown) {
@@ -397,6 +416,7 @@ function logCameraFailure(stage: CameraFailureStage, reason: unknown) {
     secureContext: window.isSecureContext,
     visibilityState: document.visibilityState,
     embedded: window.top !== window.self,
+    policyBlocked: cameraPolicyBlocksCamera(),
   });
 }
 

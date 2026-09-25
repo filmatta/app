@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { normalizeLocationCharacteristics } from "@/lib/locations/characteristics";
 import { normalizeLocationConditions } from "@/lib/locations/conditions";
 import { normalizeLocationRateMode, normalizeLocationRateTiers } from "@/lib/locations/pricing";
-import { archiveLocation, updateLocationSection, updateLocationStatus, type LocationEditorSection } from "../../actions";
+import { archiveLocation, updateLocationSection, updateLocationStatus, type LocationEditorActionResult, type LocationEditorSection } from "../../actions";
 import ArchiveLocationButton from "../../ArchiveLocationButton";
 import LocationFeedback from "../../LocationFeedback";
 import type { EditableLocationContact } from "../../LocationForm";
@@ -116,7 +116,7 @@ export default async function EditLocationPage({
   const archiveAction = archiveLocation.bind(null, location.id);
   const statusAction = updateLocationStatus.bind(null, location.id);
   const sections: LocationEditorSection[] = ["identity", "location", "pricing", "description", "characteristics", "conditions", "notes", "contact"];
-  const sectionActions = Object.fromEntries(sections.map((section) => [section, updateLocationSection.bind(null, location.id, section)])) as Record<LocationEditorSection, (formData: FormData) => Promise<void>>;
+  const sectionActions = Object.fromEntries(sections.map((section) => [section, updateLocationSection.bind(null, location.id, section)])) as Record<LocationEditorSection, (formData: FormData) => Promise<LocationEditorActionResult>>;
 
   return (
     <main className="min-h-screen bg-[#080808] text-white">
@@ -124,7 +124,7 @@ export default async function EditLocationPage({
         contextLink={{ href: "/mis-locaciones", label: "← Mis locaciones" }}
       />
 
-      <section className="mx-auto max-w-5xl px-6 py-16 lg:py-20">
+      <section className="mx-auto max-w-5xl px-6 pt-16 pb-40 lg:pt-20 lg:pb-40">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <Link
             href="/mis-locaciones"

@@ -33,6 +33,21 @@ type ExistingLocation = {
   tour_video_url: string | null;
 };
 
+export type LocationPublicationRequirement = {
+  id: string;
+  label: string;
+  section: LocationEditorSection;
+};
+
+export type LocationEditorActionResult = {
+  ok: boolean;
+  nonce: string;
+  error?: LocationFormError;
+  success?: LocationSuccess;
+  status?: LocationStatus;
+  requirements?: LocationPublicationRequirement[];
+};
+
 export async function createLocation(formData: FormData) {
   const { supabase, userId } = await requireLocationUser(
     "/mis-locaciones/nueva"
@@ -130,8 +145,8 @@ export type LocationEditorSection =
   | "notes"
   | "contact";
 
-export async function updateLocationSection(locationId: string, section: LocationEditorSection, formData: FormData) {
-  if (!UUID_PATTERN.test(locationId)) redirect(locationsErrorFeedback("not-found"));
+export async function updateLocationSection(locationId: string, section: LocationEditorSection, formData: FormData): Promise<LocationEditorActionResult> {
+  if (!UUID_PATTERN.test(locationId)) return editorFailure("not-found");
   const editPath = `/mis-locaciones/${locationId}/editar`;
   const { supabase, userId } = await requireLocationUser(editPath);
   const result = await supabase.from("locations")
@@ -139,9 +154,9 @@ export async function updateLocationSection(locationId: string, section: Locatio
     .eq("id", locationId).eq("owner_id", userId).maybeSingle();
   if (result.error) {
     logLocationError("Error cargando sección de la locación:", result.error);
-    redirect(editLocationSectionFeedback(locationId, section, "error", "load-failed"));
+    return editorFailure("load-failed");
   }
-  if (!result.data) redirect(locationsErrorFeedback("not-found"));
+  if (!result.data) return editorFailure("not-found");
 
   const existing = result.data;
   let values: Record<string, unknown> = {};
@@ -150,16 +165,16 @@ export async function updateLocationSection(locationId: string, section: Locatio
     const slug = slugify(getText(formData, "slug") || title);
     const spaceType = getText(formData, "space_type");
     const environment = getText(formData, "environment");
-    if (!title || title.length > 160) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-title"));
-    if (!slug || slug.length > 160) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-slug"));
-    if (!spaceType || spaceType.length > 120) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-space-type"));
-    if (!LOCATION_ENVIRONMENTS.some((item) => item.value === environment)) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-environment"));
+    if (!title || title.length > 160) return editorFailure("invalid-title");
+    if (!slug || slug.length > 160) return editorFailure("invalid-slug");
+    if (!spaceType || spaceType.length > 120) return editorFailure("invalid-space-type");
+    if (!LOCATION_ENVIRONMENTS.some((item) => item.value === environment)) return editorFailure("invalid-environment");
     values = { title, slug, space_type: spaceType, environment };
   } else if (section === "location") {
     const area = getText(formData, "area") || null;
     const postalCode = getText(formData, "postal_code");
-    if (area && area.length > 120) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-area"));
-    if (!/^\d{5}$/.test(postalCode)) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-geography"));
+    if (area && area.length > 120) return editorFailure("invalid-area");
+    if (!/^\d{5}$/.test(postalCode)) return editorFailure("invalid-geography");
     let geography;
     try {
       geography = await resolveMexicoGeography({
@@ -168,9 +183,9 @@ export async function updateLocationSection(locationId: string, section: Locatio
       });
     } catch (error) {
       console.error("Error validando geografía de la locación:", { name: error instanceof Error ? error.name : "UnknownError" });
-      redirect(editLocationSectionFeedback(locationId, section, "error", "geography-unavailable"));
+      return editorFailure("geography-unavailable");
     }
-    if (!geography) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-geography"));
+    if (!geography) return editorFailure("invalid-geography");
     values = {
       city: geography.localityName, area, country_code: geography.countryCode,
       region_code: geography.regionCode, region_name: geography.regionName,
@@ -181,11 +196,11 @@ export async function updateLocationSection(locationId: string, section: Locatio
     const rawCapacity = getText(formData, "characteristic.declared_capacity");
     const capacity = /^\d+$/.test(rawCapacity) ? Number(rawCapacity) : null;
     if (!Number.isSafeInteger(capacity) || capacity === null || capacity < 1 || capacity > 1_000_000) {
-      redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-characteristics"));
+      return editorFailure("invalid-characteristics");
     }
     const currentMode = normalizeLocationRateMode(existing.rate_mode);
     const pricing = parseLocationPricingForm(formData, capacity, currentMode === "legacy");
-    if (!pricing.ok) redirect(editLocationSectionFeedback(locationId, section, "error", pricing.error));
+    if (!pricing.ok) return editorFailure(pricing.error);
     const keepLegacy = pricing.value.rateMode === "legacy";
     values = {
       characteristics: { ...normalizeLocationCharacteristics(existing.characteristics), declared_capacity: capacity },
@@ -199,62 +214,62 @@ export async function updateLocationSection(locationId: string, section: Locatio
   } else if (section === "description") {
     const summary = getText(formData, "summary") || null;
     const description = getText(formData, "description") || null;
-    if (summary && summary.length > 500) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-summary"));
-    if (description && description.length > 20_000) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-description"));
+    if (summary && summary.length > 500) return editorFailure("invalid-summary");
+    if (description && description.length > 20_000) return editorFailure("invalid-description");
     values = { summary, description };
   } else if (section === "characteristics") {
     const current = normalizeLocationCharacteristics(existing.characteristics);
     const parsed = parseLocationCharacteristics(formData, current);
-    if (!parsed.ok) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-characteristics"));
+    if (!parsed.ok) return editorFailure("invalid-characteristics");
     values = { characteristics: { ...parsed.value, ...(typeof current.declared_capacity === "number" ? { declared_capacity: current.declared_capacity } : {}) } };
   } else if (section === "conditions") {
     values = { shooting_conditions: parseLocationConditions(formData) };
   } else if (section === "notes") {
     const restrictions = getText(formData, "restrictions") || null;
     const operationalNotes = getText(formData, "operational_notes") || null;
-    if (restrictions && restrictions.length > 10_000) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-restrictions"));
-    if (operationalNotes && operationalNotes.length > 5_000) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-operational-notes"));
+    if (restrictions && restrictions.length > 10_000) return editorFailure("invalid-restrictions");
+    if (operationalNotes && operationalNotes.length > 5_000) return editorFailure("invalid-operational-notes");
     values = { restrictions, operational_notes: operationalNotes };
   } else if (section === "contact") {
     const contact = parseLocationPublicContact(formData);
-    if (!contact.ok) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-contact"));
+    if (!contact.ok) return editorFailure("invalid-contact");
     const contactError = await saveLocationContact(supabase, userId, locationId, contact.value);
     if (contactError) {
       logLocationError("Error guardando contacto de la locación:", contactError);
-      redirect(editLocationSectionFeedback(locationId, section, "error", "save-failed"));
+      return editorFailure("save-failed");
     }
     revalidateLocationPaths(existing.slug, existing.slug, locationId);
-    redirect(editLocationSectionFeedback(locationId, section, "success", "saved"));
+    return editorSuccess("saved");
   }
 
   const update = await supabase.from("locations").update(values)
     .eq("id", locationId).eq("owner_id", userId).select("slug").maybeSingle();
   if (update.error) {
     logLocationError("Error actualizando sección de la locación:", update.error);
-    redirect(editLocationSectionFeedback(locationId, section, "error", getLocationDatabaseError(update.error)));
+    return editorFailure(getLocationDatabaseError(update.error));
   }
-  if (!update.data) redirect(locationsErrorFeedback("not-found"));
+  if (!update.data) return editorFailure("not-found");
   revalidateLocationPaths(existing.slug, update.data.slug, locationId);
-  redirect(editLocationSectionFeedback(locationId, section, "success", "saved"));
+  return editorSuccess("saved");
 }
 
-export async function updateLocationStatus(locationId: string, formData: FormData) {
-  if (!UUID_PATTERN.test(locationId)) redirect(locationsErrorFeedback("not-found"));
+export async function updateLocationStatus(locationId: string, formData: FormData): Promise<LocationEditorActionResult> {
+  if (!UUID_PATTERN.test(locationId)) return editorFailure("not-found");
   const { supabase, userId } = await requireLocationUser(`/mis-locaciones/${locationId}/editar`);
   const existing = await getOwnedLocation(supabase, userId, locationId);
-  if (!existing) redirect(locationsErrorFeedback("not-found"));
+  if (!existing) return editorFailure("not-found");
   const intent = getText(formData, "intent");
   const nextStatus = getUpdateStatus(intent, existing.status);
-  if (!nextStatus) redirect(editLocationFeedback(locationId, "error", "invalid-action"));
+  if (!nextStatus) return editorFailure("invalid-action");
   const updated = await supabase.from("locations").update({ status: nextStatus })
     .eq("id", locationId).eq("owner_id", userId).select("slug,status").maybeSingle();
   if (updated.error) {
     logLocationError("Error cambiando estado de la locación:", updated.error);
-    redirect(editLocationFeedback(locationId, "error", getLocationDatabaseError(updated.error)));
+    return editorFailure(getLocationDatabaseError(updated.error));
   }
-  if (!updated.data) redirect(locationsErrorFeedback("not-found"));
+  if (!updated.data) return editorFailure("not-found");
   revalidateLocationPaths(existing.slug, updated.data.slug, locationId);
-  redirect(editLocationFeedback(locationId, "success", getUpdateSuccess(existing.status, nextStatus)));
+  return { ...editorSuccess(getUpdateSuccess(existing.status, nextStatus)), status: updated.data.status as LocationStatus };
 }
 
 export async function updateLocation(locationId: string, formData: FormData) {
@@ -390,6 +405,14 @@ async function getOwnedLocation(
   return (data as ExistingLocation | null) ?? null;
 }
 
+function editorFailure(error: LocationFormError): LocationEditorActionResult {
+  return { ok: false, nonce: crypto.randomUUID(), error };
+}
+
+function editorSuccess(success: LocationSuccess): LocationEditorActionResult {
+  return { ok: true, nonce: crypto.randomUUID(), success };
+}
+
 function getUpdateStatus(
   intent: string,
   currentStatus: LocationStatus
@@ -453,20 +476,6 @@ function editLocationFeedback(
 ) {
   const searchParams = new URLSearchParams({
     [type]: code,
-    notice: crypto.randomUUID(),
-  });
-  return `/mis-locaciones/${locationId}/editar?${searchParams.toString()}`;
-}
-
-function editLocationSectionFeedback(
-  locationId: string,
-  section: LocationEditorSection,
-  type: "error" | "success",
-  code: LocationFormError | LocationSuccess,
-) {
-  const searchParams = new URLSearchParams({
-    [type]: code,
-    section,
     notice: crypto.randomUUID(),
   });
   return `/mis-locaciones/${locationId}/editar?${searchParams.toString()}`;
