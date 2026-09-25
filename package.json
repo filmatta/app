@@ -15,13 +15,18 @@
     "test:catalogs": "node --test tests/catalogs/*.test.mjs",
     "test:database": "node --test tests/database/*.test.mjs",
     "test:e2e": "playwright test",
-    "test:tools": "node --test tests/tools/*.test.mjs"
+    "test:tools": "node --test tests/tools/*.test.mjs",
+    "test:writer": "node --experimental-strip-types --test tests/writer/*.test.ts",
+    "test:writer:remote": "node --test tests/writer/remote.test.mjs"
   },
   "dependencies": {
     "@mux/mux-node": "^15.1.0",
     "@mux/mux-player-react": "^3.13.3",
     "@supabase/ssr": "^0.12.6",
     "@supabase/supabase-js": "^2.115.0",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
     "libphonenumber-js": "^1.13.13",
     "next": "16.3.4",
     "react": "19.2.8",

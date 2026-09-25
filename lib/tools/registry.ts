@@ -22,9 +22,9 @@ export const tools: readonly Tool[] = [
     category: "Escritura",
     description:
       "La visión de un espacio para escribir y comprender tu guion, con la creatividad en tus manos.",
-    status: "in-development",
+    status: "beta",
     access: "public",
-    href: "/tools/writer",
+    href: "/writer",
   },
   {
     slug: "production-assistant",

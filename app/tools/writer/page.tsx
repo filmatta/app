@@ -1,5 +1,5 @@
-import ProductVision from "@/components/tools/ProductVision";
-export const metadata = { title: "FILMATTA Writer · En desarrollo" };
+import { redirect } from "next/navigation";
+
 export default function WriterPage() {
-  return <ProductVision product="writer" />;
+  redirect("/writer");
 }

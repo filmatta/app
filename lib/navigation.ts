@@ -91,7 +91,7 @@ export function getPrimaryNavigation(authenticated: boolean): NavigationItem[] {
             href: "/tools",
             children: [
               { label: "Todas las herramientas", href: "/tools" },
-              { label: "FILMATTA Writer", href: "/tools/writer" },
+              { label: "FILMATTA Writer", href: "/writer" },
               {
                 label: "Production Assistant",
                 href: "/tools/production-assistant",
