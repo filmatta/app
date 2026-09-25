@@ -50,13 +50,36 @@ test("owner editor uses section-scoped actions instead of one fallback form", ()
 });
 
 test("tour is the first functional owner block and photos follow without duplication", () => {
-  const tour = editor.indexOf('section="tour"');
-  const photos = editor.indexOf('section="photos"');
+  const tour = editor.indexOf('title="Recorrido"');
+  const photos = editor.indexOf('title="Fotos del lugar"');
   const identity = editor.indexOf('section="identity"');
   assert.ok(tour > -1 && tour < photos && photos < identity);
-  assert.equal((editor.match(/section="tour"/g) ?? []).length, 1);
-  assert.match(editor, /Grabar recorrido/);
+  assert.equal((editor.match(/<LocationTourRecorder/g) ?? []).length, 1);
   assert.match(editor, /LocationTourRecorder/);
+});
+
+test("owner editor exposes one visual panel and one focused window per editable group", () => {
+  for (const panel of ["photos", "basic", "location", "pricing", "characteristics", "conditions", "contact"]) {
+    assert.match(editor, new RegExp(`panel="${panel}"`));
+  }
+  assert.match(editorShell, /role="dialog"/);
+  assert.match(editorShell, /aria-modal="true"/);
+  assert.match(editorShell, /document\.addEventListener\("keydown"/);
+  assert.match(editorShell, /returnFocus\.current\?\.focus/);
+  assert.match(editorShell, /Hay cambios sin guardar/);
+  assert.match(editorShell, /Seguir editando/);
+  assert.match(editorShell, /Descartar cambios/);
+  assert.match(editorShell, /inert=\{activePanel \? true : undefined\}/);
+});
+
+test("focused windows keep the existing section actions and media flows", () => {
+  assert.match(editor, /section="identity" action=\{actions\.identity\}/);
+  assert.match(editor, /section="description" action=\{actions\.description\}/);
+  assert.match(editor, /section="conditions" action=\{actions\.conditions\}/);
+  assert.match(editor, /section="notes" action=\{actions\.notes\}/);
+  assert.equal((editor.match(/<LocationPhotoManager/g) ?? []).length, 1);
+  assert.equal((editor.match(/<LocationTourRecorder/g) ?? []).length, 1);
+  assert.doesNotMatch(editor, /<form[\s>]/);
 });
 
 test("public ready tour precedes photos and visitors get no tour empty state", () => {
