@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import LocationGeographyFields from "@/components/locations/LocationGeographyFields";
+import LocationActivationGeographyFields from "@/components/locations/LocationActivationGeographyFields";
 import LocationPhotoManager, { type OwnerLocationPhoto } from "@/components/locations/LocationPhotoManager";
 import LocationStarterPricing from "@/components/locations/LocationStarterPricing";
 import {
@@ -240,15 +240,13 @@ export default function NewLocationWizard({
         </div>
 
         <div data-step-panel="1" hidden={step !== 1}><StepOne location={location} /></div>
-        <div data-step-panel="2" hidden={step !== 2}><LocationGeographyFields initial={location ? {
+        <div data-step-panel="2" hidden={step !== 2}><LocationActivationGeographyFields initial={location ? {
           countryCode: location.countryCode,
           regionCode: location.regionCode,
           municipalityCode: location.municipalityCode,
-          localityCode: location.localityCode,
           postalCode: location.postalCode,
-          city: location.city,
           area: location.area,
-        } : undefined} municipalityOnly /></div>
+        } : undefined} /></div>
         <div data-step-panel="3" hidden={step !== 3}><div className={styles.capacityControl}>
           <label htmlFor="activation-capacity">Personas</label>
           <input id="activation-capacity" name="characteristic.declared_capacity" value={capacity} onChange={(event) => setCapacity(event.target.value)} required type="number" min="1" max="1000000" step="1" inputMode="numeric" placeholder="30" />

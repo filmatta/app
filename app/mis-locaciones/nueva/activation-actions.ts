@@ -169,8 +169,6 @@ export async function saveLocationActivationStep(
       region_name: geography.value.regionName,
       municipality_code: geography.value.municipalityCode,
       municipality_name: geography.value.municipalityName,
-      locality_code: null,
-      geography_source: null,
       postal_code: geography.value.postalCode,
     };
   } else if (step === 3) {

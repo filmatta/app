@@ -62,7 +62,7 @@ export default async function EditLocationPage({
   const { data, error } = await supabase
     .from("locations")
     .select(
-      "id, title, slug, summary, description, city, area, space_type, environment, price_amount, price_currency, price_unit, rate_mode, rate_tiers, minimum_hours, restrictions, characteristics, shooting_conditions, tour_video_url, active_tour_attempt_id, operational_notes, status, country_code, region_code, region_name, municipality_code, municipality_name, locality_code, geography_source"
+      "id, title, slug, summary, description, city, area, space_type, environment, price_amount, price_currency, price_unit, rate_mode, rate_tiers, minimum_hours, restrictions, characteristics, shooting_conditions, tour_video_url, active_tour_attempt_id, operational_notes, status, country_code, region_code, region_name, municipality_code, municipality_name, locality_code, postal_code, geography_source"
     )
     .eq("id", id)
     .eq("owner_id", viewer.id)

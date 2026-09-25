@@ -25,6 +25,7 @@ export type OwnerEditableLocation = EditableLocation & {
   municipality_code: string | null;
   municipality_name: string | null;
   locality_code: string | null;
+  postal_code: string | null;
   geography_source: string | null;
 };
 
@@ -75,7 +76,7 @@ export default function LocationOwnerEditor({
       </EditorSection>
 
       <EditorSection title="Ubicación" actionLabel={location.geography_source ? "Editar ubicación" : "Revisar ubicación"} complete={progress.items[1].complete} open={activeSection === "location"} summary={`${location.region_name ? `${location.region_name} · ` : ""}${location.municipality_name ? `${location.municipality_name} · ` : ""}${location.city}`}>
-        <form action={actions.location} className="space-y-5"><LocationGeographyFields initial={{ countryCode: location.country_code, regionCode: location.region_code, municipalityCode: location.municipality_code, localityCode: location.locality_code, city: location.city, area: location.area }} /><LocationSectionSubmit /></form>
+        <form action={actions.location} className="space-y-5"><LocationGeographyFields initial={{ countryCode: location.country_code, regionCode: location.region_code, municipalityCode: location.municipality_code, localityCode: location.locality_code, postalCode: location.postal_code, city: location.city, area: location.area }} /><LocationSectionSubmit /></form>
       </EditorSection>
 
       <EditorSection title="Capacidad y tarifas" actionLabel="Editar capacidad y tarifas" complete={progress.items[2].complete && progress.items[3].complete} open={activeSection === "pricing"} summary={pricingSummary(location)}>

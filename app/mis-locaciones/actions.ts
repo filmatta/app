@@ -157,7 +157,9 @@ export async function updateLocationSection(locationId: string, section: Locatio
     values = { title, slug, space_type: spaceType, environment };
   } else if (section === "location") {
     const area = getText(formData, "area") || null;
+    const postalCode = getText(formData, "postal_code");
     if (area && area.length > 120) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-area"));
+    if (!/^\d{5}$/.test(postalCode)) redirect(editLocationSectionFeedback(locationId, section, "error", "invalid-geography"));
     let geography;
     try {
       geography = await resolveMexicoGeography({
@@ -173,7 +175,7 @@ export async function updateLocationSection(locationId: string, section: Locatio
       city: geography.localityName, area, country_code: geography.countryCode,
       region_code: geography.regionCode, region_name: geography.regionName,
       municipality_code: geography.municipalityCode, municipality_name: geography.municipalityName,
-      locality_code: geography.localityCode, geography_source: geography.source,
+      locality_code: geography.localityCode, postal_code: postalCode, geography_source: geography.source,
     };
   } else if (section === "pricing") {
     const rawCapacity = getText(formData, "characteristic.declared_capacity");
