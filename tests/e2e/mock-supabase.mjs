@@ -7,6 +7,7 @@ let scenario = "empty";
 let profileDelayMs = 0;
 let writerRevision = 1;
 let writerDocument = makeWriterDocument();
+let writerSaveDelayMs = 0;
 const profile = {
   slug: "test-profile",
   display_name: "Persona P.",
@@ -73,12 +74,16 @@ http
     if (url.pathname === "/__scenario") {
       scenario = url.searchParams.get("value") ?? "empty";
       profileDelayMs = Math.min(5000, Math.max(0, Number(url.searchParams.get("delay")) || 0));
+      writerSaveDelayMs = Math.min(5000, Math.max(0, Number(url.searchParams.get("writerSaveDelay")) || 0));
       if (scenario === "profiles-polish") resetProfileFixture();
       if (scenario === "writer-ux") {
         writerRevision = 1;
         writerDocument = makeWriterDocument();
       }
       return res.end("{}");
+    }
+    if (url.pathname === "/__writer_state") {
+      return res.end(JSON.stringify({ revision: writerRevision, document: writerDocument }));
     }
     if (url.pathname === "/auth/v1/user") {
       if (!token.includes(".")) {
@@ -119,6 +124,7 @@ http
       }
       if (url.pathname.endsWith("/writer_save_script") && req.method === "POST") {
         const body = await readJson(req);
+        if (writerSaveDelayMs) await new Promise((resolve) => setTimeout(resolve, writerSaveDelayMs));
         writerDocument = body.p_document;
         writerRevision += 1;
         return res.end(JSON.stringify([{ revision: writerRevision }]));

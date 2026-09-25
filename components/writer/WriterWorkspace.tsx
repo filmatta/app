@@ -86,8 +86,10 @@ export default function WriterWorkspace({
   const [feedback, setFeedback] = useState<string | null>(null);
   const controllerRef = useRef<WriterPersistenceController | null>(null);
   const leaseRef = useRef<WriterTabLease | null>(null);
+  const exportButtonRef = useRef<HTMLButtonElement>(null);
   const sessionIdRef = useRef(crypto.randomUUID());
   const openContextMenu = useCallback((next: WriterContextMenuState) => {
+    setExportMenu(false);
     setInsertState(null);
     setContextMenu(next);
   }, []);
@@ -434,10 +436,21 @@ export default function WriterWorkspace({
           <SaveStatus state={saveState} />
           <Link className="writer-timeline-link" href={writerTimelineHref(script.id)}>Timeline</Link>
           <div className="writer-export-wrap">
-            <button type="button" onClick={() => setExportMenu((open) => !open)} aria-expanded={exportMenu}>Exportar</button>
+            <button
+              ref={exportButtonRef}
+              type="button"
+              onClick={() => {
+                setContextMenu(null);
+                setInsertState(null);
+                setExportMenu((open) => !open);
+              }}
+              aria-expanded={exportMenu}
+            >Exportar</button>
             {exportMenu && (
               <div className="writer-export-menu">
                 <button type="button" onClick={() => {
+                  setContextMenu(null);
+                  setInsertState(null);
                   setExportMenu(false);
                   setPdfExportOpen(true);
                 }}>PDF de guion</button>
@@ -485,6 +498,7 @@ export default function WriterWorkspace({
           words={words}
           characters={characters.map((item) => item.name)}
           onInsert={(next) => {
+            setExportMenu(false);
             setContextMenu(null);
             setInsertState(next);
           }}
@@ -522,6 +536,7 @@ export default function WriterWorkspace({
         <WriterPdfExportDialog
           initialTitle={title}
           getSnapshot={currentSnapshot}
+          returnFocusRef={exportButtonRef}
           onClose={() => setPdfExportOpen(false)}
         />
       )}

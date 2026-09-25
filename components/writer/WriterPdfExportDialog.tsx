@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { WriterSnapshot } from "@/lib/writer/document";
 import {
   captureWriterPdfSnapshot,
@@ -20,10 +20,12 @@ type GenerationState =
 export default function WriterPdfExportDialog({
   initialTitle,
   getSnapshot,
+  returnFocusRef,
   onClose,
 }: {
   initialTitle: string;
   getSnapshot: () => WriterSnapshot;
+  returnFocusRef: RefObject<HTMLElement | null>;
   onClose: () => void;
 }) {
   const [options, setOptions] = useState<WriterPdfOptions>(() => defaultWriterPdfOptions(initialTitle));
@@ -32,7 +34,13 @@ export default function WriterPdfExportDialog({
   const busyRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const blobUrlRef = useRef<string | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const busy = generation.status === "preparing" || generation.status === "generating";
+
+  useLayoutEffect(() => {
+    closeButtonRef.current?.focus({ preventScroll: true });
+  }, []);
 
   useEffect(() => () => {
     operationRef.current += 1;
@@ -99,12 +107,24 @@ export default function WriterPdfExportDialog({
   }
 
   function closeDialog() {
+    const shouldRestoreFocus = document.activeElement instanceof HTMLElement &&
+      panelRef.current?.contains(document.activeElement);
     operationRef.current += 1;
     abortRef.current?.abort();
     abortRef.current = null;
     busyRef.current = false;
     releaseReadyUrl();
     onClose();
+    if (shouldRestoreFocus) {
+      requestAnimationFrame(() => {
+        const active = document.activeElement;
+        const returnTarget = returnFocusRef.current;
+        if (returnTarget?.isConnected &&
+          (!(active instanceof HTMLElement) || active === document.body || !active.isConnected)) {
+          returnTarget.focus({ preventScroll: true });
+        }
+      });
+    }
   }
 
   function releaseReadyUrl() {
@@ -115,13 +135,19 @@ export default function WriterPdfExportDialog({
 
   return (
     <div className="writer-pdf-panel-shell">
-      <section className="writer-modal writer-pdf-modal" role="dialog" aria-labelledby="writer-pdf-title">
+      <section
+        ref={panelRef}
+        className="writer-modal writer-pdf-modal"
+        role="dialog"
+        aria-labelledby="writer-pdf-title"
+        aria-describedby="writer-pdf-snapshot-note"
+      >
         <div className="writer-pdf-heading">
           <div>
             <p className="writer-eyebrow">Salida de lectura</p>
             <h2 id="writer-pdf-title">Generar PDF de guion</h2>
           </div>
-          <button type="button" onClick={closeDialog} disabled={busy} aria-label="Cerrar exportación PDF">Cerrar</button>
+          <button ref={closeButtonRef} type="button" onClick={closeDialog} disabled={busy} aria-label="Cerrar exportación PDF">Cerrar</button>
         </div>
 
         <div className="writer-pdf-options">
@@ -191,7 +217,7 @@ export default function WriterPdfExportDialog({
         </div>
 
         <div className="writer-pdf-notice">
-          <p>El PDF usa una copia del guion tal como esté al pulsar Generar. Puedes seguir escribiendo después; esa exportación no se recalcula.</p>
+          <p id="writer-pdf-snapshot-note">El PDF usa una copia del guion tal como esté al pulsar Generar. Puedes seguir escribiendo después; esa exportación no se recalcula.</p>
           <p>Las notas del autor se excluyen del PDF y del FDX. Permanecen completas en el respaldo JSON.</p>
           <p>Los datos de portada sólo viven en este panel durante la sesión; FILMATTA no toma información de tu cuenta o perfil.</p>
         </div>

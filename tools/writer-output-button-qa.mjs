@@ -40,7 +40,7 @@ try {
   const document = makeLongDocument();
   const createdScript = await signed.rpc("writer_create_script", {
     p_operation_id: randomUUID(),
-    p_title: "QA botón Outputs V1",
+    p_title: "QA Writer Integration V1",
     p_document: document,
     p_schema_version: 1,
   });
@@ -61,6 +61,37 @@ try {
   await page.locator(".writer-save-status--cloud").waitFor({ state: "visible", timeout: 30_000 });
 
   const action = page.locator('[data-screenplay-kind="action"]').first();
+  const actionId = await action.getAttribute("data-block-id");
+  assert.ok(actionId, "The target action block must keep a stable id.");
+  await action.click({ button: "right" });
+  const contextMenu = page.getByRole("menu", { name: "Acciones del bloque" });
+  await contextMenu.getByRole("menuitemradio", { name: /Transición/ }).click();
+  await page.getByRole("button", { name: "Deshacer" }).click();
+  await page.getByRole("button", { name: "Rehacer" }).click();
+  await page.getByRole("button", { name: "Deshacer" }).click();
+  assert.equal(await action.getAttribute("data-block-id"), actionId);
+  assert.equal(await action.getAttribute("data-screenplay-kind"), "action");
+
+  await action.click();
+  await page.getByRole("button", { name: "Insertar en el guion" }).click();
+  await page.getByRole("dialog", { name: "Insertar en el guion" })
+    .getByRole("button", { name: /Nueva escena/ }).click();
+  const sceneDialog = page.getByRole("dialog", { name: "Nueva escena" });
+  await sceneDialog.getByLabel("Lugar").fill("Laboratorio integración");
+  await sceneDialog.getByLabel("Momento").selectOption("NOCHE");
+  await sceneDialog.getByRole("button", { name: "Insertar encabezado" }).click();
+  const insertedHeading = page.getByText("INT. LABORATORIO INTEGRACIÓN - NOCHE", { exact: true });
+  await insertedHeading.waitFor({ state: "visible" });
+  await insertedHeading.click();
+  await page.getByRole("button", { name: "Insertar en el guion" }).click();
+  await page.getByRole("dialog", { name: "Insertar en el guion" })
+    .getByRole("button", { name: /CUT TO:/ }).click();
+  await page.getByText("CUT TO:", { exact: true }).waitFor({ state: "visible" });
+
+  const anaMetric = page.getByRole("button", { name: /ANA \d+ interv\. · \d+ escenas/ });
+  await anaMetric.click();
+  await page.getByText("Menciones textuales", { exact: true }).waitFor({ state: "visible" });
+
   await action.click({ position: { x: 24, y: 16 } });
   await page.keyboard.press("End");
   await page.keyboard.type(" SNAPSHOT_ANTES_ñ");
@@ -130,6 +161,25 @@ try {
   assert.match(fdx, /SNAPSHOT_DESPUES/);
   assert.doesNotMatch(fdx, /NOTA_PRIVADA_NO_EXPORTAR/);
 
+  await page.getByRole("link", { name: "Timeline" }).first().click();
+  await page.waitForURL(new RegExp(`/writer/${scriptId}/timeline$`), { timeout: 30_000 });
+  await page.getByRole("heading", { name: "Vista estructural del guion" }).waitFor({ state: "visible" });
+  await page.getByText(`Versión guardada · revisión ${stableRemote.data.revision}`, { exact: false }).waitFor({ state: "visible" });
+  await page.waitForTimeout(1_200);
+  const afterTimelineRemote = await signed.from("writer_scripts").select("revision,document").eq("id", scriptId).single();
+  assert.equal(afterTimelineRemote.error, null, afterTimelineRemote.error?.message);
+  assert.equal(afterTimelineRemote.data.revision, stableRemote.data.revision, "Timeline changed the remote revision.");
+  assert.deepEqual(afterTimelineRemote.data.document, stableRemote.data.document, "Timeline changed the remote document.");
+
+  await page.goBack({ waitUntil: "networkidle" });
+  await page.locator(".writer-paper .tiptap").waitFor({ state: "visible" });
+  for (const width of [1440, 768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.getByRole("button", { name: "Insertar en el guion" }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "Exportar" }).waitFor({ state: "visible" });
+    await page.screenshot({ path: path.join(outputDir, `writer-integration-${width}.png`), fullPage: true });
+  }
+
   console.log(JSON.stringify({
     backend: TEST_REF,
     authenticatedFlow: "PASS",
@@ -141,6 +191,10 @@ try {
     exportDidNotMutateRemoteDocument: "PASS",
     jsonRegression: "PASS",
     fdxRegression: "PASS",
+    contextualInsertUndoRedo: "PASS",
+    characterMetrics: "PASS",
+    timelineReadOnly: "PASS",
+    responsiveWidths: [1440, 768, 390],
     pdfBytes: fs.statSync(pdfPath).size,
   }, null, 2));
 } finally {

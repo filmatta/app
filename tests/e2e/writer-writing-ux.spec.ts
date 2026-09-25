@@ -69,6 +69,43 @@ test("context actions, assisted insertion, live metrics and reload use the canon
   await expect(page.getByLabel("Editor de guion").getByText("INT. COCINA - NOCHE")).toBeVisible();
 });
 
+test("a late save acknowledgement cannot discard edits made while integration panels open", async ({ page, request }) => {
+  await request.get("http://127.0.0.1:54329/__scenario?value=writer-ux&writerSaveDelay=2400");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/writer/${scriptId}`);
+  const editor = page.getByLabel("Editor de guion");
+  const action = editor.locator('[data-block-id$="02"]');
+
+  await action.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" PANEL_ACK_A");
+  await expect(page.locator(".writer-save-status")).toContainText("Guardando", { timeout: 10_000 });
+
+  await action.click({ button: "right" });
+  await expect(page.getByRole("menu", { name: "Acciones del bloque" })).toBeVisible();
+  await page.getByRole("button", { name: "Exportar" }).click();
+  await expect(page.getByRole("menu", { name: "Acciones del bloque" })).toBeHidden();
+  await page.getByRole("button", { name: "PDF de guion" }).click();
+  await expect(page.getByRole("dialog", { name: "Generar PDF de guion" })).toBeVisible();
+  await page.getByRole("button", { name: "Cerrar exportación PDF" }).click();
+  await expect(page.getByRole("button", { name: "Exportar" })).toBeFocused();
+
+  await action.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" PANEL_ACK_B");
+  await page.getByRole("button", { name: "Insertar en el guion" }).click();
+  const insertPanel = page.getByRole("dialog", { name: "Insertar en el guion" });
+  await expect(insertPanel).toBeVisible();
+  await insertPanel.getByRole("button", { name: "Cerrar" }).click();
+
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 15_000 });
+  const state = await (await request.get("http://127.0.0.1:54329/__writer_state")).json();
+  expect(state.revision).toBe(3);
+  expect(JSON.stringify(state.document)).toContain("PANEL_ACK_A PANEL_ACK_B");
+  await page.reload();
+  await expect(page.getByLabel("Editor de guion")).toContainText("PANEL_ACK_A PANEL_ACK_B");
+});
+
 test("writing presentation remains usable at desktop, tablet and phone widths", async ({ page }) => {
   fs.mkdirSync(evidence, { recursive: true });
   await page.setViewportSize({ width: 1440, height: 900 });
