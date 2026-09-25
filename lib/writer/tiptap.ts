@@ -16,6 +16,7 @@ const enterNext: Record<ScreenplayKind, ScreenplayKind> = {
 
 export const ScreenplayBlockExtension = Node.create({
   name: "screenplayBlock",
+  priority: 1_000,
   group: "block",
   content: "inline*",
   defining: true,
