@@ -32,3 +32,27 @@ export function securityHeaders(development = false, supabaseUrl?: string, previ
     { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
   ];
 }
+
+export function writerPdfWorkerHeaderRule() {
+  return {
+    // Turbopack emits the dedicated PDF worker behind a hashed bootstrap.
+    // The referrer constraint keeps this override scoped to Writer requests.
+    source: "/_next/static/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
+    has: [{
+      type: "header" as const,
+      key: "referer",
+      value: "https?://[^/]+/writer(?:/.*)?",
+    }],
+    headers: [{
+      key: "Content-Security-Policy",
+      value: [
+        "default-src 'none'",
+        "script-src 'self' 'wasm-unsafe-eval'",
+        "connect-src 'self'",
+        "worker-src 'none'",
+        "object-src 'none'",
+        "base-uri 'none'",
+      ].join("; "),
+    }],
+  };
+}

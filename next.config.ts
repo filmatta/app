@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { securityHeaders } from "./lib/security/headers";
+import { securityHeaders, writerPdfWorkerHeaderRule } from "./lib/security/headers";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
@@ -23,6 +23,7 @@ const nextConfig: NextConfig = {
           value: "private, no-store, max-age=0",
         }],
       },
+      writerPdfWorkerHeaderRule(),
     ];
   },
 };
