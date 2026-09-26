@@ -56,7 +56,7 @@ test("Mux verifies exact signed bytes; rejects oversize/signature and preserves 
 });
 
 test("CSP confines runtime, media and app Auth to explicit sources with framing disabled", () => {
-  const { securityHeaders, writerPdfWorkerHeaderRule } = load("lib/security/headers.ts");
+  const { securityHeaders, writerPdfWorkerHeaderRules } = load("lib/security/headers.ts");
   const headers = Object.fromEntries(securityHeaders(false, "https://test.supabase.co").map(h => [h.key, h.value]));
   const csp = headers["Content-Security-Policy"];
   assert.ok(!csp.includes("unsafe-eval"));
@@ -67,17 +67,22 @@ test("CSP confines runtime, media and app Auth to explicit sources with framing 
   assert.equal(headers["Referrer-Policy"], "strict-origin-when-cross-origin");
   assert.ok(!Object.hasOwn(headers, "Strict-Transport-Security"));
 
-  const workerRule = writerPdfWorkerHeaderRule();
-  const workerCsp = workerRule.headers[0].value;
-  assert.equal(workerRule.source, "/_next/static/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)");
-  assert.equal(workerRule.has.length, 1);
-  assert.equal(workerRule.has[0].type, "header");
-  assert.equal(workerRule.has[0].key, "referer");
-  assert.equal(workerRule.has[0].value, "https?://[^/]+/writer(?:/.*)?");
-  assert.equal(
-    workerCsp,
-    "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; worker-src 'none'; object-src 'none'; base-uri 'none'",
-  );
-  assert.ok(!/(?:^|[ ;])'unsafe-eval'(?:[ ;]|$)/u.test(workerCsp));
-  assert.ok(!workerCsp.includes("unsafe-inline"));
+  const workerRules = writerPdfWorkerHeaderRules();
+  assert.deepEqual(Array.from(workerRules, (rule) => rule.source), [
+    "/_next/static/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
+    "/_next/static/immutable/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
+  ]);
+  for (const workerRule of workerRules) {
+    const workerCsp = workerRule.headers[0].value;
+    assert.equal(workerRule.has.length, 1);
+    assert.equal(workerRule.has[0].type, "header");
+    assert.equal(workerRule.has[0].key, "referer");
+    assert.equal(workerRule.has[0].value, "https?://[^/]+/writer(?:/.*)?");
+    assert.equal(
+      workerCsp,
+      "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; worker-src 'none'; object-src 'none'; base-uri 'none'",
+    );
+    assert.ok(!/(?:^|[ ;])'unsafe-eval'(?:[ ;]|$)/u.test(workerCsp));
+    assert.ok(!workerCsp.includes("unsafe-inline"));
+  }
 });

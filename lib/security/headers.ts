@@ -33,11 +33,14 @@ export function securityHeaders(development = false, supabaseUrl?: string, previ
   ];
 }
 
-export function writerPdfWorkerHeaderRule() {
-  return {
-    // Turbopack emits the dedicated PDF worker behind a hashed bootstrap.
-    // The referrer constraint keeps this override scoped to Writer requests.
-    source: "/_next/static/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
+export function writerPdfWorkerHeaderRules() {
+  return [
+    "/_next/static/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
+    "/_next/static/immutable/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
+  ].map((source) => ({
+    // Turbopack emits the PDF worker behind a hashed bootstrap. The Writer
+    // referrer keeps the override away from other current and future routes.
+    source,
     has: [{
       type: "header" as const,
       key: "referer",
@@ -54,5 +57,5 @@ export function writerPdfWorkerHeaderRule() {
         "base-uri 'none'",
       ].join("; "),
     }],
-  };
+  }));
 }
