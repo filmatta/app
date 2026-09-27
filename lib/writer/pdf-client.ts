@@ -23,9 +23,14 @@ export async function generateWriterPdfBlob(
       reject(new Error("No se pudo iniciar el generador PDF local."));
     };
     worker.onmessage = (event: MessageEvent<
+      | { diagnostic: unknown }
       | { ok: true; buffer: ArrayBuffer }
       | { ok: false; message: string }
     >) => {
+      if ("diagnostic" in event.data) {
+        console.info("[writer-pdf-csp-diagnostic]", JSON.stringify(event.data.diagnostic));
+        return;
+      }
       signal?.removeEventListener("abort", abort);
       worker.terminate();
       if (event.data.ok) {
