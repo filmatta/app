@@ -12,6 +12,8 @@ export type WriterBlockTarget = {
   text: string;
 };
 
+export type ReplaceWriterBlockResult = "applied" | "unchanged" | "missing" | "changed";
+
 export function findWriterBlockAtPosition(doc: ProseMirrorNode, position: number): WriterBlockTarget | null {
   const safePosition = Math.max(0, Math.min(position, doc.content.size));
   const resolved = doc.resolve(safePosition);
@@ -29,8 +31,12 @@ export function findWriterBlockAtPosition(doc: ProseMirrorNode, position: number
 }
 
 export function findWriterBlockById(editor: Editor, id: string): WriterBlockTarget | null {
+  return findWriterBlockByIdInDocument(editor.state.doc, id);
+}
+
+export function findWriterBlockByIdInDocument(doc: ProseMirrorNode, id: string): WriterBlockTarget | null {
   let target: WriterBlockTarget | null = null;
-  editor.state.doc.descendants((node, position) => {
+  doc.descendants((node, position) => {
     if (node.type.name === "screenplayBlock" && node.attrs.id === id) {
       target = { id, kind: node.attrs.kind as ScreenplayKind, position, text: node.textContent };
       return false;
@@ -122,7 +128,7 @@ export function insertWriterBlock(
   targetId: string,
   kind: ScreenplayKind,
   text: string,
-  options: { replaceExistingSceneHeading?: boolean } = {},
+  options: { replaceExistingSceneHeading?: boolean; forceNew?: boolean } = {},
 ): boolean {
   const target = findWriterBlockById(editor, targetId);
   if (!target) return false;
@@ -130,8 +136,8 @@ export function insertWriterBlock(
   const screenplayBlock = editor.state.schema.nodes.screenplayBlock;
   if (!node || !screenplayBlock || !text) return false;
 
-  const shouldReuse = !target.text.trim() ||
-    (options.replaceExistingSceneHeading === true && target.kind === "sceneHeading");
+  const shouldReuse = options.forceNew !== true && (!target.text.trim() ||
+    (options.replaceExistingSceneHeading === true && target.kind === "sceneHeading"));
   const transaction = editor.state.tr;
   let selectionPosition: number;
 
@@ -157,4 +163,33 @@ export function insertWriterBlock(
   editor.view.dispatch(transaction.scrollIntoView());
   editor.commands.focus();
   return true;
+}
+
+export function replaceWriterBlockWithSceneHeading(
+  editor: Editor,
+  targetId: string,
+  expected: { kind: ScreenplayKind; text: string },
+  heading: string,
+): ReplaceWriterBlockResult {
+  const target = findWriterBlockById(editor, targetId);
+  if (!target) return "missing";
+  if (target.kind !== expected.kind || target.text !== expected.text) return "changed";
+  if (target.kind === "sceneHeading" && target.text === heading) {
+    editor.commands.focus();
+    return "unchanged";
+  }
+
+  const node = editor.state.doc.nodeAt(target.position);
+  if (!node || !heading) return "missing";
+  const transaction = editor.state.tr
+    .setNodeMarkup(target.position, undefined, { ...node.attrs, kind: "sceneHeading" })
+    .replaceWith(
+      target.position + 1,
+      target.position + node.nodeSize - 1,
+      editor.state.schema.text(heading),
+    );
+  transaction.setSelection(TextSelection.near(transaction.doc.resolve(target.position + 1 + heading.length)));
+  editor.view.dispatch(transaction.scrollIntoView());
+  editor.commands.focus();
+  return "applied";
 }

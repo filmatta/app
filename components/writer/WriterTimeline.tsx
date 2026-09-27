@@ -216,6 +216,11 @@ export default function WriterTimelineView({
     setVisibleLocations((current) => toggledSet(current, key));
   }
 
+  function activateScene(scene: TimelineScene) {
+    setSelectedSceneKey(scene.key);
+    if (onGoToWriter && scene.sourceId && scene.canDeepLink) onGoToWriter(scene.sourceId);
+  }
+
   return (
     <Root ref={setRootRef} className={`timeline-page${variant === "embedded" ? " timeline-page--embedded" : ""}`}>
       <header className="timeline-header">
@@ -375,7 +380,7 @@ export default function WriterTimelineView({
                       type="button"
                       data-timeline-scene-id={scene.sourceId ?? undefined}
                       className={sceneClasses(scene, selectedSceneKey, matchingSceneKeys)}
-                      onClick={() => setSelectedSceneKey(scene.key)}
+                      onClick={() => activateScene(scene)}
                       aria-pressed={selectedSceneKey === scene.key}
                       aria-label={`Escena ${scene.order}: ${scene.heading}, ${scene.wordCount} palabras`}
                     >
@@ -389,14 +394,14 @@ export default function WriterTimelineView({
                 {visibleCharacterTracks.length === 0
                   ? <EmptyTrackRow message="No hay pistas de personajes visibles." />
                   : visibleCharacterTracks.map((track) => (
-                    <TrackRow key={track.key} track={track} scenes={timeline.scenes} selectedSceneKey={selectedSceneKey} matchingSceneKeys={matchingSceneKeys} />
+                    <TrackRow key={track.key} track={track} scenes={timeline.scenes} selectedSceneKey={selectedSceneKey} matchingSceneKeys={matchingSceneKeys} onActivateScene={activateScene} />
                   ))}
 
                 <TrackGroupTitle title="Espacios del guion" />
                 {visibleLocationTracks.length === 0
                   ? <EmptyTrackRow message="No hay pistas de espacios visibles." />
                   : visibleLocationTracks.map((track) => (
-                    <TrackRow key={track.key} track={track} scenes={timeline.scenes} selectedSceneKey={selectedSceneKey} matchingSceneKeys={matchingSceneKeys} />
+                    <TrackRow key={track.key} track={track} scenes={timeline.scenes} selectedSceneKey={selectedSceneKey} matchingSceneKeys={matchingSceneKeys} onActivateScene={activateScene} />
                   ))}
               </div>
             </div>
@@ -410,6 +415,7 @@ export default function WriterTimelineView({
           characters={timeline.characters}
           scriptId={timeline.scriptId}
           onGoToWriter={onGoToWriter}
+          onActivateScene={activateScene}
         />
       )}
 
@@ -419,7 +425,7 @@ export default function WriterTimelineView({
           <ol>
             {timeline.scenes.map((scene) => (
               <li key={scene.key} className={matchingSceneKeys.has(scene.key) ? "" : "is-muted"}>
-                <button type="button" onClick={() => setSelectedSceneKey(scene.key)}>
+                <button type="button" onClick={() => activateScene(scene)}>
                   <strong>Escena {scene.order}: {scene.heading}</strong>
                   <span>{scene.wordCount} palabras · {environmentLabel(scene.headingData.environment)} · {scene.headingData.moment ?? "Momento sin especificar"}</span>
                 </button>
@@ -473,27 +479,32 @@ function EmptyTrackRow({ message }: { message: string }) {
 }
 
 function TrackRow({
-  track, scenes, selectedSceneKey, matchingSceneKeys,
+  track, scenes, selectedSceneKey, matchingSceneKeys, onActivateScene,
 }: {
   track: TimelineCharacter | TimelineLocation;
   scenes: TimelineScene[];
   selectedSceneKey: string | null;
   matchingSceneKeys: Set<string>;
+  onActivateScene: (scene: TimelineScene) => void;
 }) {
   const sceneKeys = new Set(track.sceneKeys);
   const color = stableColor(track.key);
   return (
     <div className="timeline-row timeline-track-row" style={{ "--track-color": color } as CSSProperties}>
       <div className="timeline-lane-label"><span className="timeline-track-dot" aria-hidden="true" />{track.name}</div>
-      {scenes.map((scene) => (
-        <div
-          key={scene.key}
-          className={`timeline-track-cell${sceneKeys.has(scene.key) ? " has-mark" : ""}${selectedSceneKey === scene.key ? " is-selected" : ""}${matchingSceneKeys.has(scene.key) ? "" : " is-filtered"}`}
-          aria-hidden="true"
-        >
-          {sceneKeys.has(scene.key) && <span />}
-        </div>
-      ))}
+      {scenes.map((scene) => {
+        const hasMark = sceneKeys.has(scene.key);
+        const className = `timeline-track-cell${hasMark ? " has-mark" : ""}${selectedSceneKey === scene.key ? " is-selected" : ""}${matchingSceneKeys.has(scene.key) ? "" : " is-filtered"}`;
+        return hasMark ? (
+          <button
+            key={scene.key}
+            type="button"
+            className={className}
+            aria-label={`${track.name}, escena ${scene.order}`}
+            onClick={() => onActivateScene(scene)}
+          ><span aria-hidden="true" /></button>
+        ) : <div key={scene.key} className={className} aria-hidden="true" />;
+      })}
     </div>
   );
 }
@@ -503,11 +514,13 @@ function SceneDetail({
   characters,
   scriptId,
   onGoToWriter,
+  onActivateScene,
 }: {
   scene: TimelineScene;
   characters: TimelineCharacter[];
   scriptId: string;
   onGoToWriter?: (sceneId: string) => void;
+  onActivateScene: (scene: TimelineScene) => void;
 }) {
   const names = scene.characterKeys
     .map((key) => characters.find((character) => character.key === key)?.name)
@@ -535,7 +548,7 @@ function SceneDetail({
       <div className="timeline-detail-actions">
         {scene.sourceId && scene.canDeepLink
           ? onGoToWriter
-            ? <button type="button" onClick={() => onGoToWriter(scene.sourceId!)}>Ir al guion</button>
+            ? <button type="button" onClick={() => onActivateScene(scene)}>Ir al guion</button>
             : <Link href={writerDocumentHref(scriptId, scene.sourceId)}>Ir al guion</Link>
           : <button type="button" disabled title="Esta escena no tiene un identificador persistente.">Ir al guion</button>}
       </div>

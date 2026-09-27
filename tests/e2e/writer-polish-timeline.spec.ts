@@ -47,23 +47,17 @@ async function rightClickCurrentSelection(page: Page) {
 }
 
 async function dragSelect(page: Page, startSelector: string, startOffset: number, endSelector: string, endOffset: number) {
-  const points = await page.evaluate(({ startSelector, startOffset, endSelector, endOffset }) => {
-    const point = (selector: string, offset: number) => {
-      const element = document.querySelector<HTMLElement>(selector);
-      const node = element?.firstChild;
-      if (!element || !node) throw new Error(`Missing selectable text for ${selector}`);
-      const range = document.createRange();
-      range.setStart(node, offset);
-      range.collapse(true);
-      const rect = range.getBoundingClientRect();
-      return { x: rect.left, y: rect.top + rect.height / 2 };
-    };
-    return { start: point(startSelector, startOffset), end: point(endSelector, endOffset) };
+  await page.evaluate(({ startSelector, startOffset, endSelector, endOffset }) => {
+    const start = document.querySelector<HTMLElement>(startSelector)?.firstChild;
+    const end = document.querySelector<HTMLElement>(endSelector)?.firstChild;
+    if (!start || !end) throw new Error("Missing selectable screenplay text.");
+    const range = document.createRange();
+    range.setStart(start, startOffset);
+    range.setEnd(end, endOffset);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
   }, { startSelector, startOffset, endSelector, endOffset });
-  await page.mouse.move(points.start.x, points.start.y);
-  await page.mouse.down();
-  await page.mouse.move(points.end.x, points.end.y, { steps: 12 });
-  await page.mouse.up();
   await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() ?? "")).not.toBe("");
 }
 
@@ -182,6 +176,118 @@ test("context menu rejects ambiguous, composing, denied, cancelled, and obsolete
   await expect(editor).not.toContainText("OBSOLETE_PASTE");
 });
 
+test("context menu resolves empty editable lines in Normal and Focus without claiming sheet whitespace", async ({ page, context }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: () => Promise.reject(new DOMException("fallback QA", "NotAllowedError")),
+    });
+  });
+  await openWriter(page, context);
+  const editor = page.getByLabel("Editor de guion");
+  await editor.click();
+  await page.keyboard.press("Control+A");
+  await page.keyboard.press("Backspace");
+  const initialEmpty = editor.locator(".writer-screenplay-block").first();
+  await expect(initialEmpty).toHaveText("");
+  let menu = await rightClick(page, initialEmpty);
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /^Copiar/ })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: /^Cortar/ })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: /^Pegar/ })).toBeEnabled();
+  await expect(menu.getByRole("menuitemradio", { name: /^Encabezado de escena/ })).toBeEnabled();
+  fs.mkdirSync(evidence, { recursive: true });
+  await page.screenshot({ path: `${evidence}/context-empty-line-1440x900.png` });
+  await page.keyboard.press("Escape");
+
+  await initialEmpty.click();
+  await page.keyboard.type("ANTES");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("DESPUÉS");
+  const blocks = editor.locator(".writer-screenplay-block");
+  const between = blocks.nth(1);
+  await expect(between).toHaveText("");
+  menu = await rightClick(page, between);
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Focus" }).click();
+  menu = await rightClick(page, between);
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Salir de Focus" }).click();
+
+  await page.locator(".writer-paper").click({ button: "right", position: { x: 5, y: 5 } });
+  await expect(menu).toBeHidden();
+});
+
+test("scene heading assistant separates conversion, cancellation, insertion, and history", async ({ page, context }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: () => Promise.reject(new DOMException("fallback QA", "NotAllowedError")),
+    });
+  });
+  await openWriter(page, context);
+  const editor = page.getByLabel("Editor de guion");
+  const action = editor.locator('[data-block-id$="02"]');
+  const targetId = await action.getAttribute("data-block-id");
+  const initialCount = await editor.locator(".writer-screenplay-block").count();
+
+  let menu = await rightClick(page, editor.locator('[data-block-id$="01"]'));
+  await menu.getByRole("menuitemradio", { name: /^Encabezado de escena/ }).click();
+  let dialog = page.getByRole("dialog", { name: "Configurar encabezado de escena" });
+  await expect(dialog.getByLabel("Entorno")).toHaveValue("INT.");
+  await expect(dialog.getByLabel("Lugar")).toHaveValue("ESTUDIO");
+  await expect(dialog.getByLabel("Momento")).toHaveValue("DÍA");
+  fs.mkdirSync(evidence, { recursive: true });
+  await page.screenshot({ path: `${evidence}/scene-heading-conversion-dialog-1280x720.png` });
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+
+  await page.getByRole("button", { name: "Focus" }).click();
+  menu = await rightClick(page, action);
+  await menu.getByRole("menuitemradio", { name: /^Encabezado de escena/ }).click();
+  dialog = page.getByRole("dialog", { name: "Configurar encabezado de escena" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await page.getByRole("button", { name: "Salir de Focus" }).click();
+
+  menu = await rightClick(page, action);
+  await menu.getByRole("menuitemradio", { name: /^Encabezado de escena/ }).click();
+  dialog = page.getByRole("dialog", { name: "Configurar encabezado de escena" });
+  await expect(dialog).toContainText("ANA observa la VENTANA.");
+  await expect(dialog.getByLabel("Entorno")).toHaveValue("");
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await expect(action).toHaveAttribute("data-screenplay-kind", "action");
+  await expect(action).toHaveText("ANA observa la VENTANA.");
+
+  menu = await rightClick(page, action);
+  await menu.getByRole("menuitemradio", { name: /^Encabezado de escena/ }).click();
+  dialog = page.getByRole("dialog", { name: "Configurar encabezado de escena" });
+  await dialog.getByLabel("Entorno").selectOption("INT.");
+  await dialog.getByLabel("Lugar").fill("SALA B");
+  await dialog.getByLabel("Momento").selectOption("NOCHE");
+  await dialog.getByRole("button", { name: "Convertir bloque" }).click();
+  await expect(editor.locator(`[data-block-id="${targetId}"]`)).toHaveText("INT. SALA B - NOCHE");
+  await expect(editor.locator(".writer-screenplay-block")).toHaveCount(initialCount);
+  await page.getByRole("button", { name: "Deshacer" }).click();
+  await expect(editor.locator(`[data-block-id="${targetId}"]`)).toHaveText("ANA observa la VENTANA.");
+  await page.getByRole("button", { name: "Rehacer" }).click();
+  await expect(editor.locator(`[data-block-id="${targetId}"]`)).toHaveText("INT. SALA B - NOCHE");
+
+  const secondAction = editor.locator('[data-block-id$="09"]');
+  menu = await rightClick(page, secondAction);
+  await menu.getByRole("menuitem", { name: /^Insertar/ }).click();
+  await page.getByRole("button", { name: /Nueva escena/ }).click();
+  dialog = page.getByRole("dialog", { name: "Nueva escena" });
+  await dialog.getByLabel("Lugar").fill("PASILLO");
+  await dialog.getByRole("button", { name: "Insertar encabezado" }).click();
+  await expect(secondAction).toHaveAttribute("data-screenplay-kind", "action");
+  await expect(secondAction).toHaveText("La segunda escena conserva un ID distinto.");
+  await expect(editor.locator(".writer-screenplay-block")).toHaveCount(initialCount + 1);
+});
+
 test("embedded Timeline reads saved revisions and navigates by stable scene id", async ({ page, context }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWriter(page, context, 2400);
@@ -210,20 +316,40 @@ test("embedded Timeline reads saved revisions and navigates by stable scene id",
   await expect(panel.getByRole("button", { name: "Actualizar Timeline" })).toBeEnabled();
   await expect(panel.getByLabel("Entorno")).toHaveValue("interior");
 
+  await panel.locator('[data-timeline-scene-id$="08"]').click();
+  await expect.poll(() => page.evaluate(() =>
+    window.getSelection()?.anchorNode?.parentElement?.closest("[data-block-id]")?.getAttribute("data-block-id"),
+  )).toMatch(/08$/);
+  await expect(panel).toBeVisible();
+  await expect(editor.locator('[data-block-id$="08"]')).toHaveClass(/writer-scene-target-highlight/);
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.isCollapsed)).toBe(true);
+  fs.mkdirSync(evidence, { recursive: true });
+  await page.screenshot({ path: `${evidence}/timeline-direct-navigation-1440x900.png` });
+
   await panel.locator('[data-timeline-scene-id$="01"]').click();
-  await panel.getByRole("button", { name: "Ir al guion" }).click();
-  await expect(panel).toBeHidden();
   await expect.poll(() => page.evaluate(() =>
     window.getSelection()?.anchorNode?.parentElement?.closest("[data-block-id]")?.getAttribute("data-block-id"),
   )).toMatch(/01$/);
+  await expect(editor.locator('[data-block-id$="01"]')).toHaveClass(/writer-scene-target-highlight/);
+  await expect(editor.locator('[data-block-id$="08"]')).not.toHaveClass(/writer-scene-target-highlight/);
+  await expect(editor.locator('[data-block-id$="01"]')).not.toHaveClass(/writer-scene-target-highlight/, { timeout: 4_500 });
 
   const firstHeading = editor.locator('[data-block-id$="01"]');
   menu = await rightClick(page, firstHeading);
   await menu.getByRole("menuitemradio", { name: /^Acción/ }).click();
-  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
   await panel.locator('[data-timeline-scene-id$="01"]').click();
-  await panel.getByRole("button", { name: "Ir al guion" }).click();
   await expect(page.locator(".writer-editor-feedback")).toContainText("Timeline está desactualizado");
+});
+
+test("Timeline drawer closes after direct scene navigation on a narrow viewport", async ({ page, context }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openWriter(page, context);
+  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
+  const panel = page.getByRole("region", { name: "Timeline del guion" });
+  await expect(panel).toBeVisible();
+  await panel.locator('[data-timeline-scene-id$="08"]').click();
+  await expect(panel).toBeHidden();
+  await expect(page.getByLabel("Editor de guion").locator('[data-block-id$="08"]')).toHaveClass(/writer-scene-target-highlight/);
 });
 
 test("a new unsaved scene appears only after save and explicit Timeline refresh", async ({ page, context }) => {

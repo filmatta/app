@@ -13,6 +13,7 @@ import {
   findWriterBlockById,
   insertWriterPlainText,
   insertWriterBlock,
+  replaceWriterBlockWithSceneHeading,
 } from "@/lib/writer/editor-actions";
 import {
   QUICK_INSERTS,
@@ -20,6 +21,7 @@ import {
   countTextualMentions,
   deriveCharacterWritingMetrics,
 } from "@/lib/writer/writing-ux";
+import { parseSceneHeading } from "@/lib/writer/timeline";
 
 export const WRITER_KIND_LABELS: Record<ScreenplayKind, string> = {
   sceneHeading: "Encabezado de escena",
@@ -48,6 +50,11 @@ export type WriterInsertState = {
   x: number;
   y: number;
   view: "menu" | "scene";
+  intent: "insert" | "convert";
+  expectedKind: ScreenplayKind;
+  expectedText: string;
+  selectionFrom: number;
+  selectionTo: number;
 };
 
 export function WriterContextMenu({
@@ -55,6 +62,7 @@ export function WriterContextMenu({
   state,
   onClose,
   onInsert,
+  onConvertSceneHeading,
   onTimeline,
   onFeedback,
 }: {
@@ -62,6 +70,7 @@ export function WriterContextMenu({
   state: WriterContextMenuState;
   onClose: () => void;
   onInsert: (view: WriterInsertState["view"]) => void;
+  onConvertSceneHeading: () => void;
   onTimeline: (sceneId: string) => void;
   onFeedback: (message: string) => void;
 }) {
@@ -95,6 +104,10 @@ export function WriterContextMenu({
 
   function applyKind(kind: ScreenplayKind) {
     if (state.multipleBlocks) return;
+    if (kind === "sceneHeading") {
+      onConvertSceneHeading();
+      return;
+    }
     if (!changeWriterBlockKind(editor, state.targetId, kind)) return onClose();
     onClose();
   }
@@ -242,10 +255,6 @@ export function WriterInsertPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: state.x, top: state.y });
 
-  useEffect(() => {
-    if (!target) onClose();
-  }, [onClose, target]);
-
   useLayoutEffect(() => {
     if (sceneOpen) return;
     const panel = panelRef.current;
@@ -267,18 +276,22 @@ export function WriterInsertPanel({
     return () => window.removeEventListener("pointerdown", closeOnPointer);
   }, [onClose, sceneOpen]);
 
-  if (!target) return null;
   if (sceneOpen) {
     return (
       <SceneHeadingDialog
         editor={editor}
         targetId={state.targetId}
-        original={target.kind === "sceneHeading" ? target.text : ""}
-        onBack={state.view === "menu" ? () => setSceneOpen(false) : undefined}
+        intent={state.intent}
+        expectedKind={state.expectedKind}
+        original={state.expectedText}
+        selectionFrom={state.selectionFrom}
+        selectionTo={state.selectionTo}
+        onBack={state.intent === "insert" && state.view === "menu" ? () => setSceneOpen(false) : undefined}
         onClose={onClose}
       />
     );
   }
+  if (!target) return null;
 
   function insertQuick(kind: ScreenplayKind, text: string) {
     insertWriterBlock(editor, state.targetId, kind, text);
@@ -318,32 +331,68 @@ export function WriterInsertPanel({
 function SceneHeadingDialog({
   editor,
   targetId,
+  intent,
+  expectedKind,
   original,
+  selectionFrom,
+  selectionTo,
   onBack,
   onClose,
 }: {
   editor: Editor;
   targetId: string;
+  intent: WriterInsertState["intent"];
+  expectedKind: ScreenplayKind;
   original: string;
+  selectionFrom: number;
+  selectionTo: number;
   onBack?: () => void;
   onClose: () => void;
 }) {
-  const [environment, setEnvironment] = useState("INT.");
-  const [place, setPlace] = useState("");
-  const [momentChoice, setMomentChoice] = useState("DÍA");
-  const [customMoment, setCustomMoment] = useState("");
+  const [initial] = useState(() => sceneHeadingDialogDefaults(intent, original));
+  const documentAtOpen = useRef(editor.state.doc);
+  const [environment, setEnvironment] = useState(initial.environment);
+  const [place, setPlace] = useState(initial.place);
+  const [momentChoice, setMomentChoice] = useState(initial.momentChoice);
+  const [customMoment, setCustomMoment] = useState(initial.customMoment);
+  const [error, setError] = useState<string | null>(null);
   const moment = momentChoice === "OTRO" ? customMoment : momentChoice;
   const preview = buildSceneHeading(environment, place, moment);
 
   function confirm() {
     if (!preview) return;
-    insertWriterBlock(editor, targetId, "sceneHeading", preview, { replaceExistingSceneHeading: true });
+    const target = findWriterBlockById(editor, targetId);
+    if (!target) {
+      setError("El bloque objetivo ya no existe. No se aplicó ningún cambio.");
+      return;
+    }
+    if (target.kind !== expectedKind || target.text !== original) {
+      setError("El bloque objetivo cambió mientras el diálogo estaba abierto. Revisa el texto antes de intentarlo de nuevo.");
+      return;
+    }
+    if (intent === "convert") {
+      const result = replaceWriterBlockWithSceneHeading(editor, targetId, { kind: expectedKind, text: original }, preview);
+      if (result === "missing" || result === "changed") {
+        setError("El bloque objetivo cambió mientras el diálogo estaba abierto. No se aplicó el encabezado.");
+        return;
+      }
+    } else if (!insertWriterBlock(editor, targetId, "sceneHeading", preview, { forceNew: true })) {
+      setError("No se pudo insertar el encabezado en el destino original.");
+      return;
+    }
+    onClose();
+  }
+
+  function cancel() {
+    if (editor.state.doc === documentAtOpen.current) {
+      editor.chain().focus().setTextSelection({ from: selectionFrom, to: selectionTo }).run();
+    }
     onClose();
   }
 
   return (
     <div className="writer-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
+      if (event.target === event.currentTarget) cancel();
     }}>
       <section
         className="writer-modal writer-scene-dialog"
@@ -354,35 +403,62 @@ function SceneHeadingDialog({
           if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
-            onClose();
-            editor.commands.focus();
+            cancel();
           }
         }}
       >
-        <p className="writer-eyebrow">Inserción asistida</p>
-        <h2 id="writer-scene-dialog-title">Nueva escena</h2>
-        {original && <p className="writer-scene-original"><strong>Encabezado actual</strong><span>{original}</span></p>}
+        <p className="writer-eyebrow">{intent === "convert" ? "Conversión asistida" : "Inserción asistida"}</p>
+        <h2 id="writer-scene-dialog-title">{intent === "convert" ? "Configurar encabezado de escena" : "Nueva escena"}</h2>
+        {original && <p className="writer-scene-original"><strong>Texto actual del bloque</strong><span>{original}</span></p>}
+        {intent === "convert" && selectionFrom !== selectionTo && (
+          <p className="writer-context-menu-help">La conversión sustituirá el bloque completo, no sólo la selección.</p>
+        )}
         <div className="writer-scene-fields">
           <label>Entorno<select value={environment} onChange={(event) => setEnvironment(event.target.value)} autoFocus>
+            <option value="" disabled>Seleccionar</option>
             <option>INT.</option><option>EXT.</option><option>INT./EXT.</option>
           </select></label>
           <label>Lugar<input value={place} onChange={(event) => setPlace(event.target.value)} placeholder="Escribe el lugar" /></label>
           <label>Momento<select value={momentChoice} onChange={(event) => setMomentChoice(event.target.value)}>
+            <option value="" disabled>Seleccionar</option>
             {['DÍA', 'NOCHE', 'AMANECER', 'ATARDECER', 'CONTINUO'].map((item) => <option key={item}>{item}</option>)}
             <option value="OTRO">Otro…</option>
           </select></label>
           {momentChoice === "OTRO" && <label>Otro momento<input value={customMoment} onChange={(event) => setCustomMoment(event.target.value)} /></label>}
         </div>
         <div className="writer-scene-preview"><small>Vista previa · Encabezado de escena</small><strong>{preview || "Completa lugar y momento"}</strong></div>
-        {original && <p className="writer-context-menu-help">Al confirmar, este encabezado se actualizará y conservará su identificador.</p>}
+        {intent === "convert" && <p className="writer-context-menu-help">Al confirmar, el bloque conservará su identificador y el cambio podrá deshacerse.</p>}
+        {error && <p className="writer-context-menu-help" role="status">{error}</p>}
         <div className="writer-modal-actions">
           {onBack && <button type="button" onClick={onBack}>Atrás</button>}
-          <button type="button" onClick={onClose}>Cancelar</button>
-          <button className="writer-primary-button" type="button" onClick={confirm} disabled={!preview}>Insertar encabezado</button>
+          <button type="button" onClick={cancel}>Cancelar</button>
+          <button className="writer-primary-button" type="button" onClick={confirm} disabled={!preview}>
+            {intent === "convert" ? "Convertir bloque" : "Insertar encabezado"}
+          </button>
         </div>
       </section>
     </div>
   );
+}
+
+const SCENE_MOMENTS = new Set(["DÍA", "NOCHE", "AMANECER", "ATARDECER", "CONTINUO"]);
+
+function sceneHeadingDialogDefaults(intent: WriterInsertState["intent"], original: string) {
+  if (original.trim()) {
+    const parsed = parseSceneHeading(original);
+    if (parsed.environment !== "unknown" && parsed.location && parsed.moment) {
+      const normalizedMoment = parsed.moment.toLocaleUpperCase("es-MX");
+      return {
+        environment: parsed.environment === "interior" ? "INT." : parsed.environment === "exterior" ? "EXT." : "INT./EXT.",
+        place: parsed.location,
+        momentChoice: SCENE_MOMENTS.has(normalizedMoment) ? normalizedMoment : "OTRO",
+        customMoment: SCENE_MOMENTS.has(normalizedMoment) ? "" : parsed.moment,
+      };
+    }
+  }
+  return intent === "insert"
+    ? { environment: "INT.", place: "", momentChoice: "DÍA", customMoment: "" }
+    : { environment: "", place: "", momentChoice: "", customMoment: "" };
 }
 
 export function WriterCharacterPanel({ document }: { document: WriterDocument }) {

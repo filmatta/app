@@ -1,7 +1,9 @@
 "use client";
 
-import { mergeAttributes, Node } from "@tiptap/core";
-import { Plugin, TextSelection } from "@tiptap/pm/state";
+import { mergeAttributes, Node, type Editor } from "@tiptap/core";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { ScreenplayKind } from "./document.ts";
 
 const enterNext: Record<ScreenplayKind, ScreenplayKind> = {
@@ -13,6 +15,25 @@ const enterNext: Record<ScreenplayKind, ScreenplayKind> = {
   transition: "sceneHeading",
   authorNote: "action",
 };
+
+const sceneHighlightKey = new PluginKey<DecorationSet>("writerSceneHighlight");
+
+function sceneHighlightDecorations(doc: ProseMirrorNode, id: string) {
+  let decorations = DecorationSet.empty;
+  doc.descendants((node, position) => {
+    if (node.type.name === "screenplayBlock" && node.attrs.id === id) {
+      decorations = DecorationSet.create(doc, [
+        Decoration.node(position, position + node.nodeSize, { class: "writer-scene-target-highlight" }),
+      ]);
+      return false;
+    }
+  });
+  return decorations;
+}
+
+export function setWriterSceneHighlight(editor: Editor, id: string | null) {
+  editor.view.dispatch(editor.state.tr.setMeta(sceneHighlightKey, id));
+}
 
 export const ScreenplayBlockExtension = Node.create({
   name: "screenplayBlock",
@@ -88,6 +109,22 @@ export const ScreenplayBlockExtension = Node.create({
             transaction.setNodeMarkup(replacement.position, undefined, replacement.attrs);
           }
           return transaction;
+        },
+      }),
+      new Plugin<DecorationSet>({
+        key: sceneHighlightKey,
+        state: {
+          init: () => DecorationSet.empty,
+          apply(transaction, current, _oldState, newState) {
+            const highlightedId = transaction.getMeta(sceneHighlightKey) as string | null | undefined;
+            if (highlightedId !== undefined) {
+              return highlightedId ? sceneHighlightDecorations(newState.doc, highlightedId) : DecorationSet.empty;
+            }
+            return transaction.docChanged ? current.map(transaction.mapping, transaction.doc) : current;
+          },
+        },
+        props: {
+          decorations: (state) => sceneHighlightKey.getState(state),
         },
       }),
     ];

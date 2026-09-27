@@ -9,6 +9,7 @@ import {
   changeWriterBlockKind,
   insertWriterBlock,
   insertWriterPlainText,
+  replaceWriterBlockWithSceneHeading,
   writerSceneForSelection,
 } from "../../lib/writer/editor-actions.ts";
 import {
@@ -196,4 +197,84 @@ test("same-kind conversion is a no-op and multiline menu paste creates unique ac
   assert.equal(blocks.length, 2);
   assert.deepEqual(blocks.map((block) => block.attrs.kind), ["action", "action"]);
   assert.equal(new Set(blocks.map((block) => block.attrs.id)).size, 2);
+});
+
+test("assisted scene conversion preserves the block id in one undoable transaction and rejects stale targets", () => {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: "screenplayBlock+" },
+      text: { group: "inline" },
+      screenplayBlock: {
+        group: "block",
+        content: "inline*",
+        attrs: { id: { default: null }, kind: { default: "action" } },
+      },
+    },
+  });
+  const id = crypto.randomUUID();
+  let state = EditorState.create({
+    schema,
+    doc: schema.node("doc", null, [schema.node("screenplayBlock", { id, kind: "action" }, schema.text("Texto original"))]),
+    plugins: [history()],
+  });
+  const original = state.doc.toJSON();
+  let dispatches = 0;
+  const editor = {
+    get state() { return state; },
+    view: { dispatch(transaction: Transaction) { dispatches += 1; state = state.apply(transaction); } },
+    commands: { focus() { return true; } },
+  } as unknown as Editor;
+
+  assert.equal(
+    replaceWriterBlockWithSceneHeading(editor, id, { kind: "action", text: "Texto distinto" }, "INT. CASA - DÍA"),
+    "changed",
+  );
+  assert.equal(dispatches, 0);
+  assert.equal(
+    replaceWriterBlockWithSceneHeading(editor, id, { kind: "action", text: "Texto original" }, "INT. CASA - DÍA"),
+    "applied",
+  );
+  assert.equal(dispatches, 1);
+  assert.equal(state.doc.childCount, 1);
+  assert.equal(state.doc.child(0).attrs.id, id);
+  assert.equal(state.doc.child(0).attrs.kind, "sceneHeading");
+  assert.equal(state.doc.child(0).textContent, "INT. CASA - DÍA");
+  assert.equal(undo(state, (transaction) => { state = state.apply(transaction); }), true);
+  assert.deepEqual(state.doc.toJSON(), original);
+  assert.equal(redo(state, (transaction) => { state = state.apply(transaction); }), true);
+  assert.equal(state.doc.child(0).attrs.id, id);
+  assert.equal(
+    replaceWriterBlockWithSceneHeading(editor, id, { kind: "sceneHeading", text: "INT. CASA - DÍA" }, "INT. CASA - DÍA"),
+    "unchanged",
+  );
+  assert.equal(dispatches, 1);
+});
+
+test("assisted scene insertion always creates a new block without converting an empty target", () => {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: "screenplayBlock+" },
+      text: { group: "inline" },
+      screenplayBlock: {
+        group: "block",
+        content: "inline*",
+        attrs: { id: { default: null }, kind: { default: "action" } },
+      },
+    },
+  });
+  const id = crypto.randomUUID();
+  let state = EditorState.create({ schema, doc: schema.node("doc", null, [schema.node("screenplayBlock", { id, kind: "action" })]) });
+  const editor = {
+    get state() { return state; },
+    view: { dispatch(transaction: Transaction) { state = state.apply(transaction); } },
+    commands: { focus() { return true; } },
+  } as unknown as Editor;
+
+  assert.equal(insertWriterBlock(editor, id, "sceneHeading", "EXT. PATIO - NOCHE", { forceNew: true }), true);
+  assert.equal(state.doc.childCount, 2);
+  assert.equal(state.doc.child(0).attrs.id, id);
+  assert.equal(state.doc.child(0).attrs.kind, "action");
+  assert.equal(state.doc.child(0).textContent, "");
+  assert.equal(state.doc.child(1).attrs.kind, "sceneHeading");
+  assert.notEqual(state.doc.child(1).attrs.id, id);
 });

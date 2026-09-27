@@ -128,6 +128,7 @@
 .writer-paper .tiptap { width: min(100%, 880px); min-height: max(860px, calc(100dvh - 158px)); padding: clamp(48px, 7vw, 92px) clamp(30px, 8vw, 110px); border-radius: 3px; outline: 0; color: var(--writer-ink); background: var(--writer-paper); box-shadow: 0 24px 70px rgba(0,0,0,.25); caret-color: #b63331; font: 400 1rem/1.55 var(--font-geist-mono), "Courier New", monospace; }
 .writer-loading { width: min(100%, 880px); margin: 0 auto 12px; color: var(--writer-muted); font-size: .75rem; }
 .writer-screenplay-block { min-height: 1.55em; margin: 0 0 1em; white-space: pre-wrap; }
+.writer-screenplay-block.writer-scene-target-highlight { outline: 2px solid rgba(237,90,85,.82); outline-offset: 6px; background: rgba(237,90,85,.14); box-shadow: 0 0 0 8px rgba(237,90,85,.05); scroll-margin-block: 88px; }
 .writer-screenplay-block[data-screenplay-kind="sceneHeading"] { margin-top: 1.7em; font-weight: 700; text-transform: uppercase; }
 .writer-screenplay-block[data-screenplay-kind="character"] { width: 38%; margin: 1.35em 0 0 48%; text-transform: uppercase; }
 .writer-screenplay-block[data-screenplay-kind="dialogue"] { width: 52%; margin: 0 0 1em 28%; }

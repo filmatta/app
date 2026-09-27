@@ -192,7 +192,9 @@
 .timeline-group-title { position: relative; z-index: 15; min-height: 38px; padding: 12px 18px; border-bottom: 1px solid var(--timeline-border); color: var(--timeline-muted); background: #090c0f; font-size: .62rem; letter-spacing: .14em; text-transform: uppercase; }
 .timeline-track-row { min-height: 44px; border-bottom: 1px solid rgba(255, 255, 255, .065); }
 .timeline-track-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; background: var(--track-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--track-color) 18%, transparent); }
-.timeline-track-cell { display: grid; place-items: center; border-right: 1px solid rgba(255, 255, 255, .065); }
+.timeline-track-cell { display: grid; width: 100%; min-width: 0; place-items: center; padding: 0; border: 0; border-right: 1px solid rgba(255, 255, 255, .065); border-radius: 0; background: transparent; }
+.timeline-track-cell.has-mark:hover,
+.timeline-track-cell.has-mark:focus-visible { outline: 1px solid color-mix(in srgb, var(--track-color) 70%, white); outline-offset: -2px; background: rgba(255, 255, 255, .045); }
 .timeline-track-cell.has-mark span { width: calc(100% - 18px); height: 7px; border-radius: 20px; background: var(--track-color); }
 .timeline-track-cell.is-selected { background: rgba(237, 90, 85, .08); box-shadow: inset 1px 0 rgba(237, 90, 85, .45), inset -1px 0 rgba(237, 90, 85, .45); }
 .timeline-empty-track { display: grid; grid-template-columns: 220px 1fr; min-height: 44px; border-bottom: 1px solid var(--timeline-border); }

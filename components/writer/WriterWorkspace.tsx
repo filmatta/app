@@ -28,7 +28,7 @@ import {
 } from "@/lib/writer/persistence";
 import { loadLocalWriterDrafts } from "@/lib/writer/storage";
 import { startWriterTabLease, type WriterTabLease } from "@/lib/writer/tab-lease";
-import { ScreenplayBlockExtension } from "@/lib/writer/tiptap";
+import { ScreenplayBlockExtension, setWriterSceneHighlight } from "@/lib/writer/tiptap";
 import { deriveWriterTimeline } from "@/lib/writer/timeline";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
 import WriterTimelineView from "./WriterTimeline";
@@ -44,6 +44,7 @@ import {
   currentWriterBlock,
   findWriterBlockAtPosition,
   findWriterBlockById,
+  findWriterBlockByIdInDocument,
   selectionSpansWriterBlocks,
   writerSceneForSelection,
 } from "@/lib/writer/editor-actions";
@@ -101,6 +102,7 @@ export default function WriterWorkspace({
   const nativeFullscreenRef = useRef(false);
   const pointerRef = useRef<{ type: string; at: number }>({ type: "mouse", at: 0 });
   const deepLinkHandledRef = useRef(false);
+  const highlightTimeoutRef = useRef<number | null>(null);
   const sessionIdRef = useRef(crypto.randomUUID());
   const openContextMenu = useCallback((next: WriterContextMenuState) => {
     setExportMenu(false);
@@ -171,17 +173,26 @@ export default function WriterWorkspace({
           const contextEvent = event as MouseEvent;
           const recentPointer = Date.now() - pointerRef.current.at < 2_000 ? pointerRef.current.type : "mouse";
           if (contextEvent.shiftKey || recentPointer !== "mouse") return false;
+          const eventElement = contextEvent.target instanceof Element ? contextEvent.target : null;
+          const pointedElement = window.document.elementFromPoint(contextEvent.clientX, contextEvent.clientY);
+          const blockElement = eventElement?.closest<HTMLElement>(".writer-screenplay-block[data-block-id]")
+            ?? pointedElement?.closest<HTMLElement>(".writer-screenplay-block[data-block-id]")
+            ?? null;
+          if (!blockElement || !view.dom.contains(blockElement)) return false;
+          const targetId = blockElement.dataset.blockId;
+          if (!targetId) return false;
+          const target = findWriterBlockByIdInDocument(view.state.doc, targetId);
+          if (!target) return false;
           const result = view.posAtCoords({ left: contextEvent.clientX, top: contextEvent.clientY });
-          if (!result) return false;
+          const coordinateTarget = result ? findWriterBlockAtPosition(view.state.doc, result.pos) : null;
+          const clickedPosition = coordinateTarget?.id === target.id ? result!.pos : target.position + 1;
           const previousSelection = view.state.selection;
           const insideSelection = !previousSelection.empty
-            && result.pos >= previousSelection.from
-            && result.pos < previousSelection.to;
+            && clickedPosition >= previousSelection.from
+            && clickedPosition < previousSelection.to;
           if (!insideSelection) {
-            view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(result.pos))));
+            view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(clickedPosition))));
           }
-          const target = findWriterBlockAtPosition(view.state.doc, result.pos);
-          if (!target) return false;
           const scene = writerSceneForSelection(view.state);
           contextEvent.preventDefault();
           openContextMenu({
@@ -243,25 +254,34 @@ export default function WriterWorkspace({
   const scenes = useMemo(() => deriveScenes(document), [document]);
   const characters = useMemo(() => deriveCharacters(document), [document]);
   const words = useMemo(() => countDocumentWords(document), [document]);
-  const navigateToScene = useCallback((id: string, requireSceneHeading = false) => {
+  const clearSceneHighlight = useCallback(() => {
+    if (highlightTimeoutRef.current !== null) window.clearTimeout(highlightTimeoutRef.current);
+    highlightTimeoutRef.current = null;
+    if (editor && !editor.isDestroyed) setWriterSceneHighlight(editor, null);
+  }, [editor]);
+  const navigateToScene = useCallback((id: string, requireSceneHeading = false, highlight = false) => {
     if (!editor) return false;
-    let position: number | null = null;
-    editor.state.doc.descendants((node, pos) => {
-      if (node.type.name === "screenplayBlock"
-        && node.attrs.id === id
-        && (!requireSceneHeading || node.attrs.kind === "sceneHeading")) {
-        position = pos + 1;
-        return false;
-      }
-    });
-    if (position !== null) {
-      editor.chain().focus().setTextSelection(position).scrollIntoView().run();
+    const target = findWriterBlockById(editor, id);
+    if (target && (!requireSceneHeading || target.kind === "sceneHeading")) {
+      editor.view.dispatch(
+        editor.state.tr
+          .setSelection(TextSelection.create(editor.state.doc, target.position + 1))
+          .scrollIntoView(),
+      );
+      editor.view.focus();
       setActiveScene(id);
       setMobileSidebar(null);
+      if (highlight) {
+        clearSceneHighlight();
+        setWriterSceneHighlight(editor, id);
+        highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 3_000);
+      }
       return true;
     }
     return false;
-  }, [editor]);
+  }, [clearSceneHighlight, editor]);
+
+  useEffect(() => clearSceneHighlight, [clearSceneHighlight, script.id]);
 
   useEffect(() => {
     if (!editor) return;
@@ -655,6 +675,11 @@ export default function WriterWorkspace({
             setContextMenu(null);
             setInsertState(next);
           }}
+          onConvertSceneHeading={(next) => {
+            setExportMenu(false);
+            setContextMenu(null);
+            setInsertState(next);
+          }}
         />
         {feedback && <div className="writer-editor-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback(null)}>Cerrar</button></div>}
         <div ref={paperRef} className="writer-paper" aria-busy={!ready}>
@@ -671,14 +696,42 @@ export default function WriterWorkspace({
           state={contextMenu}
           onClose={() => setContextMenu(null)}
           onInsert={(view) => {
-            setInsertState({ targetId: contextMenu.targetId, x: contextMenu.x, y: contextMenu.y, view });
+            const target = findWriterBlockById(editor, contextMenu.targetId);
+            if (!target) return setContextMenu(null);
+            setInsertState({
+              targetId: target.id,
+              x: contextMenu.x,
+              y: contextMenu.y,
+              view,
+              intent: "insert",
+              expectedKind: target.kind,
+              expectedText: target.text,
+              selectionFrom: contextMenu.selectionFrom,
+              selectionTo: contextMenu.selectionTo,
+            });
+            setContextMenu(null);
+          }}
+          onConvertSceneHeading={() => {
+            const target = findWriterBlockById(editor, contextMenu.targetId);
+            if (!target) return setContextMenu(null);
+            setInsertState({
+              targetId: target.id,
+              x: contextMenu.x,
+              y: contextMenu.y,
+              view: "scene",
+              intent: "convert",
+              expectedKind: target.kind,
+              expectedText: target.text,
+              selectionFrom: contextMenu.selectionFrom,
+              selectionTo: contextMenu.selectionTo,
+            });
             setContextMenu(null);
           }}
           onTimeline={(sceneId) => openTimeline(sceneId)}
           onFeedback={setFeedback}
         />
       )}
-      {editor && insertState && document.content.some((block) => block.attrs.id === insertState.targetId) && (
+      {editor && insertState && (
         <WriterInsertPanel editor={editor} state={insertState} onClose={() => setInsertState(null)} />
       )}
 
@@ -703,11 +756,12 @@ export default function WriterWorkspace({
                 return;
               }
               const target = findWriterBlockById(editor, sceneId);
-              if (!target || target.kind !== "sceneHeading" || !navigateToScene(sceneId, true)) {
+              if (!target || target.kind !== "sceneHeading" || !navigateToScene(sceneId, true, true)) {
                 setFeedback("Timeline está desactualizado: la escena ya no existe o dejó de ser un encabezado.");
                 return;
               }
-              setTimelineOpen(false);
+              setFeedback(null);
+              if (window.matchMedia("(max-width: 900px)").matches) setTimelineOpen(false);
             }}
           />
         </section>
@@ -756,11 +810,13 @@ function WriterToolbar({
   words,
   characters,
   onInsert,
+  onConvertSceneHeading,
 }: {
   editor: Editor | null;
   words: number;
   characters: string[];
   onInsert: (state: WriterInsertState) => void;
+  onConvertSceneHeading: (state: WriterInsertState) => void;
 }) {
   const state = useEditorState({
     editor,
@@ -771,6 +827,7 @@ function WriterToolbar({
       underline: current?.isActive("underline") ?? false,
       canUndo: current?.can().chain().undo().run() ?? false,
       canRedo: current?.can().chain().redo().run() ?? false,
+      multipleBlocks: current ? selectionSpansWriterBlocks(current.state) : false,
     }),
   });
   if (!editor || !state) return <div className="writer-toolbar" aria-hidden="true" />;
@@ -787,7 +844,28 @@ function WriterToolbar({
       <select
         aria-label="Tipo de bloque"
         value={state.kind}
-        onChange={(event) => editor.chain().focus().updateAttributes("screenplayBlock", { kind: event.target.value }).run()}
+        onChange={(event) => {
+          const kind = event.target.value as ScreenplayKind;
+          const target = currentWriterBlock(editor);
+          if (!target) return;
+          if (kind === "sceneHeading") {
+            if (state.multipleBlocks) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            onConvertSceneHeading({
+              targetId: target.id,
+              x: rect.left,
+              y: rect.bottom + 6,
+              view: "scene",
+              intent: "convert",
+              expectedKind: target.kind,
+              expectedText: target.text,
+              selectionFrom: editor.state.selection.from,
+              selectionTo: editor.state.selection.to,
+            });
+            return;
+          }
+          editor.chain().focus().updateAttributes("screenplayBlock", { kind }).run();
+        }}
       >
         {SCREENPLAY_KINDS.map((kind) => <option key={kind} value={kind}>{WRITER_KIND_LABELS[kind]}</option>)}
       </select>
@@ -799,7 +877,17 @@ function WriterToolbar({
           const target = currentWriterBlock(editor);
           if (!target) return;
           const rect = event.currentTarget.getBoundingClientRect();
-          onInsert({ targetId: target.id, x: rect.left, y: rect.bottom + 6, view: "menu" });
+          onInsert({
+            targetId: target.id,
+            x: rect.left,
+            y: rect.bottom + 6,
+            view: "menu",
+            intent: "insert",
+            expectedKind: target.kind,
+            expectedText: target.text,
+            selectionFrom: editor.state.selection.from,
+            selectionTo: editor.state.selection.to,
+          });
         }}
         aria-label="Insertar en el guion"
       >Insertar</button>
