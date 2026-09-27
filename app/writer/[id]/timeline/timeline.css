@@ -54,6 +54,8 @@
 .timeline-title span { display: block; margin-top: 3px; color: var(--timeline-muted); font-size: .67rem; }
 .timeline-refresh { padding: 9px 12px; white-space: nowrap; font-size: .72rem; }
 .timeline-refresh:hover { border-color: rgba(237, 90, 85, .55); background: rgba(237, 90, 85, .1); }
+.timeline-header-actions { display: flex; align-items: center; gap: 7px; }
+.timeline-close { padding: 9px 12px; white-space: nowrap; font-size: .72rem; }
 
 .timeline-intro {
   display: flex;
@@ -220,6 +222,10 @@
 .timeline-excerpt strong { font-size: .72rem; }
 .timeline-excerpt p { max-width: 880px; margin: 9px 0 0; color: var(--timeline-muted); font: .82rem/1.7 var(--font-geist-mono), monospace; }
 .timeline-scene-issue { margin: 16px 0 0; color: #ffc0bd; font-size: .72rem; }
+.timeline-detail-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
+.timeline-detail-actions button,
+.timeline-detail-actions a { padding: 9px 12px; border: 1px solid rgba(237, 90, 85, .48); border-radius: 7px; color: #fff; background: rgba(237, 90, 85, .1); font-size: .72rem; text-decoration: none; }
+.timeline-detail-actions button:disabled { border-color: var(--timeline-border); color: var(--timeline-muted); background: transparent; }
 
 .timeline-accessible-list { margin-bottom: 80px; }
 .timeline-accessible-list summary { padding: 17px 20px; cursor: pointer; font-size: .78rem; }
@@ -239,6 +245,43 @@
 .timeline-private-state h1 { max-width: 700px; margin: 10px auto; font-size: clamp(2rem, 6vw, 4.5rem); letter-spacing: -.05em; }
 .timeline-private-state > p:not(.timeline-eyebrow) { color: var(--timeline-muted); }
 .timeline-private-state a { width: fit-content; margin: 22px auto 0; padding: 10px 14px; text-decoration: none; }
+
+.timeline-page--embedded {
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  background: #080b0e;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.2) transparent;
+}
+.timeline-page--embedded .timeline-header { min-height: 52px; padding-inline: 14px; grid-template-columns: minmax(0, 1fr) auto; }
+.timeline-page--embedded .timeline-brand { display: none; }
+.timeline-page--embedded .timeline-title { padding-left: 0; border-left: 0; }
+.timeline-page--embedded .timeline-intro { width: calc(100% - 28px); padding: 18px 0 10px; gap: 18px; }
+.timeline-page--embedded .timeline-intro h1 { margin-block: 5px; font-size: 1.25rem; letter-spacing: -.02em; }
+.timeline-page--embedded .timeline-intro > div > p:last-child { display: none; }
+.timeline-page--embedded .timeline-sync-help { max-width: 520px; padding: 8px 10px; font-size: .68rem; }
+.timeline-page--embedded .timeline-sync-help.is-stale { color: #ffc0bd; background: rgba(237, 90, 85, .08); }
+.timeline-page--embedded .timeline-summary,
+.timeline-page--embedded .timeline-preamble { display: none; }
+.timeline-page--embedded .timeline-controls,
+.timeline-page--embedded .timeline-filter-characters,
+.timeline-page--embedded .timeline-track-controls,
+.timeline-page--embedded .timeline-notice,
+.timeline-page--embedded .timeline-detail,
+.timeline-page--embedded .timeline-accessible-list,
+.timeline-page--embedded .timeline-no-scenes { width: calc(100% - 28px); }
+.timeline-page--embedded .timeline-controls { margin-top: 10px; }
+.timeline-page--embedded .timeline-filter-characters { margin-top: 12px; padding-top: 12px; }
+.timeline-page--embedded .timeline-track-controls { margin-top: 12px; }
+.timeline-page--embedded .timeline-canvas-region { margin-top: 12px; }
+.timeline-page--embedded .timeline-scene-row { top: 52px; }
+.timeline-page--embedded .timeline-detail { margin-top: 14px; padding: 16px; }
+.timeline-page--embedded .timeline-detail-heading { padding-bottom: 12px; }
+.timeline-page--embedded .timeline-detail-heading h2 { font-size: 1.1rem; }
+.timeline-page--embedded .timeline-detail dl > div { padding-block: 12px; }
+.timeline-page--embedded .timeline-accessible-list { margin-bottom: 28px; }
+.timeline-private-state--embedded { min-height: 100%; }
 
 @media (max-width: 800px) {
   .timeline-header { grid-template-columns: minmax(0, 1fr) auto; min-height: 60px; padding: 0 14px; }
@@ -265,6 +308,8 @@
   .timeline-detail dl > div:nth-child(2) { border-right: 0; }
   .timeline-detail dl > div:nth-child(3),
   .timeline-detail dl > div:nth-child(4) { border-bottom: 0; }
+  .timeline-page--embedded .timeline-intro { align-items: stretch; flex-direction: column; }
+  .timeline-page--embedded .timeline-sync-help { align-self: stretch; }
 }
 
 @media (max-width: 480px) {

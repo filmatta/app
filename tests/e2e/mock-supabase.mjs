@@ -212,6 +212,8 @@ function makeWriterDocument() {
       block("05", "character", "ANA MARÍA"),
       block("06", "parenthetical", "(sonríe)"),
       block("07", "dialogue", "Hola, Ana."),
+      block("08", "sceneHeading", "INT. ESTUDIO - DÍA"),
+      block("09", "action", "La segunda escena conserva un ID distinto."),
     ],
   };
 }

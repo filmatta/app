@@ -1,0 +1,380 @@
+import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import fs from "node:fs";
+
+const scriptId = "11111111-1111-4111-8111-111111111111";
+const evidence = "output/writer-polish-timeline-v1";
+
+async function session(context: BrowserContext) {
+  const b64 = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const token = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ sub: scriptId, exp: 4102444800, role: "authenticated" })}.local-signature`;
+  await context.addCookies([{
+    name: "sb-127-auth-token",
+    value: "base64-" + b64({
+      access_token: token,
+      refresh_token: "local-refresh",
+      expires_at: 4102444800,
+      token_type: "bearer",
+      user: { id: scriptId },
+    }),
+    domain: "127.0.0.1",
+    path: "/",
+  }]);
+}
+
+async function openWriter(page: Page, context: BrowserContext, saveDelay = 0) {
+  await page.request.get(`http://127.0.0.1:54329/__scenario?value=writer-ux&writerSaveDelay=${saveDelay}`);
+  await session(context);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:3105" });
+  await page.goto(`/writer/${scriptId}`);
+  await expect(page.getByLabel("Editor de guion")).toBeVisible();
+}
+
+async function rightClick(page: Page, locator: Locator) {
+  await locator.click({ button: "right", position: { x: 12, y: 12 } });
+  return page.getByRole("menu", { name: "Acciones del bloque" });
+}
+
+async function rightClickCurrentSelection(page: Page) {
+  const point = await page.evaluate(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) throw new Error("A text selection is required.");
+    const range = selection.getRangeAt(0);
+    const rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.click(point.x, point.y, { button: "right" });
+  return page.getByRole("menu", { name: "Acciones del bloque" });
+}
+
+async function dragSelect(page: Page, startSelector: string, startOffset: number, endSelector: string, endOffset: number) {
+  const points = await page.evaluate(({ startSelector, startOffset, endSelector, endOffset }) => {
+    const point = (selector: string, offset: number) => {
+      const element = document.querySelector<HTMLElement>(selector);
+      const node = element?.firstChild;
+      if (!element || !node) throw new Error(`Missing selectable text for ${selector}`);
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.collapse(true);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.left, y: rect.top + rect.height / 2 };
+    };
+    return { start: point(startSelector, startOffset), end: point(endSelector, endOffset) };
+  }, { startSelector, startOffset, endSelector, endOffset });
+  await page.mouse.move(points.start.x, points.start.y);
+  await page.mouse.down();
+  await page.mouse.move(points.end.x, points.end.y, { steps: 12 });
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() ?? "")).not.toBe("");
+}
+
+test("context menu preserves selection, uses the real clipboard, and fails closed", async ({ page, context }) => {
+  await openWriter(page, context);
+  const editor = page.getByLabel("Editor de guion");
+  const action = editor.locator('[data-block-id$="02"]');
+  await dragSelect(page, '[data-block-id$="02"]', 3, '[data-block-id$="02"]', 10);
+  let menu = await rightClickCurrentSelection(page);
+  await expect(menu.getByRole("menuitem", { name: /^Cortar/ })).toBeEnabled();
+  await expect(menu.getByRole("menuitem", { name: /^Copiar/ })).toBeEnabled();
+  await menu.getByRole("menuitem", { name: /^Copiar/ }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).not.toBe("");
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).not.toBe("ANA observa la VENTANA.");
+
+  await action.selectText();
+  menu = await rightClickCurrentSelection(page);
+  await menu.getByRole("menuitem", { name: /^Cortar/ }).click();
+  await expect(action).toHaveText("");
+  await page.getByRole("button", { name: "Deshacer" }).click();
+  await expect(action).toHaveText("ANA observa la VENTANA.");
+
+  await page.evaluate(() => navigator.clipboard.writeText(" PEGADO_MENU"));
+  await action.click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Shift+F10");
+  menu = page.getByRole("menu", { name: "Acciones del bloque" });
+  await menu.getByRole("menuitem", { name: /^Pegar/ }).click();
+  await expect(action).toContainText("PEGADO_MENU");
+
+  const beforeFailedCut = await action.textContent();
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, "writeText", {
+      configurable: true,
+      value: () => Promise.reject(new DOMException("denied", "NotAllowedError")),
+    });
+  });
+  await action.selectText();
+  menu = await rightClick(page, action);
+  await menu.getByRole("menuitem", { name: /^Cortar/ }).click();
+  await expect(action).toHaveText(beforeFailedCut ?? "");
+  await expect(page.getByRole("status")).toContainText("el texto no se eliminó");
+
+  await action.click();
+  await page.keyboard.press("Shift+F10");
+  menu = page.getByRole("menu", { name: "Acciones del bloque" });
+  await expect(menu.getByRole("menuitem", { name: /^Copiar/ })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: /^Cortar/ })).toBeDisabled();
+  await page.keyboard.press("Escape");
+
+  await action.dispatchEvent("pointerdown", { pointerType: "touch", clientX: 20, clientY: 20 });
+  await action.dispatchEvent("contextmenu", { clientX: 20, clientY: 20 });
+  await expect(menu).toBeHidden();
+});
+
+test("context menu rejects ambiguous, composing, denied, cancelled, and obsolete actions", async ({ page, context }) => {
+  await openWriter(page, context);
+  const editor = page.getByLabel("Editor de guion");
+  const first = editor.locator('[data-block-id$="02"]');
+  const last = editor.locator('[data-block-id$="04"]');
+  await dragSelect(page, '[data-block-id$="02"]', 0, '[data-block-id$="04"]', 4);
+  let menu = await rightClickCurrentSelection(page);
+  for (const kind of ["Encabezado de escena", "Acción", "Personaje", "Diálogo", "Acotación", "Transición", "Nota del autor"]) {
+    await expect(menu.getByRole("menuitemradio", { name: new RegExp(`^${kind}`) })).toBeDisabled();
+  }
+  await expect(menu.getByRole("menuitem", { name: /^Insertar/ })).toBeDisabled();
+  await page.keyboard.press("Escape");
+
+  await first.click();
+  await first.dispatchEvent("keydown", { key: "F10", code: "F10", shiftKey: true, isComposing: true });
+  await expect(menu).toBeHidden();
+
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, "readText", {
+      configurable: true,
+      value: () => Promise.reject(new DOMException("denied", "NotAllowedError")),
+    });
+  });
+  await page.keyboard.press("Shift+F10");
+  menu = page.getByRole("menu", { name: "Acciones del bloque" });
+  await menu.getByRole("menuitem", { name: /^Pegar/ }).click();
+  await expect(page.getByRole("status")).toContainText("No se pudo pegar");
+  await page.keyboard.press("Escape");
+
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, "readText", {
+      configurable: true,
+      value: () => Promise.reject(new DOMException("cancelled", "AbortError")),
+    });
+  });
+  await page.keyboard.press("Shift+F10");
+  await menu.getByRole("menuitem", { name: /^Pegar/ }).click();
+  await expect(page.getByRole("status")).toContainText("No se pudo pegar");
+  await page.keyboard.press("Escape");
+
+  await page.reload();
+  await expect(editor).toBeVisible();
+  await first.click();
+  await page.evaluate(async () => {
+    await navigator.clipboard.writeText("OBSOLETE_PASTE");
+    const readText = navigator.clipboard.readText.bind(navigator.clipboard);
+    Object.defineProperty(navigator.clipboard, "readText", {
+      configurable: true,
+      value: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        return readText();
+      },
+    });
+  });
+  await page.keyboard.press("Shift+F10");
+  await menu.getByRole("menuitem", { name: /^Pegar/ }).click();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await last.click();
+  await expect(page.getByRole("status")).toContainText("El destino cambió");
+  await expect(editor).not.toContainText("OBSOLETE_PASTE");
+});
+
+test("embedded Timeline reads saved revisions and navigates by stable scene id", async ({ page, context }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWriter(page, context, 2400);
+  const editor = page.getByLabel("Editor de guion");
+  const secondAction = editor.locator('[data-block-id$="09"]');
+  const before = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
+
+  let menu = await rightClick(page, secondAction);
+  await menu.getByRole("menuitem", { name: /Ver en línea de tiempo/ }).click();
+  const panel = page.getByRole("region", { name: "Timeline del guion" });
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('[data-timeline-scene-id$="08"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(panel.getByRole("button", { name: /INT\. ESTUDIO - DÍA/ })).toHaveCount(2);
+  const panelBox = await panel.boundingBox();
+  expect(panelBox?.height ?? 901).toBeLessThanOrEqual(900 * 0.4 + 1);
+  const afterOpen = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
+  expect(afterOpen.revision).toBe(before.revision);
+
+  await panel.getByLabel("Entorno").selectOption("interior");
+  await panel.getByRole("button", { name: "Cerrar", exact: true }).click();
+  const refreshed = page.waitForResponse((response) =>
+    response.request().method() === "GET" && response.url().endsWith(`/api/writer/scripts/${scriptId}`),
+  );
+  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
+  await refreshed;
+  await expect(panel.getByRole("button", { name: "Actualizar Timeline" })).toBeEnabled();
+  await expect(panel.getByLabel("Entorno")).toHaveValue("interior");
+
+  await panel.locator('[data-timeline-scene-id$="01"]').click();
+  await panel.getByRole("button", { name: "Ir al guion" }).click();
+  await expect(panel).toBeHidden();
+  await expect.poll(() => page.evaluate(() =>
+    window.getSelection()?.anchorNode?.parentElement?.closest("[data-block-id]")?.getAttribute("data-block-id"),
+  )).toMatch(/01$/);
+
+  const firstHeading = editor.locator('[data-block-id$="01"]');
+  menu = await rightClick(page, firstHeading);
+  await menu.getByRole("menuitemradio", { name: /^Acción/ }).click();
+  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
+  await panel.locator('[data-timeline-scene-id$="01"]').click();
+  await panel.getByRole("button", { name: "Ir al guion" }).click();
+  await expect(page.locator(".writer-editor-feedback")).toContainText("Timeline está desactualizado");
+});
+
+test("a new unsaved scene appears only after save and explicit Timeline refresh", async ({ page, context }) => {
+  await openWriter(page, context, 2400);
+  const editor = page.getByLabel("Editor de guion");
+  const action = editor.locator('[data-block-id$="09"]');
+  let menu = await rightClick(page, action);
+  await menu.getByRole("menuitem", { name: /^Insertar/ }).click();
+  await page.getByRole("button", { name: /Nueva escena/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Nueva escena" });
+  await dialog.getByLabel("Lugar").fill("AZOTEA");
+  await dialog.getByLabel("Momento").selectOption("NOCHE");
+  await dialog.getByRole("button", { name: "Insertar encabezado" }).click();
+  const heading = editor.getByText("INT. AZOTEA - NOCHE");
+  await expect(heading).toBeVisible();
+
+  menu = await rightClick(page, heading);
+  await menu.getByRole("menuitem", { name: /Ver en línea de tiempo/ }).click();
+  const panel = page.getByRole("region", { name: "Timeline del guion" });
+  await expect(panel.getByRole("status")).toContainText("todavía no está en la revisión");
+  await expect(panel).not.toContainText("INT. AZOTEA - NOCHE");
+
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 15_000 });
+  await panel.getByRole("button", { name: "Actualizar Timeline" }).click();
+  await expect(panel.getByRole("button", { name: /INT\. AZOTEA - NOCHE/ })).toBeVisible();
+});
+
+test("standalone Timeline keeps its route, filters, details, and stable deep link", async ({ page, context }) => {
+  await openWriter(page, context);
+  await page.goto(`/writer/${scriptId}/timeline`);
+  await expect(page.getByRole("heading", { name: "Vista estructural del guion" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /INT\. ESTUDIO - DÍA/ })).toHaveCount(2);
+  await page.getByLabel("Entorno").selectOption("interior");
+  await expect(page.getByText("2 de 2 escenas coinciden")).toBeVisible();
+  await page.locator('[data-timeline-scene-id$="08"]').click();
+  await expect(page.getByRole("heading", { name: "INT. ESTUDIO - DÍA", level: 2 })).toBeVisible();
+  await page.getByRole("link", { name: "Ir al guion" }).click();
+  await expect(page).toHaveURL(new RegExp(`/writer/${scriptId}\\?scene=.*08$`));
+  await expect.poll(() => page.evaluate(() =>
+    window.getSelection()?.anchorNode?.parentElement?.closest("[data-block-id]")?.getAttribute("data-block-id"),
+  )).toMatch(/08$/);
+});
+
+test("late save acknowledgement survives Timeline and Focus without remounting the editor", async ({ page, context }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: () => Promise.reject(new DOMException("blocked", "NotAllowedError")),
+    });
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWriter(page, context, 2400);
+  const editor = page.getByLabel("Editor de guion");
+  const action = editor.locator('[data-block-id$="02"]');
+  await editor.evaluate((element) => { (window as typeof window & { __writerEditor?: Element }).__writerEditor = element; });
+
+  await action.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" ACK_TIMELINE_A");
+  await expect(page.locator(".writer-save-status")).toContainText("Guardando");
+  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
+  await expect(page.getByRole("region", { name: "Timeline del guion" })).toBeVisible();
+  await page.getByRole("button", { name: "Focus" }).click();
+  await expect(page.locator(".writer-workspace")).toHaveClass(/writer-workspace--focus/);
+  await expect(page.getByRole("region", { name: "Timeline del guion" })).toBeHidden();
+  await expect.poll(() => editor.evaluate((element) => (window as typeof window & { __writerEditor?: Element }).__writerEditor === element)).toBe(true);
+  await expect.poll(async () => Number(await page.locator(".writer-workspace").getAttribute("data-focus-scale"))).toBeGreaterThanOrEqual(1.14);
+
+  await action.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" ACK_FOCUS_B");
+  await action.click({ button: "right" });
+  await expect(page.getByRole("menu", { name: "Acciones del bloque" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: "Acciones del bloque" })).toBeHidden();
+  await expect(page.locator(".writer-workspace")).toHaveClass(/writer-workspace--focus/);
+  await page.getByRole("button", { name: "Salir de Focus" }).click();
+  await expect(page.locator(".writer-workspace")).not.toHaveClass(/writer-workspace--focus/);
+
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 15_000 });
+  const state = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
+  expect(JSON.stringify(state.document)).toContain("ACK_TIMELINE_A ACK_FOCUS_B");
+  const revision = state.revision;
+  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
+  await page.getByRole("region", { name: "Timeline del guion" }).getByRole("button", { name: "Cerrar", exact: true }).click();
+  const stable = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
+  expect(stable.revision).toBe(revision);
+  await page.reload();
+  await expect(page.getByLabel("Editor de guion")).toContainText("ACK_TIMELINE_A ACK_FOCUS_B");
+});
+
+test("Focus follows native fullscreen entry and browser exit when accepted", async ({ page, context }) => {
+  await openWriter(page, context);
+  test.skip(!(await page.evaluate(() => window.document.fullscreenEnabled)), "Native fullscreen is unavailable in this browser context.");
+  await page.getByRole("button", { name: "Focus" }).click();
+  await expect.poll(() => page.evaluate(() => Boolean(window.document.fullscreenElement))).toBe(true);
+  await expect(page.locator(".writer-workspace")).toHaveClass(/writer-workspace--focus/);
+  await page.evaluate(() => window.document.exitFullscreen());
+  await expect.poll(() => page.evaluate(() => Boolean(window.document.fullscreenElement))).toBe(false);
+  await expect(page.locator(".writer-workspace")).not.toHaveClass(/writer-workspace--focus/);
+});
+
+test("visual evidence keeps page bounds at desktop, tablet, and mobile", async ({ page, context, browserName }) => {
+  fs.mkdirSync(evidence, { recursive: true });
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: () => Promise.reject(new DOMException("fallback QA", "NotAllowedError")),
+    });
+  });
+  await openWriter(page, context);
+  const records: Array<Record<string, unknown>> = [];
+
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(viewport);
+    await page.screenshot({ path: `${evidence}/normal-${viewport.width}x${viewport.height}.png` });
+    if (viewport.width === 1440) {
+      const action = page.getByLabel("Editor de guion").locator('[data-block-id$="02"]');
+      await action.selectText();
+      await rightClick(page, action);
+      await page.screenshot({ path: `${evidence}/context-selection-1440x900.png` });
+      await page.keyboard.press("Escape");
+    }
+    await page.getByRole("button", { name: "Focus" }).click();
+    const sheet = await page.getByLabel("Editor de guion").boundingBox();
+    const scale = Number(await page.locator(".writer-workspace").getAttribute("data-focus-scale"));
+    expect(scale).toBeGreaterThanOrEqual(1.14);
+    expect(sheet?.width ?? viewport.width).toBeLessThan(viewport.width - 120);
+    await page.screenshot({ path: `${evidence}/focus-${viewport.width}x${viewport.height}.png` });
+    if (viewport.width === 1440) {
+      const action = page.getByLabel("Editor de guion").locator('[data-block-id$="02"]');
+      await action.click({ button: "right" });
+      await page.screenshot({ path: `${evidence}/context-focus-1440x900.png` });
+      await page.keyboard.press("Escape");
+    }
+    records.push({ browserName, viewport, scale, fullscreen: "fallback" });
+    await page.getByRole("button", { name: "Salir de Focus" }).click();
+  }
+
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
+  await page.screenshot({ path: `${evidence}/timeline-768x900.png` });
+  await page.getByRole("region", { name: "Timeline del guion" }).getByRole("button", { name: "Cerrar", exact: true }).click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: `${evidence}/writing-390x844.png` });
+  await page.getByRole("button", { name: "Focus" }).click();
+  await page.screenshot({ path: `${evidence}/focus-390x844.png` });
+  records.push({ browserName, viewport: { width: 390, height: 844 }, scale: 1, fullscreen: "fallback" });
+  await page.getByRole("button", { name: "Salir de Focus" }).click();
+  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
+  await page.screenshot({ path: `${evidence}/timeline-drawer-390x844.png` });
+  fs.writeFileSync(`${evidence}/capture-metadata.json`, JSON.stringify(records, null, 2));
+});

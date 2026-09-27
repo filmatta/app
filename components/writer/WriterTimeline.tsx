@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { writerDocumentHref } from "@/lib/writer/routes";
 import {
   deriveWriterTimeline,
   refreshedSceneKey,
@@ -26,7 +27,27 @@ type RemoteScript = {
   updated_at: string;
 };
 
-export default function WriterTimelineView({ initialTimeline }: { initialTimeline: WriterTimeline }) {
+type WriterTimelineViewProps = {
+  initialTimeline: WriterTimeline;
+  variant?: "page" | "embedded";
+  localDirty?: boolean;
+  confirmedRevision?: number;
+  requestedSceneId?: string | null;
+  refreshToken?: number;
+  onClose?: () => void;
+  onGoToWriter?: (sceneId: string) => void;
+};
+
+export default function WriterTimelineView({
+  initialTimeline,
+  variant = "page",
+  localDirty = false,
+  confirmedRevision,
+  requestedSceneId = null,
+  refreshToken = 0,
+  onClose,
+  onGoToWriter,
+}: WriterTimelineViewProps) {
   const [timeline, setTimeline] = useState<WriterTimeline | null>(initialTimeline);
   const [selectedSceneKey, setSelectedSceneKey] = useState<string | null>(null);
   const [selectedCharacters, setSelectedCharacters] = useState<Set<string>>(() => new Set());
@@ -44,6 +65,26 @@ export default function WriterTimelineView({ initialTimeline }: { initialTimelin
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
+  const rootRef = useRef<HTMLElement>(null);
+  const requestSequenceRef = useRef(0);
+  const timelineRef = useRef<WriterTimeline | null>(initialTimeline);
+  const selectedSceneKeyRef = useRef<string | null>(null);
+  const Root = variant === "embedded" ? "div" : "main";
+  const setRootRef = useCallback((node: HTMLElement | null) => {
+    rootRef.current = node;
+  }, []);
+
+  useEffect(() => {
+    timelineRef.current = timeline;
+  }, [timeline]);
+
+  useEffect(() => {
+    selectedSceneKeyRef.current = selectedSceneKey;
+  }, [selectedSceneKey]);
+
+  useEffect(() => () => {
+    requestSequenceRef.current += 1;
+  }, []);
 
   const matchingSceneKeys = useMemo(() => {
     if (!timeline) return new Set<string>();
@@ -58,14 +99,93 @@ export default function WriterTimelineView({ initialTimeline }: { initialTimelin
     return keys;
   }, [environment, moment, selectedCharacters, timeline]);
 
+  const refreshTimeline = useCallback(async () => {
+    const requestSequence = ++requestSequenceRef.current;
+    setRefreshing(true);
+    setNotice(null);
+    const currentTimeline = timelineRef.current;
+    const previousSelected = currentTimeline?.scenes.find((scene) => scene.key === selectedSceneKeyRef.current) ?? null;
+    try {
+      const response = await fetch(`/api/writer/scripts/${initialTimeline.scriptId}`, {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+      if (requestSequence !== requestSequenceRef.current) return;
+      if (response.status === 401 || response.status === 403 || response.status === 404) {
+        setTimeline(null);
+        setAccessLost(true);
+        return;
+      }
+      const payload = await response.json().catch(() => null) as { script?: RemoteScript; error?: string } | null;
+      if (!response.ok || !payload?.script) throw new Error(payload?.error ?? "No se pudo volver a leer el guion.");
+      const script = payload.script;
+      const next = deriveWriterTimeline({
+        scriptId: script.id,
+        title: script.title,
+        document: script.document,
+        schemaVersion: Number(script.schema_version),
+        revision: Number(script.revision),
+        updatedAt: script.updated_at,
+      });
+      if (!next.ok) throw new Error(next.message);
+      if (requestSequence !== requestSequenceRef.current) return;
+
+      const nextSelectedKey = refreshedSceneKey(previousSelected, next.timeline.scenes);
+      if (previousSelected && !nextSelectedKey) {
+        setNotice("La escena seleccionada ya no existe en esta revisión; se limpió la selección.");
+      } else {
+        setNotice(next.timeline.revision === currentTimeline?.revision
+          ? "Ya estabas viendo la revisión guardada más reciente."
+          : `Timeline actualizado a la revisión ${next.timeline.revision}.`);
+      }
+      setSelectedSceneKey(nextSelectedKey);
+      setSelectedCharacters((current) => intersectKeys(current, next.timeline.characters));
+      setVisibleCharacters((current) => preserveTrackSelection(current, next.timeline.characters, INITIAL_CHARACTER_TRACKS));
+      setVisibleLocations((current) => preserveTrackSelection(current, next.timeline.locations, INITIAL_LOCATION_TRACKS));
+      setTimeline(next.timeline);
+    } catch (error) {
+      if (requestSequence !== requestSequenceRef.current) return;
+      setNotice(error instanceof Error
+        ? `${error.message} La vista anterior se conservó.`
+        : "No se pudo actualizar. La vista anterior se conservó.");
+    } finally {
+      if (requestSequence === requestSequenceRef.current) setRefreshing(false);
+    }
+  }, [initialTimeline.scriptId]);
+
+  useEffect(() => {
+    if (refreshToken <= 0) return;
+    const frame = requestAnimationFrame(() => void refreshTimeline());
+    return () => cancelAnimationFrame(frame);
+  }, [refreshTimeline, refreshToken]);
+
+  useEffect(() => {
+    if (!timeline || !requestedSceneId) return;
+    const frame = requestAnimationFrame(() => {
+      const scene = timeline.scenes.find((candidate) => candidate.sourceId === requestedSceneId);
+      if (!scene) {
+        setNotice("Esta escena todavía no está en la revisión representada. Guarda los cambios y actualiza Timeline.");
+        return;
+      }
+      setSelectedSceneKey(scene.key);
+      rootRef.current?.querySelector<HTMLElement>(`[data-timeline-scene-id="${CSS.escape(requestedSceneId)}"]`)?.scrollIntoView({
+        block: "nearest",
+        inline: "center",
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [requestedSceneId, timeline]);
+
   if (!timeline) {
     return (
-      <main className="timeline-private-state">
+      <Root className={`timeline-private-state${variant === "embedded" ? " timeline-private-state--embedded" : ""}`}>
         <p className="timeline-eyebrow">Writer · Timeline</p>
         <h1>Esta vista ya no está disponible</h1>
         <p>{accessLost ? "La sesión cambió o ya no tienes acceso a este guion." : "No se pudo cargar el Timeline."}</p>
         <Link href="/writer">Volver a Writer</Link>
-      </main>
+      </Root>
     );
   }
 
@@ -84,56 +204,6 @@ export default function WriterTimelineView({ initialTimeline }: { initialTimelin
     "--timeline-scene-count": Math.max(timeline.scenes.length, 1),
   } as CSSProperties;
 
-  async function refreshTimeline() {
-    setRefreshing(true);
-    setNotice(null);
-    const previousSelected = timeline?.scenes.find((scene) => scene.key === selectedSceneKey) ?? null;
-    try {
-      const response = await fetch(`/api/writer/scripts/${initialTimeline.scriptId}`, {
-        cache: "no-store",
-        credentials: "same-origin",
-        headers: { Accept: "application/json" },
-      });
-      if (response.status === 401 || response.status === 403 || response.status === 404) {
-        setTimeline(null);
-        setAccessLost(true);
-        return;
-      }
-      const payload = await response.json().catch(() => null) as { script?: RemoteScript; error?: string } | null;
-      if (!response.ok || !payload?.script) throw new Error(payload?.error ?? "No se pudo volver a leer el guion.");
-      const script = payload.script;
-      const next = deriveWriterTimeline({
-        scriptId: script.id,
-        title: script.title,
-        document: script.document,
-        schemaVersion: Number(script.schema_version),
-        revision: Number(script.revision),
-        updatedAt: script.updated_at,
-      });
-      if (!next.ok) throw new Error(next.message);
-
-      const nextSelectedKey = refreshedSceneKey(previousSelected, next.timeline.scenes);
-      if (previousSelected && !nextSelectedKey) {
-        setNotice("La escena seleccionada ya no existe en esta revisión; se limpió la selección.");
-      } else {
-        setNotice(next.timeline.revision === timeline?.revision
-          ? "Ya estabas viendo la revisión guardada más reciente."
-          : `Timeline actualizado a la revisión ${next.timeline.revision}.`);
-      }
-      setSelectedSceneKey(nextSelectedKey);
-      setSelectedCharacters((current) => intersectKeys(current, next.timeline.characters));
-      setVisibleCharacters((current) => preserveTrackSelection(current, next.timeline.characters, INITIAL_CHARACTER_TRACKS));
-      setVisibleLocations((current) => preserveTrackSelection(current, next.timeline.locations, INITIAL_LOCATION_TRACKS));
-      setTimeline(next.timeline);
-    } catch (error) {
-      setNotice(error instanceof Error
-        ? `${error.message} La vista anterior se conservó.`
-        : "No se pudo actualizar. La vista anterior se conservó.");
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
   function toggleFilterCharacter(key: string) {
     setSelectedCharacters((current) => toggledSet(current, key));
   }
@@ -147,7 +217,7 @@ export default function WriterTimelineView({ initialTimeline }: { initialTimelin
   }
 
   return (
-    <main className="timeline-page">
+    <Root ref={setRootRef} className={`timeline-page${variant === "embedded" ? " timeline-page--embedded" : ""}`}>
       <header className="timeline-header">
         <div className="timeline-brand">
           <Link href="/" aria-label="FILMATTA — Inicio">FILMATTA</Link>
@@ -159,9 +229,12 @@ export default function WriterTimelineView({ initialTimeline }: { initialTimelin
           <p>{timeline.title}</p>
           <span>Versión guardada · revisión {timeline.revision} · {formatDate(timeline.updatedAt)}</span>
         </div>
-        <button className="timeline-refresh" type="button" onClick={refreshTimeline} disabled={refreshing}>
-          {refreshing ? "Actualizando…" : "Actualizar desde el guion"}
-        </button>
+        <div className="timeline-header-actions">
+          <button className="timeline-refresh" type="button" onClick={() => void refreshTimeline()} disabled={refreshing}>
+            {refreshing ? "Actualizando…" : "Actualizar Timeline"}
+          </button>
+          {onClose && <button className="timeline-close" type="button" onClick={onClose}>Cerrar</button>}
+        </div>
       </header>
 
       <section className="timeline-intro" aria-labelledby="timeline-heading">
@@ -170,7 +243,13 @@ export default function WriterTimelineView({ initialTimeline }: { initialTimelin
           <h1 id="timeline-heading">Vista estructural del guion</h1>
           <p>Representación derivada y de sólo lectura. El eje muestra orden, no minutos, páginas ni plan de rodaje.</p>
         </div>
-        <p className="timeline-sync-help">Los cambios pendientes de sincronizar en el editor no aparecen todavía en esta vista.</p>
+        <p className={`timeline-sync-help${localDirty || (confirmedRevision ?? timeline.revision) > timeline.revision ? " is-stale" : ""}`}>
+          {localDirty
+            ? "Hay cambios locales pendientes que todavía no aparecen en esta revisión."
+            : (confirmedRevision ?? timeline.revision) > timeline.revision
+              ? `Existe una revisión guardada posterior (${confirmedRevision}). Actualiza Timeline cuando quieras consultarla.`
+              : "Timeline representa la última revisión remota cargada."}
+        </p>
       </section>
 
       <section className="timeline-summary" aria-label="Resumen del guion">
@@ -294,6 +373,7 @@ export default function WriterTimelineView({ initialTimeline }: { initialTimelin
                     <button
                       key={scene.key}
                       type="button"
+                      data-timeline-scene-id={scene.sourceId ?? undefined}
                       className={sceneClasses(scene, selectedSceneKey, matchingSceneKeys)}
                       onClick={() => setSelectedSceneKey(scene.key)}
                       aria-pressed={selectedSceneKey === scene.key}
@@ -324,7 +404,14 @@ export default function WriterTimelineView({ initialTimeline }: { initialTimelin
         </>
       )}
 
-      {selectedScene && <SceneDetail scene={selectedScene} characters={timeline.characters} />}
+      {selectedScene && (
+        <SceneDetail
+          scene={selectedScene}
+          characters={timeline.characters}
+          scriptId={timeline.scriptId}
+          onGoToWriter={onGoToWriter}
+        />
+      )}
 
       {timeline.scenes.length > 0 && (
         <details className="timeline-accessible-list">
@@ -341,7 +428,7 @@ export default function WriterTimelineView({ initialTimeline }: { initialTimelin
           </ol>
         </details>
       )}
-    </main>
+    </Root>
   );
 }
 
@@ -411,7 +498,17 @@ function TrackRow({
   );
 }
 
-function SceneDetail({ scene, characters }: { scene: TimelineScene; characters: TimelineCharacter[] }) {
+function SceneDetail({
+  scene,
+  characters,
+  scriptId,
+  onGoToWriter,
+}: {
+  scene: TimelineScene;
+  characters: TimelineCharacter[];
+  scriptId: string;
+  onGoToWriter?: (sceneId: string) => void;
+}) {
   const names = scene.characterKeys
     .map((key) => characters.find((character) => character.key === key)?.name)
     .filter((name): name is string => Boolean(name));
@@ -435,6 +532,13 @@ function SceneDetail({ scene, characters }: { scene: TimelineScene; characters: 
         <p>{scene.excerpt ?? "Esta escena no contiene texto de acción o diálogo."}</p>
       </div>
       {scene.issues.map((issue) => <p className="timeline-scene-issue" key={issue}>{issue}</p>)}
+      <div className="timeline-detail-actions">
+        {scene.sourceId && scene.canDeepLink
+          ? onGoToWriter
+            ? <button type="button" onClick={() => onGoToWriter(scene.sourceId!)}>Ir al guion</button>
+            : <Link href={writerDocumentHref(scriptId, scene.sourceId)}>Ir al guion</Link>
+          : <button type="button" disabled title="Esta escena no tiene un identificador persistente.">Ir al guion</button>}
+      </div>
     </aside>
   );
 }

@@ -11,6 +11,7 @@ import {
 import {
   changeWriterBlockKind,
   findWriterBlockById,
+  insertWriterPlainText,
   insertWriterBlock,
 } from "@/lib/writer/editor-actions";
 import {
@@ -36,6 +37,10 @@ export type WriterContextMenuState = {
   x: number;
   y: number;
   multipleBlocks: boolean;
+  selectionFrom: number;
+  selectionTo: number;
+  sceneId: string | null;
+  timelineReason: string | null;
 };
 
 export type WriterInsertState = {
@@ -50,16 +55,24 @@ export function WriterContextMenu({
   state,
   onClose,
   onInsert,
+  onTimeline,
+  onFeedback,
 }: {
   editor: Editor;
   state: WriterContextMenuState;
   onClose: () => void;
   onInsert: (view: WriterInsertState["view"]) => void;
+  onTimeline: (sceneId: string) => void;
+  onFeedback: (message: string) => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: state.x, top: state.y });
+  const [clipboardBusy, setClipboardBusy] = useState(false);
   const currentTarget = findWriterBlockById(editor, state.targetId);
   const currentKind = currentTarget?.kind ?? state.kind;
+  const hasSelection = state.selectionFrom !== state.selectionTo;
+  const canUndo = editor.can().chain().undo().run();
+  const canRedo = editor.can().chain().redo().run();
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -84,6 +97,57 @@ export function WriterContextMenu({
     if (state.multipleBlocks) return;
     if (!changeWriterBlockKind(editor, state.targetId, kind)) return onClose();
     onClose();
+  }
+
+  function contextIsCurrent(expectedDoc: typeof editor.state.doc) {
+    const selection = editor.state.selection;
+    return editor.state.doc === expectedDoc
+      && selection.from === state.selectionFrom
+      && selection.to === state.selectionTo
+      && Boolean(findWriterBlockById(editor, state.targetId));
+  }
+
+  async function runClipboard(action: "copy" | "cut" | "paste") {
+    if (clipboardBusy) return;
+    const expectedDoc = editor.state.doc;
+    setClipboardBusy(true);
+    try {
+      if (!navigator.clipboard) throw new Error("El portapapeles no está disponible en este navegador.");
+      if (action === "paste") {
+        const text = await navigator.clipboard.readText();
+        if (!contextIsCurrent(expectedDoc)) {
+          onFeedback("El destino cambió mientras se consultaba el portapapeles. No se pegó contenido.");
+          return;
+        }
+        if (!text || !insertWriterPlainText(editor, text)) {
+          onFeedback("No había texto para pegar. Usa Ctrl+V o ⌘V si el navegador bloqueó el acceso.");
+          return;
+        }
+        onClose();
+        return;
+      }
+
+      const text = expectedDoc.textBetween(state.selectionFrom, state.selectionTo, "\n");
+      if (!text) return;
+      await navigator.clipboard.writeText(text);
+      if (action === "cut") {
+        if (!contextIsCurrent(expectedDoc)) {
+          onFeedback("La selección cambió después de copiar. El texto no se eliminó.");
+          return;
+        }
+        editor.view.dispatch(editor.state.tr.deleteSelection().scrollIntoView());
+      }
+      editor.commands.focus();
+      onClose();
+    } catch {
+      onFeedback(action === "paste"
+        ? "No se pudo pegar desde el menú. Usa Ctrl+V o ⌘V."
+        : action === "cut"
+          ? "No se pudo copiar al portapapeles; el texto no se eliminó."
+          : "No se pudo copiar al portapapeles.");
+    } finally {
+      setClipboardBusy(false);
+    }
   }
 
   function handleKeyDown(event: React.KeyboardEvent) {
@@ -117,7 +181,24 @@ export function WriterContextMenu({
       style={position}
       onKeyDown={handleKeyDown}
     >
-      <p className="writer-context-menu-label">Tipo de bloque</p>
+      <p className="writer-context-menu-label">Edición</p>
+      <button type="button" role="menuitem" disabled={!hasSelection || clipboardBusy} title={!hasSelection ? "Selecciona texto para cortar." : undefined} onClick={() => void runClipboard("cut")}>
+        <span>Cortar</span><kbd>Ctrl/⌘ X</kbd>
+      </button>
+      <button type="button" role="menuitem" disabled={!hasSelection || clipboardBusy} title={!hasSelection ? "Selecciona texto para copiar." : undefined} onClick={() => void runClipboard("copy")}>
+        <span>Copiar</span><kbd>Ctrl/⌘ C</kbd>
+      </button>
+      <button type="button" role="menuitem" disabled={clipboardBusy} onClick={() => void runClipboard("paste")}>
+        <span>Pegar<small>Desde el menú: texto plano</small></span><kbd>Ctrl/⌘ V</kbd>
+      </button>
+      <p className="writer-context-menu-label">Historial</p>
+      <button type="button" role="menuitem" disabled={!canUndo} onMouseDown={(event) => event.preventDefault()} onClick={() => { editor.chain().focus().undo().run(); onClose(); }}>
+        <span>Deshacer</span><kbd>Ctrl/⌘ Z</kbd>
+      </button>
+      <button type="button" role="menuitem" disabled={!canRedo} onMouseDown={(event) => event.preventDefault()} onClick={() => { editor.chain().focus().redo().run(); onClose(); }}>
+        <span>Rehacer</span><kbd>Ctrl/⌘ ⇧ Z</kbd>
+      </button>
+      <p className="writer-context-menu-label">Cambiar bloque a</p>
       {state.multipleBlocks && (
         <p className="writer-context-menu-help">Selecciona texto de un solo bloque para cambiar su tipo.</p>
       )}
@@ -136,11 +217,11 @@ export function WriterContextMenu({
         </button>
       ))}
       <div className="writer-context-menu-separator" />
-      <button type="button" role="menuitem" onClick={() => onInsert("scene")}>
-        <span>Nueva escena…</span><small>Insertar</small>
+      <button type="button" role="menuitem" disabled={state.multipleBlocks} title={state.multipleBlocks ? "La inserción no es inequívoca con varios bloques seleccionados." : undefined} onClick={() => onInsert("menu")}>
+        <span>Insertar…</span><small>Nueva escena y convenciones rápidas</small>
       </button>
-      <button type="button" role="menuitem" onClick={() => onInsert("menu")}>
-        <span>Inserciones rápidas…</span><small>Insertar</small>
+      <button type="button" role="menuitem" disabled={!state.sceneId} title={state.timelineReason ?? undefined} onClick={() => state.sceneId && onTimeline(state.sceneId)}>
+        <span>Ver en línea de tiempo</span><small>{state.timelineReason ?? "Abrir la escena guardada"}</small>
       </button>
       <p className="writer-context-menu-shortcut">Abrir: Mayús+F10 · Menú contextual</p>
     </div>

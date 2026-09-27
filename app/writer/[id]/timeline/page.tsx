@@ -5,7 +5,6 @@ import WriterTimelineView from "@/components/writer/WriterTimeline";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { createClient } from "@/lib/supabase/server";
 import { deriveWriterTimeline } from "@/lib/writer/timeline";
-import "./timeline.css";
 
 export const metadata: Metadata = {
   title: "Timeline · Writer",

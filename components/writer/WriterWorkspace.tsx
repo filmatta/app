@@ -4,9 +4,10 @@ import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Fragment, Slice } from "@tiptap/pm/model";
+import { TextSelection } from "@tiptap/pm/state";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   SCREENPLAY_KINDS,
   WRITER_SCHEMA_VERSION,
@@ -28,8 +29,9 @@ import {
 import { loadLocalWriterDrafts } from "@/lib/writer/storage";
 import { startWriterTabLease, type WriterTabLease } from "@/lib/writer/tab-lease";
 import { ScreenplayBlockExtension } from "@/lib/writer/tiptap";
-import { writerTimelineHref } from "@/lib/writer/routes";
+import { deriveWriterTimeline } from "@/lib/writer/timeline";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
+import WriterTimelineView from "./WriterTimeline";
 import {
   WriterCharacterPanel,
   WriterContextMenu,
@@ -41,7 +43,9 @@ import {
 import {
   currentWriterBlock,
   findWriterBlockAtPosition,
+  findWriterBlockById,
   selectionSpansWriterBlocks,
+  writerSceneForSelection,
 } from "@/lib/writer/editor-actions";
 
 type ScriptInput = {
@@ -76,23 +80,41 @@ export default function WriterWorkspace({
   });
   const [ready, setReady] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const [focusScale, setFocusScale] = useState(1);
   const [mobileSidebar, setMobileSidebar] = useState<"scenes" | "characters" | null>(null);
   const [activeScene, setActiveScene] = useState<string | null>(null);
   const [exportMenu, setExportMenu] = useState(false);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<WriterContextMenuState | null>(null);
   const [insertState, setInsertState] = useState<WriterInsertState | null>(null);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [timelineMounted, setTimelineMounted] = useState(false);
+  const [timelineRefreshToken, setTimelineRefreshToken] = useState(0);
+  const [timelineRequestedScene, setTimelineRequestedScene] = useState<string | null>(null);
   const [conflictBusy, setConflictBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const controllerRef = useRef<WriterPersistenceController | null>(null);
   const leaseRef = useRef<WriterTabLease | null>(null);
   const exportButtonRef = useRef<HTMLButtonElement>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const paperRef = useRef<HTMLDivElement>(null);
+  const nativeFullscreenRef = useRef(false);
+  const pointerRef = useRef<{ type: string; at: number }>({ type: "mouse", at: 0 });
+  const deepLinkHandledRef = useRef(false);
   const sessionIdRef = useRef(crypto.randomUUID());
   const openContextMenu = useCallback((next: WriterContextMenuState) => {
     setExportMenu(false);
     setInsertState(null);
     setContextMenu(next);
   }, []);
+  const initialTimeline = useMemo(() => deriveWriterTimeline({
+    scriptId: script.id,
+    title: script.title,
+    document: script.document,
+    schemaVersion: script.schemaVersion,
+    revision: script.revision,
+    updatedAt: script.updatedAt,
+  }), [script]);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -140,16 +162,27 @@ export default function WriterWorkspace({
         return true;
       },
       handleDOMEvents: {
+        pointerdown: (_view, event) => {
+          const pointerEvent = event as PointerEvent;
+          pointerRef.current = { type: pointerEvent.pointerType || "mouse", at: Date.now() };
+          return false;
+        },
         contextmenu: (view, event) => {
           const contextEvent = event as MouseEvent;
-          const pointerType = "pointerType" in contextEvent
-            ? (contextEvent as PointerEvent).pointerType
-            : "mouse";
-          if (contextEvent.shiftKey || (pointerType && pointerType !== "mouse")) return false;
+          const recentPointer = Date.now() - pointerRef.current.at < 2_000 ? pointerRef.current.type : "mouse";
+          if (contextEvent.shiftKey || recentPointer !== "mouse") return false;
           const result = view.posAtCoords({ left: contextEvent.clientX, top: contextEvent.clientY });
           if (!result) return false;
+          const previousSelection = view.state.selection;
+          const insideSelection = !previousSelection.empty
+            && result.pos >= previousSelection.from
+            && result.pos < previousSelection.to;
+          if (!insideSelection) {
+            view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(result.pos))));
+          }
           const target = findWriterBlockAtPosition(view.state.doc, result.pos);
           if (!target) return false;
+          const scene = writerSceneForSelection(view.state);
           contextEvent.preventDefault();
           openContextMenu({
             targetId: target.id,
@@ -157,6 +190,10 @@ export default function WriterWorkspace({
             x: contextEvent.clientX,
             y: contextEvent.clientY,
             multipleBlocks: selectionSpansWriterBlocks(view.state),
+            selectionFrom: view.state.selection.from,
+            selectionTo: view.state.selection.to,
+            sceneId: scene.sceneId,
+            timelineReason: scene.reason,
           });
           return true;
         },
@@ -167,6 +204,7 @@ export default function WriterWorkspace({
         }
         const target = findWriterBlockAtPosition(view.state.doc, view.state.selection.from);
         if (!target) return false;
+        const scene = writerSceneForSelection(view.state);
         event.preventDefault();
         const coordinates = view.coordsAtPos(view.state.selection.from);
         openContextMenu({
@@ -175,6 +213,10 @@ export default function WriterWorkspace({
           x: coordinates.left,
           y: coordinates.bottom,
           multipleBlocks: selectionSpansWriterBlocks(view.state),
+          selectionFrom: view.state.selection.from,
+          selectionTo: view.state.selection.to,
+          sceneId: scene.sceneId,
+          timelineReason: scene.reason,
         });
         return true;
       },
@@ -201,6 +243,25 @@ export default function WriterWorkspace({
   const scenes = useMemo(() => deriveScenes(document), [document]);
   const characters = useMemo(() => deriveCharacters(document), [document]);
   const words = useMemo(() => countDocumentWords(document), [document]);
+  const navigateToScene = useCallback((id: string, requireSceneHeading = false) => {
+    if (!editor) return false;
+    let position: number | null = null;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === "screenplayBlock"
+        && node.attrs.id === id
+        && (!requireSceneHeading || node.attrs.kind === "sceneHeading")) {
+        position = pos + 1;
+        return false;
+      }
+    });
+    if (position !== null) {
+      editor.chain().focus().setTextSelection(position).scrollIntoView().run();
+      setActiveScene(id);
+      setMobileSidebar(null);
+      return true;
+    }
+    return false;
+  }, [editor]);
 
   useEffect(() => {
     if (!editor) return;
@@ -277,7 +338,6 @@ export default function WriterWorkspace({
         event.preventDefault();
         void controllerRef.current?.flush();
       }
-      if (event.key === "Escape") setFocusMode(false);
     };
     window.addEventListener("online", online);
     window.addEventListener("keydown", keyboard);
@@ -290,6 +350,64 @@ export default function WriterWorkspace({
       controllerRef.current = null;
     };
   }, [editor, script, userId]);
+
+  useEffect(() => {
+    const syncFullscreen = () => {
+      if (window.document.fullscreenElement === workspaceRef.current) {
+        nativeFullscreenRef.current = true;
+        setFocusMode(true);
+        return;
+      }
+      if (nativeFullscreenRef.current) {
+        nativeFullscreenRef.current = false;
+        setFocusMode(false);
+        setFocusScale(1);
+      }
+    };
+    window.document.addEventListener("fullscreenchange", syncFullscreen);
+    return () => window.document.removeEventListener("fullscreenchange", syncFullscreen);
+  }, []);
+
+  useEffect(() => {
+    if (!focusMode) return;
+    const paper = paperRef.current;
+    if (!paper) return;
+    const updateScale = () => {
+      const exteriorMargin = window.innerWidth <= 600 ? 20 : 80;
+      const available = Math.max(0, paper.clientWidth - exteriorMargin);
+      const next = Math.max(1, Math.min(1.15, available / 880));
+      setFocusScale(Math.round(next * 1_000) / 1_000);
+    };
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(paper);
+    return () => observer.disconnect();
+  }, [focusMode]);
+
+  useEffect(() => {
+    const closeSurfaceOrFocus = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (contextMenu) return setContextMenu(null);
+      if (insertState) return setInsertState(null);
+      if (exportMenu) return setExportMenu(false);
+      if (pdfExportOpen) return setPdfExportOpen(false);
+      if (timelineOpen) return setTimelineOpen(false);
+      if (focusMode && window.document.fullscreenElement !== workspaceRef.current) setFocusMode(false);
+    };
+    window.addEventListener("keydown", closeSurfaceOrFocus);
+    return () => window.removeEventListener("keydown", closeSurfaceOrFocus);
+  }, [contextMenu, exportMenu, focusMode, insertState, pdfExportOpen, timelineOpen]);
+
+  useEffect(() => {
+    if (!editor || !ready || deepLinkHandledRef.current) return;
+    deepLinkHandledRef.current = true;
+    const sceneId = new URLSearchParams(window.location.search).get("scene");
+    if (!sceneId) return;
+    const frame = requestAnimationFrame(() => {
+      if (!navigateToScene(sceneId, true)) setFeedback("La escena enlazada ya no existe o dejó de ser un encabezado.");
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editor, navigateToScene, ready]);
 
   const updateTitle = useCallback((value: string) => {
     setTitle(value);
@@ -391,24 +509,53 @@ export default function WriterWorkspace({
     router.push(`/writer/${data.script.id}`);
   }
 
-  function navigateToScene(id: string) {
-    if (!editor) return;
-    let position: number | null = null;
-    editor.state.doc.descendants((node, pos) => {
-      if (node.type.name === "screenplayBlock" && node.attrs.id === id) {
-        position = pos + 1;
-        return false;
+  function openTimeline(sceneId: string | null = null) {
+    setExportMenu(false);
+    setContextMenu(null);
+    setInsertState(null);
+    setMobileSidebar(null);
+    setTimelineRequestedScene(sceneId);
+    setTimelineMounted(true);
+    setTimelineRefreshToken((value) => value + 1);
+    setTimelineOpen(true);
+    if (focusMode) void exitFocus();
+  }
+
+  async function enterFocus() {
+    setTimelineOpen(false);
+    setMobileSidebar(null);
+    setExportMenu(false);
+    setContextMenu(null);
+    setInsertState(null);
+    setFocusMode(true);
+    const workspace = workspaceRef.current;
+    if (!workspace?.requestFullscreen) return;
+    try {
+      await workspace.requestFullscreen();
+    } catch {
+      nativeFullscreenRef.current = false;
+    }
+  }
+
+  async function exitFocus() {
+    setFocusMode(false);
+    setFocusScale(1);
+    if (window.document.fullscreenElement === workspaceRef.current) {
+      try {
+        await window.document.exitFullscreen();
+      } catch {
+        nativeFullscreenRef.current = false;
       }
-    });
-    if (position !== null) {
-      editor.chain().focus().setTextSelection(position).scrollIntoView().run();
-      setActiveScene(id);
-      setMobileSidebar(null);
     }
   }
 
   return (
-    <div className={`writer-workspace ${focusMode ? "writer-workspace--focus" : ""}`}>
+    <div
+      ref={workspaceRef}
+      className={`writer-workspace${focusMode ? " writer-workspace--focus" : ""}${timelineOpen ? " writer-workspace--timeline" : ""}`}
+      data-focus-scale={focusScale.toFixed(3)}
+      style={{ "--writer-focus-scale": focusScale } as CSSProperties}
+    >
       <header className="writer-header">
         <div className="writer-header-brand">
           <Link href="/" aria-label="FILMATTA — Inicio">FILMATTA</Link>
@@ -434,7 +581,14 @@ export default function WriterWorkspace({
         />
         <div className="writer-header-actions">
           <SaveStatus state={saveState} />
-          <Link className="writer-timeline-link" href={writerTimelineHref(script.id)}>Timeline</Link>
+          <button
+            className="writer-timeline-button"
+            type="button"
+            aria-expanded={timelineOpen}
+            aria-controls="writer-timeline-panel"
+            onClick={() => timelineOpen ? setTimelineOpen(false) : openTimeline()}
+            disabled={!initialTimeline.ok}
+          >Timeline</button>
           <div className="writer-export-wrap">
             <button
               ref={exportButtonRef}
@@ -459,8 +613,8 @@ export default function WriterWorkspace({
               </div>
             )}
           </div>
-          <button className="writer-focus-button" type="button" onClick={() => setFocusMode((value) => !value)}>
-            {focusMode ? "Salir de enfoque" : "Modo enfoque"}
+          <button className="writer-focus-button" type="button" onClick={() => focusMode ? void exitFocus() : void enterFocus()}>
+            {focusMode ? "Salir de Focus" : "Focus"}
           </button>
         </div>
       </header>
@@ -474,7 +628,6 @@ export default function WriterWorkspace({
           <small>Guion</small>
           <strong>{title || "Guion sin título"}</strong>
         </div>
-        <Link className="writer-timeline-mobile-link" href={writerTimelineHref(script.id)}>Timeline</Link>
         <nav aria-label="Escenas del guion">
           <p className="writer-sidebar-heading">Escenas <span>{scenes.length}</span></p>
           {scenes.length ? (
@@ -504,9 +657,11 @@ export default function WriterWorkspace({
           }}
         />
         {feedback && <div className="writer-editor-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback(null)}>Cerrar</button></div>}
-        <div className="writer-paper" aria-busy={!ready}>
+        <div ref={paperRef} className="writer-paper" aria-busy={!ready}>
           {!ready && <div className="writer-loading">Preparando tu guion…</div>}
-          <EditorContent editor={editor} />
+          <div className="writer-paper-sheet">
+            <EditorContent editor={editor} />
+          </div>
         </div>
       </main>
 
@@ -519,10 +674,43 @@ export default function WriterWorkspace({
             setInsertState({ targetId: contextMenu.targetId, x: contextMenu.x, y: contextMenu.y, view });
             setContextMenu(null);
           }}
+          onTimeline={(sceneId) => openTimeline(sceneId)}
+          onFeedback={setFeedback}
         />
       )}
       {editor && insertState && document.content.some((block) => block.attrs.id === insertState.targetId) && (
         <WriterInsertPanel editor={editor} state={insertState} onClose={() => setInsertState(null)} />
+      )}
+
+      {timelineMounted && initialTimeline.ok && (
+        <section
+          id="writer-timeline-panel"
+          className="writer-timeline-panel"
+          aria-label="Timeline del guion"
+          hidden={!timelineOpen}
+        >
+          <WriterTimelineView
+            initialTimeline={initialTimeline.timeline}
+            variant="embedded"
+            localDirty={["saving", "local", "error", "conflict", "sessionExpired", "deleted"].includes(saveState.status)}
+            confirmedRevision={saveState.revision}
+            requestedSceneId={timelineRequestedScene}
+            refreshToken={timelineRefreshToken}
+            onClose={() => setTimelineOpen(false)}
+            onGoToWriter={(sceneId) => {
+              if (!editor) {
+                setFeedback("El editor todavía no está preparado.");
+                return;
+              }
+              const target = findWriterBlockById(editor, sceneId);
+              if (!target || target.kind !== "sceneHeading" || !navigateToScene(sceneId, true)) {
+                setFeedback("Timeline está desactualizado: la escena ya no existe o dejó de ser un encabezado.");
+                return;
+              }
+              setTimelineOpen(false);
+            }}
+          />
+        </section>
       )}
 
       {saveState.status === "tabBlocked" && (

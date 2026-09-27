@@ -2,7 +2,7 @@ import { expect, test, type BrowserContext } from "@playwright/test";
 import fs from "node:fs";
 
 const scriptId = "11111111-1111-4111-8111-111111111111";
-const evidence = "docs/review/writer-writing-ux-v1";
+const evidence = "output/writer-polish-timeline-v1/legacy-regression";
 
 async function session(context: BrowserContext) {
   const b64 = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -39,30 +39,31 @@ test("context actions, assisted insertion, live metrics and reload use the canon
   await expect(menu.getByRole("menuitemradio", { name: /Acción — actual/ })).toHaveAttribute("aria-checked", "true");
   await menu.getByRole("menuitemradio", { name: /Transición/ }).click();
   await expect(action).toHaveAttribute("data-screenplay-kind", "transition");
+  await page.waitForTimeout(600); // Keep the two explicit conversions as separate history events.
 
   await page.keyboard.press("Shift+F10");
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitemradio", { name: /Encabezado de escena — actual/ })).toHaveAttribute("aria-checked", "true");
-  await expect(menu.locator("button").first()).toBeFocused();
+  await expect(menu.getByRole("menuitemradio", { name: /Transición — actual/ })).toHaveAttribute("aria-checked", "true");
+  await expect(menu.locator("button:not(:disabled)").first()).toBeFocused();
   await menu.press("2");
-  const firstBlock = editor.locator("[data-screenplay-kind]").first();
-  await expect(firstBlock).toHaveAttribute("data-screenplay-kind", "action");
+  await expect(action).toHaveAttribute("data-screenplay-kind", "action");
   await page.getByRole("button", { name: "Deshacer" }).click();
-  await expect(firstBlock).toHaveAttribute("data-screenplay-kind", "sceneHeading");
+  await expect(action).toHaveAttribute("data-screenplay-kind", "transition");
 
   await action.click({ button: "right" });
   await menu.getByRole("menuitem", { name: /Nueva escena/ }).click();
+  await page.getByRole("button", { name: /Nueva escena/ }).click();
   const dialog = page.getByRole("dialog", { name: "Nueva escena" });
   await dialog.getByLabel("Lugar").fill("Cocina");
   await dialog.getByLabel("Momento").selectOption("NOCHE");
   await expect(dialog.getByText("INT. COCINA - NOCHE")).toBeVisible();
   await dialog.getByRole("button", { name: "Insertar encabezado" }).click();
-  await expect(editor.locator('[data-screenplay-kind="sceneHeading"]')).toHaveCount(2);
+  await expect(editor.locator('[data-screenplay-kind="sceneHeading"]')).toHaveCount(3);
   await expect(editor.getByText("INT. COCINA - NOCHE")).toBeVisible();
 
   const ana = page.getByRole("button", { name: /ANA 1 interv\. · 1 escenas/ });
   await ana.click();
-  await expect(page.getByText("Menciones textuales").locator("..").getByText("2")).toBeVisible();
+  await expect(page.getByText("Menciones textuales").locator("..").getByText("1")).toBeVisible();
 
   await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 10_000 });
   await page.reload();
