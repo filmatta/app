@@ -56,7 +56,7 @@ test("Mux verifies exact signed bytes; rejects oversize/signature and preserves 
 });
 
 test("CSP confines runtime, media and app Auth to explicit sources with framing disabled", () => {
-  const { securityHeaders, writerPdfWorkerHeaderRules } = load("lib/security/headers.ts");
+  const { securityHeaders, writerPdfAssetHeaderRules } = load("lib/security/headers.ts");
   const headers = Object.fromEntries(securityHeaders(false, "https://test.supabase.co").map(h => [h.key, h.value]));
   const csp = headers["Content-Security-Policy"];
   assert.ok(!csp.includes("unsafe-eval"));
@@ -67,22 +67,18 @@ test("CSP confines runtime, media and app Auth to explicit sources with framing 
   assert.equal(headers["Referrer-Policy"], "strict-origin-when-cross-origin");
   assert.ok(!Object.hasOwn(headers, "Strict-Transport-Security"));
 
-  const workerRules = writerPdfWorkerHeaderRules();
-  assert.deepEqual(Array.from(workerRules, (rule) => rule.source), [
-    "/_next/static/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
-    "/_next/static/immutable/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
-  ]);
-  for (const workerRule of workerRules) {
-    const workerCsp = workerRule.headers[0].value;
-    assert.equal(workerRule.has.length, 1);
-    assert.equal(workerRule.has[0].type, "header");
-    assert.equal(workerRule.has[0].key, "referer");
-    assert.equal(workerRule.has[0].value, "https?://[^/]+/writer(?:/.*)?");
-    assert.equal(
-      workerCsp,
-      "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; worker-src 'none'; object-src 'none'; base-uri 'none'",
-    );
-    assert.ok(!/(?:^|[ ;])'unsafe-eval'(?:[ ;]|$)/u.test(workerCsp));
-    assert.ok(!workerCsp.includes("unsafe-inline"));
-  }
+  const [manifestRule, workerRule] = writerPdfAssetHeaderRules();
+  assert.equal(manifestRule.source, "/writer-assets/pdf-worker/manifest.json");
+  assert.equal(manifestRule.has, undefined);
+  assert.equal(manifestRule.headers[0].value, "private, no-store, max-age=0");
+  assert.equal(workerRule.source, "/writer-assets/pdf-worker/:entry(pdf-worker-[a-f0-9]{64}\\.js)");
+  assert.equal(workerRule.has, undefined);
+  const workerCsp = workerRule.headers[0].value;
+  assert.equal(
+    workerCsp,
+    "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; worker-src 'none'; object-src 'none'; base-uri 'none'",
+  );
+  assert.ok(!/(?:^|[ ;])'unsafe-eval'(?:[ ;]|$)/u.test(workerCsp));
+  assert.ok(!workerCsp.includes("unsafe-inline"));
+  assert.equal(workerRule.headers[1].value, "public, max-age=31536000, immutable");
 });

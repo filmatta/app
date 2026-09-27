@@ -21,6 +21,8 @@
 
 # production
 /build
+/public/writer-assets/pdf-worker/manifest.json
+/public/writer-assets/pdf-worker/pdf-worker-*.js
 
 # misc
 .DS_Store

@@ -11,6 +11,7 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "public/writer-assets/pdf-worker/**",
     "next-env.d.ts",
   ]),
 ]);
