@@ -274,7 +274,7 @@ export default function WriterWorkspace({
       if (highlight) {
         clearSceneHighlight();
         setWriterSceneHighlight(editor, id);
-        highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 3_000);
+        highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
       }
       return true;
     }

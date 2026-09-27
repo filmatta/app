@@ -332,7 +332,7 @@ test("embedded Timeline reads saved revisions and navigates by stable scene id",
   )).toMatch(/01$/);
   await expect(editor.locator('[data-block-id$="01"]')).toHaveClass(/writer-scene-target-highlight/);
   await expect(editor.locator('[data-block-id$="08"]')).not.toHaveClass(/writer-scene-target-highlight/);
-  await expect(editor.locator('[data-block-id$="01"]')).not.toHaveClass(/writer-scene-target-highlight/, { timeout: 4_500 });
+  await expect(editor.locator('[data-block-id$="01"]')).not.toHaveClass(/writer-scene-target-highlight/, { timeout: 3_000 });
 
   const firstHeading = editor.locator('[data-block-id$="01"]');
   menu = await rightClick(page, firstHeading);
