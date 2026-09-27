@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createWriterBackup, writerFileStem } from "@/lib/writer/export";
 import { loadLocalWriterDrafts, type LocalWriterDraft } from "@/lib/writer/storage";
+import WriterImportFlow from "./WriterImportFlow";
 
 export type WriterListItem = {
   id: string;
@@ -28,6 +29,7 @@ export default function WriterLibrary({
   const [rename, setRename] = useState<WriterListItem | null>(null);
   const [deleting, setDeleting] = useState<WriterListItem | null>(null);
   const [pendingDeleteDraft, setPendingDeleteDraft] = useState<LocalWriterDraft | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   async function createScript() {
     setBusy("create");
@@ -139,14 +141,19 @@ export default function WriterLibrary({
           <h1>Mis guiones</h1>
           <p>Un espacio privado para escribir y conservar tu trabajo.</p>
         </div>
-        <button
-          className="writer-primary-button"
-          type="button"
-          onClick={createScript}
-          disabled={busy !== null || initialScripts.length >= limit}
-        >
-          {busy === "create" ? "Creando…" : "Crear guion"}
-        </button>
+        <div className="writer-library-create-actions">
+          <button type="button" onClick={() => setImportOpen(true)} disabled={busy !== null || initialScripts.length >= limit}>
+            Importar borrador
+          </button>
+          <button
+            className="writer-primary-button"
+            type="button"
+            onClick={createScript}
+            disabled={busy !== null || initialScripts.length >= limit}
+          >
+            {busy === "create" ? "Creando…" : "Crear guion"}
+          </button>
+        </div>
       </div>
 
       <div className="writer-quota" aria-label={`${initialScripts.length} de ${limit} guiones utilizados`}>
@@ -163,6 +170,7 @@ export default function WriterLibrary({
           <button className="writer-primary-button" type="button" onClick={createScript} disabled={busy !== null}>
             Crear guion
           </button>
+          <button type="button" onClick={() => setImportOpen(true)} disabled={busy !== null}>Importar borrador</button>
         </section>
       ) : (
         <section className="writer-script-list" aria-label="Guiones">
@@ -227,6 +235,8 @@ export default function WriterLibrary({
           </section>
         </div>
       )}
+
+      {importOpen && <WriterImportFlow onClose={() => setImportOpen(false)} />}
     </main>
   );
 }

@@ -8,6 +8,11 @@ let profileDelayMs = 0;
 let writerRevision = 1;
 let writerDocument = makeWriterDocument();
 let writerSaveDelayMs = 0;
+let writerScriptId = id;
+let writerTitle = "Guion de prueba UX";
+let writerSaveCount = 0;
+let writerReadCount = 0;
+let writerCreateCount = 0;
 const profile = {
   slug: "test-profile",
   display_name: "Persona P.",
@@ -79,11 +84,23 @@ http
       if (scenario === "writer-ux") {
         writerRevision = 1;
         writerDocument = makeWriterDocument();
+        writerScriptId = id;
+        writerTitle = "Guion de prueba UX";
+        writerSaveCount = 0;
+        writerReadCount = 0;
+        writerCreateCount = 0;
       }
       return res.end("{}");
     }
     if (url.pathname === "/__writer_state") {
-      return res.end(JSON.stringify({ revision: writerRevision, document: writerDocument }));
+      return res.end(JSON.stringify({
+        revision: writerRevision,
+        document: writerDocument,
+        saves: writerSaveCount,
+        reads: writerReadCount,
+        creates: writerCreateCount,
+        approximateResponseBytes: Buffer.byteLength(JSON.stringify(writerDocument), "utf8"),
+      }));
     }
     if (url.pathname === "/auth/v1/user") {
       if (!token.includes(".")) {
@@ -112,9 +129,10 @@ http
     if (scenario === "profiles-polish" && await profileFixture(req,res,url,token)) return;
     if (scenario === "writer-ux") {
       if (url.pathname === "/rest/v1/writer_scripts" && req.method === "GET") {
+        writerReadCount += 1;
         const row = {
-          id,
-          title: "Guion de prueba UX",
+          id: writerScriptId,
+          title: writerTitle,
           document: writerDocument,
           schema_version: 1,
           revision: writerRevision,
@@ -127,7 +145,24 @@ http
         if (writerSaveDelayMs) await new Promise((resolve) => setTimeout(resolve, writerSaveDelayMs));
         writerDocument = body.p_document;
         writerRevision += 1;
+        writerSaveCount += 1;
         return res.end(JSON.stringify([{ revision: writerRevision }]));
+      }
+      if (url.pathname.endsWith("/writer_create_script") && req.method === "POST") {
+        const body = await readJson(req);
+        writerScriptId = "33333333-3333-4333-8333-333333333333";
+        writerTitle = body.p_title;
+        writerDocument = body.p_document;
+        writerRevision = 1;
+        writerCreateCount += 1;
+        return res.end(JSON.stringify([{
+          id: writerScriptId,
+          title: writerTitle,
+          document: writerDocument,
+          schema_version: 1,
+          revision: writerRevision,
+          updated_at: "2026-09-27T12:00:00Z",
+        }]));
       }
     }
     if (scenario === "unconfigured") {
