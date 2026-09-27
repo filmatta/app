@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deriveWriterTimeline, parseSceneHeading, refreshedSceneKey } from "../../lib/writer/timeline.ts";
+import { deriveWriterTimeline, parseSceneHeading, refreshedSceneKey, timelineExtensionWidth } from "../../lib/writer/timeline.ts";
 import type { ScreenplayKind } from "../../lib/writer/document.ts";
 
 let idSequence = 0;
@@ -165,7 +165,41 @@ test("word counts include action and dialogue only and support unicode inline no
     block("transition", "CORTE A:"),
   ]);
   assert.equal(result.scenes[0].wordCount, 6);
+  assert.equal(result.scenes[0].extensionWordCount, 12);
   assert.match(result.scenes[0].excerpt ?? "", /Árbol y niñez feliz Sí, aquí\./);
+});
+
+test("extension counts exportable scene text, excludes heading and author notes, and normalizes bars", () => {
+  const result = timeline([
+    block("sceneHeading", "INT. SET ENORME - DÍA"),
+    block("authorNote", "nota privada con muchas palabras"),
+    block("action", "Una puerta abre"),
+    block("character", "ANA"),
+    block("parenthetical", "(muy bajo)"),
+    block("dialogue", "Sí, aquí."),
+    block("transition", "CORTE A:"),
+    block("sceneHeading", "EXT. CALLE - NOCHE"),
+  ]);
+  assert.equal(result.scenes[0].extensionWordCount, 10);
+  assert.equal(result.scenes[1].extensionWordCount, 0);
+  assert.equal(timelineExtensionWidth(0, 10), 0);
+  assert.equal(timelineExtensionWidth(1, 10), 10);
+  assert.equal(timelineExtensionWidth(1, 100), 4);
+  assert.equal(timelineExtensionWidth(10, 10), 100);
+});
+
+test("extension remains stable across empty, short, medium, and long synthetic scenes", () => {
+  const result = timeline([
+    block("sceneHeading", "INT. VACÍA - DÍA"),
+    block("sceneHeading", "INT. CORTA - DÍA"),
+    block("action", "uno dos"),
+    block("sceneHeading", "INT. MEDIA - DÍA"),
+    block("action", "uno dos tres cuatro cinco"),
+    block("sceneHeading", "INT. LARGA - DÍA"),
+    block("action", "uno dos tres cuatro cinco seis siete ocho nueve diez"),
+  ]);
+  assert.deepEqual(result.scenes.map((scene) => scene.extensionWordCount), [0, 2, 5, 10]);
+  assert.deepEqual(result.scenes.map((scene) => timelineExtensionWidth(scene.extensionWordCount, 10)), [0, 20, 50, 100]);
 });
 
 test("missing heading ids get revision-scoped ephemeral keys without mutating the input", () => {

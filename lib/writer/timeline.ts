@@ -19,6 +19,7 @@ export type TimelineScene = {
   heading: string;
   headingData: TimelineHeading;
   wordCount: number;
+  extensionWordCount: number;
   characterKeys: string[];
   excerpt: string | null;
   issues: string[];
@@ -68,6 +69,11 @@ export function refreshedSceneKey(previous: TimelineScene | null, nextScenes: Ti
   return nextScenes.find((scene) => scene.sourceId === previous.sourceId)?.key ?? null;
 }
 
+export function timelineExtensionWidth(words: number, maximum: number) {
+  if (words <= 0 || maximum <= 0) return 0;
+  return Math.max(4, Math.min(100, (words / maximum) * 100));
+}
+
 type ParsedBlock = {
   kind: ScreenplayKind;
   id: string | null;
@@ -78,6 +84,13 @@ type ParsedBlock = {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const kinds = new Set<string>(SCREENPLAY_KINDS);
 const BODY_KINDS = new Set<ScreenplayKind>(["action", "dialogue"]);
+const EXTENSION_KINDS = new Set<ScreenplayKind>([
+  "action",
+  "character",
+  "dialogue",
+  "parenthetical",
+  "transition",
+]);
 
 // Only well-known screenplay suffixes are removed. Arbitrary parentheticals remain part of the name.
 const CHARACTER_SUFFIX = /\s*\((?:V\.?\s*O\.?|O\.?\s*S\.?|OFF|CONT(?:INUED|INUADO|['’]?D|\.)?)\)\s*$/iu;
@@ -130,6 +143,7 @@ export function deriveWriterTimeline(source: TimelineSource): TimelineDerivation
           heading,
           headingData,
           wordCount: 0,
+          extensionWordCount: 0,
           characterKeys: [],
           excerpt: null,
           issues,
@@ -153,6 +167,10 @@ export function deriveWriterTimeline(source: TimelineSource): TimelineDerivation
       continue;
     }
     if (block.kind === "authorNote") continue;
+
+    if (EXTENSION_KINDS.has(block.kind)) {
+      current.scene.extensionWordCount += countWords(block.text);
+    }
 
     if (BODY_KINDS.has(block.kind)) {
       current.scene.wordCount += countWords(block.text);

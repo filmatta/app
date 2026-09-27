@@ -184,6 +184,8 @@
 
 .timeline-scene-cell strong { color: var(--timeline-accent); font: 600 .7rem var(--font-geist-mono), monospace; }
 .timeline-scene-cell span { overflow: hidden; color: rgba(241, 239, 233, .72); font-size: .63rem; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-scene-cell .timeline-extension { display: block; width: 100%; height: 3px; margin-top: 5px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.08); }
+.timeline-scene-cell .timeline-extension > i { display: block; height: 100%; border-radius: inherit; background: rgba(237,90,85,.72); }
 .timeline-scene-cell:hover { background: rgba(255, 255, 255, .05); }
 .timeline-scene-cell.is-selected { box-shadow: inset 0 -3px var(--timeline-accent); background: rgba(237, 90, 85, .1); }
 .timeline-scene-cell.is-filtered,
@@ -214,7 +216,7 @@
 .timeline-detail-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding-bottom: 22px; border-bottom: 1px solid var(--timeline-border); }
 .timeline-detail-heading h2 { margin: 7px 0 0; font-size: clamp(1.35rem, 3vw, 2.35rem); letter-spacing: -.025em; }
 .timeline-detail-heading > span { color: var(--timeline-muted); font-size: .72rem; white-space: nowrap; }
-.timeline-detail dl { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0; }
+.timeline-detail dl { display: grid; grid-template-columns: repeat(5, 1fr); margin: 0; }
 .timeline-detail dl > div { padding: 20px 18px; border-right: 1px solid var(--timeline-border); }
 .timeline-detail dl > div:first-child { padding-left: 0; }
 .timeline-detail dl > div:last-child { border: 0; }

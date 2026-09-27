@@ -48,6 +48,13 @@ import {
   selectionSpansWriterBlocks,
   writerSceneForSelection,
 } from "@/lib/writer/editor-actions";
+import {
+  acceptWriterAutocomplete,
+  writerAutocompleteContext,
+  writerAutocompleteKeyAction,
+  writerAutocompleteSuggestions,
+  type WriterAutocompleteSuggestion,
+} from "@/lib/writer/autocomplete";
 
 type ScriptInput = {
   id: string;
@@ -56,6 +63,14 @@ type ScriptInput = {
   schemaVersion: number;
   revision: number;
   updatedAt: string;
+};
+
+type WriterAutocompleteState = {
+  suggestions: WriterAutocompleteSuggestion[];
+  selectedIndex: number;
+  explicitlySelected: boolean;
+  x: number;
+  y: number;
 };
 
 const initialSaveState: WriterPersistenceState = {
@@ -92,6 +107,7 @@ export default function WriterWorkspace({
   const [timelineMounted, setTimelineMounted] = useState(false);
   const [timelineRefreshToken, setTimelineRefreshToken] = useState(0);
   const [timelineRequestedScene, setTimelineRequestedScene] = useState<string | null>(null);
+  const [autocomplete, setAutocomplete] = useState<WriterAutocompleteState | null>(null);
   const [conflictBusy, setConflictBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const controllerRef = useRef<WriterPersistenceController | null>(null);
@@ -102,13 +118,50 @@ export default function WriterWorkspace({
   const nativeFullscreenRef = useRef(false);
   const pointerRef = useRef<{ type: string; at: number }>({ type: "mouse", at: 0 });
   const deepLinkHandledRef = useRef(false);
+  const importNoticeHandledRef = useRef(false);
   const highlightTimeoutRef = useRef<number | null>(null);
+  const autocompleteRef = useRef<WriterAutocompleteState | null>(null);
+  const acceptAutocompleteRef = useRef<((suggestion: WriterAutocompleteSuggestion) => boolean) | null>(null);
+  const confirmedTimelineRevisionRef = useRef(script.revision);
+  const timelineOpenRef = useRef(false);
   const sessionIdRef = useRef(crypto.randomUUID());
   const openContextMenu = useCallback((next: WriterContextMenuState) => {
     setExportMenu(false);
     setInsertState(null);
     setContextMenu(next);
   }, []);
+  const updateAutocomplete = useCallback((next: WriterAutocompleteState | null) => {
+    autocompleteRef.current = next;
+    setAutocomplete(next);
+  }, []);
+  const syncAutocomplete = useCallback((current: Editor) => {
+    if (current.view.composing) {
+      updateAutocomplete(null);
+      return;
+    }
+    const context = writerAutocompleteContext(current);
+    if (!context) {
+      updateAutocomplete(null);
+      return;
+    }
+    const suggestions = writerAutocompleteSuggestions(context);
+    if (!suggestions.length) {
+      updateAutocomplete(null);
+      return;
+    }
+    const previous = autocompleteRef.current;
+    const coordinates = current.view.coordsAtPos(current.state.selection.from);
+    const selectedIndex = previous
+      ? Math.min(previous.selectedIndex, suggestions.length - 1)
+      : 0;
+    updateAutocomplete({
+      suggestions,
+      selectedIndex,
+      explicitlySelected: previous?.explicitlySelected ?? false,
+      x: coordinates.left,
+      y: coordinates.bottom + 6,
+    });
+  }, [updateAutocomplete]);
   const initialTimeline = useMemo(() => deriveWriterTimeline({
     scriptId: script.id,
     title: script.title,
@@ -164,6 +217,10 @@ export default function WriterWorkspace({
         return true;
       },
       handleDOMEvents: {
+        compositionstart: () => {
+          updateAutocomplete(null);
+          return false;
+        },
         pointerdown: (_view, event) => {
           const pointerEvent = event as PointerEvent;
           pointerRef.current = { type: pointerEvent.pointerType || "mouse", at: Date.now() };
@@ -210,6 +267,31 @@ export default function WriterWorkspace({
         },
       },
       handleKeyDown: (view, event) => {
+        const autocompleteMenu = autocompleteRef.current;
+        if (!view.composing && !event.isComposing && autocompleteMenu) {
+          const action = writerAutocompleteKeyAction(event.key, view.composing || event.isComposing, autocompleteMenu.explicitlySelected);
+          if (action === "close") {
+            event.preventDefault();
+            event.stopPropagation();
+            updateAutocomplete(null);
+            return true;
+          }
+          if (action === "next" || action === "previous") {
+            event.preventDefault();
+            const delta = action === "next" ? 1 : -1;
+            const selectedIndex = autocompleteMenu.explicitlySelected
+              ? (autocompleteMenu.selectedIndex + delta + autocompleteMenu.suggestions.length) % autocompleteMenu.suggestions.length
+              : action === "next" ? 0 : autocompleteMenu.suggestions.length - 1;
+            updateAutocomplete({ ...autocompleteMenu, selectedIndex, explicitlySelected: true });
+            return true;
+          }
+          if (action === "accept") {
+            event.preventDefault();
+            const suggestion = autocompleteMenu.suggestions[autocompleteMenu.selectedIndex];
+            if (suggestion && acceptAutocompleteRef.current?.(suggestion)) updateAutocomplete(null);
+            return true;
+          }
+        }
         if (view.composing || event.isComposing || !((event.shiftKey && event.key === "F10") || event.key === "ContextMenu")) {
           return false;
         }
@@ -244,12 +326,23 @@ export default function WriterWorkspace({
         document: validated.document,
         schemaVersion: WRITER_SCHEMA_VERSION,
       });
+      syncAutocomplete(current);
     },
     onSelectionUpdate: ({ editor: current }) => {
       const parent = current.state.selection.$from.parent;
       setActiveScene(findSceneForPosition(current.getJSON() as unknown as WriterDocument, parent.attrs.id));
+      syncAutocomplete(current);
     },
   });
+
+  useEffect(() => {
+    acceptAutocompleteRef.current = editor
+      ? (suggestion) => acceptWriterAutocomplete(editor, suggestion)
+      : null;
+    return () => {
+      acceptAutocompleteRef.current = null;
+    };
+  }, [editor]);
 
   const scenes = useMemo(() => deriveScenes(document), [document]);
   const characters = useMemo(() => deriveCharacters(document), [document]);
@@ -282,6 +375,10 @@ export default function WriterWorkspace({
   }, [clearSceneHighlight, editor]);
 
   useEffect(() => clearSceneHighlight, [clearSceneHighlight, script.id]);
+
+  useEffect(() => {
+    timelineOpenRef.current = timelineOpen;
+  }, [timelineOpen]);
 
   useEffect(() => {
     if (!editor) return;
@@ -333,7 +430,12 @@ export default function WriterWorkspace({
         initialSequence,
         initialPending,
         saveRemote,
-        onState: setSaveState,
+        onState: (next) => {
+          setSaveState(next);
+          if (next.status !== "cloud" || next.revision <= confirmedTimelineRevisionRef.current) return;
+          confirmedTimelineRevisionRef.current = next.revision;
+          if (timelineOpenRef.current) setTimelineRefreshToken((value) => value + 1);
+        },
       });
       controllerRef.current = controller;
       if (hasConflict) controller.setInitialConflict();
@@ -428,6 +530,21 @@ export default function WriterWorkspace({
     });
     return () => cancelAnimationFrame(frame);
   }, [editor, navigateToScene, ready]);
+
+  useEffect(() => {
+    if (!ready || importNoticeHandledRef.current) return;
+    importNoticeHandledRef.current = true;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("imported") !== "1") return;
+    const sceneCount = deriveScenes(document).length;
+    const characterCount = deriveCharacters(document).length;
+    const frame = requestAnimationFrame(() => {
+      setFeedback(`Importación completada · ${sceneCount} escenas · ${characterCount} personajes · ${document.content.length} bloques.`);
+    });
+    url.searchParams.delete("imported");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    return () => cancelAnimationFrame(frame);
+  }, [document, ready]);
 
   const updateTitle = useCallback((value: string) => {
     setTitle(value);
@@ -690,6 +807,14 @@ export default function WriterWorkspace({
             <EditorContent editor={editor} />
           </div>
         </div>
+        {autocomplete && (
+          <WriterAutocompleteMenu
+            state={autocomplete}
+            onSelect={(suggestion) => {
+              if (acceptAutocompleteRef.current?.(suggestion)) updateAutocomplete(null);
+            }}
+          />
+        )}
       </main>
 
       {editor && contextMenu && document.content.some((block) => block.attrs.id === contextMenu.targetId) && (
@@ -749,6 +874,7 @@ export default function WriterWorkspace({
             variant="embedded"
             localDirty={["saving", "local", "error", "conflict", "sessionExpired", "deleted"].includes(saveState.status)}
             confirmedRevision={saveState.revision}
+            active={timelineOpen}
             requestedSceneId={timelineRequestedScene}
             refreshToken={timelineRefreshToken}
             onClose={() => setTimelineOpen(false)}
@@ -803,6 +929,45 @@ export default function WriterWorkspace({
           </section>
         </div>
       )}
+    </div>
+  );
+}
+
+function WriterAutocompleteMenu({
+  state,
+  onSelect,
+}: {
+  state: WriterAutocompleteState;
+  onSelect: (suggestion: WriterAutocompleteSuggestion) => void;
+}) {
+  const width = 276;
+  const left = typeof window === "undefined"
+    ? state.x
+    : Math.max(8, Math.min(state.x, window.innerWidth - width - 8));
+  const maxTop = typeof window === "undefined" ? state.y : window.innerHeight - 176;
+  const top = Math.max(8, Math.min(state.y, maxTop));
+  return (
+    <div
+      className="writer-autocomplete"
+      role="listbox"
+      aria-label="Sugerencias de formato"
+      style={{ left, top, width }}
+    >
+      {state.suggestions.map((suggestion, index) => (
+        <button
+          key={suggestion.id}
+          type="button"
+          role="option"
+          aria-selected={index === state.selectedIndex && state.explicitlySelected}
+          className={index === state.selectedIndex && state.explicitlySelected ? "is-selected" : ""}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onSelect(suggestion)}
+        >
+          <span>{suggestion.label}</span>
+          <small>{suggestion.description}</small>
+        </button>
+      ))}
+      <p><kbd>Tab</kbd> aceptar · <kbd>Esc</kbd> cerrar</p>
     </div>
   );
 }

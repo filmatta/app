@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { writerDocumentHref } from "@/lib/writer/routes";
+import { TimelineRefreshCoordinator } from "@/lib/writer/timeline-refresh";
 import {
   deriveWriterTimeline,
   refreshedSceneKey,
+  timelineExtensionWidth,
   type TimelineCharacter,
   type TimelineEnvironment,
   type TimelineLocation,
@@ -32,6 +34,7 @@ type WriterTimelineViewProps = {
   variant?: "page" | "embedded";
   localDirty?: boolean;
   confirmedRevision?: number;
+  active?: boolean;
   requestedSceneId?: string | null;
   refreshToken?: number;
   onClose?: () => void;
@@ -43,6 +46,7 @@ export default function WriterTimelineView({
   variant = "page",
   localDirty = false,
   confirmedRevision,
+  active = true,
   requestedSceneId = null,
   refreshToken = 0,
   onClose,
@@ -66,9 +70,14 @@ export default function WriterTimelineView({
   const [notice, setNotice] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
   const rootRef = useRef<HTMLElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const requestSequenceRef = useRef(0);
+  const activeRef = useRef(active);
+  const abortRef = useRef<AbortController | null>(null);
+  const pendingScrollLeftRef = useRef<number | null>(null);
   const timelineRef = useRef<WriterTimeline | null>(initialTimeline);
   const selectedSceneKeyRef = useRef<string | null>(null);
+  const [refreshCoordinator] = useState(() => new TimelineRefreshCoordinator(async () => undefined, setRefreshing));
   const Root = variant === "embedded" ? "div" : "main";
   const setRootRef = useCallback((node: HTMLElement | null) => {
     rootRef.current = node;
@@ -82,9 +91,20 @@ export default function WriterTimelineView({
     selectedSceneKeyRef.current = selectedSceneKey;
   }, [selectedSceneKey]);
 
+  useEffect(() => {
+    activeRef.current = active;
+    refreshCoordinator.setActive(active);
+    if (!active) {
+      abortRef.current?.abort();
+    }
+  }, [active, refreshCoordinator]);
+
   useEffect(() => () => {
+    activeRef.current = false;
+    refreshCoordinator.setActive(false);
     requestSequenceRef.current += 1;
-  }, []);
+    abortRef.current?.abort();
+  }, [refreshCoordinator]);
 
   const matchingSceneKeys = useMemo(() => {
     if (!timeline) return new Set<string>();
@@ -99,22 +119,24 @@ export default function WriterTimelineView({
     return keys;
   }, [environment, moment, selectedCharacters, timeline]);
 
-  const refreshTimeline = useCallback(async () => {
+  const performRefresh = useCallback(async () => {
     const requestSequence = ++requestSequenceRef.current;
-    setRefreshing(true);
-    setNotice(null);
     const currentTimeline = timelineRef.current;
     const previousSelected = currentTimeline?.scenes.find((scene) => scene.key === selectedSceneKeyRef.current) ?? null;
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const response = await fetch(`/api/writer/scripts/${initialTimeline.scriptId}`, {
         cache: "no-store",
         credentials: "same-origin",
         headers: { Accept: "application/json" },
+        signal: controller.signal,
       });
-      if (requestSequence !== requestSequenceRef.current) return;
+      if (!activeRef.current || requestSequence !== requestSequenceRef.current) return;
       if (response.status === 401 || response.status === 403 || response.status === 404) {
         setTimeline(null);
         setAccessLost(true);
+        refreshCoordinator.setActive(false);
         return;
       }
       const payload = await response.json().catch(() => null) as { script?: RemoteScript; error?: string } | null;
@@ -129,8 +151,9 @@ export default function WriterTimelineView({
         updatedAt: script.updated_at,
       });
       if (!next.ok) throw new Error(next.message);
-      if (requestSequence !== requestSequenceRef.current) return;
+      if (!activeRef.current || requestSequence !== requestSequenceRef.current) return;
 
+      pendingScrollLeftRef.current = scrollRef.current?.scrollLeft ?? null;
       const nextSelectedKey = refreshedSceneKey(previousSelected, next.timeline.scenes);
       if (previousSelected && !nextSelectedKey) {
         setNotice("La escena seleccionada ya no existe en esta revisión; se limpió la selección.");
@@ -145,20 +168,40 @@ export default function WriterTimelineView({
       setVisibleLocations((current) => preserveTrackSelection(current, next.timeline.locations, INITIAL_LOCATION_TRACKS));
       setTimeline(next.timeline);
     } catch (error) {
-      if (requestSequence !== requestSequenceRef.current) return;
+      if (controller.signal.aborted || !activeRef.current || requestSequence !== requestSequenceRef.current) return;
       setNotice(error instanceof Error
         ? `${error.message} La vista anterior se conservó.`
         : "No se pudo actualizar. La vista anterior se conservó.");
     } finally {
-      if (requestSequence === requestSequenceRef.current) setRefreshing(false);
+      if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [initialTimeline.scriptId]);
+  }, [initialTimeline.scriptId, refreshCoordinator]);
+
+  useEffect(() => {
+    refreshCoordinator.updateTask(performRefresh);
+  }, [performRefresh, refreshCoordinator]);
+
+  const refreshTimeline = useCallback(() => {
+    if (!activeRef.current) return;
+    setNotice(null);
+    refreshCoordinator.request();
+  }, [refreshCoordinator]);
 
   useEffect(() => {
     if (refreshToken <= 0) return;
     const frame = requestAnimationFrame(() => void refreshTimeline());
     return () => cancelAnimationFrame(frame);
   }, [refreshTimeline, refreshToken]);
+
+  useEffect(() => {
+    if (pendingScrollLeftRef.current === null) return;
+    const left = pendingScrollLeftRef.current;
+    pendingScrollLeftRef.current = null;
+    const frame = requestAnimationFrame(() => {
+      if (scrollRef.current) scrollRef.current.scrollLeft = left;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [timeline?.revision]);
 
   useEffect(() => {
     if (!timeline || !requestedSceneId) return;
@@ -199,6 +242,7 @@ export default function WriterTimelineView({
   const visibleCharacterTracks = timeline.characters.filter((item) => visibleCharacters.has(item.key));
   const visibleLocationTracks = timeline.locations.filter((item) => visibleLocations.has(item.key));
   const columnWidth = ZOOM_LEVELS[zoomIndex];
+  const maxExtensionWords = Math.max(0, ...timeline.scenes.map((scene) => scene.extensionWordCount));
   const gridStyle = {
     "--timeline-scene-width": `${columnWidth}px`,
     "--timeline-scene-count": Math.max(timeline.scenes.length, 1),
@@ -367,7 +411,7 @@ export default function WriterTimelineView({
           </section>
 
           <section className="timeline-canvas-region" aria-label="Timeline visual">
-            <div className="timeline-scroll" tabIndex={0} aria-label="Timeline con desplazamiento horizontal">
+            <div ref={scrollRef} className="timeline-scroll" tabIndex={0} aria-label="Timeline con desplazamiento horizontal">
               <div className="timeline-grid" style={gridStyle}>
                 <div className="timeline-row timeline-scene-row">
                   <div className="timeline-lane-label timeline-lane-label--header">
@@ -383,9 +427,13 @@ export default function WriterTimelineView({
                       onClick={() => activateScene(scene)}
                       aria-pressed={selectedSceneKey === scene.key}
                       aria-label={`Escena ${scene.order}: ${scene.heading}, ${scene.wordCount} palabras`}
+                      title={`Extensión: ${scene.extensionWordCount} palabras`}
                     >
                       <strong>{scene.order}</strong>
                       <span>{scene.heading}</span>
+                      <i className="timeline-extension" aria-hidden="true">
+                        <i style={{ width: `${timelineExtensionWidth(scene.extensionWordCount, maxExtensionWords)}%` }} />
+                      </i>
                     </button>
                   ))}
                 </div>
@@ -535,6 +583,7 @@ function SceneDetail({
         <span>{scene.wordCount} palabras de acción y diálogo</span>
       </div>
       <dl>
+        <div><dt>Extensión</dt><dd>{scene.extensionWordCount.toLocaleString("es-MX")} palabras</dd></div>
         <div><dt>Personajes indicados</dt><dd>{names.length ? names.join(", ") : "Ninguno indicado"}</dd></div>
         <div><dt>Espacio</dt><dd>{scene.headingData.location ?? "Sin identificar"}</dd></div>
         <div><dt>Entorno</dt><dd>{environmentLabel(scene.headingData.environment)}</dd></div>
