@@ -71,8 +71,16 @@ test("CSP confines runtime, media and app Auth to explicit sources with framing 
   assert.deepEqual(Array.from(workerRules, (rule) => rule.source), [
     "/_next/static/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
     "/_next/static/immutable/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
+    "/_next/static/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
+    "/_next/static/immutable/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
   ]);
-  for (const workerRule of workerRules) {
+  for (const variationRule of workerRules.slice(0, 2)) {
+    assert.equal(variationRule.has, undefined);
+    assert.equal(variationRule.headers.length, 1);
+    assert.equal(variationRule.headers[0].key, "Vary");
+    assert.equal(variationRule.headers[0].value, "Accept-Encoding, Referer");
+  }
+  for (const workerRule of workerRules.slice(2)) {
     const workerCsp = workerRule.headers[0].value;
     assert.equal(workerRule.has.length, 1);
     assert.equal(workerRule.has[0].type, "header");

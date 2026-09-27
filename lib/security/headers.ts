@@ -34,28 +34,38 @@ export function securityHeaders(development = false, supabaseUrl?: string, previ
 }
 
 export function writerPdfWorkerHeaderRules() {
-  return [
+  const sources = [
     "/_next/static/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
     "/_next/static/immutable/chunks/:worker(turbopack-worker-[A-Za-z0-9_-]+\\.js)",
-  ].map((source) => ({
-    // Turbopack emits the PDF worker behind a hashed bootstrap. The Writer
-    // referrer keeps the override away from other current and future routes.
-    source,
-    has: [{
-      type: "header" as const,
-      key: "referer",
-      value: "https?://[^/]+/writer(?:/.*)?",
-    }],
-    headers: [{
-      key: "Content-Security-Policy",
-      value: [
-        "default-src 'none'",
-        "script-src 'self' 'wasm-unsafe-eval'",
-        "connect-src 'self'",
-        "worker-src 'none'",
-        "object-src 'none'",
-        "base-uri 'none'",
-      ].join("; "),
-    }],
-  }));
+  ];
+
+  return [
+    ...sources.map((source) => ({
+      // The bootstrap is immutable but its CSP varies by Writer referrer. Both
+      // response variants must participate in that cache-key distinction.
+      source,
+      headers: [{ key: "Vary", value: "Accept-Encoding, Referer" }],
+    })),
+    ...sources.map((source) => ({
+      // Turbopack emits the PDF worker behind a hashed bootstrap. The Writer
+      // referrer keeps the override away from other current and future routes.
+      source,
+      has: [{
+        type: "header" as const,
+        key: "referer",
+        value: "https?://[^/]+/writer(?:/.*)?",
+      }],
+      headers: [{
+        key: "Content-Security-Policy",
+        value: [
+          "default-src 'none'",
+          "script-src 'self' 'wasm-unsafe-eval'",
+          "connect-src 'self'",
+          "worker-src 'none'",
+          "object-src 'none'",
+          "base-uri 'none'",
+        ].join("; "),
+      }],
+    })),
+  ];
 }
