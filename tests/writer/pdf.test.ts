@@ -37,9 +37,20 @@ test("rejects empty and notes-only PDFs while leaving notes available to JSON", 
   assert.throws(() => validateWriterPdfInput(notesOnly, defaultWriterPdfOptions(notesOnly.title)), /sólo contiene notas/i);
 });
 
-test("rejects unsupported screenplay-font characters before rendering", () => {
+test("accepts common Spanish and Western screenplay glyphs covered by Cousine", () => {
+  const text = "Árbol, niña y NIÑA: “acción”, autor’s, raya —, guión –, flecha →, pausa… © ® 23°. ¿Listos? ¡Sí!";
+  const source = snapshotWith(createBlock("action", text));
+  assert.doesNotThrow(() => validateWriterPdfInput(source, defaultWriterPdfOptions(source.title)));
+  assert.equal(source.document.content[0].content?.[0]?.type, "text");
+  if (source.document.content[0].content?.[0]?.type === "text") {
+    assert.equal(source.document.content[0].content[0].text, text);
+  }
+});
+
+test("rejects characters that the screenplay font still cannot represent", () => {
   const source = snapshotWith(createBlock("action", "Emoji no permitido 🎬"));
   assert.throws(() => validateWriterPdfInput(source, defaultWriterPdfOptions(source.title)), /U\+1F3AC/);
+  assert.throws(() => validateWriterPdfInput(source, defaultWriterPdfOptions(source.title)), /no puede representarse de forma segura/i);
 });
 
 test("keeps source order, excludes notes and marks only generated dialogue continuations", () => {

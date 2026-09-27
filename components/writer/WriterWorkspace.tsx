@@ -613,6 +613,8 @@ export default function WriterWorkspace({
             <button
               ref={exportButtonRef}
               type="button"
+              aria-haspopup="menu"
+              aria-controls="writer-export-menu"
               onClick={() => {
                 setContextMenu(null);
                 setInsertState(null);
@@ -621,7 +623,7 @@ export default function WriterWorkspace({
               aria-expanded={exportMenu}
             >Exportar</button>
             {exportMenu && (
-              <div className="writer-export-menu">
+              <div id="writer-export-menu" className="writer-export-menu" role="group" aria-label="Formatos de exportación">
                 <button type="button" onClick={() => {
                   setContextMenu(null);
                   setInsertState(null);

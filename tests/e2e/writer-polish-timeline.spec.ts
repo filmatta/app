@@ -452,6 +452,51 @@ test("Focus follows native fullscreen entry and browser exit when accepted", asy
   await expect(page.locator(".writer-workspace")).not.toHaveClass(/writer-workspace--focus/);
 });
 
+test("Exportar stays discoverable without duplicating handlers at desktop, tablet, and mobile", async ({ page, context }) => {
+  await openWriter(page, context);
+  const selectedBlock = page.getByLabel("Editor de guion").locator('[data-block-id$="02"]');
+  await selectedBlock.click();
+  await page.keyboard.press("End");
+  const stateBefore = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
+  const evidenceViewports = [
+    { width: 1440, height: 900 },
+    { width: 768, height: 900 },
+    { width: 390, height: 844 },
+  ];
+
+  for (const viewport of evidenceViewports) {
+    await page.setViewportSize(viewport);
+    await page.waitForTimeout(250);
+    const exportButton = page.locator(".writer-header").getByRole("button", { name: "Exportar", exact: true });
+    await expect(exportButton).toHaveCount(1);
+    await expect(exportButton).toBeVisible();
+    await exportButton.click();
+    const menu = page.getByRole("group", { name: "Formatos de exportación" });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("button")).toHaveCount(3);
+    await expect(menu.getByRole("button", { name: "PDF de guion" })).toBeVisible();
+    await expect(menu.getByRole("button", { name: "Respaldo JSON" })).toBeVisible();
+    await expect(menu.getByRole("button", { name: "FDX básico" })).toBeVisible();
+    const menuBox = await menu.boundingBox();
+    expect(menuBox).not.toBeNull();
+    expect(menuBox!.x).toBeGreaterThanOrEqual(0);
+    expect(menuBox!.y).toBeGreaterThanOrEqual(0);
+    expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(viewport.width);
+    expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(viewport.height);
+    fs.mkdirSync(evidence, { recursive: true });
+    await page.screenshot({ path: `${evidence}/export-${viewport.width}x${viewport.height}.png` });
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect.poll(() => page.evaluate(() =>
+      window.getSelection()?.anchorNode?.parentElement?.closest("[data-block-id]")?.getAttribute("data-block-id"),
+    )).toMatch(/02$/);
+  }
+
+  const stateAfter = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
+  expect(stateAfter.revision).toBe(stateBefore.revision);
+  expect(stateAfter.document).toEqual(stateBefore.document);
+});
+
 test("visual evidence keeps page bounds at desktop, tablet, and mobile", async ({ page, context, browserName }) => {
   fs.mkdirSync(evidence, { recursive: true });
   await page.addInitScript(() => {

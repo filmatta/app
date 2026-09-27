@@ -109,6 +109,10 @@ const WINDOWS_1252_EXTRA = new Set([
   0x203a, 0x20ac, 0x2122,
 ]);
 
+// Verified against every bundled Cousine face. U+2192 is outside Windows-1252,
+// but it is present in the font and must not be rejected before rendering.
+const COUSINE_EXTRA_GLYPHS = new Set([0x2192]);
+
 const MARK_FLAGS: Record<WriterMark["type"], keyof Omit<StyledCharacter, "value">> = {
   bold: "bold",
   italic: "italic",
@@ -228,10 +232,11 @@ export function assertScreenplayFontCoverage(value: string) {
     const supported = character === "\n" || character === "\r" || character === "\t"
       || (codePoint >= 0x20 && codePoint <= 0x7e)
       || (codePoint >= 0xa0 && codePoint <= 0xff)
-      || WINDOWS_1252_EXTRA.has(codePoint);
+      || WINDOWS_1252_EXTRA.has(codePoint)
+      || COUSINE_EXTRA_GLYPHS.has(codePoint);
     if (!supported) {
       throw new Error(
-        `El carácter “${character}” (U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}) no está cubierto por la fuente monoespaciada de esta exportación. Sustitúyelo antes de generar el PDF; el guion guardado no fue modificado.`,
+        `El carácter “${character}” (U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}) no puede representarse de forma segura en el PDF con las fuentes disponibles. El guion guardado no fue modificado.`,
       );
     }
   }
