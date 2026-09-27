@@ -24,6 +24,7 @@ test("builds a deterministic, content-addressed PDF-only worker entry", async ()
       bytes: first.bytes,
     });
     assert.match(firstSource, /No se pudo renderizar el PDF\./u);
+    assert.match(firstSource, /self\.location\.href/u);
     assert.doesNotMatch(firstSource, /turbopack-worker|#params|searchParams|new\s+Function|eval\s*\(/u);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });

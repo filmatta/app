@@ -19,7 +19,10 @@ export async function buildWriterPdfWorker(options = {}) {
     entryPoints: ["lib/writer/pdf.worker.ts"],
     bundle: true,
     charset: "utf8",
-    define: { "process.env.NODE_ENV": '"production"' },
+    define: {
+      "import.meta.url": "self.location.href",
+      "process.env.NODE_ENV": '"production"',
+    },
     format: "iife",
     legalComments: "eof",
     minify: true,
