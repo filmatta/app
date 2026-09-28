@@ -194,23 +194,6 @@ export async function executeAssistedImport(
       } catch {
         throw new ProviderFailure(false, response.usage, "provider_invalid_output");
       }
-      qaTrace("batch", {
-        operationId,
-        batchIndex: batch.index,
-        model,
-        localCandidates: batch.candidates.length,
-        localSentences: batch.sentences.length,
-        rawCandidateEvidence: response.result.candidateEvidence.length,
-        rawDiscoveries: response.result.discoveries.length,
-        rawClassifications: response.result.classifications.length,
-        validatedEvidence: validated.evidence.length,
-        validatedClassifications: validated.classifications.length,
-        inputTokens: response.usage.inputTokens,
-        cachedInputTokens: response.usage.cachedInputTokens,
-        outputTokens: response.usage.outputTokens,
-        reasoningTokens: response.usage.reasoningTokens,
-        latencyMs: response.latencyMs,
-      });
       const actualCost = calculateAssistedImportCostMicrousd(model, response.usage);
       await settleCall(db, userId, operationId, batch.index, "completed", response.result, response.usage, actualCost);
       return validated;
@@ -235,15 +218,6 @@ export async function executeAssistedImport(
 
   const reconciled = reconcileAssistedImport(staging, modelResults);
   assertAssistedImportPreservation(staging, reconciled.document);
-  qaTrace("operation", {
-    operationId,
-    model,
-    batches: batches.length,
-    identities: reconciled.identities.length,
-    persistedEvidence: reconciled.evidence.length,
-    observations: reconciled.observations.length,
-    blocks: reconciled.document.content.length,
-  });
   const finalized = await rpcJson(db, "writer_finalize_assisted_import", {
     p_user_id: userId,
     p_operation_id: operationId,
@@ -470,11 +444,6 @@ function unavailable(reason: string): AssistedImportAvailability {
 
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function qaTrace(phase: string, values: Record<string, string | number>) {
-  if (process.env.WRITER_AI_IMPORT_QA_TRACE !== "true") return;
-  console.info("WRITER_IMPORT_QA", JSON.stringify({ phase, ...values }));
 }
 
 function positiveInteger(value: unknown) {
