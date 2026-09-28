@@ -26,7 +26,7 @@ import {
   type WriterCharacterEvidence,
 } from "./character-observations.ts";
 
-export const WRITER_ASSISTED_IMPORT_VERSION = "writer-import-ai-v1-semantic-v2";
+export const WRITER_ASSISTED_IMPORT_VERSION = "writer-import-ai-v1-semantic-v3";
 export const WRITER_ASSISTED_IMPORT_MODEL = "gpt-5.6-luna";
 export const WRITER_ASSISTED_IMPORT_REASONING = "none";
 export const WRITER_ASSISTED_IMPORT_MAX_BYTES = 2 * 1024 * 1024;
@@ -266,6 +266,7 @@ export function validateAssistedImportModelResult(value: unknown, batch: Assiste
     }
     const block = blocks.get(candidate.blockId)!;
     if (candidate.end > block.originalText.length) throw new Error("La IA devolvió un rango inexistente.");
+    if (cutsWordBoundary(block.originalText, candidate.start, candidate.end)) return [];
     const surface = block.originalText.slice(candidate.start, candidate.end);
     if (!surface.trim()) throw new Error("La IA devolvió evidencia vacía.");
     if (block.proposedKind === "authorNote" || block.proposedKind === "character") return [];
@@ -290,12 +291,13 @@ export function validateAssistedImportModelResult(value: unknown, batch: Assiste
       reason: candidate.reason.slice(0, 180),
     }];
   });
-  const observations = value.observations.map((candidate) => {
+  const observations = value.observations.flatMap((candidate) => {
     if (!isRecord(candidate) || typeof candidate.blockId !== "string" || !blocks.has(candidate.blockId)
       || typeof candidate.message !== "string" || !candidate.message.trim()) {
       throw new Error("La IA devolvió una observación fuera de contrato.");
     }
-    return { blockId: candidate.blockId, message: candidate.message.trim().slice(0, 180) };
+    if (!classificationIds.has(candidate.blockId)) return [];
+    return [{ blockId: candidate.blockId, message: candidate.message.trim().slice(0, 180) }];
   });
   return { classifications, evidence, observations };
 }
@@ -329,7 +331,8 @@ export function reconcileAssistedImport(
   const observations: WriterImportedFormatObservation[] = [];
   for (const block of resolved) {
     const canonical = canonicalBySource.get(block.id)!;
-    if (block.confidence === "high" && !block.model?.uncertain) continue;
+    if (!block.model?.uncertain && (block.confidence === "high"
+      || (block.proposedKind && block.proposedKind === block.resolvedKind))) continue;
     observations.push({
       id: `format:${canonical.attrs.id}`,
       blockId: canonical.attrs.id,
@@ -467,6 +470,13 @@ function supportsNarrativeParticipant(input: {
   if (isWriterParticipantRole(input.label)) return true;
   if (input.relation === "mention") return false;
   return AGENTIVE_CONTEXT.test(after);
+}
+
+function cutsWordBoundary(text: string, start: number, end: number) {
+  const word = /[\p{L}\p{M}\p{N}'’_-]/u;
+  const beginsInside = start > 0 && word.test(text.slice(start - 1, start)) && word.test(text.slice(start, start + 1));
+  const endsInside = end < text.length && word.test(text.slice(end - 1, end)) && word.test(text.slice(end, end + 1));
+  return beginsInside || endsInside;
 }
 
 function sceneMap(document: WriterDocument) {

@@ -1,4 +1,4 @@
-export const ASSISTED_IMPORT_EVALUATION_VERSION = "semantic-v2-2026-09-28";
+export const ASSISTED_IMPORT_EVALUATION_VERSION = "semantic-v3-2026-09-28";
 
 export const ASSISTED_IMPORT_PROMPT_CASES = `INT. SALA - DÍA
 La esperanza desaparece.

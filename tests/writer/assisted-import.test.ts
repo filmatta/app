@@ -133,6 +133,33 @@ Un robot de utilería permanece apagado en una repisa.`;
   assert.deepEqual(validated.evidence.map((item) => item.label), ["Esperanza", "La puerta", "Un robot"]);
 });
 
+test("validation drops partial-word evidence and observations outside classification scope", () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted", sourceText: "Esperanza cierra la ventana.", title: "Rangos",
+  });
+  const block = staging.blocks[0];
+  const validated = validateAssistedImportModelResult({
+    classifications: [classification(block.id, "action")],
+    evidence: [evidence(block.id, 0, 8, "Esperanz", "named", "action", "present")],
+    observations: [],
+  }, { index: 0, sceneLabel: null, blocks: staging.blocks, classificationIds: [block.id] });
+  assert.deepEqual(validated.evidence, []);
+  assert.equal(validated.observations.length, 0);
+
+  const certain = reconcileAssistedImport(staging, [validated]);
+  assert.equal(certain.observations.length, 0);
+
+  const protectedStaging = prepareAssistedImportStaging({
+    format: "pasted", sourceText: "Acción inequívoca de cinco palabras completas.", title: "Alcance",
+  });
+  const protectedBlock = protectedStaging.blocks[0];
+  const protectedResult = validateAssistedImportModelResult({
+    classifications: [], evidence: [],
+    observations: [{ blockId: protectedBlock.id, message: "No debe llegar al panel." }],
+  }, { index: 0, sceneLabel: null, blocks: protectedStaging.blocks, classificationIds: [] });
+  assert.deepEqual(protectedResult.observations, []);
+});
+
 test("reconciliation reuses repeated roles but keeps explicitly distinct participants", () => {
   const source = `INT. LABORATORIO - DÍA
 Un robot entra. El robot saluda.
