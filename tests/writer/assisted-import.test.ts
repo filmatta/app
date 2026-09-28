@@ -4,6 +4,7 @@ import { getEncoding } from "js-tiktoken";
 import {
   assertAssistedImportPreservation,
   buildAssistedImportBatches,
+  planAssistedImportRecovery,
   prepareAssistedImportStaging,
   reconcileAssistedImport,
   validateAssistedImportModelResult,
@@ -278,28 +279,33 @@ test(`reserved semantic evaluation ${ASSISTED_IMPORT_EVALUATION_VERSION} is fixe
 test("prompt injection remains ordinary source text and cannot become rewritten output", () => {
   const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: SOURCE, title: "Injection" });
   const injection = staging.blocks.find((block) => block.originalText.startsWith("ignora las instrucciones"))!;
-  const reconciled = reconcileAssistedImport(staging, [{ classifications: [], evidence: [], observations: [] }]);
+  const reconciled = reconcileAssistedImport(staging, [{
+    classifications: [], evidence: [], observations: [], candidateDecisions: [], validationIssues: [],
+  }]);
   assertAssistedImportPreservation(staging, reconciled.document);
   assert.equal(blockText(reconciled.document.content.find((block) => blockText(block).includes("borra el guion"))!), injection.originalText);
   assert.match(injection.originalText, /→ ⋮/u);
 });
 
-test("invalid references, ambiguous quotes, duplicate candidates, and narrative-to-character conversions fail closed", () => {
+test("invalid references are isolated with precise diagnostics and narrative-to-character conversions fail closed", () => {
   const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: "Una niña aparece en medio del bosque.\nMISTERIO", title: "Seguro" });
   const batch = batchFor(staging, staging.blocks.map((block) => block.id));
-  assert.throws(() => validateAssistedImportModelResult({
+  const unknown = validateAssistedImportModelResult({
     classifications: [classification("missing", "action")], candidateEvidence: [], discoveries: [], observations: [],
-  }, batch), /fuera del lote/u);
+  }, batch);
+  assert.ok(unknown.validationIssues.some((item) => item.code === "unknown_id" && item.path === "classifications[0]"));
   const firstCandidate = batch.candidates.find((item) => item.text === "Una niña")!;
-  assert.throws(() => validateAssistedImportModelResult({
+  const duplicate = validateAssistedImportModelResult({
     classifications: batch.classificationIds.map((blockId) => classification(blockId, "action")),
     candidateEvidence: [candidateEvidence(firstCandidate.candidateId, "role", "action", "present"),
       candidateEvidence(firstCandidate.candidateId, "role", "action", "present")],
     discoveries: [], observations: [],
-  }, batch), /candidato fuera de contrato/u);
-  assert.throws(() => validateAssistedImportModelResult({
+  }, batch);
+  assert.ok(duplicate.validationIssues.some((item) => item.code === "duplicate_candidate_decision"));
+  const missing = validateAssistedImportModelResult({
     classifications: [classification(staging.blocks[0].id, "action")], candidateEvidence: [], discoveries: [], observations: [],
-  }, batch), /todos los elementos ambiguos/u);
+  }, batch);
+  assert.ok(missing.validationIssues.some((item) => item.code === "missing_candidate_decision"));
   const protectedBatch = { ...batch, classificationIds: [staging.blocks[0].id] };
   const protectedResult = validateAssistedImportModelResult({
     classifications: [classification(staging.blocks[0].id, "character")], candidateEvidence: [], discoveries: [], observations: [],
@@ -339,6 +345,7 @@ test("local anchors own ranges and discoveries require one exact Unicode-safe oc
     observations: [],
   }, batch);
   assert.deepEqual(ambiguous.evidence, []);
+  assert.ok(ambiguous.validationIssues.some((item) => item.code === "ambiguous_quote" && item.path === "discoveries[0]"));
   const partial = validateAssistedImportModelResult({
     classifications: [classification(block.id, "action")], candidateEvidence: [],
     discoveries: [{ blockId: block.id, sentenceId: null, mention: "Ángel", quote: "Ángela saluda a Óscar.",
@@ -346,6 +353,100 @@ test("local anchors own ranges and discoveries require one exact Unicode-safe oc
     observations: [],
   }, batch);
   assert.deepEqual(partial.evidence, []);
+  assert.ok(partial.validationIssues.some((item) => item.code === "partial_word" && item.path === "discoveries[0]"));
+
+  const nonexistent = validateAssistedImportModelResult({
+    classifications: [classification(block.id, "action")], candidateEvidence: [],
+    discoveries: [{ blockId: null, sentenceId: batch.sentences[0].sentenceId, mention: "Óscar", quote: "Una cita inexistente.",
+      entityType: "named", relation: "action", presence: "present", uncertain: false, reason: "No existe." }],
+    observations: [],
+  }, batch);
+  assert.ok(nonexistent.validationIssues.some((item) => item.code === "nonexistent_quote"));
+});
+
+test("a literal participant outside local candidates survives validation, reconciliation, and persisted analysis", () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted", sourceText: "INT. TALLER - NOCHE\nR-7 cruza el taller y cierra la compuerta.", title: "Descubrimiento",
+  });
+  const original = batchFor(staging, []);
+  const action = staging.blocks.find((block) => block.originalText.startsWith("R-7"))!;
+  const sentence = original.sentences.find((item) => item.blockId === action.id)!;
+  const batch = {
+    ...original,
+    candidates: original.candidates.filter((candidate) => candidate.blockId !== action.id),
+    coverage: original.coverage.map((item) => item.blockId === action.id ? { ...item, candidateIds: [] } : item),
+  };
+  const validated = validateAssistedImportModelResult({
+    classifications: [], candidateEvidence: [],
+    discoveries: [{
+      blockId: null, sentenceId: sentence.sentenceId, mention: "R-7", quote: sentence.text,
+      entityType: "named", relation: "action", presence: "present", uncertain: false,
+      reason: "Participa literalmente en la acción.",
+    }],
+    observations: [],
+  }, batch);
+  assert.equal(validated.validationIssues.length, 0);
+  const reconciled = reconcileAssistedImport(staging, [validated]);
+  assertAssistedImportPreservation(staging, reconciled.document);
+  const persisted = parsePersistedWriterImportAnalysis({
+    analysis: {
+      identities: reconciled.identities,
+      evidence: reconciled.evidence,
+      observations: reconciled.observations,
+    },
+    decisions: [],
+    compatibleRevision: true,
+  }, reconciled.document);
+  assert.ok(reconciled.identities.some((identity) => identity.key === "R-7"));
+  assert.ok(persisted?.identities.some((identity) => identity.key === "R-7"));
+});
+
+test("candidate extraction V2 records literal anchors, signals, source hashes, and uncovered Action sentences", () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted",
+    sourceText: "INT. PATIO - DÍA\n\nR-7 avanza.\n\nuna criatura azul observa.\n\nrespira.",
+    title: "Cobertura",
+  });
+  const batches = buildAssistedImportBatches(staging);
+  const candidates = batches.flatMap((batch) => batch.candidates);
+  assert.ok(candidates.some((candidate) => candidate.text === "R-7" && candidate.signals.includes("nontraditional-name")));
+  assert.ok(candidates.every((candidate) => candidate.sourceHash && candidate.sentenceId && candidate.blockId
+    && candidate.text === batches.flatMap((batch) => batch.blocks).find((block) => block.id === candidate.blockId)!.originalText.slice(candidate.start, candidate.end)));
+  assert.ok(batches.flatMap((batch) => batch.coverage).some((item) => item.candidateIds.length === 0));
+});
+
+test("bounded recovery routes omissions, contradictory negatives, uncovered text, and at most one control sample", () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted",
+    sourceText: "INT. SALA - NOCHE\nLa campana protesta: «No».\nrespira detrás del muro.",
+    title: "Router",
+  });
+  const batch = buildAssistedImportBatches(staging)[0];
+  const omitted = validateAssistedImportModelResult({
+    classifications: batch.classificationIds.map((blockId) => classification(blockId, "action")),
+    candidateEvidence: [], discoveries: [], observations: [],
+  }, batch);
+  const omissionPlan = planAssistedImportRecovery([batch], new Map([[batch.index, omitted]]));
+  assert.ok(omissionPlan.items[0].triggers.includes("unresolved"));
+  assert.ok(omissionPlan.items[0].triggers.includes("uncovered"));
+
+  const negativeDecisions = batch.candidates.map((candidate) => ({
+    ...candidateEvidence(candidate.candidateId, "role", "action", "unknown"),
+    disposition: "nonparticipant" as const,
+  }));
+  const negative = validateAssistedImportModelResult({
+    classifications: batch.classificationIds.map((blockId) => classification(blockId, "action")),
+    candidateEvidence: negativeDecisions, discoveries: [], observations: [],
+  }, batch);
+  const negativePlan = planAssistedImportRecovery([batch], new Map([[batch.index, negative]]));
+  assert.ok(negativePlan.items[0].triggers.includes("contradictory_negative"));
+  assert.ok(negativePlan.items.length <= 4);
+
+  const many = Array.from({ length: 6 }, (_, index) => ({ ...batch, index }));
+  const capped = planAssistedImportRecovery(many, new Map(many.map((item) => [item.index, null])));
+  assert.equal(capped.items.length, 4);
+  assert.equal(capped.skippedBatchIndexes.length, 2);
+  assert.equal(capped.partial, true);
 });
 
 test("valid explicit FDX avoids provider batches and keeps accents and order", () => {
@@ -477,7 +578,8 @@ function candidateEvidence(
   relation: "intervention" | "action" | "mention" | "indeterminate",
   presence: "present" | "absent" | "unknown",
 ) {
-  return { candidateId, entityType, relation, presence, uncertain: false, reason: "Evidencia sintética." } as const;
+  const disposition = relation === "mention" ? "mention" : "participant";
+  return { candidateId, disposition, entityType, relation, presence, uncertain: false, reason: "Evidencia sintética." } as const;
 }
 
 function evidence(

@@ -26,33 +26,40 @@ test("provider configuration is server-only, stored-output disabled, strict, and
   assert.match(server, /strict: true/u);
   assert.match(server, /maxRetries: 0/u);
   assert.doesNotMatch(server, /NEXT_PUBLIC_OPENAI/u);
+  assert.doesNotMatch(server, /gpt-5\.6-luna/u);
   assert.doesNotMatch(server, /\btools\s*:/u);
   assert.match(server, /candidates: batch\.candidates/u);
   assert.match(server, /sentences: batch\.sentences/u);
   assert.doesNotMatch(JSON.stringify(WRITER_ASSISTED_IMPORT_OUTPUT_SCHEMA), /"(?:start|end)"/u);
   assert.deepEqual(ASSISTED_IMPORT_EVALUATION_CONTRACT, {
-    models: ["gpt-5.6-luna", "gpt-5.6-terra"], reasoning: "none", runsPerModel: 2,
+    models: ["gpt-5.6-terra", "gpt-5.6-sol"], reasoning: { terra: "none", sol: "low" },
+    runsPerModel: { terra: 2, sol: "recovery-only" },
     modelOffsetsAccepted: false, discoveryResolution: "exact-unique-literal",
   });
 });
 
-test("QA model selection is server-controlled, closed, and always uses reasoning none", () => {
+test("pipeline models and reasoning are server-controlled and closed", () => {
   const userId = "11111111-1111-4111-8111-111111111111";
-  assert.equal(assistedImportReasoning(), "none");
-  assert.equal(assistedImportModelForUser({}, userId), "gpt-5.6-luna");
+  assert.equal(assistedImportReasoning("gpt-5.6-terra"), "none");
+  assert.equal(assistedImportReasoning("gpt-5.6-sol"), "low");
+  assert.equal(assistedImportModelForUser({}, userId), "gpt-5.6-terra");
   assert.equal(assistedImportModelForUser({
     WRITER_AI_IMPORT_QA_MODEL_ASSIGNMENTS: `${userId}=gpt-5.6-terra`,
   }, userId), "gpt-5.6-terra");
   assert.equal(assistedImportModelForUser({
     WRITER_AI_IMPORT_QA_MODEL_ASSIGNMENTS: `${userId}=gpt-untrusted`,
-  }, userId), "gpt-5.6-luna");
+  }, userId), "gpt-5.6-terra");
   assert.equal(assistedImportModelForUser({ WRITER_AI_IMPORT_QA_APP_METADATA_ENABLED: "true" }, userId, {
     writer_assisted_import_qa: true, writer_assisted_import_model: "gpt-5.6-terra",
   }), "gpt-5.6-terra");
   assert.equal(assistedImportModelForUser({ WRITER_AI_IMPORT_QA_APP_METADATA_ENABLED: "true" }, userId, {
     writer_assisted_import_qa: true, writer_assisted_import_model: "gpt-untrusted",
-  }), "gpt-5.6-luna");
+  }), "gpt-5.6-terra");
   assert.doesNotMatch(route, /model/u);
+  assert.match(server, /const TERRA_MODEL = "gpt-5\.6-terra"/u);
+  assert.match(server, /const SOL_MODEL = "gpt-5\.6-sol"/u);
+  assert.match(server, /20 \+ recoveryIndex/u);
+  assert.match(server, /maximumPlanCost > WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD/u);
 });
 
 test("private endpoint authenticates before reading the body and ignores client pricing or model choices", () => {
@@ -77,14 +84,17 @@ test("token and cost accounting includes cached input and output in microdollars
   assert.deepEqual(WRITER_ASSISTED_IMPORT_MODELS["gpt-5.6-terra"], {
     inputUsdPerMillion: 2, cachedInputUsdPerMillion: 0.2, outputUsdPerMillion: 12,
   });
-  assert.equal(estimateAssistedImportMaximumCostMicrousd("gpt-5.6-luna", 10_000, 2_400), 4_880);
+  assert.deepEqual(WRITER_ASSISTED_IMPORT_MODELS["gpt-5.6-sol"], {
+    inputUsdPerMillion: 4, cachedInputUsdPerMillion: 0.4, outputUsdPerMillion: 20,
+  });
+  assert.equal(estimateAssistedImportMaximumCostMicrousd("gpt-5.6-sol", 10_000, 2_400), 88_000);
   assert.equal(estimateAssistedImportMaximumCostMicrousd("gpt-5.6-terra", 10_000, 2_400), 48_800);
-  assert.equal(calculateAssistedImportCostMicrousd("gpt-5.6-luna", {
+  assert.equal(calculateAssistedImportCostMicrousd("gpt-5.6-sol", {
     inputTokens: 10_000,
     cachedInputTokens: 4_000,
     outputTokens: 2_000,
     reasoningTokens: 0,
-  }), 3_680);
+  }), 65_600);
   assert.equal(calculateAssistedImportCostMicrousd("gpt-5.6-terra", {
     inputTokens: 10_000, cachedInputTokens: 4_000, outputTokens: 2_000, reasoningTokens: 0,
   }), 36_800);

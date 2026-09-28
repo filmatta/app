@@ -1,9 +1,9 @@
-export const ASSISTED_IMPORT_EVALUATION_VERSION = "anchored-v1-2026-09-28";
+export const ASSISTED_IMPORT_EVALUATION_VERSION = "candidates-v2-2026-09-28";
 
 export const ASSISTED_IMPORT_EVALUATION_CONTRACT = {
-  models: ["gpt-5.6-luna", "gpt-5.6-terra"],
-  reasoning: "none",
-  runsPerModel: 2,
+  models: ["gpt-5.6-terra", "gpt-5.6-sol"],
+  reasoning: { terra: "none", sol: "low" },
+  runsPerModel: { terra: 2, sol: "recovery-only" },
   modelOffsetsAccepted: false,
   discoveryResolution: "exact-unique-literal",
 } as const;
