@@ -8,7 +8,6 @@ import {
   countAssistedImportTokens,
   estimateAssistedImportMaximumCostMicrousd,
   assistedImportReasoning,
-  intervalUnionMs,
   type AssistedImportProviderUsage,
 } from "./assisted-import-accounting";
 import { checkAssistedImportAccess } from "./assisted-import-access";
@@ -99,7 +98,6 @@ export async function executeAssistedImport(
   request: AssistedImportRequest,
   dependencies: { provider?: AssistedImportProvider; db?: ImportDatabase } = {},
 ) {
-  const executionStarted = Date.now();
   const availability = assistedImportAvailability(userId);
   if (!availability.enabled) throw new AssistedImportError("unavailable", availability.reason!, 503);
   const sourceBytes = Buffer.byteLength(request.sourceText, "utf8");
@@ -122,7 +120,6 @@ export async function executeAssistedImport(
 
   const db = dependencies.db ?? createAdminClient();
   const reasoning = assistedImportReasoning(process.env);
-  const qaTraceEnabled = process.env.WRITER_AI_IMPORT_QA_TRACE === "true";
   const sourceHash = sha256(request.sourceText);
   const optionsHash = sha256(JSON.stringify({
     title: cleanTitle,
@@ -146,11 +143,7 @@ export async function executeAssistedImport(
   });
   const operationId = String(reserved.id ?? request.operationId);
   if (reserved.status === "completed" && typeof reserved.script_id === "string") {
-    const totalMs = Date.now() - executionStarted;
-    return {
-      script: { id: reserved.script_id }, reused: true, observations: 0, usage: operationUsage(reserved),
-      qaTimings: { providerMs: 0, localMs: totalMs, totalMs },
-    };
+    return { script: { id: reserved.script_id }, reused: true, observations: 0, usage: operationUsage(reserved) };
   }
   if (reserved.reused === true) {
     throw new AssistedImportError("active", reserved.status === "uncertain"
@@ -160,12 +153,6 @@ export async function executeAssistedImport(
 
   const batches = buildAssistedImportBatches(staging);
   const provider = dependencies.provider ?? openAiProvider;
-  const providerIntervals: Array<{ start: number; end: number }> = [];
-  const qaTraceBatches: Array<{
-    index: number;
-    raw: AssistedImportModelResult;
-    validated: AssistedImportModelResult;
-  }> = [];
   const modelResults = await mapConcurrent(batches, WRITER_ASSISTED_IMPORT_MAX_CONCURRENCY, async (batch) => {
     const prompt = providerInput(batch);
     const requestHash = sha256(prompt);
@@ -187,7 +174,6 @@ export async function executeAssistedImport(
     });
     if (call.status === "completed") return validateAssistedImportModelResult(call.result, batch);
     try {
-      const providerStarted = Date.now();
       const response = await provider({
         operationId,
         batch,
@@ -196,14 +182,12 @@ export async function executeAssistedImport(
         reasoning,
         signal: request.signal,
       });
-      providerIntervals.push({ start: providerStarted, end: Date.now() });
       let validated: AssistedImportModelResult;
       try {
         validated = validateAssistedImportModelResult(response.result, batch);
       } catch {
         throw new ProviderFailure(false, response.usage, "provider_invalid_output");
       }
-      if (qaTraceEnabled) qaTraceBatches.push({ index: batch.index, raw: response.result, validated });
       const actualCost = calculateAssistedImportCostMicrousd(response.usage);
       await settleCall(db, userId, operationId, batch.index, "completed", validated, response.usage, actualCost);
       return validated;
@@ -245,8 +229,6 @@ export async function executeAssistedImport(
     throw error;
   });
   const operation = await loadOperation(db, operationId);
-  const totalMs = Date.now() - executionStarted;
-  const providerMs = intervalUnionMs(providerIntervals);
   return {
     script: { id: finalized.id, revision: Number(finalized.revision ?? 1) },
     reused: Boolean(finalized.reused),
@@ -255,8 +237,6 @@ export async function executeAssistedImport(
     blocks: reconciled.document.content.length,
     scenes: reconciled.document.content.filter((block) => block.attrs.kind === "sceneHeading").length,
     usage: operationUsage(operation ?? {}),
-    qaTimings: { providerMs, localMs: Math.max(0, totalMs - providerMs), totalMs },
-    ...(qaTraceEnabled ? { qaTrace: { reasoning, batches: qaTraceBatches.sort((a, b) => a.index - b.index) } } : {}),
   };
 }
 

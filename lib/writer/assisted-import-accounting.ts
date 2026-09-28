@@ -33,23 +33,3 @@ export function calculateAssistedImportCostMicrousd(usage: AssistedImportProvide
 export function assistedImportReasoning(environment: { [key: string]: string | undefined }) {
   return environment.WRITER_AI_IMPORT_QA_REASONING === "low" ? "low" as const : "none" as const;
 }
-
-export function intervalUnionMs(intervals: readonly { start: number; end: number }[]) {
-  const sorted = intervals
-    .filter((interval) => Number.isFinite(interval.start) && Number.isFinite(interval.end) && interval.end >= interval.start)
-    .map((interval) => ({ ...interval }))
-    .sort((a, b) => a.start - b.start);
-  if (!sorted.length) return 0;
-  let total = 0;
-  let start = sorted[0].start;
-  let end = sorted[0].end;
-  for (const interval of sorted.slice(1)) {
-    if (interval.start <= end) end = Math.max(end, interval.end);
-    else {
-      total += end - start;
-      start = interval.start;
-      end = interval.end;
-    }
-  }
-  return total + end - start;
-}

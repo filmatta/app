@@ -6,7 +6,6 @@ import {
   countAssistedImportTokens,
   estimateAssistedImportMaximumCostMicrousd,
   assistedImportReasoning,
-  intervalUnionMs,
 } from "../../lib/writer/assisted-import-accounting.ts";
 import { checkAssistedImportAccess } from "../../lib/writer/assisted-import-access.ts";
 
@@ -19,8 +18,6 @@ test("provider configuration is server-only, stored-output disabled, strict, and
   assert.match(server, /model: WRITER_ASSISTED_IMPORT_MODEL/u);
   assert.match(server, /reasoning: \{ effort: input\.reasoning \}/u);
   assert.match(server, /store: false/u);
-  assert.match(server, /WRITER_AI_IMPORT_QA_TRACE === "true"/u);
-  assert.match(interfaceSource, /\[writer-import-qa\]/u);
   assert.match(server, /type: "json_schema"/u);
   assert.match(server, /strict: true/u);
   assert.match(server, /maxRetries: 0/u);
@@ -32,11 +29,6 @@ test("QA reasoning selection is server-controlled and defaults to none", () => {
   assert.equal(assistedImportReasoning({}), "none");
   assert.equal(assistedImportReasoning({ WRITER_AI_IMPORT_QA_REASONING: "low" }), "low");
   assert.equal(assistedImportReasoning({ WRITER_AI_IMPORT_QA_REASONING: "high" }), "none");
-  assert.equal(intervalUnionMs([
-    { start: 0, end: 100 },
-    { start: 25, end: 75 },
-    { start: 120, end: 150 },
-  ]), 130);
 });
 
 test("private endpoint authenticates before reading the body and ignores client pricing or model choices", () => {
