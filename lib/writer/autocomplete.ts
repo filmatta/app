@@ -19,6 +19,7 @@ export type WriterAutocompleteContext = {
   blockKind: ScreenplayKind;
   blockText: string;
   cursorOffset: number;
+  additionalCharacters?: readonly string[];
 };
 
 export type WriterAutocompleteKeyAction = "accept" | "close" | "next" | "previous" | "pass";
@@ -45,7 +46,7 @@ const SCENE_COMPLETIONS: readonly WriterAutocompleteSuggestion[] = [
 
 const TRANSITION_COMPLETIONS: readonly WriterAutocompleteSuggestion[] = [...new Map(
   [...QUICK_INSERTS, { text: "FADE OUT:", kind: "transition" as const, label: "FADE OUT:" }].map((item) => [item.text, {
-    id: `transition-${item.text.toLocaleLowerCase("en-US").replace(/[^a-z]+/gu, "-")}`,
+    id: `transition-${encodeURIComponent(item.text.toLocaleLowerCase("en-US"))}`,
     label: item.text,
     description: "Transición reconocida",
     insertText: item.text,
@@ -60,7 +61,13 @@ export function writerAutocompleteSuggestions(context: WriterAutocompleteContext
 
   if (context.blockKind === "character") {
     if (normalized.length < 2 || normalized.length > 42 || /[^\p{L}\p{N} ._'-]/u.test(prefix)) return [];
-    return deriveCharacters(context.document)
+    const characters = new Map(deriveCharacters(context.document).map((character) => [character.key, character.name]));
+    for (const name of context.additionalCharacters ?? []) {
+      const clean = name.trim().replace(/\s+/gu, " ");
+      const key = clean.normalize("NFKC").toLocaleUpperCase("es-MX");
+      if (clean && !characters.has(key)) characters.set(key, clean);
+    }
+    return [...characters].map(([key, name]) => ({ key, name }))
       .filter((character) => character.key.startsWith(normalized) && character.key !== normalized)
       .slice(0, 7)
       .map((character) => ({
@@ -99,7 +106,7 @@ export function writerAutocompleteSuggestions(context: WriterAutocompleteContext
   return [];
 }
 
-export function writerAutocompleteContext(editor: Editor): WriterAutocompleteContext | null {
+export function writerAutocompleteContext(editor: Editor, additionalCharacters: readonly string[] = []): WriterAutocompleteContext | null {
   const { selection } = editor.state;
   if (!selection.empty) return null;
   const target = findWriterBlockAtPosition(editor.state.doc, selection.from);
@@ -113,11 +120,16 @@ export function writerAutocompleteContext(editor: Editor): WriterAutocompleteCon
     blockKind: target.kind,
     blockText: target.text,
     cursorOffset,
+    additionalCharacters: [...additionalCharacters],
   };
 }
 
-export function acceptWriterAutocomplete(editor: Editor, suggestion: WriterAutocompleteSuggestion) {
-  const context = writerAutocompleteContext(editor);
+export function acceptWriterAutocomplete(
+  editor: Editor,
+  suggestion: WriterAutocompleteSuggestion,
+  additionalCharacters: readonly string[] = [],
+) {
+  const context = writerAutocompleteContext(editor, additionalCharacters);
   const target = findWriterBlockAtPosition(editor.state.doc, editor.state.selection.from);
   if (!context || !target) return false;
   const available = writerAutocompleteSuggestions(context);

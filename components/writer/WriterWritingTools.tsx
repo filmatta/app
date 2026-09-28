@@ -1,12 +1,10 @@
 "use client";
 
 import type { Editor } from "@tiptap/core";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   SCREENPLAY_KINDS,
-  deriveCharacters,
   type ScreenplayKind,
-  type WriterDocument,
 } from "@/lib/writer/document";
 import {
   changeWriterBlockKind,
@@ -18,8 +16,6 @@ import {
 import {
   QUICK_INSERTS,
   buildSceneHeading,
-  countTextualMentions,
-  deriveCharacterWritingMetrics,
 } from "@/lib/writer/writing-ux";
 import { parseSceneHeading } from "@/lib/writer/timeline";
 
@@ -240,7 +236,6 @@ export function WriterContextMenu({
     </div>
   );
 }
-
 export function WriterInsertPanel({
   editor,
   state,
@@ -327,7 +322,6 @@ export function WriterInsertPanel({
     </div>
   );
 }
-
 function SceneHeadingDialog({
   editor,
   targetId,
@@ -459,42 +453,4 @@ function sceneHeadingDialogDefaults(intent: WriterInsertState["intent"], origina
   return intent === "insert"
     ? { environment: "INT.", place: "", momentChoice: "DÍA", customMoment: "" }
     : { environment: "", place: "", momentChoice: "", customMoment: "" };
-}
-
-export function WriterCharacterPanel({ document }: { document: WriterDocument }) {
-  const metrics = useMemo(() => deriveCharacterWritingMetrics(document), [document]);
-  const characters = useMemo(() => deriveCharacters(document), [document]);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const selected = metrics.find((character) => character.key === selectedKey) ?? null;
-  const mentions = useMemo(
-    () => selected ? countTextualMentions(document, selected.key, characters) : 0,
-    [characters, document, selected],
-  );
-
-  return (
-    <section className="writer-character-section" aria-labelledby="writer-character-heading">
-      <p id="writer-character-heading" className="writer-sidebar-heading">Personajes identificados <span>{metrics.length}</span></p>
-      {metrics.length ? (
-        <ul>{metrics.map((character) => (
-          <li key={character.key}>
-            <button type="button" onClick={() => setSelectedKey(character.key)} aria-expanded={selectedKey === character.key}>
-              <strong>{character.name}</strong>
-              <span>{character.interventions} interv. · {character.sceneInterventions} escenas</span>
-            </button>
-          </li>
-        ))}</ul>
-      ) : <p className="writer-sidebar-empty">Los nombres aparecerán al usar bloques de personaje.</p>}
-      {selected && (
-        <div className="writer-character-detail">
-          <div><strong>{selected.name}</strong><button type="button" onClick={() => setSelectedKey(null)}>Cerrar</button></div>
-          <dl>
-            <div><dt>Intervenciones con diálogo</dt><dd>{selected.interventions}</dd></div>
-            <div><dt>Escenas con intervención</dt><dd>{selected.sceneInterventions}</dd></div>
-            <div><dt>Menciones textuales</dt><dd>{mentions}</dd></div>
-          </dl>
-          <p>Menciones en Acción y Diálogo; no equivalen a presencia en escena. Las intervenciones requieren diálogo asociado y las escenas cuentan encabezados distintos.</p>
-        </div>
-      )}
-    </section>
-  );
 }

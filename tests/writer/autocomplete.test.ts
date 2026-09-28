@@ -11,7 +11,7 @@ import {
 } from "../../lib/writer/autocomplete.ts";
 import { createBlock, type ScreenplayKind, type WriterDocument } from "../../lib/writer/document.ts";
 
-function suggestions(kind: ScreenplayKind, text: string, known: string[] = []) {
+function suggestions(kind: ScreenplayKind, text: string, known: string[] = [], local: string[] = []) {
   const document: WriterDocument = {
     type: "doc",
     content: [
@@ -19,7 +19,7 @@ function suggestions(kind: ScreenplayKind, text: string, known: string[] = []) {
       createBlock(kind, text),
     ],
   };
-  return writerAutocompleteSuggestions({ document, blockKind: kind, blockText: text, cursorOffset: text.length });
+  return writerAutocompleteSuggestions({ document, blockKind: kind, blockText: text, cursorOffset: text.length, additionalCharacters: local });
 }
 
 test("format suggestions only match a logical prefix in a compatible block", () => {
@@ -41,6 +41,7 @@ test("transitions reuse the known Writer vocabulary", () => {
 test("character suggestions only return identities already present", () => {
   assert.deepEqual(suggestions("character", "CAR", ["CAROLINA", "ESPERANZA"]).map((item) => item.insertText), ["CAROLINA"]);
   assert.deepEqual(suggestions("character", "MART", ["CAROLINA", "ESPERANZA"]), []);
+  assert.deepEqual(suggestions("character", "ROB", ["CAROLINA"], ["ROBOT R-7", "CAROLINA"]).map((item) => item.insertText), ["ROBOT R-7"]);
 });
 
 test("keyboard contract keeps Enter normal until navigation and ignores IME composition", () => {

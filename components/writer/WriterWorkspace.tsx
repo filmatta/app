@@ -28,12 +28,17 @@ import {
 } from "@/lib/writer/persistence";
 import { loadLocalWriterDrafts } from "@/lib/writer/storage";
 import { startWriterTabLease, type WriterTabLease } from "@/lib/writer/tab-lease";
-import { ScreenplayBlockExtension, setWriterSceneHighlight } from "@/lib/writer/tiptap";
+import {
+  ScreenplayBlockExtension,
+  setWriterObservationMarkers,
+  setWriterSceneHighlight,
+} from "@/lib/writer/tiptap";
 import { deriveWriterTimeline } from "@/lib/writer/timeline";
+import WriterImportFlow from "./WriterImportFlow";
+import WriterObservationsPanel from "./WriterObservationsPanel";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
 import WriterTimelineView from "./WriterTimeline";
 import {
-  WriterCharacterPanel,
   WriterContextMenu,
   WriterInsertPanel,
   WRITER_KIND_LABELS,
@@ -55,6 +60,21 @@ import {
   writerAutocompleteSuggestions,
   type WriterAutocompleteSuggestion,
 } from "@/lib/writer/autocomplete";
+import {
+  analyzeWriterCharacterObservations,
+  deriveWriterKnownCharacterIdentities,
+  normalizeWriterCharacterIdentity,
+  writerObservationTextHash,
+  type WriterCharacterAnalysisCache,
+  type WriterCharacterObservation,
+} from "@/lib/writer/character-observations";
+import {
+  emptyWriterCharacterDecisionState,
+  loadWriterCharacterDecisionState,
+  saveWriterCharacterDecisionState,
+  type WriterCharacterDecision,
+  type WriterCharacterDecisionState,
+} from "@/lib/writer/character-observation-storage";
 
 type ScriptInput = {
   id: string;
@@ -97,10 +117,17 @@ export default function WriterWorkspace({
   const [ready, setReady] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [focusScale, setFocusScale] = useState(1);
-  const [mobileSidebar, setMobileSidebar] = useState<"scenes" | "characters" | null>(null);
+  const [mobileSidebar, setMobileSidebar] = useState<"scenes" | null>(null);
   const [activeScene, setActiveScene] = useState<string | null>(null);
   const [exportMenu, setExportMenu] = useState(false);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [observationsOpen, setObservationsOpen] = useState(false);
+  const [selectedObservationBlockId, setSelectedObservationBlockId] = useState<string | null>(null);
+  const [characterObservations, setCharacterObservations] = useState<WriterCharacterObservation[]>([]);
+  const [characterDecisions, setCharacterDecisions] = useState<WriterCharacterDecisionState>(() => emptyWriterCharacterDecisionState());
+  const [characterStoragePersistent, setCharacterStoragePersistent] = useState(true);
+  const [analysisEpoch, setAnalysisEpoch] = useState(0);
   const [contextMenu, setContextMenu] = useState<WriterContextMenuState | null>(null);
   const [insertState, setInsertState] = useState<WriterInsertState | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -124,6 +151,13 @@ export default function WriterWorkspace({
   const acceptAutocompleteRef = useRef<((suggestion: WriterAutocompleteSuggestion) => boolean) | null>(null);
   const confirmedTimelineRevisionRef = useRef(script.revision);
   const timelineOpenRef = useRef(false);
+  const saveStateRef = useRef(saveState);
+  const characterDecisionsRef = useRef(characterDecisions);
+  const characterAnalysisCacheRef = useRef<WriterCharacterAnalysisCache>(new Map());
+  const localAutocompleteCharactersRef = useRef<string[]>([]);
+  const composingRef = useRef(false);
+  const observationsButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileObservationsButtonRef = useRef<HTMLButtonElement>(null);
   const sessionIdRef = useRef(crypto.randomUUID());
   const openContextMenu = useCallback((next: WriterContextMenuState) => {
     setExportMenu(false);
@@ -139,7 +173,7 @@ export default function WriterWorkspace({
       updateAutocomplete(null);
       return;
     }
-    const context = writerAutocompleteContext(current);
+    const context = writerAutocompleteContext(current, localAutocompleteCharactersRef.current);
     if (!context) {
       updateAutocomplete(null);
       return;
@@ -218,7 +252,13 @@ export default function WriterWorkspace({
       },
       handleDOMEvents: {
         compositionstart: () => {
+          composingRef.current = true;
           updateAutocomplete(null);
+          return false;
+        },
+        compositionend: () => {
+          composingRef.current = false;
+          setAnalysisEpoch((value) => value + 1);
           return false;
         },
         pointerdown: (_view, event) => {
@@ -337,7 +377,7 @@ export default function WriterWorkspace({
 
   useEffect(() => {
     acceptAutocompleteRef.current = editor
-      ? (suggestion) => acceptWriterAutocomplete(editor, suggestion)
+      ? (suggestion) => acceptWriterAutocomplete(editor, suggestion, localAutocompleteCharactersRef.current)
       : null;
     return () => {
       acceptAutocompleteRef.current = null;
@@ -345,8 +385,90 @@ export default function WriterWorkspace({
   }, [editor]);
 
   const scenes = useMemo(() => deriveScenes(document), [document]);
-  const characters = useMemo(() => deriveCharacters(document), [document]);
+  const knownCharacterIdentities = useMemo(() => deriveWriterKnownCharacterIdentities(
+    document,
+    characterDecisions.identities.map((identity) => ({
+      name: identity.name,
+      source: identity.source,
+    })),
+  ), [characterDecisions.identities, document]);
+  localAutocompleteCharactersRef.current = knownCharacterIdentities
+    .filter((identity) => identity.source !== "characterBlock")
+    .map((identity) => identity.name);
   const words = useMemo(() => countDocumentWords(document), [document]);
+  const activeDecisionFingerprints = useMemo(
+    () => new Set(characterDecisions.decisions.map((decision) => decision.fingerprint)),
+    [characterDecisions.decisions],
+  );
+  const pendingCharacterObservations = useMemo(
+    () => characterObservations.filter((observation) => !observation.known && !activeDecisionFingerprints.has(observation.fingerprint)),
+    [activeDecisionFingerprints, characterObservations],
+  );
+
+  useEffect(() => {
+    characterAnalysisCacheRef.current = new Map();
+    const timer = window.setTimeout(() => {
+      try {
+        const loaded = loadWriterCharacterDecisionState(location.origin, userId, script.id);
+        characterDecisionsRef.current = loaded;
+        setCharacterDecisions(loaded);
+        setCharacterStoragePersistent(true);
+      } catch {
+        const empty = emptyWriterCharacterDecisionState();
+        characterDecisionsRef.current = empty;
+        setCharacterDecisions(empty);
+        setCharacterStoragePersistent(false);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [script.id, userId]);
+
+  const updateCharacterDecisions = useCallback((
+    updater: (current: WriterCharacterDecisionState) => WriterCharacterDecisionState,
+  ) => {
+    const next = updater(characterDecisionsRef.current);
+    characterDecisionsRef.current = next;
+    setCharacterDecisions(next);
+    try {
+      saveWriterCharacterDecisionState(location.origin, userId, script.id, next);
+      setCharacterStoragePersistent(true);
+    } catch {
+      setCharacterStoragePersistent(false);
+    }
+  }, [script.id, userId]);
+
+  useEffect(() => {
+    if (!editor || !ready || focusMode) {
+      if (editor && !editor.isDestroyed) setWriterObservationMarkers(editor, new Map(), () => undefined);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      if (composingRef.current || editor.isDestroyed) return;
+      const result = analyzeWriterCharacterObservations(
+        document,
+        knownCharacterIdentities,
+        characterAnalysisCacheRef.current,
+      );
+      characterAnalysisCacheRef.current = result.cache;
+      setCharacterObservations(result.observations);
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [analysisEpoch, document, editor, focusMode, knownCharacterIdentities, ready]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || focusMode) return;
+    const counts = new Map<string, number>();
+    for (const observation of pendingCharacterObservations) {
+      counts.set(observation.blockId, (counts.get(observation.blockId) ?? 0) + 1);
+    }
+    setWriterObservationMarkers(editor, counts, (blockId) => {
+      setSelectedObservationBlockId(blockId);
+      setObservationsOpen(true);
+    });
+    return () => {
+      if (!editor.isDestroyed) setWriterObservationMarkers(editor, new Map(), () => undefined);
+    };
+  }, [editor, focusMode, pendingCharacterObservations]);
   const clearSceneHighlight = useCallback(() => {
     if (highlightTimeoutRef.current !== null) window.clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = null;
@@ -431,6 +553,7 @@ export default function WriterWorkspace({
         initialPending,
         saveRemote,
         onState: (next) => {
+          saveStateRef.current = next;
           setSaveState(next);
           if (next.status !== "cloud" || next.revision <= confirmedTimelineRevisionRef.current) return;
           confirmedTimelineRevisionRef.current = next.revision;
@@ -509,6 +632,12 @@ export default function WriterWorkspace({
   useEffect(() => {
     const closeSurfaceOrFocus = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (importOpen) return;
+      if (observationsOpen) {
+        setObservationsOpen(false);
+        focusObservationsTrigger();
+        return;
+      }
       if (contextMenu) return setContextMenu(null);
       if (insertState) return setInsertState(null);
       if (exportMenu) return setExportMenu(false);
@@ -518,7 +647,7 @@ export default function WriterWorkspace({
     };
     window.addEventListener("keydown", closeSurfaceOrFocus);
     return () => window.removeEventListener("keydown", closeSurfaceOrFocus);
-  }, [contextMenu, exportMenu, focusMode, insertState, pdfExportOpen, timelineOpen]);
+  }, [contextMenu, exportMenu, focusMode, importOpen, insertState, observationsOpen, pdfExportOpen, timelineOpen]);
 
   useEffect(() => {
     if (!editor || !ready || deepLinkHandledRef.current) return;
@@ -658,8 +787,101 @@ export default function WriterWorkspace({
     if (focusMode) void exitFocus();
   }
 
+  function focusObservationsTrigger() {
+    const mobile = window.matchMedia("(max-width: 900px)").matches;
+    (mobile ? mobileObservationsButtonRef.current : observationsButtonRef.current)?.focus();
+  }
+
+  async function ensureCurrentDocumentSaved() {
+    const controller = controllerRef.current;
+    if (!controller) throw new Error("El editor todavía no está preparado.");
+    await controller.flush();
+    const deadline = Date.now() + 16_000;
+    while (["local", "saving"].includes(saveStateRef.current.status) && Date.now() < deadline) {
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+      if (saveStateRef.current.status === "local") await controller.flush();
+    }
+    if (saveStateRef.current.status !== "cloud") {
+      throw new Error("Guarda el documento actual en la nube antes de crear el guion importado.");
+    }
+  }
+
+  function setCharacterDecision(decision: WriterCharacterDecision) {
+    updateCharacterDecisions((current) => ({
+      ...current,
+      decisions: [...current.decisions.filter((item) => item.fingerprint !== decision.fingerprint), decision],
+    }));
+  }
+
+  function confirmCharacterObservation(observation: WriterCharacterObservation, value: string) {
+    const name = value.trim().replace(/\s+/gu, " ").slice(0, 64);
+    if (!name) return;
+    const key = normalizeWriterCharacterIdentity(name);
+    const existing = characterDecisionsRef.current.identities.find(
+      (identity) => normalizeWriterCharacterIdentity(identity.name) === key,
+    );
+    const identityId = existing?.id ?? crypto.randomUUID();
+    updateCharacterDecisions((current) => ({
+      ...current,
+      identities: existing ? current.identities : [...current.identities, {
+        id: identityId,
+        name,
+        source: "confirmedAction",
+        createdAt: Date.now(),
+      }],
+      decisions: [
+        ...current.decisions.filter((item) => item.fingerprint !== observation.fingerprint),
+        {
+          fingerprint: observation.fingerprint,
+          blockId: observation.blockId,
+          state: "confirmed",
+          identityId,
+          decidedAt: Date.now(),
+        },
+      ],
+    }));
+  }
+
+  function addManualCharacter(value: string) {
+    const name = value.trim().replace(/\s+/gu, " ").slice(0, 64);
+    const key = normalizeWriterCharacterIdentity(name);
+    if (!key || knownCharacterIdentities.some((identity) => identity.key === key)) return;
+    updateCharacterDecisions((current) => ({
+      ...current,
+      identities: [...current.identities, {
+        id: crypto.randomUUID(),
+        name,
+        source: "manual",
+        createdAt: Date.now(),
+      }],
+    }));
+  }
+
+  function viewCharacterObservation(observation: WriterCharacterObservation) {
+    if (!editor) return;
+    const target = findWriterBlockById(editor, observation.blockId);
+    if (!target || writerObservationTextHash(target.text) !== observation.blockHash) {
+      setFeedback("La evidencia cambió y ya no se puede abrir. Las observaciones se actualizarán con el texto actual.");
+      setAnalysisEpoch((value) => value + 1);
+      return;
+    }
+    editor.view.dispatch(
+      editor.state.tr
+        .setSelection(TextSelection.create(editor.state.doc, target.position + 1 + observation.start, target.position + 1 + observation.end))
+        .scrollIntoView(),
+    );
+    editor.view.focus();
+    setActiveScene(findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId));
+    clearSceneHighlight();
+    setWriterSceneHighlight(editor, observation.blockId);
+    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
+    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
+  }
+
   async function enterFocus() {
     setTimelineOpen(false);
+    setObservationsOpen(false);
+    setSelectedObservationBlockId(null);
     setMobileSidebar(null);
     setExportMenu(false);
     setContextMenu(null);
@@ -702,8 +924,14 @@ export default function WriterWorkspace({
         <button className="writer-mobile-scenes" type="button" onClick={() => setMobileSidebar("scenes")} aria-expanded={mobileSidebar === "scenes"}>
           Escenas
         </button>
-        <button className="writer-mobile-characters" type="button" onClick={() => setMobileSidebar("characters")} aria-expanded={mobileSidebar === "characters"}>
-          Personajes
+        <button
+          ref={mobileObservationsButtonRef}
+          className="writer-mobile-observations"
+          type="button"
+          onClick={() => { setSelectedObservationBlockId(null); setObservationsOpen(true); }}
+          aria-expanded={observationsOpen}
+        >
+          Observaciones{pendingCharacterObservations.length ? ` ${pendingCharacterObservations.length}` : ""}
         </button>
         <input
           className="writer-title-input"
@@ -718,6 +946,26 @@ export default function WriterWorkspace({
         />
         <div className="writer-header-actions">
           <SaveStatus state={saveState} />
+          <button
+            className="writer-import-open-button"
+            type="button"
+            onClick={() => {
+              setExportMenu(false);
+              setContextMenu(null);
+              setInsertState(null);
+              setTimelineOpen(false);
+              setObservationsOpen(false);
+              setImportOpen(true);
+            }}
+            disabled={!ready}
+          >Importar borrador</button>
+          <button
+            ref={observationsButtonRef}
+            className="writer-observations-open-button"
+            type="button"
+            onClick={() => { setSelectedObservationBlockId(null); setObservationsOpen((open) => !open); }}
+            aria-expanded={observationsOpen}
+          >Observaciones{pendingCharacterObservations.length ? ` (${pendingCharacterObservations.length})` : ""}</button>
           <button
             className="writer-timeline-button"
             type="button"
@@ -760,7 +1008,7 @@ export default function WriterWorkspace({
 
       <aside className={`writer-sidebar ${mobileSidebar ? "writer-sidebar--open" : ""} writer-sidebar--mobile-${mobileSidebar ?? "closed"}`}>
         <div className="writer-sidebar-mobile-head">
-          <strong>{mobileSidebar === "characters" ? "Personajes" : "Escenas"}</strong>
+          <strong>Escenas</strong>
           <button type="button" onClick={() => setMobileSidebar(null)}>Cerrar</button>
         </div>
         <div className="writer-sidebar-title">
@@ -781,14 +1029,12 @@ export default function WriterWorkspace({
             </ol>
           ) : <p className="writer-sidebar-empty">Añade un encabezado para crear una escena.</p>}
         </nav>
-        <WriterCharacterPanel document={document} />
       </aside>
 
       <main className="writer-editor-area">
         <WriterToolbar
           editor={editor}
           words={words}
-          characters={characters.map((item) => item.name)}
           onInsert={(next) => {
             setExportMenu(false);
             setContextMenu(null);
@@ -911,6 +1157,47 @@ export default function WriterWorkspace({
         />
       )}
 
+      {importOpen && (
+        <WriterImportFlow
+          beforeCreate={ensureCurrentDocumentSaved}
+          onClose={() => setImportOpen(false)}
+        />
+      )}
+
+      {observationsOpen && !focusMode && (
+        <WriterObservationsPanel
+          observations={characterObservations}
+          knownIdentities={knownCharacterIdentities}
+          decisions={characterDecisions}
+          storagePersistent={characterStoragePersistent}
+          selectedBlockId={selectedObservationBlockId}
+          onClose={() => {
+            setObservationsOpen(false);
+            focusObservationsTrigger();
+          }}
+          onConfirm={confirmCharacterObservation}
+          onLink={(observation, identityKey) => setCharacterDecision({
+            fingerprint: observation.fingerprint,
+            blockId: observation.blockId,
+            state: "linked",
+            identityKey,
+            decidedAt: Date.now(),
+          })}
+          onIgnore={(observation) => setCharacterDecision({
+            fingerprint: observation.fingerprint,
+            blockId: observation.blockId,
+            state: "ignored",
+            decidedAt: Date.now(),
+          })}
+          onRestore={(decision) => updateCharacterDecisions((current) => ({
+            ...current,
+            decisions: current.decisions.filter((item) => item.fingerprint !== decision.fingerprint),
+          }))}
+          onAddManual={addManualCharacter}
+          onView={viewCharacterObservation}
+        />
+      )}
+
       {["conflict", "deleted", "sessionExpired"].includes(saveState.status) && (
         <div className="writer-modal-backdrop">
           <section className="writer-modal writer-conflict-modal" role="alertdialog" aria-modal="true" aria-labelledby="writer-conflict-title">
@@ -975,13 +1262,11 @@ function WriterAutocompleteMenu({
 function WriterToolbar({
   editor,
   words,
-  characters,
   onInsert,
   onConvertSceneHeading,
 }: {
   editor: Editor | null;
   words: number;
-  characters: string[];
   onInsert: (state: WriterInsertState) => void;
   onConvertSceneHeading: (state: WriterInsertState) => void;
 }) {
@@ -999,13 +1284,6 @@ function WriterToolbar({
   });
   if (!editor || !state) return <div className="writer-toolbar" aria-hidden="true" />;
   const preserveSelection = (event: React.MouseEvent) => event.preventDefault();
-  const applyCharacter = (name: string) => {
-    editor.chain().focus().selectParentNode().insertContent({
-      type: "screenplayBlock",
-      attrs: { id: crypto.randomUUID(), kind: "character" },
-      content: [{ type: "text", text: name }],
-    }).run();
-  };
   return (
     <div className="writer-toolbar" role="toolbar" aria-label="Formato del guion">
       <select
@@ -1065,11 +1343,6 @@ function WriterToolbar({
       <span className="writer-toolbar-divider" aria-hidden="true" />
       <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().undo().run()} disabled={!state.canUndo} aria-label="Deshacer">↶</button>
       <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().redo().run()} disabled={!state.canRedo} aria-label="Rehacer">↷</button>
-      {state.kind === "character" && characters.length > 0 && (
-        <div className="writer-character-suggestions" aria-label="Personajes del guion">
-          {characters.slice(0, 6).map((name) => <button key={name} type="button" onMouseDown={preserveSelection} onClick={() => applyCharacter(name)}>{name}</button>)}
-        </div>
-      )}
       <span className="writer-word-count">{words.toLocaleString("es-MX")} palabras</span>
     </div>
   );

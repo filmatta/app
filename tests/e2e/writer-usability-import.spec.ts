@@ -158,11 +158,25 @@ test("saved revisions auto-refresh an open Timeline once, preserve state, and st
 });
 
 test("paste import requires review, creates a new canonical document, and exports PDF", async ({ page, context }) => {
-  await page.request.get("http://127.0.0.1:54329/__scenario?value=writer-ux");
-  await session(context);
-  await page.goto("/writer");
-  await page.getByRole("button", { name: "Importar borrador" }).first().click();
+  await openWriter(page, context);
+  const originalEditor = page.getByLabel("Editor de guion");
+  await expect(page.locator(".writer-character-suggestions")).toHaveCount(0);
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await expect(page.locator(".writer-header").getByRole("button", { name: "Importar borrador" })).toBeVisible();
+  }
+
+  await page.locator(".writer-header").getByRole("button", { name: "Importar borrador" }).click();
   const dialog = page.getByRole("dialog", { name: "Importar borrador" });
+  await expect(dialog.getByText("Se creará un guion nuevo. Tu documento actual no se modificará.")).toBeHidden();
+  await dialog.getByLabel("Texto del borrador").fill("EXT. PRUEBA - DÍA\n\nTexto que sólo vive en staging.");
+  await expect(originalEditor).not.toContainText("Texto que sólo vive en staging.");
+  page.once("dialog", (prompt) => prompt.accept());
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await expect(dialog).toBeHidden();
+  expect((await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json()).creates).toBe(0);
+
+  await page.locator(".writer-header").getByRole("button", { name: "Importar borrador" }).click();
   await dialog.getByRole("tab", { name: "Archivo TXT o FDX" }).click();
   const fileInput = dialog.getByLabel("Selecciona un archivo");
   await fileInput.setInputFiles({
@@ -170,6 +184,9 @@ test("paste import requires review, creates a new canonical document, and export
     mimeType: "application/xml",
     buffer: Buffer.from(`<?xml version="1.0"?><FinalDraft><Content><Paragraph Type="Scene Heading"><Text>INT. CAFÉ - DÍA</Text></Paragraph><Paragraph Type="Character"><Text>ÁNGELA</Text></Paragraph><Paragraph Type="Dialogue"><Text>¿Qué ocurrió?</Text></Paragraph></Content></FinalDraft>`),
   });
+  await expect(dialog.getByText("Preparado:")).toBeVisible();
+  await expect(dialog.getByText("ÁNGELA", { exact: true })).toBeHidden();
+  await dialog.getByRole("button", { name: "Analizar borrador" }).click();
   await expect(dialog.getByText("ÁNGELA", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Volver al origen" }).click();
   await fileInput.setInputFiles({
@@ -177,6 +194,8 @@ test("paste import requires review, creates a new canonical document, and export
     mimeType: "text/plain",
     buffer: Buffer.from("EXT. CALLE - NOCHE\n\nESPERANZA\nSeguimos aquí."),
   });
+  await expect(dialog.getByText("ESPERANZA", { exact: true })).toBeHidden();
+  await dialog.getByRole("button", { name: "Analizar borrador" }).click();
   await expect(dialog.getByText("ESPERANZA", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Volver al origen" }).click();
   await dialog.getByRole("tab", { name: "Texto pegado" }).click();
@@ -191,9 +210,14 @@ No podemos esperar más.
 CORTE A:
 
 MISTERIO`);
-  await dialog.getByRole("button", { name: "Analizar texto" }).click();
+  await dialog.getByRole("button", { name: "Analizar borrador" }).click();
   await expect(dialog.getByRole("button", { name: /Revisar \(2\)/ })).toBeVisible();
   await expect(dialog.getByText("MISTERIO", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("1 bloque de tipo Personaje")).toBeVisible();
+  await expect(dialog.getByText("1 nombre distinto derivado de esos bloques")).toBeVisible();
+  await expect(dialog.getByText("0 posibles personajes en Acción", { exact: false })).toBeVisible();
+  await expect(dialog.getByText("Se creará un guion nuevo. Tu documento actual no se modificará.")).toBeVisible();
+  await expect(originalEditor).toContainText("ANA observa la VENTANA.");
 
   const reviewCard = dialog.locator(".writer-import-list article").first();
   for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 900 }, { width: 390, height: 844 }]) {
@@ -207,8 +231,9 @@ MISTERIO`);
   const unresolvedCard = dialog.locator(".writer-import-list article").filter({ hasText: "MISTERIO" });
   await unresolvedCard.getByLabel("Tipo").selectOption("action");
   await expect(dialog.getByRole("button", { name: "Revisar (0)" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Importar al Writer" }).click();
+  await dialog.getByRole("button", { name: "Crear guion importado" }).click();
   await expect(page).toHaveURL(/\/writer\/33333333-3333-4333-8333-333333333333$/);
+  expect((await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json()).creates).toBe(1);
   const editor = page.getByLabel("Editor de guion");
   await expect(editor).toContainText("INT. CASA - DÍA");
   await expect(editor).toContainText("MISTERIO");
@@ -220,4 +245,72 @@ MISTERIO`);
   await pdfDialog.getByRole("button", { name: "Generar PDF" }).click();
   await expect(pdfDialog.getByText("PDF listo.", { exact: false })).toBeVisible({ timeout: 20_000 });
   await expect(pdfDialog.getByRole("link", { name: "Descargar PDF" })).toBeVisible();
+});
+
+test("character observations are revealed on demand, local, reversible, and absent from Focus", async ({ page, context }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWriter(page, context);
+  const editor = page.getByLabel("Editor de guion");
+  const action = editor.locator('[data-block-id$="02"]');
+  await replaceBlockText(page, action, "Un robot observa a ANA.");
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 10_000 });
+  const marker = page.getByRole("button", { name: "1 observación en este bloque" });
+  await expect(marker).toBeVisible();
+  const afterEdit = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
+
+  await marker.click();
+  const panel = page.getByRole("dialog", { name: "Observaciones" });
+  await expect(panel.getByText("Posible personaje sin diálogo: UN ROBOT")).toBeVisible();
+  await expect(panel.getByText("Un robot observa a ANA.", { exact: false })).toBeVisible();
+  await panel.getByRole("button", { name: "Ignorar" }).click();
+  await expect(panel.getByText("No hay posibles personajes pendientes en el texto actual.")).toBeVisible();
+  await panel.getByText(/Ignoradas \(1\)/).click();
+  await panel.getByRole("button", { name: "Restaurar" }).click();
+  await expect(panel.getByText("Posible personaje sin diálogo: UN ROBOT")).toBeVisible();
+  await panel.getByRole("button", { name: "Ver fragmento" }).click();
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe("Un robot");
+  await panel.getByRole("button", { name: "Vincular a existente" }).click();
+  const linkDialog = page.getByRole("dialog", { name: "Vincular evidencia" });
+  await linkDialog.getByLabel("Personaje").selectOption({ label: "ANA" });
+  await linkDialog.getByRole("button", { name: "Vincular", exact: true }).click();
+  await expect(panel.getByText("No hay posibles personajes pendientes en el texto actual.")).toBeVisible();
+  const afterLink = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
+  expect(afterLink.saves).toBe(afterEdit.saves);
+  expect(afterLink.reads).toBe(afterEdit.reads);
+
+  await replaceBlockText(page, action, "Un guardia bloquea la salida.");
+  await expect(panel.getByText("Posible personaje sin diálogo: UN GUARDIA")).toBeVisible();
+  await panel.getByRole("button", { name: "Confirmar personaje" }).click();
+  const confirmDialog = page.getByRole("dialog", { name: "Confirmar personaje" });
+  await confirmDialog.getByLabel("Nombre reconocido").fill("ROBOT R-7");
+  await confirmDialog.getByRole("button", { name: "Confirmar", exact: true }).click();
+  await expect(panel.getByText("ROBOT R-7", { exact: true })).toBeVisible();
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 10_000 });
+  const afterSecondEdit = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
+  await page.waitForTimeout(700);
+  const afterDecisions = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
+  expect(afterDecisions.saves).toBe(afterSecondEdit.saves);
+  expect(afterDecisions.reads).toBe(afterSecondEdit.reads);
+
+  await panel.getByRole("button", { name: "Cerrar" }).click();
+  await page.reload();
+  await expect(editor).toBeVisible();
+  await page.locator(".writer-header").getByRole("button", { name: /Observaciones/ }).click();
+  await expect(page.getByRole("dialog", { name: "Observaciones" }).getByText("ROBOT R-7", { exact: true })).toBeVisible();
+  await page.getByRole("dialog", { name: "Observaciones" }).getByRole("button", { name: "Cerrar" }).click();
+
+  const character = editor.locator('[data-block-id$="03"]');
+  await replaceBlockText(page, character, "ROB");
+  await expect(page.getByRole("listbox", { name: "Sugerencias de formato" }).getByRole("option", { name: /ROBOT R-7/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await replaceBlockText(page, action, "Un perro sigue a la niña.");
+  await expect(page.getByRole("button", { name: /observaciones en este bloque/ })).toBeVisible();
+  await page.getByRole("button", { name: "Focus" }).click();
+  await expect(page.locator(".writer-observation-marker")).toBeHidden();
+  await expect(page.locator(".writer-mobile-observations")).toBeHidden();
+  await expect(page.locator(".writer-observations-open-button")).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Observaciones" })).toBeHidden();
+  await page.getByRole("button", { name: "Salir de Focus" }).click();
+  await expect(page.locator(".writer-observation-marker")).toBeVisible();
 });

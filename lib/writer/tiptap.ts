@@ -17,6 +17,7 @@ const enterNext: Record<ScreenplayKind, ScreenplayKind> = {
 };
 
 const sceneHighlightKey = new PluginKey<DecorationSet>("writerSceneHighlight");
+const observationMarkerKey = new PluginKey<DecorationSet>("writerObservationMarkers");
 
 function sceneHighlightDecorations(doc: ProseMirrorNode, id: string) {
   let decorations = DecorationSet.empty;
@@ -33,6 +34,45 @@ function sceneHighlightDecorations(doc: ProseMirrorNode, id: string) {
 
 export function setWriterSceneHighlight(editor: Editor, id: string | null) {
   editor.view.dispatch(editor.state.tr.setMeta(sceneHighlightKey, id));
+}
+
+export function setWriterObservationMarkers(
+  editor: Editor,
+  counts: ReadonlyMap<string, number>,
+  onOpen: (blockId: string) => void,
+) {
+  const decorations: Decoration[] = [];
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== "screenplayBlock") return;
+    const blockId = String(node.attrs.id ?? "");
+    const count = counts.get(blockId) ?? 0;
+    if (!blockId || count < 1) return;
+    decorations.push(Decoration.widget(position + node.nodeSize - 1, () => {
+      const marker = document.createElement("button");
+      marker.type = "button";
+      marker.className = "writer-observation-marker";
+      marker.dataset.blockId = blockId;
+      marker.contentEditable = "false";
+      marker.setAttribute("aria-label", `${count} ${count === 1 ? "observación" : "observaciones"} en este bloque`);
+      marker.title = `${count} ${count === 1 ? "observación" : "observaciones"}`;
+      marker.textContent = count > 1 ? String(count) : "•";
+      marker.addEventListener("mousedown", (event) => event.preventDefault());
+      marker.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onOpen(blockId);
+      });
+      return marker;
+    }, {
+      key: `writer-observation-${blockId}-${count}`,
+      side: 1,
+      stopEvent: (event) => event.type === "mousedown" || event.type === "click",
+    }));
+  });
+  editor.view.dispatch(editor.state.tr.setMeta(
+    observationMarkerKey,
+    DecorationSet.create(editor.state.doc, decorations),
+  ));
 }
 
 export const ScreenplayBlockExtension = Node.create({
@@ -125,6 +165,20 @@ export const ScreenplayBlockExtension = Node.create({
         },
         props: {
           decorations: (state) => sceneHighlightKey.getState(state),
+        },
+      }),
+      new Plugin<DecorationSet>({
+        key: observationMarkerKey,
+        state: {
+          init: () => DecorationSet.empty,
+          apply(transaction, current) {
+            const next = transaction.getMeta(observationMarkerKey) as DecorationSet | undefined;
+            if (next !== undefined) return next;
+            return transaction.docChanged ? DecorationSet.empty : current;
+          },
+        },
+        props: {
+          decorations: (state) => observationMarkerKey.getState(state),
         },
       }),
     ];
