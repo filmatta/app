@@ -1,5 +1,5 @@
 export function checkAssistedImportAccess(
-  environment: Partial<Record<"WRITER_AI_IMPORT_ENABLED" | "OPENAI_API_KEY" | "WRITER_AI_IMPORT_QA_USER_IDS", string | undefined>>,
+  environment: { [key: string]: string | undefined },
   userId: string,
 ) {
   if (environment.WRITER_AI_IMPORT_ENABLED !== "true") {
