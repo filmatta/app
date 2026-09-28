@@ -1,6 +1,7 @@
 export function checkAssistedImportAccess(
   environment: { [key: string]: string | undefined },
   userId: string,
+  appMetadata: Record<string, unknown> = {},
 ) {
   if (environment.WRITER_AI_IMPORT_ENABLED !== "true") {
     return { enabled: false, reason: "La importación asistida está desactivada en este entorno." } as const;
@@ -10,7 +11,9 @@ export function checkAssistedImportAccess(
   }
   const allowed = new Set((environment.WRITER_AI_IMPORT_QA_USER_IDS ?? "")
     .split(",").map((value) => value.trim()).filter(Boolean));
-  if (!allowed.has(userId)) {
+  const metadataAccess = environment.WRITER_AI_IMPORT_QA_APP_METADATA_ENABLED === "true"
+    && appMetadata.writer_assisted_import_qa === true;
+  if (!allowed.has(userId) && !metadataAccess) {
     return { enabled: false, reason: "Esta beta está limitada a usuarios de QA autorizados." } as const;
   }
   return { enabled: true, reason: null } as const;

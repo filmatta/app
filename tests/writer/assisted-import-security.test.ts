@@ -46,6 +46,12 @@ test("QA model selection is server-controlled, closed, and always uses reasoning
   assert.equal(assistedImportModelForUser({
     WRITER_AI_IMPORT_QA_MODEL_ASSIGNMENTS: `${userId}=gpt-untrusted`,
   }, userId), "gpt-5.6-luna");
+  assert.equal(assistedImportModelForUser({ WRITER_AI_IMPORT_QA_APP_METADATA_ENABLED: "true" }, userId, {
+    writer_assisted_import_qa: true, writer_assisted_import_model: "gpt-5.6-terra",
+  }), "gpt-5.6-terra");
+  assert.equal(assistedImportModelForUser({ WRITER_AI_IMPORT_QA_APP_METADATA_ENABLED: "true" }, userId, {
+    writer_assisted_import_qa: true, writer_assisted_import_model: "gpt-untrusted",
+  }), "gpt-5.6-luna");
   assert.doesNotMatch(route, /model/u);
 });
 
@@ -94,4 +100,14 @@ test("server activation fails closed unless flag, key, and exact QA allowlist al
     OPENAI_API_KEY: "configured",
     WRITER_AI_IMPORT_QA_USER_IDS: `other, ${userId}`,
   }, userId), { enabled: true, reason: null });
+  assert.deepEqual(checkAssistedImportAccess({
+    WRITER_AI_IMPORT_ENABLED: "true",
+    OPENAI_API_KEY: "configured",
+    WRITER_AI_IMPORT_QA_APP_METADATA_ENABLED: "true",
+  }, userId, { writer_assisted_import_qa: true }), { enabled: true, reason: null });
+  assert.equal(checkAssistedImportAccess({
+    WRITER_AI_IMPORT_ENABLED: "true", OPENAI_API_KEY: "configured",
+    WRITER_AI_IMPORT_QA_APP_METADATA_ENABLED: "true",
+  }, userId, { writer_assisted_import_qa: "true" }).enabled, false);
+  assert.match(route, /session\.user\.app_metadata/u);
 });

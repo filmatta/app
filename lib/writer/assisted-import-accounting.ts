@@ -50,6 +50,7 @@ export function calculateAssistedImportCostMicrousd(model: AssistedImportModel, 
 export function assistedImportModelForUser(
   environment: { [key: string]: string | undefined },
   userId: string,
+  appMetadata: Record<string, unknown> = {},
 ): AssistedImportModel {
   const assignments = environment.WRITER_AI_IMPORT_QA_MODEL_ASSIGNMENTS?.split(",") ?? [];
   for (const assignment of assignments) {
@@ -57,6 +58,12 @@ export function assistedImportModelForUser(
     if (!extra && assignedUserId === userId && assignedModel in WRITER_ASSISTED_IMPORT_MODELS) {
       return assignedModel as AssistedImportModel;
     }
+  }
+  if (environment.WRITER_AI_IMPORT_QA_APP_METADATA_ENABLED === "true"
+    && appMetadata.writer_assisted_import_qa === true
+    && typeof appMetadata.writer_assisted_import_model === "string"
+    && appMetadata.writer_assisted_import_model in WRITER_ASSISTED_IMPORT_MODELS) {
+    return appMetadata.writer_assisted_import_model as AssistedImportModel;
   }
   return "gpt-5.6-luna";
 }

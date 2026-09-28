@@ -16,7 +16,7 @@ const MAX_REQUEST_BYTES = 4_300_000;
 export async function GET() {
   const session = await writerApiSession();
   if (!session) return writerJson({ error: "Inicia sesión.", code: "unauthorized" }, 401);
-  const status = await assistedImportAccountStatus(session.user.id);
+  const status = await assistedImportAccountStatus(session.user.id, { appMetadata: session.user.app_metadata });
   return writerJson(status);
 }
 
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       sourceText: value.sourceText,
       fileName: value.fileName,
       signal: request.signal,
-    });
+    }, { appMetadata: session.user.app_metadata });
     return writerJson(result, 201);
   } catch (cause) {
     const error = cause instanceof AssistedImportError

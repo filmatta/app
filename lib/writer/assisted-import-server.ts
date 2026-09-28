@@ -70,15 +70,16 @@ export type AssistedImportProvider = (input: {
 type ProviderUsage = AssistedImportProviderUsage;
 
 type ImportDatabase = ReturnType<typeof createAdminClient>;
+type AssistedImportAuthContext = { appMetadata?: Record<string, unknown> };
 
-export function assistedImportAvailability(userId: string): AssistedImportAvailability {
-  const access = checkAssistedImportAccess(process.env, userId);
+export function assistedImportAvailability(userId: string, auth: AssistedImportAuthContext = {}): AssistedImportAvailability {
+  const access = checkAssistedImportAccess(process.env, userId, auth.appMetadata);
   if (!access.enabled) return unavailable(access.reason);
   return { enabled: true, reason: null, limits: limits() };
 }
 
-export async function assistedImportAccountStatus(userId: string) {
-  const availability = assistedImportAvailability(userId);
+export async function assistedImportAccountStatus(userId: string, auth: AssistedImportAuthContext = {}) {
+  const availability = assistedImportAvailability(userId, auth);
   if (!availability.enabled) return availability;
   const db = createAdminClient();
   const [completed, active, attempts] = await Promise.all([
@@ -99,9 +100,9 @@ export async function assistedImportAccountStatus(userId: string) {
 export async function executeAssistedImport(
   userId: string,
   request: AssistedImportRequest,
-  dependencies: { provider?: AssistedImportProvider; db?: ImportDatabase } = {},
+  dependencies: { provider?: AssistedImportProvider; db?: ImportDatabase; appMetadata?: Record<string, unknown> } = {},
 ) {
-  const availability = assistedImportAvailability(userId);
+  const availability = assistedImportAvailability(userId, { appMetadata: dependencies.appMetadata });
   if (!availability.enabled) throw new AssistedImportError("unavailable", availability.reason!, 503);
   const sourceBytes = Buffer.byteLength(request.sourceText, "utf8");
   if (sourceBytes > WRITER_ASSISTED_IMPORT_MAX_BYTES) {
@@ -122,7 +123,7 @@ export async function executeAssistedImport(
   }
 
   const db = dependencies.db ?? createAdminClient();
-  const model = assistedImportModelForUser(process.env, userId);
+  const model = assistedImportModelForUser(process.env, userId, dependencies.appMetadata);
   const reasoning = assistedImportReasoning();
   const sourceHash = sha256(request.sourceText);
   const optionsHash = sha256(JSON.stringify({
