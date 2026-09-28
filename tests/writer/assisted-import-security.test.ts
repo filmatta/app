@@ -6,6 +6,7 @@ import {
   countAssistedImportTokens,
   estimateAssistedImportMaximumCostMicrousd,
 } from "../../lib/writer/assisted-import-accounting.ts";
+import { checkAssistedImportAccess } from "../../lib/writer/assisted-import-access.ts";
 
 const server = fs.readFileSync("lib/writer/assisted-import-server.ts", "utf8");
 const route = fs.readFileSync("app/api/writer/imports/assisted/route.ts", "utf8");
@@ -49,4 +50,16 @@ test("token and cost accounting includes cached input and output in microdollars
     outputTokens: 2_000,
     reasoningTokens: 0,
   }), 3_680);
+});
+
+test("server activation fails closed unless flag, key, and exact QA allowlist all match", () => {
+  const userId = "11111111-1111-4111-8111-111111111111";
+  assert.equal(checkAssistedImportAccess({}, userId).enabled, false);
+  assert.equal(checkAssistedImportAccess({ WRITER_AI_IMPORT_ENABLED: "true" }, userId).enabled, false);
+  assert.equal(checkAssistedImportAccess({ WRITER_AI_IMPORT_ENABLED: "true", OPENAI_API_KEY: "configured" }, userId).enabled, false);
+  assert.deepEqual(checkAssistedImportAccess({
+    WRITER_AI_IMPORT_ENABLED: "true",
+    OPENAI_API_KEY: "configured",
+    WRITER_AI_IMPORT_QA_USER_IDS: `other, ${userId}`,
+  }, userId), { enabled: true, reason: null });
 });

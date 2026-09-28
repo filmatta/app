@@ -9,6 +9,7 @@ import {
   estimateAssistedImportMaximumCostMicrousd,
   type AssistedImportProviderUsage,
 } from "./assisted-import-accounting";
+import { checkAssistedImportAccess } from "./assisted-import-access";
 import {
   WRITER_ASSISTED_IMPORT_MAX_BYTES,
   WRITER_ASSISTED_IMPORT_MAX_CONCURRENCY,
@@ -67,11 +68,8 @@ type ProviderUsage = AssistedImportProviderUsage;
 type ImportDatabase = ReturnType<typeof createAdminClient>;
 
 export function assistedImportAvailability(userId: string): AssistedImportAvailability {
-  if (process.env.WRITER_AI_IMPORT_ENABLED !== "true") return unavailable("La importación asistida está desactivada en este entorno.");
-  if (!process.env.OPENAI_API_KEY) return unavailable("La integración de OpenAI todavía no está configurada en este Preview.");
-  const allowed = new Set((process.env.WRITER_AI_IMPORT_QA_USER_IDS ?? "")
-    .split(",").map((value) => value.trim()).filter(Boolean));
-  if (!allowed.has(userId)) return unavailable("Esta beta está limitada a usuarios de QA autorizados.");
+  const access = checkAssistedImportAccess(process.env, userId);
+  if (!access.enabled) return unavailable(access.reason);
   return { enabled: true, reason: null, limits: limits() };
 }
 
