@@ -40,6 +40,10 @@ test("plain text classification is deterministic, contextual, and preserves sour
   assert.equal(staging.blocks.at(-1)?.confidence, "review");
   assert.equal(writerImportPreservesSignificantText(staging), true);
   assert.equal(staging.blocks.map((block) => block.originalText).join("\n"), PLAIN_TEXT.split("\n").filter((line) => line.trim()).join("\n"));
+  const summary = writerImportSummary(staging.blocks);
+  assert.equal(summary.byKind.character, 1);
+  assert.equal(summary.distinctCharacterNames, 1);
+  assert.equal(summary.possibleActionCharacters, 0);
 });
 
 test("ambiguous text requires an explicit decision before canonical conversion", () => {

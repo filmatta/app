@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SCREENPLAY_KINDS, WRITER_SCHEMA_VERSION, type ScreenplayKind } from "@/lib/writer/document";
 import {
@@ -29,17 +29,25 @@ const KIND_LABELS: Record<ScreenplayKind, string> = {
 
 type Filter = "all" | "review" | ScreenplayKind;
 
-export default function WriterImportFlow({ onClose }: { onClose: () => void }) {
+export default function WriterImportFlow({
+  onClose,
+  beforeCreate,
+}: {
+  onClose: () => void;
+  beforeCreate?: () => Promise<void>;
+}) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const operationIdRef = useRef<string | null>(null);
   const [mode, setMode] = useState<"paste" | "file">("paste");
   const [pastedText, setPastedText] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [staging, setStaging] = useState<WriterImportStaging | null>(null);
   const [title, setTitle] = useState("Borrador importado");
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [bulkKind, setBulkKind] = useState<ScreenplayKind>("action");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"analyzing" | "creating" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const summary = useMemo(() => staging ? writerImportSummary(staging.blocks) : null, [staging]);
@@ -49,6 +57,29 @@ export default function WriterImportFlow({ onClose }: { onClose: () => void }) {
     if (filter === "review") return staging.blocks.filter((block) => block.confidence !== "high" || !block.proposedKind);
     return staging.blocks.filter((block) => block.proposedKind === filter);
   }, [filter, staging]);
+
+  const requestClose = useCallback(() => {
+    if ((staging || pastedText.trim() || selectedFile)
+      && !window.confirm("¿Descartar el borrador preparado? No se ha creado ningún guion.")) return;
+    onClose();
+  }, [onClose, pastedText, selectedFile, staging]);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || busy) return;
+      event.preventDefault();
+      requestClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [busy, requestClose]);
+
+  function invalidateAnalysis() {
+    setStaging(null);
+    setSelected(new Set());
+    setError(null);
+    operationIdRef.current = null;
+  }
 
   function startReview(next: WriterImportStaging) {
     if (!writerImportPreservesSignificantText(next)) {
@@ -62,17 +93,23 @@ export default function WriterImportFlow({ onClose }: { onClose: () => void }) {
     setError(null);
   }
 
-  function analyzePaste() {
+  async function analyzePaste() {
+    setBusy("analyzing");
+    setError(null);
     try {
+      await Promise.resolve();
       startReview(analyzePastedWriterText(pastedText, title));
     } catch (cause) {
       setError(importError(cause));
+    } finally {
+      setBusy(null);
     }
   }
 
-  async function analyzeFile(file: File | null) {
+  async function analyzeFile() {
+    const file = selectedFile;
     if (!file) return;
-    setBusy(true);
+    setBusy("analyzing");
     setError(null);
     try {
       const format = validateWriterImportFile(file);
@@ -82,9 +119,10 @@ export default function WriterImportFlow({ onClose }: { onClose: () => void }) {
         : analyzeWriterFdx(contents, file.name));
     } catch (cause) {
       setError(importError(cause));
+      setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -108,17 +146,19 @@ export default function WriterImportFlow({ onClose }: { onClose: () => void }) {
 
   async function confirmImport() {
     if (!staging) return;
-    setBusy(true);
+    setBusy("creating");
     setError(null);
     try {
       const document = writerImportToDocument(staging.blocks);
       const cleanTitle = title.trim();
       if (!cleanTitle) throw new Error("Escribe un título para el nuevo guion.");
+      await beforeCreate?.();
+      operationIdRef.current ??= crypto.randomUUID();
       const response = await fetch("/api/writer/scripts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationId: crypto.randomUUID(),
+          operationId: operationIdRef.current,
           title: cleanTitle.slice(0, 160),
           document,
           schemaVersion: WRITER_SCHEMA_VERSION,
@@ -129,7 +169,7 @@ export default function WriterImportFlow({ onClose }: { onClose: () => void }) {
       router.push(`/writer/${payload.script.id}?imported=1`);
     } catch (cause) {
       setError(importError(cause));
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -141,14 +181,14 @@ export default function WriterImportFlow({ onClose }: { onClose: () => void }) {
           <h2 id="writer-import-title">Importar borrador</h2>
           <p>{staging ? "Revisa cada decisión antes de crear un guion nuevo." : "El archivo se analiza localmente y nunca modifica el original."}</p>
         </div>
-        <button type="button" onClick={onClose} disabled={busy}>Cerrar</button>
+        <button type="button" onClick={requestClose} disabled={busy !== null}>Cerrar</button>
       </header>
 
       {!staging ? (
         <div className="writer-import-source">
           <div className="writer-import-tabs" role="tablist" aria-label="Origen del borrador">
-            <button type="button" role="tab" aria-selected={mode === "paste"} onClick={() => setMode("paste")}>Texto pegado</button>
-            <button type="button" role="tab" aria-selected={mode === "file"} onClick={() => setMode("file")}>Archivo TXT o FDX</button>
+            <button type="button" role="tab" aria-selected={mode === "paste"} onClick={() => { setMode("paste"); invalidateAnalysis(); }}>Texto pegado</button>
+            <button type="button" role="tab" aria-selected={mode === "file"} onClick={() => { setMode("file"); invalidateAnalysis(); }}>Archivo TXT o FDX</button>
           </div>
           <label>
             Título del nuevo guion
@@ -159,7 +199,7 @@ export default function WriterImportFlow({ onClose }: { onClose: () => void }) {
               Texto del borrador
               <textarea
                 value={pastedText}
-                onChange={(event) => setPastedText(event.target.value)}
+                onChange={(event) => { setPastedText(event.target.value); invalidateAnalysis(); }}
                 rows={16}
                 placeholder={"INT. CASA - DÍA\n\nCAROLINA\nNo podemos esperar más."}
                 spellCheck={false}
@@ -174,9 +214,13 @@ export default function WriterImportFlow({ onClose }: { onClose: () => void }) {
                 id="writer-import-file"
                 type="file"
                 accept=".txt,.fdx,text/plain,application/xml,text/xml"
-                onChange={(event) => void analyzeFile(event.target.files?.[0] ?? null)}
-                disabled={busy}
+                onChange={(event) => {
+                  setSelectedFile(event.target.files?.[0] ?? null);
+                  invalidateAnalysis();
+                }}
+                disabled={busy !== null}
               />
+              {selectedFile && <p><strong>Preparado:</strong> {selectedFile.name} · {(selectedFile.size / 1024).toLocaleString("es-MX", { maximumFractionDigits: 1 })} KB</p>}
               <p>Máximo 5 MB. Se comprueba extensión, tipo observable y contenido antes de clasificar.</p>
             </div>
           )}
@@ -187,10 +231,15 @@ export default function WriterImportFlow({ onClose }: { onClose: () => void }) {
           </aside>
           {error && <p className="writer-feedback writer-feedback--error" role="alert">{error}</p>}
           <div className="writer-import-actions">
-            <button type="button" onClick={onClose}>Cancelar</button>
+            <button type="button" onClick={requestClose}>Cancelar</button>
             {mode === "paste" && (
-              <button className="writer-primary-button" type="button" onClick={analyzePaste} disabled={busy || !pastedText.trim()}>
-                Analizar texto
+              <button className="writer-primary-button" type="button" onClick={() => void analyzePaste()} disabled={busy !== null || !pastedText.trim()}>
+                {busy === "analyzing" ? "Analizando…" : "Analizar borrador"}
+              </button>
+            )}
+            {mode === "file" && (
+              <button className="writer-primary-button" type="button" onClick={() => void analyzeFile()} disabled={busy !== null || !selectedFile}>
+                {busy === "analyzing" ? "Analizando…" : "Analizar borrador"}
               </button>
             )}
           </div>
@@ -203,6 +252,14 @@ export default function WriterImportFlow({ onClose }: { onClose: () => void }) {
             <div><strong>{summary?.total.toLocaleString("es-MX")}</strong><span>elementos en staging</span></div>
             <div className={summary?.needsReview ? "needs-review" : "is-ready"}><strong>{summary?.needsReview}</strong><span>decisiones por confirmar</span></div>
           </section>
+
+          <section className="writer-import-character-summary" aria-label="Resumen de personajes detectados">
+            <p><strong>{summary?.byKind.character ?? 0}</strong> {(summary?.byKind.character ?? 0) === 1 ? "bloque" : "bloques"} de tipo Personaje</p>
+            <p><strong>{summary?.distinctCharacterNames ?? 0}</strong> {(summary?.distinctCharacterNames ?? 0) === 1 ? "nombre distinto derivado" : "nombres distintos derivados"} de esos bloques</p>
+            <p><strong>{summary?.possibleActionCharacters ?? 0}</strong> posibles personajes en Acción <span>no se infieren durante la importación</span></p>
+          </section>
+
+          <p className="writer-import-new-document-notice">Se creará un guion nuevo. Tu documento actual no se modificará.</p>
 
           <section className="writer-import-summary" aria-label="Resumen detectado">
             {SCREENPLAY_KINDS.map((kind) => (
@@ -266,17 +323,17 @@ export default function WriterImportFlow({ onClose }: { onClose: () => void }) {
               <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={160} />
             </label>
             <div>
-              <button type="button" onClick={() => { setStaging(null); setSelected(new Set()); setError(null); }} disabled={busy}>Volver al origen</button>
+              <button type="button" onClick={invalidateAnalysis} disabled={busy !== null}>Volver al origen</button>
               {(summary?.unresolved ?? 0) > 0 && (
-                <button type="button" onClick={importUnresolvedAsAction} disabled={busy}>Importar pendientes como Acción</button>
+                <button type="button" onClick={importUnresolvedAsAction} disabled={busy !== null}>Importar pendientes como Acción</button>
               )}
               <button
                 className="writer-primary-button"
                 type="button"
                 onClick={() => void confirmImport()}
-                disabled={busy || !title.trim() || (summary?.needsReview ?? 0) > 0}
+                disabled={busy !== null || !title.trim() || (summary?.needsReview ?? 0) > 0}
               >
-                {busy ? "Creando…" : "Importar al Writer"}
+                {busy === "creating" ? "Creando…" : "Crear guion importado"}
               </button>
             </div>
           </footer>

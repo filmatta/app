@@ -182,14 +182,26 @@ export function writerImportPreservesSignificantText(staging: WriterImportStagin
 
 export function writerImportSummary(blocks: readonly WriterImportBlock[]) {
   const byKind = Object.fromEntries(SCREENPLAY_KINDS.map((kind) => [kind, 0])) as Record<ScreenplayKind, number>;
+  const characterNames = new Set<string>();
   let unresolved = 0;
   let needsReview = 0;
   for (const block of blocks) {
     if (block.proposedKind) byKind[block.proposedKind] += 1;
     else unresolved += 1;
+    if (block.proposedKind === "character") {
+      const name = block.originalText.trim().replace(/\s+/gu, " ");
+      if (name) characterNames.add(name.normalize("NFKC").toLocaleUpperCase("es-MX"));
+    }
     if (block.confidence !== "high" || !block.proposedKind) needsReview += 1;
   }
-  return { byKind, unresolved, needsReview, total: blocks.length };
+  return {
+    byKind,
+    distinctCharacterNames: characterNames.size,
+    possibleActionCharacters: 0,
+    unresolved,
+    needsReview,
+    total: blocks.length,
+  };
 }
 
 export function validateWriterImportFile(file: { name: string; size: number; type: string }) {
