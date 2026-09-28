@@ -17,12 +17,16 @@ import {
 import {
   analyzeWriterCharacterObservations,
   deriveWriterKnownCharacterIdentities,
+  isWriterParticipantRole,
   normalizeWriterCharacterIdentity,
+  stripWriterCharacterSuffix,
+  writerCharacterIdentityKey,
+  writerParticipantRoleKey,
   writerObservationTextHash,
   type WriterCharacterEvidence,
 } from "./character-observations.ts";
 
-export const WRITER_ASSISTED_IMPORT_VERSION = "writer-import-ai-v1";
+export const WRITER_ASSISTED_IMPORT_VERSION = "writer-import-ai-v1-semantic-v2";
 export const WRITER_ASSISTED_IMPORT_MODEL = "gpt-5.6-luna";
 export const WRITER_ASSISTED_IMPORT_REASONING = "none";
 export const WRITER_ASSISTED_IMPORT_MAX_BYTES = 2 * 1024 * 1024;
@@ -172,7 +176,10 @@ const KIND_SET = new Set<ScreenplayKind>([
   "sceneHeading", "action", "character", "dialogue", "parenthetical", "transition", "authorNote",
 ]);
 const PRONOUNS = new Set(["ÉL", "EL", "ELLA", "ELLOS", "ELLAS", "ALGUIEN"]);
-const INANIMATE = new Set(["PUERTA", "VENTANA", "VIENTO", "ESPERANZA"]);
+const LEADING_DETERMINER = /^(?:UN|UNA|EL|LA|LOS|LAS|DOS|TRES|VARIOS|VARIAS|OTRO|OTRA|OTROS|OTRAS)\s+/u;
+const INACTIVE_PROP_CONTEXT = /\b(?:de\s+utiler[ií]a|de\s+juguete|de\s+exhibici[oó]n|decorativ[oa]s?|maqueta|apagado|apagada|inm[oó]vil|inerte|sin\s+vida)\b/iu;
+const PERSONIFIED_CONTEXT = /\b(?:dice|responde|pregunta|protesta|grita|susurra|piensa|decide|se\s+niega|amenaza)\b|[«»“”]/iu;
+const AGENTIVE_CONTEXT = /^\s+(?:abre|avanza|ayuda|bloquea|busca|camina|cierra|corre|entra|escucha|golpea|grita|habla|lee|mira|observa|protesta|responde|saluda|señala|sigue|sonríe|toma|trabaja|ve|vuelve)\b/iu;
 
 export function prepareAssistedImportStaging(input: {
   format: WriterImportFormat;
@@ -199,6 +206,7 @@ export function buildAssistedImportBatches(staging: WriterImportStaging) {
   let sceneLabel: string | null = null;
   for (const block of staging.blocks) {
     if (block.proposedKind === "sceneHeading") sceneLabel = block.originalText;
+    if (block.proposedKind === "authorNote") continue;
     const shouldAnalyze = block.proposedKind === "action"
       || block.proposedKind === "character"
       || block.confidence !== "high"
@@ -260,13 +268,21 @@ export function validateAssistedImportModelResult(value: unknown, batch: Assiste
     if (candidate.end > block.originalText.length) throw new Error("La IA devolvió un rango inexistente.");
     const surface = block.originalText.slice(candidate.start, candidate.end);
     if (!surface.trim()) throw new Error("La IA devolvió evidencia vacía.");
-    const normalized = normalizeWriterCharacterIdentity(candidate.label);
-    if (PRONOUNS.has(normalized) || clearlyInanimate(normalized, block.originalText)) return [];
+    if (block.proposedKind === "authorNote" || block.proposedKind === "character") return [];
+    const label = surface.trim().replace(/\s+/gu, " ").slice(0, 64);
+    const normalized = normalizeWriterCharacterIdentity(label);
+    if (PRONOUNS.has(normalized) || !supportsNarrativeParticipant({
+      label,
+      blockText: block.originalText,
+      rangeEnd: candidate.end,
+      entityType: candidate.entityType as AssistedImportEntityEvidence["entityType"],
+      relation: candidate.relation as AssistedImportRelation,
+    })) return [];
     return [{
       blockId: candidate.blockId,
       start: candidate.start,
       end: candidate.end,
-      label: candidate.label.trim().replace(/\s+/gu, " ").slice(0, 64),
+      label,
       entityType: candidate.entityType as AssistedImportEntityEvidence["entityType"],
       relation: candidate.relation as AssistedImportRelation,
       presence: candidate.presence as AssistedImportPresence,
@@ -343,19 +359,25 @@ export function reconcileAssistedImport(
   const evidence: WriterImportedEvidence[] = [];
   const known = deriveWriterKnownCharacterIdentities(document);
   const deterministic = analyzeWriterCharacterObservations(document, known).observations;
+  const explicitByScene = new Map<string, Set<string>>();
   for (const characterBlock of document.content.filter((block) => block.attrs.kind === "character")) {
     const identity = blockText(characterBlock).trim();
     if (!identity) continue;
     const sceneId = sceneByBlock.get(characterBlock.attrs.id) ?? null;
+    const sceneKey = sceneId ?? "PREAMBLE";
+    const catalog = explicitByScene.get(sceneKey) ?? new Set<string>();
+    catalog.add(writerParticipantRoleKey(identity));
+    explicitByScene.set(sceneKey, catalog);
     evidence.push(importedEvidence({
-      identityKey: normalizeWriterCharacterIdentity(identity), identity, block: characterBlock, sceneId,
+      identityKey: writerCharacterIdentityKey(identity), identity, block: characterBlock, sceneId,
       start: 0, end: identity.length, relation: "intervention", presence: "unknown", source: "explicit",
       confidence: "high", reason: "Encabezado explícito de diálogo; no acredita presencia física por sí solo.",
     }));
   }
   for (const item of deterministic) {
+    const identityKey = reconcileRuleIdentityKey(item.identityKey, item.identity, item.sceneId, explicitByScene);
     evidence.push(importedEvidence({
-      identityKey: item.identityKey, identity: item.identity,
+      identityKey, identity: item.identity,
       block: document.content.find((block) => block.attrs.id === item.blockId)!, sceneId: item.sceneId,
       start: item.start, end: item.end,
       relation: item.evidence === "actionReference" ? "action" : item.evidence,
@@ -368,7 +390,11 @@ export function reconcileAssistedImport(
       const block = canonicalBySource.get(item.blockId);
       if (!block) continue;
       const sceneId = sceneByBlock.get(block.attrs.id) ?? null;
-      const key = identityKey(item, sceneId);
+      const initialKey = identityKey(item, sceneId);
+      const overlapping = evidence.find((candidate) => candidate.blockId === block.attrs.id
+        && candidate.start === item.start && candidate.end === item.end);
+      const key = overlapping?.identityKey
+        ?? reconcileRuleIdentityKey(initialKey, item.label, sceneId, explicitByScene);
       evidence.push(importedEvidence({
         identityKey: key, identity: item.label, block, sceneId, start: item.start, end: item.end,
         relation: item.relation, presence: item.presence, source: "ai",
@@ -415,15 +441,32 @@ function withStableSourceIds(staging: WriterImportStaging): WriterImportStaging 
 
 function canBeCharacterHeading(value: string) {
   const trimmed = value.trim();
-  if (!trimmed || [...trimmed].length > 64 || /[.!?…]/u.test(trimmed)) return false;
-  const words = trimmed.split(/\s+/u);
-  return words.length <= 6 && !/\p{Ll}{3,}\s+\p{Ll}{3,}/u.test(trimmed);
+  const identity = stripWriterCharacterSuffix(trimmed);
+  if (!identity || [...trimmed].length > 64 || /[.!?…]/u.test(identity)) return false;
+  const words = identity.split(/\s+/u);
+  return words.length <= 6 && !/\p{Ll}{3,}\s+\p{Ll}{3,}/u.test(identity);
 }
 
-function clearlyInanimate(normalized: string, context: string) {
-  if (!INANIMATE.has(normalized)) return false;
-  if (normalized === "ESPERANZA" && /\b(?:a|de)\s+Esperanza\b/u.test(context)) return false;
-  return true;
+function supportsNarrativeParticipant(input: {
+  label: string;
+  blockText: string;
+  rangeEnd: number;
+  entityType: AssistedImportEntityEvidence["entityType"];
+  relation: AssistedImportRelation;
+}) {
+  const normalized = normalizeWriterCharacterIdentity(input.label);
+  const after = input.blockText.slice(input.rangeEnd, Math.min(input.blockText.length, input.rangeEnd + 100));
+  const neighborhood = input.blockText.slice(Math.max(0, input.rangeEnd - input.label.length - 8), input.rangeEnd + 100);
+  if (INACTIVE_PROP_CONTEXT.test(neighborhood)) return false;
+  if (PERSONIFIED_CONTEXT.test(neighborhood)) return true;
+  if (input.entityType === "named") {
+    if (LEADING_DETERMINER.test(normalized)) return false;
+    const firstLetter = input.label.match(/\p{L}/u)?.[0] ?? "";
+    return Boolean(firstLetter) && firstLetter === firstLetter.toLocaleUpperCase("es-MX");
+  }
+  if (isWriterParticipantRole(input.label)) return true;
+  if (input.relation === "mention") return false;
+  return AGENTIVE_CONTEXT.test(after);
 }
 
 function sceneMap(document: WriterDocument) {
@@ -437,8 +480,23 @@ function sceneMap(document: WriterDocument) {
 }
 
 function identityKey(item: AssistedImportEntityEvidence, sceneId: string | null) {
-  const normalized = normalizeWriterCharacterIdentity(item.label.replace(/^(?:UN|UNA|EL|LA|LOS|LAS|DOS|TRES|VARIOS|VARIAS)\s+/iu, ""));
-  return item.entityType === "named" ? normalized : `${item.entityType.toLocaleUpperCase("en-US")}:${sceneId ?? "PREAMBLE"}:${normalized}`;
+  const complete = normalizeWriterCharacterIdentity(item.label);
+  const normalized = writerParticipantRoleKey(item.label);
+  const scoped = /^(?:OTRO|OTRA|OTROS|OTRAS|DOS|TRES|VARIOS|VARIAS)\s+/u.test(complete) ? complete : normalized;
+  return item.entityType === "named" ? writerCharacterIdentityKey(item.label) : `${item.entityType.toLocaleUpperCase("en-US")}:${sceneId ?? "PREAMBLE"}:${scoped}`;
+}
+
+function reconcileRuleIdentityKey(
+  key: string,
+  identity: string,
+  sceneId: string | null,
+  explicitByScene: ReadonlyMap<string, ReadonlySet<string>>,
+) {
+  const normalized = writerParticipantRoleKey(identity);
+  const sceneIdentities = explicitByScene.get(sceneId ?? "PREAMBLE");
+  if (!/^(?:OTRO|OTRA|OTROS|OTRAS|DOS|TRES|VARIOS|VARIAS)\s+/u.test(normalizeWriterCharacterIdentity(identity))
+    && sceneIdentities?.has(normalized)) return normalized;
+  return key;
 }
 
 function importedEvidence(input: {
@@ -467,13 +525,15 @@ function dedupeEvidence(items: WriterImportedEvidence[]) {
   for (const item of items) {
     const key = [item.identityKey, item.blockId, item.start, item.end, item.relation].join("|");
     const current = unique.get(key);
-    if (!current || sourcePriority(item.source) > sourcePriority(current.source)) unique.set(key, item);
+    if (!current
+      || (current.presence === "unknown" && item.presence === "absent")
+      || sourcePriority(item.source) > sourcePriority(current.source)) unique.set(key, item);
   }
   return [...unique.values()];
 }
 
 function sourcePriority(source: AssistedImportSource) {
-  return source === "user" ? 5 : source === "explicit" ? 4 : source === "ai" ? 3 : 2;
+  return source === "user" ? 5 : source === "explicit" ? 4 : source === "rule" ? 3 : 2;
 }
 
 function integer(value: unknown): value is number {

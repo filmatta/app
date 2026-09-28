@@ -4,7 +4,7 @@ import {
   type WriterDocument,
 } from "./document.ts";
 
-export const WRITER_CHARACTER_RULE_VERSION = "es-v0.1";
+export const WRITER_CHARACTER_RULE_VERSION = "es-v0.2";
 
 export type WriterCharacterEvidence =
   | "intervention"
@@ -86,9 +86,28 @@ const NAME_TOKEN = String.raw`(?:[A-ZÁÉÍÓÚÜÑ][\p{L}\p{M}'’-]*|[A-ZÁÉ�
 const NAME_PHRASE = String.raw`${NAME_TOKEN}(?:\s+${NAME_TOKEN}){0,2}`;
 const VERB_PATTERN = ACTION_VERBS.join("|");
 const PARTICIPANT_PATTERN = PARTICIPANT_NOUNS.map((noun) => `${escapeRegExp(noun)}s?`).join("|");
+const DETERMINER = /^(?:UN|UNA|EL|LA|LOS|LAS|DOS|TRES|VARIOS|VARIAS|OTRO|OTRA|OTROS|OTRAS)\s+/u;
+const CHARACTER_SUFFIX = /\s*\((?:V\.?\s*O\.?|O\.?\s*S\.?|OFF|CONT(?:INUED|INUADO|['’]?D|\.)?)\)\s*$/iu;
 
 export function normalizeWriterCharacterIdentity(value: string) {
   return value.trim().replace(/\s+/gu, " ").normalize("NFKC").toLocaleUpperCase("es-MX");
+}
+
+export function stripWriterCharacterSuffix(value: string) {
+  return value.replace(CHARACTER_SUFFIX, "").trim();
+}
+
+export function writerCharacterIdentityKey(value: string) {
+  return stripWriterCharacterSuffix(normalizeWriterCharacterIdentity(value));
+}
+
+export function writerParticipantRoleKey(value: string) {
+  return normalizeWriterCharacterIdentity(value).replace(DETERMINER, "");
+}
+
+export function isWriterParticipantRole(value: string) {
+  const normalized = writerParticipantRoleKey(value).toLocaleLowerCase("es-MX");
+  return new RegExp(`^(?:${PARTICIPANT_PATTERN})$`, "iu").test(normalized);
 }
 
 export function deriveWriterKnownCharacterIdentities(
@@ -97,14 +116,15 @@ export function deriveWriterKnownCharacterIdentities(
 ) {
   const identities = new Map<string, WriterKnownCharacterIdentity>();
   for (const character of deriveCharacters(document)) {
-    identities.set(character.key, {
-      key: character.key,
-      name: character.name,
+    const key = writerCharacterIdentityKey(character.name);
+    identities.set(key, {
+      key,
+      name: stripWriterCharacterSuffix(character.name),
       source: "characterBlock",
     });
   }
   for (const identity of local) {
-    const key = normalizeWriterCharacterIdentity(identity.name);
+    const key = writerCharacterIdentityKey(identity.name);
     if (!key || identities.has(key)) continue;
     identities.set(key, { ...identity, key });
   }
@@ -174,6 +194,7 @@ function detectActionBlock(
       const prefix = match[1] ?? "";
       const identity = match[2];
       const start = (match.index ?? 0) + prefix.length;
+      if (!knownReferencePreservesIdentitySignal(text, start, identity)) continue;
       const evidence = evidenceForKnownReference(text, start, start + identity.length);
       addObservation(observations, occupied, {
         identityKey: known.key,
@@ -201,7 +222,7 @@ function detectActionBlock(
     const identity = match.groups?.identity;
     if (!identity) continue;
     const start = (match.index ?? 0) + (match[1]?.length ?? 0);
-    const anonymousKey = `ROLE:${sceneId ?? "PREAMBLE"}:${normalizeWriterCharacterIdentity(identity)}`;
+    const anonymousKey = `ROLE:${sceneId ?? "PREAMBLE"}:${writerParticipantRoleKey(identity)}`;
     addObservation(observations, occupied, {
       identityKey: anonymousKey,
       identity,
@@ -225,7 +246,7 @@ function detectActionBlock(
   for (const match of text.matchAll(namedSubject)) {
     const identity = match.groups?.identity;
     if (!identity || !isPlausibleName(identity) || !isActionVerb(match.groups?.verb ?? "")) continue;
-    const key = normalizeWriterCharacterIdentity(identity);
+    const key = writerCharacterIdentityKey(identity);
     if (knownKeys.has(key)) continue;
     const start = (match.index ?? 0) + (match[1]?.length ?? 0);
     const negative = Boolean(match.groups?.negative);
@@ -252,7 +273,7 @@ function detectActionBlock(
   for (const match of text.matchAll(verbFirst)) {
     const identity = match.groups?.identity;
     if (!identity || !isPlausibleName(identity) || !isEntryVerb(match.groups?.verb ?? "")) continue;
-    const key = normalizeWriterCharacterIdentity(identity);
+    const key = writerCharacterIdentityKey(identity);
     if (knownKeys.has(key)) continue;
     const full = match[0];
     const relative = full.toLocaleUpperCase("es-MX").lastIndexOf(identity.toLocaleUpperCase("es-MX"));
@@ -279,7 +300,7 @@ function detectActionBlock(
   for (const match of text.matchAll(namedMention)) {
     const identity = match.groups?.identity;
     if (!identity || !isPlausibleName(identity)) continue;
-    const key = normalizeWriterCharacterIdentity(identity);
+    const key = writerCharacterIdentityKey(identity);
     if (knownKeys.has(key)) continue;
     const relative = match[0].toLocaleUpperCase("es-MX").lastIndexOf(identity.toLocaleUpperCase("es-MX"));
     const start = (match.index ?? 0) + Math.max(0, relative);
@@ -308,7 +329,7 @@ function detectActionBlock(
     const relative = match[0].toLocaleUpperCase("es-MX").lastIndexOf(identity.toLocaleUpperCase("es-MX"));
     const start = (match.index ?? 0) + Math.max(0, relative);
     addObservation(observations, occupied, {
-      identityKey: `ROLE:${sceneId ?? "PREAMBLE"}:${normalizeWriterCharacterIdentity(identity)}`,
+      identityKey: `ROLE:${sceneId ?? "PREAMBLE"}:${writerParticipantRoleKey(identity)}`,
       identity,
       start,
       end: start + identity.length,
@@ -363,6 +384,13 @@ function evidenceForKnownReference(text: string, start: number, end: number): Wr
   if (/(?:recuerda\s+a|habla\s+de|menciona\s+a|piensa\s+en)\s*$/u.test(before)) return "mention";
   if (/^\s+(?:no\s+está|no\s+se\s+encuentra|está\s+ausente)\b/u.test(after)) return "mention";
   return "actionReference";
+}
+
+function knownReferencePreservesIdentitySignal(text: string, start: number, surface: string) {
+  const firstLetter = surface.match(/\p{L}/u)?.[0] ?? "";
+  if (!firstLetter || firstLetter === firstLetter.toLocaleUpperCase("es-MX")) return true;
+  const before = text.slice(Math.max(0, start - 16), start);
+  return !/(?:^|\s)(?:un|una|el|la|los|las|otro|otra|otros|otras)\s+$/iu.test(before);
 }
 
 function isPlausibleName(value: string) {

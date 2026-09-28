@@ -68,6 +68,7 @@ const TRANSITIONS = new Set([
   "FADE TO BLACK:",
   "FADE TO BLACK.",
 ]);
+const EXPLICIT_AUTHOR_NOTE = /^\[\[\s*(?:NOTA\s+(?:DEL|DE)\s+AUTOR|AUTHOR\s+NOTE)\s*:\s*\S[\s\S]*\]\]$/iu;
 
 const FDX_KIND_MAP: Readonly<Record<string, ScreenplayKind>> = {
   "scene heading": "sceneHeading",
@@ -294,6 +295,13 @@ function classifyPlainTextLine(input: {
       proposedKind: "transition",
       confidence: "high",
       signals: ["Coincidencia exacta con una transición reconocida por Writer."],
+    };
+  }
+  if (!dialogueContext && previousBlank && EXPLICIT_AUTHOR_NOTE.test(trimmed)) {
+    return {
+      proposedKind: "authorNote",
+      confidence: "high",
+      signals: ["Marcador explícito y aislado de nota del autor."],
     };
   }
   if (dialogueContext && /^\([^\n]+\)$/u.test(trimmed)) {
