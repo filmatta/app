@@ -12,6 +12,7 @@ import {
   WRITER_PDF_FONT_SIZE,
   WRITER_PDF_LINE_HEIGHT,
   layoutWriterPdf,
+  splitWriterPdfTextByFont,
   type WriterPdfOptions,
   type WriterPdfRun,
 } from "./pdf.ts";
@@ -75,14 +76,17 @@ const styles = StyleSheet.create({
   },
 });
 
+const WRITER_PDF_PRIMARY_FONT = "FilmattaCousine";
+const WRITER_PDF_FALLBACK_FONT = "FilmattaNotoSansMath";
 const registeredFontSources = new Set<string>();
 
 export function createWriterPdfDocument(
   snapshot: WriterSnapshot,
   options: WriterPdfOptions,
   fontBaseUrl = "/fonts/cousine",
+  fallbackFontBaseUrl = "/fonts/noto-sans-math",
 ) {
-  registerWriterPdfFonts(fontBaseUrl);
+  registerWriterPdfFonts(fontBaseUrl, fallbackFontBaseUrl);
   const layout = layoutWriterPdf(snapshot, options);
   const pages: React.ReactNode[] = [];
   if (options.includeCover) {
@@ -100,7 +104,6 @@ export function createWriterPdfDocument(
           style: [
             styles.line,
             ...(item.kind === "sceneHeading" ? [styles.sceneHeading] : []),
-            runStyle(item.runs[0], item.kind === "sceneHeading"),
             {
               marginTop,
               marginLeft: item.x - layout.paper.marginLeft,
@@ -110,8 +113,7 @@ export function createWriterPdfDocument(
           ],
           wrap: false,
         },
-        item.runs[0].text,
-        ...item.runs.slice(1).map((run, runIndex) => React.createElement(
+        ...item.runs.map((run, runIndex) => React.createElement(
           Text,
           { key: runIndex, style: runStyle(run, item.kind === "sceneHeading") },
           run.text,
@@ -159,29 +161,42 @@ function CoverPage({ options }: { options: WriterPdfOptions }) {
     React.createElement(
       View,
       { style: styles.coverTitleArea },
-      React.createElement(Text, { style: styles.coverTitle }, options.title.trim()),
-      byline ? React.createElement(Text, { style: styles.coverByline }, `Escrito por\n${byline}`) : null,
-      version ? React.createElement(Text, { style: styles.coverVersion }, version) : null,
+      React.createElement(Text, { style: styles.coverTitle }, ...fontRuns(options.title.trim(), "cover-title")),
+      byline ? React.createElement(Text, { style: styles.coverByline }, ...fontRuns(`Escrito por\n${byline}`, "cover-byline")) : null,
+      version ? React.createElement(Text, { style: styles.coverVersion }, ...fontRuns(version, "cover-version")) : null,
     ),
-    contact ? React.createElement(Text, { style: styles.coverContact }, contact) : null,
+    contact ? React.createElement(Text, { style: styles.coverContact }, ...fontRuns(contact, "cover-contact")) : null,
   );
 }
 
 function runStyle(run: WriterPdfRun, forceBold = false) {
   const bold = forceBold || run.bold;
   return {
-    fontFamily: "FilmattaCousine",
+    fontFamily: run.font === "fallback" ? WRITER_PDF_FALLBACK_FONT : WRITER_PDF_PRIMARY_FONT,
     fontWeight: bold ? 700 as const : 400 as const,
     fontStyle: run.italic ? "italic" as const : "normal" as const,
     ...(run.underline ? { textDecoration: "underline" as const } : {}),
   };
 }
 
-function registerWriterPdfFonts(fontBaseUrl: string) {
+function fontRuns(value: string, prefix: string) {
+  return splitWriterPdfTextByFont(value).map((run, index) => React.createElement(
+    Text,
+    {
+      key: `${prefix}-${index}`,
+      style: { fontFamily: run.font === "fallback" ? WRITER_PDF_FALLBACK_FONT : WRITER_PDF_PRIMARY_FONT },
+    },
+    run.text,
+  ));
+}
+
+function registerWriterPdfFonts(fontBaseUrl: string, fallbackFontBaseUrl: string) {
   const base = fontBaseUrl.replace(/[/\\]+$/u, "").replaceAll("\\", "/");
-  if (registeredFontSources.has(base)) return;
+  const fallbackBase = fallbackFontBaseUrl.replace(/[/\\]+$/u, "").replaceAll("\\", "/");
+  const registrationKey = `${base}\u0000${fallbackBase}`;
+  if (registeredFontSources.has(registrationKey)) return;
   Font.register({
-    family: "FilmattaCousine",
+    family: WRITER_PDF_PRIMARY_FONT,
     fonts: [
       { src: `${base}/Cousine-Regular.ttf`, fontWeight: 400, fontStyle: "normal" },
       { src: `${base}/Cousine-Italic.ttf`, fontWeight: 400, fontStyle: "italic" },
@@ -189,6 +204,15 @@ function registerWriterPdfFonts(fontBaseUrl: string) {
       { src: `${base}/Cousine-BoldItalic.ttf`, fontWeight: 700, fontStyle: "italic" },
     ],
   });
+  Font.register({
+    family: WRITER_PDF_FALLBACK_FONT,
+    fonts: [
+      { src: `${fallbackBase}/NotoSansMath-Regular.ttf`, fontWeight: 400, fontStyle: "normal" },
+      { src: `${fallbackBase}/NotoSansMath-Regular.ttf`, fontWeight: 400, fontStyle: "italic" },
+      { src: `${fallbackBase}/NotoSansMath-Regular.ttf`, fontWeight: 700, fontStyle: "normal" },
+      { src: `${fallbackBase}/NotoSansMath-Regular.ttf`, fontWeight: 700, fontStyle: "italic" },
+    ],
+  });
   Font.registerHyphenationCallback((word) => [word]);
-  registeredFontSources.add(base);
+  registeredFontSources.add(registrationKey);
 }

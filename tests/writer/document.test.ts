@@ -66,3 +66,19 @@ test("JSON round-trip keeps ids and FDX escapes text while excluding author note
   assert.match(fdx, /CAFÉ &amp; BAR/);
   assert.doesNotMatch(fdx, /Nota privada/);
 });
+
+test("JSON and FDX preserve the PDF glyph battery without exporting observation UI", () => {
+  const glyphs = "⋮ → … • — – “ ” ‘ ’ á é í ó ú ü ñ Ñ ¿ ¡ © ® °";
+  const action = createBlock("action", glyphs);
+  const snapshot = {
+    title: "Cobertura ⋮",
+    schemaVersion: 1,
+    document: { type: "doc" as const, content: [action] },
+  };
+  const backup = createWriterBackup(snapshot);
+  const fdx = createBasicFdx(snapshot);
+  assert.match(backup, /⋮ → … • — –/u);
+  assert.match(fdx, /⋮ → … • — –/u);
+  assert.doesNotMatch(backup, /Posible personaje|Observaciones/u);
+  assert.doesNotMatch(fdx, /Posible personaje|Observaciones/u);
+});

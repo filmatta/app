@@ -23,9 +23,11 @@ export type WriterPdfOptions = {
 };
 
 export type WriterPdfGeneratedMarker = "dialogue-more" | "dialogue-continuation";
+export type WriterPdfFont = "primary" | "fallback";
 
 export type WriterPdfRun = {
   text: string;
+  font: WriterPdfFont;
   bold: boolean;
   italic: boolean;
   underline: boolean;
@@ -112,6 +114,7 @@ const WINDOWS_1252_EXTRA = new Set([
 // Verified against every bundled Cousine face. U+2192 is outside Windows-1252,
 // but it is present in the font and must not be rejected before rendering.
 const COUSINE_EXTRA_GLYPHS = new Set([0x2192]);
+const WRITER_PDF_FALLBACK_GLYPHS = new Set([0x22ee]);
 
 const MARK_FLAGS: Record<WriterMark["type"], keyof Omit<StyledCharacter, "value">> = {
   bold: "bold",
@@ -166,12 +169,20 @@ export function validateWriterPdfInput(snapshot: WriterSnapshot, options: Writer
       : "El guion no contiene texto exportable para generar un PDF.");
   }
 
-  const textToCheck = [snapshot.title];
-  for (const block of exportableBlocks) textToCheck.push(blockText(block));
-  if (options.includeCover) {
-    textToCheck.push(options.authors, options.version, options.contact);
+  const textToCheck: Array<{ text: string; context: string }> = [
+    { text: snapshot.title, context: "título del documento" },
+  ];
+  for (const block of exportableBlocks) {
+    textToCheck.push({ text: blockText(block), context: `bloque ${block.attrs.id}` });
   }
-  assertScreenplayFontCoverage(textToCheck.join("\n"));
+  if (options.includeCover) {
+    textToCheck.push(
+      { text: options.authors, context: "autoría de portada" },
+      { text: options.version, context: "versión de portada" },
+      { text: options.contact, context: "contacto de portada" },
+    );
+  }
+  assertScreenplayFontCoverageEntries(textToCheck);
 }
 
 export function layoutWriterPdf(
@@ -227,19 +238,53 @@ export function writerPdfPageSize(size: WriterPdfPaperSize) {
 }
 
 export function assertScreenplayFontCoverage(value: string) {
+  assertScreenplayFontCoverageEntries([{ text: value, context: "texto exportable" }]);
+}
+
+export function writerPdfFontForCharacter(character: string): WriterPdfFont | null {
+  const codePoint = character.codePointAt(0) ?? 0;
+  const primary = character === "\n" || character === "\r" || character === "\t"
+    || (codePoint >= 0x20 && codePoint <= 0x7e)
+    || (codePoint >= 0xa0 && codePoint <= 0xff)
+    || (codePoint >= 0x0300 && codePoint <= 0x036f)
+    || WINDOWS_1252_EXTRA.has(codePoint)
+    || COUSINE_EXTRA_GLYPHS.has(codePoint);
+  if (primary) return "primary";
+  return WRITER_PDF_FALLBACK_GLYPHS.has(codePoint) ? "fallback" : null;
+}
+
+export function splitWriterPdfTextByFont(value: string) {
+  const runs: Array<{ text: string; font: WriterPdfFont }> = [];
   for (const character of value) {
-    const codePoint = character.codePointAt(0) ?? 0;
-    const supported = character === "\n" || character === "\r" || character === "\t"
-      || (codePoint >= 0x20 && codePoint <= 0x7e)
-      || (codePoint >= 0xa0 && codePoint <= 0xff)
-      || WINDOWS_1252_EXTRA.has(codePoint)
-      || COUSINE_EXTRA_GLYPHS.has(codePoint);
-    if (!supported) {
-      throw new Error(
-        `El carácter “${character}” (U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}) no puede representarse de forma segura en el PDF con las fuentes disponibles. El guion guardado no fue modificado.`,
-      );
+    const font = writerPdfFontForCharacter(character);
+    if (!font) continue;
+    const previous = runs.at(-1);
+    if (previous?.font === font) previous.text += character;
+    else runs.push({ text: character, font });
+  }
+  return runs;
+}
+
+function assertScreenplayFontCoverageEntries(entries: Array<{ text: string; context: string }>) {
+  const issues = new Map<number, { character: string; contexts: Set<string> }>();
+  for (const entry of entries) {
+    for (const character of entry.text) {
+      if (writerPdfFontForCharacter(character)) continue;
+      const codePoint = character.codePointAt(0) ?? 0;
+      const issue = issues.get(codePoint) ?? { character, contexts: new Set<string>() };
+      issue.contexts.add(entry.context);
+      issues.set(codePoint, issue);
     }
   }
+  if (!issues.size) return;
+  const details = [...issues.entries()].map(([codePoint, issue]) =>
+    `“${issue.character}” (U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}) en ${[...issue.contexts].slice(0, 3).join(", ")}`,
+  );
+  const subject = issues.size === 1 ? "El carácter" : "Los caracteres";
+  const verb = issues.size === 1 ? "no puede representarse" : "no pueden representarse";
+  throw new Error(
+    `${subject} ${details.join("; ")} ${verb} de forma segura en el PDF con las fuentes disponibles. El guion guardado no fue modificado.`,
+  );
 }
 
 class ScreenplayPaginator {
@@ -515,8 +560,10 @@ function charactersToRuns(characters: StyledCharacter[]): WriterPdfRun[] {
   if (!characters.length) return [emptyRun()];
   const runs: WriterPdfRun[] = [];
   for (const character of characters) {
+    const font = writerPdfFontForCharacter(character.value) ?? "primary";
     const previous = runs.at(-1);
     if (previous
+      && previous.font === font
       && previous.bold === character.bold
       && previous.italic === character.italic
       && previous.underline === character.underline) {
@@ -524,6 +571,7 @@ function charactersToRuns(characters: StyledCharacter[]): WriterPdfRun[] {
     } else {
       runs.push({
         text: character.value,
+        font,
         bold: character.bold,
         italic: character.italic,
         underline: character.underline,
@@ -534,7 +582,7 @@ function charactersToRuns(characters: StyledCharacter[]): WriterPdfRun[] {
 }
 
 function emptyRun(): WriterPdfRun {
-  return { text: " ", bold: false, italic: false, underline: false };
+  return { text: " ", font: "primary", bold: false, italic: false, underline: false };
 }
 
 function placementForKind(

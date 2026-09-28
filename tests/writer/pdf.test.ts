@@ -6,6 +6,7 @@ import {
   captureWriterPdfSnapshot,
   defaultWriterPdfOptions,
   layoutWriterPdf,
+  splitWriterPdfTextByFont,
   validateWriterPdfInput,
 } from "../../lib/writer/pdf.ts";
 
@@ -37,10 +38,15 @@ test("rejects empty and notes-only PDFs while leaving notes available to JSON", 
   assert.throws(() => validateWriterPdfInput(notesOnly, defaultWriterPdfOptions(notesOnly.title)), /sólo contiene notas/i);
 });
 
-test("accepts common Spanish and Western screenplay glyphs covered by Cousine", () => {
-  const text = "Árbol, niña y NIÑA: “acción”, autor’s, raya —, guión –, flecha →, pausa… © ® 23°. ¿Listos? ¡Sí!";
+test("accepts the agreed screenplay glyph battery and assigns only U+22EE to fallback", () => {
+  const text = "⋮ → … • — – “ ” ‘ ’ á é í ó ú ü ñ Ñ ¿ ¡ © ® °";
   const source = snapshotWith(createBlock("action", text));
   assert.doesNotThrow(() => validateWriterPdfInput(source, defaultWriterPdfOptions(source.title)));
+  assert.deepEqual(splitWriterPdfTextByFont("Antes ⋮ después"), [
+    { text: "Antes ", font: "primary" },
+    { text: "⋮", font: "fallback" },
+    { text: " después", font: "primary" },
+  ]);
   assert.equal(source.document.content[0].content?.[0]?.type, "text");
   if (source.document.content[0].content?.[0]?.type === "text") {
     assert.equal(source.document.content[0].content[0].text, text);
@@ -48,9 +54,22 @@ test("accepts common Spanish and Western screenplay glyphs covered by Cousine", 
 });
 
 test("rejects characters that the screenplay font still cannot represent", () => {
-  const source = snapshotWith(createBlock("action", "Emoji no permitido 🎬"));
+  const source = snapshotWith(createBlock("action", "No permitidos 🎬 😀"));
   assert.throws(() => validateWriterPdfInput(source, defaultWriterPdfOptions(source.title)), /U\+1F3AC/);
-  assert.throws(() => validateWriterPdfInput(source, defaultWriterPdfOptions(source.title)), /no puede representarse de forma segura/i);
+  assert.throws(() => validateWriterPdfInput(source, defaultWriterPdfOptions(source.title)), /U\+1F600/);
+  assert.throws(() => validateWriterPdfInput(source, defaultWriterPdfOptions(source.title)), /bloque [0-9a-f-]+/i);
+  assert.throws(() => validateWriterPdfInput(source, defaultWriterPdfOptions(source.title)), /no pueden representarse de forma segura/i);
+});
+
+test("keeps combining accents with the primary run and fallback inside bold italic source", () => {
+  const block = createBlock("action");
+  block.content = [{ type: "text", text: "a\u0301 ⋮", marks: [{ type: "bold" }, { type: "italic" }] }];
+  const source = snapshotWith(block);
+  const layout = layoutWriterPdf(source, { ...defaultWriterPdfOptions(source.title), includeCover: false });
+  assert.deepEqual(layout.pages[0].items[0].runs, [
+    { text: "a\u0301 ", font: "primary", bold: true, italic: true, underline: false },
+    { text: "⋮", font: "fallback", bold: true, italic: true, underline: false },
+  ]);
 });
 
 test("keeps source order, excludes notes and marks only generated dialogue continuations", () => {

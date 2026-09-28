@@ -7,6 +7,7 @@ type WriterPdfWorkerRequest = {
   snapshot: WriterSnapshot;
   options: WriterPdfOptions;
   fontBaseUrl: string;
+  fallbackFontBaseUrl: string;
 };
 
 type WriterPdfWorkerResponse =
@@ -20,8 +21,8 @@ const workerScope = self as unknown as {
 
 workerScope.onmessage = async (event) => {
   try {
-    const { snapshot, options, fontBaseUrl } = event.data;
-    const blob = await pdf(createWriterPdfDocument(snapshot, options, fontBaseUrl)).toBlob();
+    const { snapshot, options, fontBaseUrl, fallbackFontBaseUrl } = event.data;
+    const blob = await pdf(createWriterPdfDocument(snapshot, options, fontBaseUrl, fallbackFontBaseUrl)).toBlob();
     const buffer = await blob.arrayBuffer();
     workerScope.postMessage({ ok: true, buffer }, [buffer]);
   } catch (error) {

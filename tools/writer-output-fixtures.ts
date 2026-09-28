@@ -5,23 +5,35 @@ import { renderToFile } from "@react-pdf/renderer";
 import { createWriterBackup, createBasicFdx } from "../lib/writer/export.ts";
 import { createWriterPdfDocument } from "../lib/writer/pdf-renderer.ts";
 import { defaultWriterPdfOptions, layoutWriterPdf } from "../lib/writer/pdf.ts";
-import { longWriterOutputFixture, shortWriterOutputFixture } from "../tests/writer/fixtures.ts";
+import {
+  glyphWriterOutputFixture,
+  longWriterOutputFixture,
+  shortWriterOutputFixture,
+} from "../tests/writer/fixtures.ts";
 
 const target = process.argv[2] ?? "short";
 const outputDir = path.resolve(process.argv[3] ?? "output/pdf");
 fs.mkdirSync(outputDir, { recursive: true });
 
-const fixture = target === "long" ? longWriterOutputFixture() : shortWriterOutputFixture();
+const fixture = target === "long"
+  ? longWriterOutputFixture()
+  : target === "glyphs"
+    ? glyphWriterOutputFixture()
+    : shortWriterOutputFixture();
 const options = {
   ...defaultWriterPdfOptions(fixture.title),
-  includeCover: target === "long",
-  authors: target === "long" ? "Autora sintética de QA" : "",
-  version: target === "long" ? "Versión de revisión · 25 septiembre 2026" : "",
-  contact: target === "long" ? "Contacto escrito expresamente para esta muestra\nqa@example.invalid" : "",
+  includeCover: target === "long" || target === "glyphs",
+  authors: target === "long" ? "Autora sintética de QA" : target === "glyphs" ? "Autora ⋮ sintética" : "",
+  version: target === "long" ? "Versión de revisión · 25 septiembre 2026" : target === "glyphs" ? "Versión ⋮ QA" : "",
+  contact: target === "long" ? "Contacto escrito expresamente para esta muestra\nqa@example.invalid" : target === "glyphs" ? "qa@example.invalid · ⋮" : "",
   paperSize: target === "long" ? "A4" as const : "LETTER" as const,
 };
 const layout = layoutWriterPdf(fixture, options);
-const stem = target === "long" ? "filmatta-writer-muestra-larga" : "filmatta-writer-muestra-corta";
+const stem = target === "long"
+  ? "filmatta-writer-muestra-larga"
+  : target === "glyphs"
+    ? "filmatta-writer-cobertura-glifos"
+    : "filmatta-writer-muestra-corta";
 const pdfPath = path.join(outputDir, `${stem}.pdf`);
 const started = performance.now();
 await renderToFile(
@@ -29,6 +41,7 @@ await renderToFile(
     fixture,
     options,
     path.resolve("public/fonts/cousine").replaceAll("\\", "/"),
+    path.resolve("public/fonts/noto-sans-math").replaceAll("\\", "/"),
   ),
   pdfPath,
 );

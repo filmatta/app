@@ -20,6 +20,7 @@ export async function generateWriterPdfBlob(
   }
   const worker = await createWriterPdfWorker(signal);
   const fontBaseUrl = `${window.location.origin}/fonts/cousine`;
+  const fallbackFontBaseUrl = `${window.location.origin}/fonts/noto-sans-math`;
   return new Promise<Blob>((resolve, reject) => {
     const abort = () => {
       worker.terminate();
@@ -43,7 +44,7 @@ export async function generateWriterPdfBlob(
         reject(new Error(event.data.message));
       }
     };
-    worker.postMessage({ snapshot, options, fontBaseUrl });
+    worker.postMessage({ snapshot, options, fontBaseUrl, fallbackFontBaseUrl });
   });
 }
 

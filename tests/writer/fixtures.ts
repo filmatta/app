@@ -71,3 +71,22 @@ export function longWriterOutputFixture(): WriterSnapshot {
     document: { type: "doc", content },
   };
 }
+
+export function glyphWriterOutputFixture(): WriterSnapshot {
+  const battery = "⋮ → … • — – “ ” ‘ ’ á é í ó ú ü ñ Ñ ¿ ¡ © ® °";
+  return {
+    title: `Cobertura PDF ${battery}`,
+    schemaVersion: 1,
+    document: {
+      type: "doc",
+      content: [
+        block(900, "sceneHeading", [text("INT. LABORATORIO — DÍA")]),
+        block(901, "action", [text(`Normal: ${battery}`)]),
+        block(902, "action", [{ type: "text", text: `Negrita: ${battery}`, marks: [{ type: "bold" }] }]),
+        block(903, "action", [{ type: "text", text: `Cursiva: ${battery}`, marks: [{ type: "italic" }] }]),
+        block(904, "action", [{ type: "text", text: `Negrita y cursiva: ${battery}`, marks: [{ type: "bold" }, { type: "italic" }] }]),
+        block(905, "authorNote", [text("Observación de UI: no exportar ⋮")]),
+      ],
+    },
+  };
+}
