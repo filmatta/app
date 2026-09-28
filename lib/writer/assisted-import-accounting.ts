@@ -1,8 +1,19 @@
 import { getEncoding } from "js-tiktoken";
 
-const MODEL_INPUT_USD_PER_MILLION = 0.20;
-const MODEL_CACHED_INPUT_USD_PER_MILLION = 0.02;
-const MODEL_OUTPUT_USD_PER_MILLION = 1.20;
+export const WRITER_ASSISTED_IMPORT_MODELS = {
+  "gpt-5.6-luna": {
+    inputUsdPerMillion: 0.20,
+    cachedInputUsdPerMillion: 0.02,
+    outputUsdPerMillion: 1.20,
+  },
+  "gpt-5.6-terra": {
+    inputUsdPerMillion: 2.00,
+    cachedInputUsdPerMillion: 0.20,
+    outputUsdPerMillion: 12.00,
+  },
+} as const;
+
+export type AssistedImportModel = keyof typeof WRITER_ASSISTED_IMPORT_MODELS;
 const encoder = getEncoding("o200k_base");
 
 export type AssistedImportProviderUsage = {
@@ -16,20 +27,40 @@ export function countAssistedImportTokens(value: string) {
   return encoder.encode(value).length;
 }
 
-export function estimateAssistedImportMaximumCostMicrousd(inputTokens: number, maxOutputTokens: number) {
-  return Math.ceil(inputTokens * MODEL_INPUT_USD_PER_MILLION + maxOutputTokens * MODEL_OUTPUT_USD_PER_MILLION);
+export function estimateAssistedImportMaximumCostMicrousd(
+  model: AssistedImportModel,
+  inputTokens: number,
+  maxOutputTokens: number,
+) {
+  const pricing = WRITER_ASSISTED_IMPORT_MODELS[model];
+  return Math.ceil(inputTokens * pricing.inputUsdPerMillion + maxOutputTokens * pricing.outputUsdPerMillion);
 }
 
-export function calculateAssistedImportCostMicrousd(usage: AssistedImportProviderUsage) {
+export function calculateAssistedImportCostMicrousd(model: AssistedImportModel, usage: AssistedImportProviderUsage) {
+  const pricing = WRITER_ASSISTED_IMPORT_MODELS[model];
   const cached = Math.min(usage.inputTokens, usage.cachedInputTokens);
   const uncached = Math.max(0, usage.inputTokens - cached);
   return Math.ceil(
-    uncached * MODEL_INPUT_USD_PER_MILLION
-    + cached * MODEL_CACHED_INPUT_USD_PER_MILLION
-    + usage.outputTokens * MODEL_OUTPUT_USD_PER_MILLION,
+    uncached * pricing.inputUsdPerMillion
+    + cached * pricing.cachedInputUsdPerMillion
+    + usage.outputTokens * pricing.outputUsdPerMillion,
   );
 }
 
-export function assistedImportReasoning(environment: { [key: string]: string | undefined }) {
-  return environment.WRITER_AI_IMPORT_QA_REASONING === "low" ? "low" as const : "none" as const;
+export function assistedImportModelForUser(
+  environment: { [key: string]: string | undefined },
+  userId: string,
+): AssistedImportModel {
+  const assignments = environment.WRITER_AI_IMPORT_QA_MODEL_ASSIGNMENTS?.split(",") ?? [];
+  for (const assignment of assignments) {
+    const [assignedUserId, assignedModel, extra] = assignment.trim().split("=");
+    if (!extra && assignedUserId === userId && assignedModel in WRITER_ASSISTED_IMPORT_MODELS) {
+      return assignedModel as AssistedImportModel;
+    }
+  }
+  return "gpt-5.6-luna";
+}
+
+export function assistedImportReasoning() {
+  return "none" as const;
 }

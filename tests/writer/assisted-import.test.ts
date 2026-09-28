@@ -7,7 +7,7 @@ import {
   prepareAssistedImportStaging,
   reconcileAssistedImport,
   validateAssistedImportModelResult,
-  type AssistedImportModelResult,
+  type AssistedImportBatch,
 } from "../../lib/writer/assisted-import.ts";
 import { blockText, createBlock } from "../../lib/writer/document.ts";
 import { createBasicFdx, createWriterBackup } from "../../lib/writer/export.ts";
@@ -46,7 +46,7 @@ MISTERIO`;
 test("automatic reconciliation preserves every source block and separates identity from block type", () => {
   const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: SOURCE, title: "Bosque" });
   const byText = new Map(staging.blocks.map((block) => [block.originalText, block]));
-  const result: AssistedImportModelResult = {
+  const result: LegacyModelResult = {
     classifications: [
       classification(byText.get("CAROLINA")!.id, "character"),
       classification(byText.get("MISTERIO")!.id, "action", true),
@@ -63,8 +63,8 @@ test("automatic reconciliation preserves every source block and separates identi
     ],
     observations: [],
   };
-  const batch = { index: 0, sceneLabel: "INT. BOSQUE - DÍA", blocks: staging.blocks, classificationIds: result.classifications.map((item) => item.blockId) };
-  const validated = validateAssistedImportModelResult(result, batch);
+  const batch = batchFor(staging, result.classifications.map((item) => item.blockId));
+  const validated = validateAssistedImportModelResult(anchoredResult(result, batch), batch);
   const reconciled = reconcileAssistedImport(staging, [validated]);
   assertAssistedImportPreservation(staging, reconciled.document);
   assert.deepEqual(reconciled.document.content.map(blockText), staging.blocks.map((block) => block.originalText));
@@ -116,7 +116,7 @@ Un robot observa a Carolina.
 Un robot de utilería permanece apagado en una repisa.`;
   const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: source, title: "Contrastes" });
   const byText = new Map(staging.blocks.map((block) => [block.originalText, block]));
-  const result: AssistedImportModelResult = {
+  const result: LegacyModelResult = {
     classifications: [],
     evidence: [
       sourceEvidence(byText, "La esperanza desaparece.", "esperanza", "named", "action", "present"),
@@ -128,9 +128,9 @@ Un robot de utilería permanece apagado en una repisa.`;
     ],
     observations: [],
   };
-  const batch = { index: 0, sceneLabel: "INT. SALA - DÍA", blocks: staging.blocks, classificationIds: [] };
-  const validated = validateAssistedImportModelResult(result, batch);
-  assert.deepEqual(validated.evidence.map((item) => item.label), ["Esperanza", "La puerta", "Un robot"]);
+  const batch = batchFor(staging, []);
+  const validated = validateAssistedImportModelResult(anchoredResult(result, batch), batch);
+  assert.deepEqual(validated.evidence.map((item) => item.label).sort(), ["Esperanza", "La puerta", "Un robot"].sort());
 });
 
 test("validation drops partial-word evidence and observations outside classification scope", () => {
@@ -138,11 +138,14 @@ test("validation drops partial-word evidence and observations outside classifica
     format: "pasted", sourceText: "Esperanza cierra la ventana.", title: "Rangos",
   });
   const block = staging.blocks[0];
+  const batch = batchFor(staging, [block.id]);
   const validated = validateAssistedImportModelResult({
     classifications: [classification(block.id, "action")],
-    evidence: [evidence(block.id, 0, 8, "Esperanz", "named", "action", "present")],
+    candidateEvidence: [],
+    discoveries: [{ blockId: block.id, sentenceId: null, mention: "Esperanz", quote: block.originalText,
+      entityType: "named", relation: "action", presence: "present", uncertain: false, reason: "Truncada." }],
     observations: [],
-  }, { index: 0, sceneLabel: null, blocks: staging.blocks, classificationIds: [block.id] });
+  }, batch);
   assert.deepEqual(validated.evidence, []);
   assert.equal(validated.observations.length, 0);
 
@@ -153,10 +156,11 @@ test("validation drops partial-word evidence and observations outside classifica
     format: "pasted", sourceText: "Acción inequívoca de cinco palabras completas.", title: "Alcance",
   });
   const protectedBlock = protectedStaging.blocks[0];
+  const protectedBatch = batchFor(protectedStaging, []);
   const protectedResult = validateAssistedImportModelResult({
-    classifications: [], evidence: [],
+    classifications: [], candidateEvidence: [], discoveries: [],
     observations: [{ blockId: protectedBlock.id, message: "No debe llegar al panel." }],
-  }, { index: 0, sceneLabel: null, blocks: protectedStaging.blocks, classificationIds: [] });
+  }, protectedBatch);
   assert.deepEqual(protectedResult.observations, []);
 });
 
@@ -167,7 +171,7 @@ Otro robot lo sigue.`;
   const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: source, title: "Robots" });
   const first = staging.blocks.find((block) => block.originalText.startsWith("Un robot"))!;
   const second = staging.blocks.find((block) => block.originalText.startsWith("Otro robot"))!;
-  const result: AssistedImportModelResult = {
+  const result: LegacyModelResult = {
     classifications: [],
     evidence: [
       spanEvidence(first, "Un robot", "role", "action", "present"),
@@ -176,9 +180,8 @@ Otro robot lo sigue.`;
     ],
     observations: [],
   };
-  const validated = validateAssistedImportModelResult(result, {
-    index: 0, sceneLabel: "INT. LABORATORIO - DÍA", blocks: staging.blocks, classificationIds: [],
-  });
+  const batch = batchFor(staging, []);
+  const validated = validateAssistedImportModelResult(anchoredResult(result, batch), batch);
   const reconciled = reconcileAssistedImport(staging, [validated]);
   const robotIdentities = reconciled.identities.filter((identity) => identity.key.includes("ROBOT"));
   assert.equal(robotIdentities.length, 2);
@@ -213,9 +216,10 @@ Carolina recuerda a Mateo.`,
     title: "Voz en off",
   });
   const heading = staging.blocks.find((block) => block.originalText === "CAROLINA (V.O.)")!;
+  const batch = batchFor(staging, [heading.id]);
   const result = validateAssistedImportModelResult({
-    classifications: [classification(heading.id, "character")], evidence: [], observations: [],
-  }, { index: 0, sceneLabel: "INT. CUARTO - NOCHE", blocks: staging.blocks, classificationIds: [heading.id] });
+    classifications: [classification(heading.id, "character")], candidateEvidence: [], discoveries: [], observations: [],
+  }, batch);
   const reconciled = reconcileAssistedImport(staging, [result]);
   const carolina = reconciled.evidence.filter((item) => item.identityKey === "CAROLINA");
   assert.ok(carolina.some((item) => item.relation === "intervention" && item.presence === "unknown"));
@@ -230,7 +234,7 @@ test(`reserved semantic evaluation ${ASSISTED_IMPORT_EVALUATION_VERSION} is fixe
     title: "Evaluación semántica reservada",
   });
   const byText = new Map(staging.blocks.map((block) => [block.originalText, block]));
-  const raw: AssistedImportModelResult = {
+  const raw: LegacyModelResult = {
     classifications: staging.blocks
       .filter((block) => block.confidence !== "high" && block.proposedKind !== "authorNote")
       .map((block) => classification(block.id, block.originalText.includes("(V.O.)") ? "character" : "action")),
@@ -250,13 +254,8 @@ test(`reserved semantic evaluation ${ASSISTED_IMPORT_EVALUATION_VERSION} is fixe
     ],
     observations: [],
   };
-  const batch = {
-    index: 0,
-    sceneLabel: "INT. GALERÍA - NOCHE",
-    blocks: staging.blocks,
-    classificationIds: raw.classifications.map((item) => item.blockId),
-  };
-  const validated = validateAssistedImportModelResult(raw, batch);
+  const batch = batchFor(staging, raw.classifications.map((item) => item.blockId));
+  const validated = validateAssistedImportModelResult(anchoredResult(raw, batch), batch);
   for (const expected of ASSISTED_IMPORT_RESERVED_EXPECTATIONS.rejectedEvidence) {
     const blockId = byText.get(expected.blockText)!.id;
     assert.equal(validated.evidence.some((item) => item.blockId === blockId && item.label === expected.label), false,
@@ -285,26 +284,68 @@ test("prompt injection remains ordinary source text and cannot become rewritten 
   assert.match(injection.originalText, /→ ⋮/u);
 });
 
-test("invalid references, ranges, duplicates, and narrative-to-character conversions fail closed", () => {
+test("invalid references, ambiguous quotes, duplicate candidates, and narrative-to-character conversions fail closed", () => {
   const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: "Una niña aparece en medio del bosque.\nMISTERIO", title: "Seguro" });
-  const batch = { index: 0, sceneLabel: null, blocks: staging.blocks, classificationIds: staging.blocks.map((block) => block.id) };
+  const batch = batchFor(staging, staging.blocks.map((block) => block.id));
   assert.throws(() => validateAssistedImportModelResult({
-    classifications: [classification("missing", "action")], evidence: [], observations: [],
+    classifications: [classification("missing", "action")], candidateEvidence: [], discoveries: [], observations: [],
   }, batch), /fuera del lote/u);
+  const firstCandidate = batch.candidates.find((item) => item.text === "Una niña")!;
   assert.throws(() => validateAssistedImportModelResult({
     classifications: batch.classificationIds.map((blockId) => classification(blockId, "action")),
-    evidence: [evidence(staging.blocks[0].id, 0, 999, "NIÑA", "role", "action", "present")],
-    observations: [],
-  }, batch), /rango inexistente/u);
+    candidateEvidence: [candidateEvidence(firstCandidate.candidateId, "role", "action", "present"),
+      candidateEvidence(firstCandidate.candidateId, "role", "action", "present")],
+    discoveries: [], observations: [],
+  }, batch), /candidato fuera de contrato/u);
   assert.throws(() => validateAssistedImportModelResult({
-    classifications: [classification(staging.blocks[0].id, "action")], evidence: [], observations: [],
+    classifications: [classification(staging.blocks[0].id, "action")], candidateEvidence: [], discoveries: [], observations: [],
   }, batch), /todos los elementos ambiguos/u);
   const protectedBatch = { ...batch, classificationIds: [staging.blocks[0].id] };
   const protectedResult = validateAssistedImportModelResult({
-    classifications: [classification(staging.blocks[0].id, "character")], evidence: [], observations: [],
+    classifications: [classification(staging.blocks[0].id, "character")], candidateEvidence: [], discoveries: [], observations: [],
   }, protectedBatch);
   assert.equal(protectedResult.classifications[0].kind, "action");
   assert.equal(protectedResult.classifications[0].uncertain, true);
+});
+
+test("local anchors own ranges and discoveries require one exact Unicode-safe occurrence", () => {
+  const source = "Ángela saluda a Óscar. Una androide ayuda a Óscar. Ángela vuelve.";
+  const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: source, title: "Anclas" });
+  const block = staging.blocks[0];
+  const batch = batchFor(staging, [block.id]);
+  const angela = batch.candidates.find((item) => item.text === "Ángela")!;
+  assert.ok(angela);
+  const validated = validateAssistedImportModelResult({
+    classifications: [classification(block.id, "action")],
+    candidateEvidence: [candidateEvidence(angela.candidateId, "named", "action", "present")],
+    discoveries: [{
+      blockId: null,
+      sentenceId: batch.sentences[1].sentenceId,
+      mention: "Una androide",
+      quote: "Una androide ayuda a Óscar.",
+      entityType: "role",
+      relation: "action",
+      presence: "present",
+      uncertain: false,
+      reason: "Participa en una acción observable.",
+    }],
+    observations: [],
+  }, batch);
+  assert.deepEqual(validated.evidence.map((item) => block.originalText.slice(item.start, item.end)), ["Ángela", "Una androide"]);
+  const ambiguous = validateAssistedImportModelResult({
+    classifications: [classification(block.id, "action")], candidateEvidence: [],
+    discoveries: [{ blockId: block.id, sentenceId: null, mention: "Ángela", quote: "Ángela",
+      entityType: "named", relation: "action", presence: "present", uncertain: false, reason: "Ambigua." }],
+    observations: [],
+  }, batch);
+  assert.deepEqual(ambiguous.evidence, []);
+  const partial = validateAssistedImportModelResult({
+    classifications: [classification(block.id, "action")], candidateEvidence: [],
+    discoveries: [{ blockId: block.id, sentenceId: null, mention: "Ángel", quote: "Ángela saluda a Óscar.",
+      entityType: "named", relation: "action", presence: "present", uncertain: false, reason: "Corta palabra." }],
+    observations: [],
+  }, batch);
+  assert.deepEqual(partial.evidence, []);
 });
 
 test("valid explicit FDX avoids provider batches and keeps accents and order", () => {
@@ -383,6 +424,60 @@ test("long synthetic input is partitioned without loss, overlap, or more than 24
 
 function classification(blockId: string, kind: "action" | "character", uncertain = false) {
   return { blockId, kind, uncertain, reason: uncertain ? "Clasificación conservadora." : "Contexto compatible." } as const;
+}
+
+type LegacyEvidence = ReturnType<typeof evidence>;
+type LegacyModelResult = {
+  classifications: ReturnType<typeof classification>[];
+  evidence: LegacyEvidence[];
+  observations: Array<{ blockId: string; message: string }>;
+};
+
+function batchFor(staging: ReturnType<typeof prepareAssistedImportStaging>, classificationIds: string[]) {
+  const batch = buildAssistedImportBatches(staging)[0];
+  assert.ok(batch, "Expected one assisted-import batch.");
+  return { ...batch, classificationIds };
+}
+
+function anchoredResult(result: LegacyModelResult, batch: AssistedImportBatch) {
+  const candidateEvidenceResult = [];
+  const discoveries = [];
+  for (const item of result.evidence) {
+    const candidate = batch.candidates.find((anchor) => anchor.blockId === item.blockId
+      && anchor.start === item.start && anchor.end === item.end);
+    const semantic = candidateEvidence(candidate?.candidateId ?? "", item.entityType, item.relation, item.presence);
+    if (candidate) {
+      candidateEvidenceResult.push(semantic);
+      continue;
+    }
+    const block = batch.blocks.find((entry) => entry.id === item.blockId)!;
+    discoveries.push({
+      blockId: item.blockId,
+      sentenceId: null,
+      mention: item.label,
+      quote: block.originalText,
+      entityType: item.entityType,
+      relation: item.relation,
+      presence: item.presence,
+      uncertain: item.uncertain,
+      reason: item.reason,
+    });
+  }
+  return {
+    classifications: result.classifications,
+    candidateEvidence: candidateEvidenceResult,
+    discoveries,
+    observations: result.observations,
+  };
+}
+
+function candidateEvidence(
+  candidateId: string,
+  entityType: "named" | "role" | "collective",
+  relation: "intervention" | "action" | "mention" | "indeterminate",
+  presence: "present" | "absent" | "unknown",
+) {
+  return { candidateId, entityType, relation, presence, uncertain: false, reason: "Evidencia sintética." } as const;
 }
 
 function evidence(

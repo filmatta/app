@@ -1,4 +1,12 @@
-export const ASSISTED_IMPORT_EVALUATION_VERSION = "semantic-v3-2026-09-28";
+export const ASSISTED_IMPORT_EVALUATION_VERSION = "anchored-v1-2026-09-28";
+
+export const ASSISTED_IMPORT_EVALUATION_CONTRACT = {
+  models: ["gpt-5.6-luna", "gpt-5.6-terra"],
+  reasoning: "none",
+  runsPerModel: 2,
+  modelOffsetsAccepted: false,
+  discoveryResolution: "exact-unique-literal",
+} as const;
 
 export const ASSISTED_IMPORT_PROMPT_CASES = `INT. SALA - DÍA
 La esperanza desaparece.
@@ -25,6 +33,8 @@ Un guardia entra. El guardia saluda a Vera.
 Otro guardia lo sigue.
 Vera piensa en Lucía.
 Lucía no está allí.
+Vera ve a Vera. Después, Vera vuelve.
+ÁLVAREZ-2 entra y saluda a Vera.
 
 VERA (V.O.)
 Sigo aquí.
