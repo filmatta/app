@@ -26,7 +26,7 @@ import {
   type WriterCharacterEvidence,
 } from "./character-observations.ts";
 
-export const WRITER_ASSISTED_IMPORT_VERSION = "writer-import-ai-v1-anchored-v1";
+export const WRITER_ASSISTED_IMPORT_VERSION = "writer-import-ai-v1-candidates-v2";
 export const WRITER_ASSISTED_IMPORT_MAX_BYTES = 2 * 1024 * 1024;
 export const WRITER_ASSISTED_IMPORT_MAX_WORDS = 30_000;
 export const WRITER_ASSISTED_IMPORT_MAX_SOURCE_TOKENS = 80_000;
@@ -65,6 +65,10 @@ export type AssistedImportCandidate = {
   start: number;
   end: number;
   text: string;
+  sceneId: string | null;
+  sceneLabel: string | null;
+  signals: string[];
+  sourceHash: string;
 };
 
 export type AssistedImportSentence = {
@@ -73,6 +77,41 @@ export type AssistedImportSentence = {
   start: number;
   end: number;
   text: string;
+};
+
+export type AssistedImportCandidateDisposition = "participant" | "mention" | "nonparticipant" | "uncertain";
+
+export type AssistedImportCandidateDecision = {
+  candidateId: string;
+  disposition: AssistedImportCandidateDisposition;
+  entityType: "named" | "role" | "collective";
+  relation: AssistedImportRelation;
+  presence: AssistedImportPresence;
+  uncertain: boolean;
+  reason: string;
+  blockId: string;
+  start: number;
+  end: number;
+  label: string;
+};
+
+export type AssistedImportValidationIssueCode =
+  | "invalid_schema"
+  | "unknown_id"
+  | "missing_candidate_decision"
+  | "duplicate_candidate_decision"
+  | "nonexistent_quote"
+  | "ambiguous_quote"
+  | "partial_word"
+  | "bad_relation"
+  | "integrity_conflict";
+
+export type AssistedImportValidationIssue = {
+  code: AssistedImportValidationIssueCode;
+  path: string;
+  message: string;
+  candidateId?: string;
+  sentenceId?: string;
 };
 
 type AssistedImportSemanticEvidence = {
@@ -85,7 +124,10 @@ type AssistedImportSemanticEvidence = {
 
 export type AssistedImportRawModelResult = {
   classifications: AssistedImportClassification[];
-  candidateEvidence: Array<AssistedImportSemanticEvidence & { candidateId: string }>;
+  candidateEvidence: Array<AssistedImportSemanticEvidence & {
+    candidateId: string;
+    disposition: AssistedImportCandidateDisposition;
+  }>;
   discoveries: Array<AssistedImportSemanticEvidence & {
     blockId: string | null;
     sentenceId: string | null;
@@ -99,6 +141,16 @@ export type AssistedImportModelResult = {
   classifications: AssistedImportClassification[];
   evidence: AssistedImportEntityEvidence[];
   observations: Array<{ blockId: string; message: string }>;
+  candidateDecisions: AssistedImportCandidateDecision[];
+  validationIssues: AssistedImportValidationIssue[];
+};
+
+export type AssistedImportCoverage = {
+  sentenceId: string;
+  blockId: string;
+  candidateIds: string[];
+  examined: true;
+  truncated: boolean;
 };
 
 export type AssistedImportBatch = {
@@ -108,6 +160,9 @@ export type AssistedImportBatch = {
   classificationIds: string[];
   sentences: AssistedImportSentence[];
   candidates: AssistedImportCandidate[];
+  coverage: AssistedImportCoverage[];
+  knownIdentities: string[];
+  sceneContextByBlock: Record<string, { sceneId: string | null; sceneLabel: string | null }>;
 };
 
 export type WriterImportedIdentity = {
@@ -180,9 +235,10 @@ export const WRITER_ASSISTED_IMPORT_OUTPUT_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["candidateId", "entityType", "relation", "presence", "uncertain", "reason"],
+        required: ["candidateId", "disposition", "entityType", "relation", "presence", "uncertain", "reason"],
         properties: {
           candidateId: { type: "string" },
+          disposition: { type: "string", enum: ["participant", "mention", "nonparticipant", "uncertain"] },
           entityType: { type: "string", enum: ["named", "role", "collective"] },
           relation: { type: "string", enum: ["intervention", "action", "mention", "indeterminate"] },
           presence: { type: "string", enum: ["present", "absent", "unknown"] },
@@ -253,12 +309,20 @@ export function prepareAssistedImportStaging(input: {
 
 export function buildAssistedImportBatches(staging: WriterImportStaging) {
   if (staging.source.format === "fdx" && staging.blocks.every((block) => block.proposedKind)) return [];
+  const knownIdentities = [...new Set(staging.blocks
+    .filter((block) => block.proposedKind === "character")
+    .map((block) => stripWriterCharacterSuffix(block.originalText.trim()))
+    .filter(Boolean))];
   const batches: AssistedImportBatch[] = [];
   let current: AssistedImportBatch | null = null;
   let currentCharacters = 0;
   let sceneLabel: string | null = null;
+  let sceneId: string | null = null;
   for (const block of staging.blocks) {
-    if (block.proposedKind === "sceneHeading") sceneLabel = block.originalText;
+    if (block.proposedKind === "sceneHeading") {
+      sceneLabel = block.originalText;
+      sceneId = block.id;
+    }
     if (block.proposedKind === "authorNote") continue;
     const shouldAnalyze = block.proposedKind === "action"
       || block.proposedKind === "character"
@@ -266,17 +330,21 @@ export function buildAssistedImportBatches(staging: WriterImportStaging) {
       || !block.proposedKind;
     if (!shouldAnalyze) continue;
     const size = block.originalText.length + 180;
-    if (!current || current.blocks.length >= 42 || currentCharacters + size > 12_000) {
-      current = { index: batches.length, sceneLabel, blocks: [], classificationIds: [], sentences: [], candidates: [] };
+    if (!current || current.blocks.length >= 50 || currentCharacters + size > 15_000) {
+      current = {
+        index: batches.length, sceneLabel, blocks: [], classificationIds: [], sentences: [], candidates: [], coverage: [],
+        knownIdentities, sceneContextByBlock: {},
+      };
       batches.push(current);
       currentCharacters = 0;
     }
     current.blocks.push(block);
+    current.sceneContextByBlock[block.id] = { sceneId, sceneLabel };
     if (block.confidence !== "high" || !block.proposedKind) current.classificationIds.push(block.id);
     currentCharacters += size;
   }
-  if (batches.length > WRITER_ASSISTED_IMPORT_MAX_CALLS) {
-    throw new Error("El borrador requiere más lotes de los permitidos para una importación asistida.");
+  if (batches.length > WRITER_ASSISTED_IMPORT_MAX_CALLS - 4) {
+    throw new Error("El borrador requiere más de 20 tramos y no deja capacidad para recuperación dentro de las 24 llamadas.");
   }
   return batches.map(withLocalAnchors);
 }
@@ -284,16 +352,23 @@ export function buildAssistedImportBatches(staging: WriterImportStaging) {
 export function validateAssistedImportModelResult(value: unknown, batch: AssistedImportBatch): AssistedImportModelResult {
   if (!isRecord(value) || !Array.isArray(value.classifications) || !Array.isArray(value.candidateEvidence)
     || !Array.isArray(value.discoveries) || !Array.isArray(value.observations)) {
-    throw new Error("La respuesta estructurada no es válida.");
+    throw new AssistedImportValidationError("invalid_schema", "$", "La respuesta estructurada no es válida.");
   }
   const blocks = new Map(batch.blocks.map((block) => [block.id, block]));
   const sentences = new Map(batch.sentences.map((sentence) => [sentence.sentenceId, sentence]));
   const candidates = new Map(batch.candidates.map((candidate) => [candidate.candidateId, candidate]));
   const classificationIds = new Set(batch.classificationIds);
-  const classifications = value.classifications.map((candidate) => {
+  const issues: AssistedImportValidationIssue[] = [];
+  const classifications: AssistedImportClassification[] = [];
+  const usedClassificationIds = new Set<string>();
+  value.classifications.forEach((candidate, index) => {
     if (!isRecord(candidate) || typeof candidate.blockId !== "string" || !classificationIds.has(candidate.blockId)
-      || !KIND_SET.has(candidate.kind as ScreenplayKind) || typeof candidate.uncertain !== "boolean"
-      || typeof candidate.reason !== "string") throw new Error("La IA devolvió una clasificación fuera del lote.");
+      || usedClassificationIds.has(candidate.blockId) || !KIND_SET.has(candidate.kind as ScreenplayKind)
+      || typeof candidate.uncertain !== "boolean" || typeof candidate.reason !== "string") {
+      issues.push(issue("unknown_id", `classifications[${index}]`, "Clasificación desconocida, duplicada o fuera del lote."));
+      return;
+    }
+    usedClassificationIds.add(candidate.blockId);
     const block = blocks.get(candidate.blockId)!;
     let kind = candidate.kind as ScreenplayKind;
     let uncertain = candidate.uncertain;
@@ -303,47 +378,219 @@ export function validateAssistedImportModelResult(value: unknown, batch: Assiste
       uncertain = true;
       reason = "La línea contiene una oración narrativa; se preservó como Acción.";
     }
-    return { blockId: candidate.blockId, kind, uncertain, reason };
+    classifications.push({ blockId: candidate.blockId, kind, uncertain, reason });
   });
-  if (new Set(classifications.map((item) => item.blockId)).size !== classifications.length) {
-    throw new Error("La IA duplicó una clasificación dentro del lote.");
-  }
-  if (classifications.length !== classificationIds.size
-    || classifications.some((item) => !classificationIds.has(item.blockId))) {
-    throw new Error("La IA no clasificó todos los elementos ambiguos del lote.");
+  for (const blockId of classificationIds) {
+    if (!usedClassificationIds.has(blockId)) {
+      issues.push(issue("unknown_id", "classifications", `Falta la clasificación requerida para ${blockId}.`));
+    }
   }
   const usedCandidateIds = new Set<string>();
-  const evidence = value.candidateEvidence.flatMap((semantic) => {
-    if (!isRecord(semantic) || typeof semantic.candidateId !== "string" || !candidates.has(semantic.candidateId)
-      || usedCandidateIds.has(semantic.candidateId) || !validSemanticEvidence(semantic)) {
-      throw new Error("La IA devolvió un candidato fuera de contrato.");
+  const candidateDecisions: AssistedImportCandidateDecision[] = [];
+  const evidence: AssistedImportEntityEvidence[] = [];
+  value.candidateEvidence.forEach((semantic, index) => {
+    const path = `candidateEvidence[${index}]`;
+    if (!isRecord(semantic) || typeof semantic.candidateId !== "string" || !candidates.has(semantic.candidateId)) {
+      issues.push(issue("unknown_id", path, "La decisión referencia un candidato desconocido."));
+      return;
+    }
+    if (usedCandidateIds.has(semantic.candidateId)) {
+      issues.push(issue("duplicate_candidate_decision", path, "El candidato tiene más de una decisión.", semantic.candidateId));
+      return;
+    }
+    if (!validSemanticEvidence(semantic) || !validDisposition(semantic.disposition)) {
+      issues.push(issue("bad_relation", path, "La disposición o relación del candidato no está permitida.", semantic.candidateId));
+      return;
     }
     usedCandidateIds.add(semantic.candidateId);
     const anchor = candidates.get(semantic.candidateId)!;
-    return acceptedEvidence(anchor.blockId, anchor.start, anchor.end, semantic, blocks);
+    const decision = semantic as unknown as Omit<AssistedImportCandidateDecision, "blockId" | "start" | "end" | "label">;
+    candidateDecisions.push({
+      ...decision,
+      reason: decision.reason.slice(0, 180),
+      blockId: anchor.blockId,
+      start: anchor.start,
+      end: anchor.end,
+      label: anchor.text,
+    });
+    if ((decision.disposition === "mention" && decision.relation !== "mention")
+      || (decision.disposition === "participant" && decision.relation === "mention")) {
+      issues.push(issue("bad_relation", path, "La relación contradice la disposición declarada.", decision.candidateId));
+      return;
+    }
+    if (decision.disposition === "nonparticipant" || decision.disposition === "uncertain") return;
+    const accepted = acceptedEvidence(anchor.blockId, anchor.start, anchor.end, semantic, blocks);
+    if (accepted.length === 0) {
+      issues.push(issue("integrity_conflict", path, "La decisión no supera las reglas locales de integridad.", decision.candidateId));
+      return;
+    }
+    evidence.push(...accepted);
   });
-  for (const discovery of value.discoveries) {
+  for (const candidateId of candidates.keys()) {
+    if (!usedCandidateIds.has(candidateId)) {
+      issues.push(issue("missing_candidate_decision", "candidateEvidence", "El candidato no recibió una decisión explícita.", candidateId));
+    }
+  }
+  value.discoveries.forEach((discovery, index) => {
+    const path = `discoveries[${index}]`;
     if (!isRecord(discovery) || !validSemanticEvidence(discovery)
       || typeof discovery.mention !== "string" || discovery.mention.length > 64
       || typeof discovery.quote !== "string" || discovery.quote.length > 320
       || !(typeof discovery.blockId === "string" || discovery.blockId === null)
       || !(typeof discovery.sentenceId === "string" || discovery.sentenceId === null)
       || Boolean(discovery.blockId) === Boolean(discovery.sentenceId)) {
-      throw new Error("La IA devolvió un descubrimiento fuera de contrato.");
+      issues.push(issue("bad_relation", path, "El descubrimiento no cumple el contrato semántico."));
+      return;
     }
     const resolved = resolveDiscovery(discovery, blocks, sentences);
-    if (!resolved) continue;
-    evidence.push(...acceptedEvidence(resolved.blockId, resolved.start, resolved.end, discovery, blocks));
-  }
+    if (!resolved.ok) {
+      issues.push(issue(resolved.code, path, resolved.message, undefined,
+        typeof discovery.sentenceId === "string" ? discovery.sentenceId : undefined));
+      return;
+    }
+    const accepted = acceptedEvidence(resolved.blockId, resolved.start, resolved.end, discovery, blocks);
+    if (accepted.length === 0) {
+      issues.push(issue("integrity_conflict", path, "El descubrimiento no supera las reglas locales de integridad."));
+      return;
+    }
+    evidence.push(...accepted);
+  });
   const observations = value.observations.flatMap((candidate) => {
     if (!isRecord(candidate) || typeof candidate.blockId !== "string" || !blocks.has(candidate.blockId)
       || typeof candidate.message !== "string" || !candidate.message.trim()) {
-      throw new Error("La IA devolvió una observación fuera de contrato.");
+      issues.push(issue("unknown_id", "observations", "La observación referencia un bloque desconocido."));
+      return [];
     }
     if (!classificationIds.has(candidate.blockId)) return [];
     return [{ blockId: candidate.blockId, message: candidate.message.trim().slice(0, 180) }];
   });
-  return { classifications, evidence: dedupeResolvedEvidence(evidence), observations };
+  return { classifications, evidence: dedupeResolvedEvidence(evidence), observations, candidateDecisions, validationIssues: issues };
+}
+
+export class AssistedImportValidationError extends Error {
+  code: AssistedImportValidationIssueCode;
+  path: string;
+
+  constructor(code: AssistedImportValidationIssueCode, path: string, message: string) {
+    super(message);
+    this.code = code;
+    this.path = path;
+  }
+}
+
+export type AssistedImportRecoveryTrigger = "unresolved" | "uncovered" | "contradictory_negative" | "control_sample" | "terra_invalid";
+
+export type AssistedImportRecoveryPlanItem = {
+  batch: AssistedImportBatch;
+  triggers: AssistedImportRecoveryTrigger[];
+  candidateIds: string[];
+  sentenceIds: string[];
+};
+
+export type AssistedImportRecoveryPlan = {
+  items: AssistedImportRecoveryPlanItem[];
+  skippedBatchIndexes: number[];
+  partial: boolean;
+};
+
+export function planAssistedImportRecovery(
+  batches: readonly AssistedImportBatch[],
+  terraResults: ReadonlyMap<number, AssistedImportModelResult | null>,
+): AssistedImportRecoveryPlan {
+  const proposals: AssistedImportRecoveryPlanItem[] = [];
+  let controlUsed = false;
+  for (const batch of batches) {
+    const result = terraResults.get(batch.index);
+    const candidateIds = new Set<string>();
+    const sentenceIds = new Set<string>();
+    const triggers = new Set<AssistedImportRecoveryTrigger>();
+    if (batch.candidates.length === 0) {
+      for (const coverage of batch.coverage) sentenceIds.add(coverage.sentenceId);
+      if (sentenceIds.size) triggers.add("uncovered");
+    } else if (!result) {
+      batch.candidates.forEach((candidate) => candidateIds.add(candidate.candidateId));
+      batch.coverage.forEach((coverage) => sentenceIds.add(coverage.sentenceId));
+      triggers.add("terra_invalid");
+    } else {
+      for (const issueItem of result.validationIssues) {
+        if (issueItem.candidateId) candidateIds.add(issueItem.candidateId);
+        if (issueItem.sentenceId) sentenceIds.add(issueItem.sentenceId);
+        if (issueItem.code === "missing_candidate_decision" || issueItem.code === "bad_relation"
+          || issueItem.code === "integrity_conflict" || issueItem.code === "partial_word") triggers.add("unresolved");
+      }
+      for (const decision of result.candidateDecisions) {
+        if (decision.disposition === "uncertain") {
+          candidateIds.add(decision.candidateId);
+          triggers.add("unresolved");
+        }
+        if (decision.disposition === "nonparticipant") {
+          const candidate = batch.candidates.find((item) => item.candidateId === decision.candidateId);
+          if (candidate?.signals.includes("observable-agentive")) {
+            candidateIds.add(decision.candidateId);
+            sentenceIds.add(candidate.sentenceId);
+            triggers.add("contradictory_negative");
+          }
+        }
+      }
+      for (const coverage of batch.coverage) {
+        if (coverage.candidateIds.length === 0 || coverage.truncated) {
+          sentenceIds.add(coverage.sentenceId);
+          triggers.add("uncovered");
+        }
+      }
+      if (!controlUsed && triggers.size === 0) {
+        const control = result.candidateDecisions
+          .filter((decision) => decision.disposition === "nonparticipant")
+          .sort((left, right) => left.candidateId.localeCompare(right.candidateId))[0];
+        if (control) {
+          candidateIds.add(control.candidateId);
+          sentenceIds.add(batch.candidates.find((item) => item.candidateId === control.candidateId)!.sentenceId);
+          triggers.add("control_sample");
+          controlUsed = true;
+        }
+      }
+    }
+    if (triggers.size) proposals.push({
+      batch,
+      triggers: [...triggers],
+      candidateIds: [...candidateIds],
+      sentenceIds: [...sentenceIds],
+    });
+  }
+  proposals.sort((left, right) => recoveryPriority(left) - recoveryPriority(right) || left.batch.index - right.batch.index);
+  const items = proposals.slice(0, 4);
+  return {
+    items,
+    skippedBatchIndexes: proposals.slice(4).map((item) => item.batch.index),
+    partial: proposals.length > items.length,
+  };
+}
+
+export function recoveryBatch(item: AssistedImportRecoveryPlanItem): AssistedImportBatch {
+  const candidateIds = new Set(item.candidateIds);
+  const sentenceIds = new Set(item.sentenceIds);
+  const candidates = item.batch.candidates.filter((candidate) => candidateIds.has(candidate.candidateId));
+  for (const candidate of candidates) sentenceIds.add(candidate.sentenceId);
+  const sentences = item.batch.sentences.filter((sentence) => sentenceIds.has(sentence.sentenceId));
+  const blockIds = new Set([...sentences.map((sentence) => sentence.blockId), ...candidates.map((candidate) => candidate.blockId)]);
+  return {
+    ...item.batch,
+    blocks: item.batch.blocks.filter((block) => blockIds.has(block.id)),
+    classificationIds: item.triggers.includes("terra_invalid") || item.batch.candidates.length === 0
+      ? item.batch.classificationIds
+      : [],
+    sentences,
+    candidates,
+    coverage: item.batch.coverage.filter((coverage) => sentenceIds.has(coverage.sentenceId)),
+  };
+}
+
+function recoveryPriority(item: AssistedImportRecoveryPlanItem) {
+  if (item.triggers.includes("terra_invalid")) return 0;
+  if (item.triggers.includes("unresolved")) return 1;
+  if (item.triggers.includes("uncovered")) return 2;
+  if (item.triggers.includes("contradictory_negative")) return 3;
+  return 4;
 }
 
 export function reconcileAssistedImport(
@@ -406,6 +653,12 @@ export function reconcileAssistedImport(
   const evidence: WriterImportedEvidence[] = [];
   const known = deriveWriterKnownCharacterIdentities(document);
   const deterministic = analyzeWriterCharacterObservations(document, known).observations;
+  const rejectedRanges = modelResults.flatMap((result) => (result.candidateDecisions ?? [])
+    .filter((decision) => decision.disposition === "nonparticipant")
+    .flatMap((decision) => {
+      const canonical = canonicalBySource.get(decision.blockId);
+      return canonical ? [{ blockId: canonical.attrs.id, start: decision.start, end: decision.end }] : [];
+    }));
   const explicitByScene = new Map<string, Set<string>>();
   for (const characterBlock of document.content.filter((block) => block.attrs.kind === "character")) {
     const identity = blockText(characterBlock).trim();
@@ -422,6 +675,7 @@ export function reconcileAssistedImport(
     }));
   }
   for (const item of deterministic) {
+    if (rejectedRanges.some((range) => range.blockId === item.blockId && item.start < range.end && item.end > range.start)) continue;
     const identityKey = reconcileRuleIdentityKey(item.identityKey, item.identity, item.sceneId, explicitByScene);
     evidence.push(importedEvidence({
       identityKey, identity: item.identity,
@@ -485,38 +739,76 @@ function withLocalAnchors(batch: AssistedImportBatch): AssistedImportBatch {
     sentenceByBlock.set(sentence.blockId, items);
   }
   const candidates: AssistedImportCandidate[] = [];
+  const coverage: AssistedImportCoverage[] = [];
   for (const block of batch.blocks) {
-    const spans = new Map<string, { start: number; end: number }>();
-    const add = (start: number, end: number) => {
+    const scene = batch.sceneContextByBlock[block.id] ?? { sceneId: null, sceneLabel: null };
+    if (block.proposedKind === "character") continue;
+    const spans = new Map<string, { start: number; end: number; signals: Set<string> }>();
+    const add = (start: number, end: number, signal: string) => {
       const text = block.originalText.slice(start, end);
       if (!text.trim() || cutsWordBoundary(block.originalText, start, end)) return;
-      spans.set(`${start}:${end}`, { start, end });
+      const key = `${start}:${end}`;
+      const current = spans.get(key) ?? { start, end, signals: new Set<string>() };
+      current.signals.add(signal);
+      spans.set(key, current);
     };
-    const properName = /(?:\p{Lu}[\p{L}\p{M}'’-]*|[A-ZÁÉÍÓÚÜÑ0-9]+(?:-[A-ZÁÉÍÓÚÜÑ0-9]+)+)(?:\s+(?:\p{Lu}[\p{L}\p{M}'’-]*|[A-ZÁÉÍÓÚÜÑ0-9]+(?:-[A-ZÁÉÍÓÚÜÑ0-9]+)+)){0,2}/gu;
+    const properName = /(?:[A-ZÁÉÍÓÚÜÑ0-9]+(?:-[A-ZÁÉÍÓÚÜÑ0-9]+)+|\p{Lu}[\p{L}\p{M}'’-]*)(?:\s+(?:[A-ZÁÉÍÓÚÜÑ0-9]+(?:-[A-ZÁÉÍÓÚÜÑ0-9]+)+|\p{Lu}[\p{L}\p{M}'’-]*)){0,2}/gu;
     for (const match of block.originalText.matchAll(properName)) {
       const start = match.index ?? 0;
-      add(start, start + match[0].length);
+      add(start, start + match[0].length, /\d/u.test(match[0]) ? "nontraditional-name" : "apparent-proper-name");
     }
-    const rolePhrase = /\b(?:un|una|el|la|los|las|dos|tres|varios|varias|otro|otra|otros|otras)\s+[\p{L}\p{M}'’-]+\b/giu;
+    const rolePhrase = /\b(?:un|una|el|la|los|las|dos|tres|varios|varias|otro|otra|otros|otras)\s+[\p{L}\p{M}'’-]+(?:\s+[\p{L}\p{M}'’-]+)?\b/giu;
     for (const match of block.originalText.matchAll(rolePhrase)) {
-      if (!isWriterParticipantRole(match[0])) continue;
       const start = match.index ?? 0;
-      add(start, start + match[0].length);
+      const words = match[0].split(/\s+/u);
+      add(start, start + words.slice(0, 2).join(" ").length, "determiner-noun-phrase");
+      if (words.length > 2 && !/^(?:se|lo|la|los|las|le|les|de|del|a|al|en|con|sin|por|para)$/iu.test(words[2])) {
+        add(start, start + match[0].length, "expanded-noun-phrase");
+      }
     }
-    for (const span of [...spans.values()].sort((a, b) => a.start - b.start || a.end - b.end)) {
-      const sentence = sentenceByBlock.get(block.id)?.find((item) => span.start >= item.start && span.end <= item.end);
-      if (!sentence) continue;
-      candidates.push({
-        candidateId: `candidate:${block.id}:${span.start}:${span.end}`,
-        blockId: block.id,
-        sentenceId: sentence.sentenceId,
-        start: span.start,
-        end: span.end,
-        text: block.originalText.slice(span.start, span.end),
-      });
+    for (const identity of batch.knownIdentities) {
+      const matcher = new RegExp(escapeRegExp(identity), "giu");
+      for (const match of block.originalText.matchAll(matcher)) {
+        const start = match.index ?? 0;
+        add(start, start + match[0].length, "known-identity");
+      }
+    }
+    for (const sentence of sentenceByBlock.get(block.id) ?? []) {
+      const sentenceSpans = [...spans.values()]
+        .filter((span) => span.start >= sentence.start && span.end <= sentence.end)
+        .sort((a, b) => a.start - b.start || a.end - b.end);
+      const truncated = sentenceSpans.length > 12;
+      const selected = sentenceSpans.slice(0, 12);
+      const candidateIds: string[] = [];
+      for (const span of selected) {
+        const text = block.originalText.slice(span.start, span.end);
+        const signals = [...span.signals];
+        if (PERSONIFIED_CONTEXT.test(sentence.text)) signals.push("observable-agentive");
+        const candidateId = `candidate:${block.id}:${span.start}:${span.end}`;
+        candidateIds.push(candidateId);
+        candidates.push({
+          candidateId,
+          blockId: block.id,
+          sentenceId: sentence.sentenceId,
+          start: span.start,
+          end: span.end,
+          text,
+          sceneId: scene.sceneId,
+          sceneLabel: scene.sceneLabel,
+          signals: [...new Set(signals)],
+          sourceHash: writerObservationTextHash([block.id, sentence.sentenceId, span.start, span.end, text].join("\u0000")),
+        });
+      }
+      if (block.proposedKind === "action" || !block.proposedKind) {
+        coverage.push({ sentenceId: sentence.sentenceId, blockId: block.id, candidateIds, examined: true, truncated });
+      }
     }
   }
-  return { ...batch, sentences, candidates };
+  return { ...batch, sentences, candidates, coverage };
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 function segmentBlock(block: WriterImportBlock): AssistedImportSentence[] {
@@ -555,6 +847,20 @@ function validSemanticEvidence(value: Record<string, unknown>) {
     && ["present", "absent", "unknown"].includes(String(value.presence))
     && typeof value.uncertain === "boolean"
     && typeof value.reason === "string";
+}
+
+function validDisposition(value: unknown): value is AssistedImportCandidateDisposition {
+  return value === "participant" || value === "mention" || value === "nonparticipant" || value === "uncertain";
+}
+
+function issue(
+  code: AssistedImportValidationIssueCode,
+  path: string,
+  message: string,
+  candidateId?: string,
+  sentenceId?: string,
+): AssistedImportValidationIssue {
+  return { code, path, message, ...(candidateId ? { candidateId } : {}), ...(sentenceId ? { sentenceId } : {}) };
 }
 
 function acceptedEvidence(
@@ -601,20 +907,31 @@ function resolveDiscovery(
   const sentence = typeof discovery.sentenceId === "string" ? sentences.get(discovery.sentenceId) : undefined;
   const blockId = sentence?.blockId ?? (discovery.blockId as string);
   const block = blocks.get(blockId);
-  if (!block || (sentence && discovery.blockId !== null)) return null;
+  if (!block || (typeof discovery.sentenceId === "string" && !sentence) || (sentence && discovery.blockId !== null)) {
+    return { ok: false as const, code: "unknown_id" as const, message: "La cita referencia un bloque o frase desconocidos." };
+  }
   const scopeText = sentence?.text ?? block.originalText;
   const scopeStart = sentence?.start ?? 0;
   const quote = discovery.quote as string;
   const mention = discovery.mention as string;
-  if (!quote || !mention || quote !== quote.trim() || mention !== mention.trim()) return null;
+  if (!quote || !mention || quote !== quote.trim() || mention !== mention.trim()) {
+    return { ok: false as const, code: "nonexistent_quote" as const, message: "La cita o mención no es literal." };
+  }
   const quoteMatches = exactOccurrences(scopeText, quote);
-  if (quoteMatches.length !== 1) return null;
+  if (quoteMatches.length === 0) return { ok: false as const, code: "nonexistent_quote" as const, message: "La cita no existe literalmente en el origen." };
+  if (quoteMatches.length > 1) return { ok: false as const, code: "ambiguous_quote" as const, message: "La cita aparece más de una vez en el ámbito indicado." };
   const mentionMatches = exactOccurrences(quote, mention);
-  if (mentionMatches.length !== 1) return null;
+  if (mentionMatches.length === 0) return { ok: false as const, code: "nonexistent_quote" as const, message: "La mención no existe dentro de la cita." };
+  if (mentionMatches.length > 1) return { ok: false as const, code: "ambiguous_quote" as const, message: "La mención aparece más de una vez dentro de la cita." };
   const start = scopeStart + quoteMatches[0] + mentionMatches[0];
   const end = start + mention.length;
-  if (block.originalText.slice(start, end) !== mention || cutsWordBoundary(block.originalText, start, end)) return null;
-  return { blockId, start, end };
+  if (block.originalText.slice(start, end) !== mention) {
+    return { ok: false as const, code: "nonexistent_quote" as const, message: "La mención no coincide con el texto original." };
+  }
+  if (cutsWordBoundary(block.originalText, start, end)) {
+    return { ok: false as const, code: "partial_word" as const, message: "La mención corta una palabra del origen." };
+  }
+  return { ok: true as const, blockId, start, end };
 }
 
 function exactOccurrences(text: string, literal: string) {

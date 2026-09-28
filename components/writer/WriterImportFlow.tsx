@@ -166,7 +166,8 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "No se pudo organizar el borrador con IA.");
       setStage("Comprobando integridad y abriendo Writer…");
-      router.push(`/writer/${payload.script.id}?imported=ai&observations=${Number(payload.observations ?? 0)}`);
+      const analysis = payload.analysisStatus === "partial" ? "partial" : "complete";
+      router.push(`/writer/${payload.script.id}?imported=ai&analysis=${analysis}&observations=${Number(payload.observations ?? 0)}`);
     } catch (cause) {
       setError(controller.signal.aborted
         ? "La importación se canceló. El origen sigue aquí y no se creó un guion parcial."

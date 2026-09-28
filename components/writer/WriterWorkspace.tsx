@@ -741,13 +741,17 @@ export default function WriterWorkspace({
     const sceneCount = deriveScenes(document).length;
     const characterCount = deriveCharacters(document).length;
     const optionalObservations = Number(url.searchParams.get("observations") ?? "0");
+    const analysisStatus = url.searchParams.get("analysis");
     const frame = requestAnimationFrame(() => {
-      setFeedback(importedMode === "ai"
-        ? `Guion importado · ${sceneCount} escenas · ${characterCount} personajes · ${document.content.length} bloques${optionalObservations ? ` · ${optionalObservations} observaciones opcionales de formato` : ""}.`
+      setFeedback(importedMode === "ai" && analysisStatus === "partial"
+        ? "Guion importado. El análisis de personajes tiene observaciones pendientes."
+        : importedMode === "ai"
+          ? `Guion importado · ${sceneCount} escenas · ${characterCount} personajes · ${document.content.length} bloques${optionalObservations ? ` · ${optionalObservations} observaciones opcionales de formato` : ""}.`
         : `Importación completada · ${sceneCount} escenas · ${characterCount} personajes · ${document.content.length} bloques.`);
     });
     url.searchParams.delete("imported");
     url.searchParams.delete("observations");
+    url.searchParams.delete("analysis");
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     return () => cancelAnimationFrame(frame);
   }, [document, ready]);

@@ -1,15 +1,15 @@
 import { getEncoding } from "js-tiktoken";
 
 export const WRITER_ASSISTED_IMPORT_MODELS = {
-  "gpt-5.6-luna": {
-    inputUsdPerMillion: 0.20,
-    cachedInputUsdPerMillion: 0.02,
-    outputUsdPerMillion: 1.20,
-  },
   "gpt-5.6-terra": {
     inputUsdPerMillion: 2.00,
     cachedInputUsdPerMillion: 0.20,
     outputUsdPerMillion: 12.00,
+  },
+  "gpt-5.6-sol": {
+    inputUsdPerMillion: 4.00,
+    cachedInputUsdPerMillion: 0.40,
+    outputUsdPerMillion: 20.00,
   },
 } as const;
 
@@ -48,26 +48,16 @@ export function calculateAssistedImportCostMicrousd(model: AssistedImportModel, 
 }
 
 export function assistedImportModelForUser(
-  environment: { [key: string]: string | undefined },
-  userId: string,
-  appMetadata: Record<string, unknown> = {},
+  _environment: { [key: string]: string | undefined },
+  _userId: string,
+  _appMetadata: Record<string, unknown> = {},
 ): AssistedImportModel {
-  const assignments = environment.WRITER_AI_IMPORT_QA_MODEL_ASSIGNMENTS?.split(",") ?? [];
-  for (const assignment of assignments) {
-    const [assignedUserId, assignedModel, extra] = assignment.trim().split("=");
-    if (!extra && assignedUserId === userId && assignedModel in WRITER_ASSISTED_IMPORT_MODELS) {
-      return assignedModel as AssistedImportModel;
-    }
-  }
-  if (environment.WRITER_AI_IMPORT_QA_APP_METADATA_ENABLED === "true"
-    && appMetadata.writer_assisted_import_qa === true
-    && typeof appMetadata.writer_assisted_import_model === "string"
-    && appMetadata.writer_assisted_import_model in WRITER_ASSISTED_IMPORT_MODELS) {
-    return appMetadata.writer_assisted_import_model as AssistedImportModel;
-  }
-  return "gpt-5.6-luna";
+  void _environment;
+  void _userId;
+  void _appMetadata;
+  return "gpt-5.6-terra";
 }
 
-export function assistedImportReasoning() {
-  return "none" as const;
+export function assistedImportReasoning(model: AssistedImportModel = "gpt-5.6-terra") {
+  return model === "gpt-5.6-sol" ? "low" as const : "none" as const;
 }
