@@ -165,6 +165,9 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "No se pudo organizar el borrador con IA.");
+      if (payload.qaTrace || payload.qaTimings) {
+        console.info("[writer-import-qa]", JSON.stringify({ qaTimings: payload.qaTimings, qaTrace: payload.qaTrace }));
+      }
       setStage("Comprobando integridad y abriendo Writer…");
       router.push(`/writer/${payload.script.id}?imported=ai&observations=${Number(payload.observations ?? 0)}`);
     } catch (cause) {

@@ -19,6 +19,8 @@ test("provider configuration is server-only, stored-output disabled, strict, and
   assert.match(server, /model: WRITER_ASSISTED_IMPORT_MODEL/u);
   assert.match(server, /reasoning: \{ effort: input\.reasoning \}/u);
   assert.match(server, /store: false/u);
+  assert.match(server, /WRITER_AI_IMPORT_QA_TRACE === "true"/u);
+  assert.match(interfaceSource, /\[writer-import-qa\]/u);
   assert.match(server, /type: "json_schema"/u);
   assert.match(server, /strict: true/u);
   assert.match(server, /maxRetries: 0/u);

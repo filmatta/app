@@ -122,6 +122,7 @@ export async function executeAssistedImport(
 
   const db = dependencies.db ?? createAdminClient();
   const reasoning = assistedImportReasoning(process.env);
+  const qaTraceEnabled = process.env.WRITER_AI_IMPORT_QA_TRACE === "true";
   const sourceHash = sha256(request.sourceText);
   const optionsHash = sha256(JSON.stringify({
     title: cleanTitle,
@@ -160,6 +161,11 @@ export async function executeAssistedImport(
   const batches = buildAssistedImportBatches(staging);
   const provider = dependencies.provider ?? openAiProvider;
   const providerIntervals: Array<{ start: number; end: number }> = [];
+  const qaTraceBatches: Array<{
+    index: number;
+    raw: AssistedImportModelResult;
+    validated: AssistedImportModelResult;
+  }> = [];
   const modelResults = await mapConcurrent(batches, WRITER_ASSISTED_IMPORT_MAX_CONCURRENCY, async (batch) => {
     const prompt = providerInput(batch);
     const requestHash = sha256(prompt);
@@ -197,6 +203,7 @@ export async function executeAssistedImport(
       } catch {
         throw new ProviderFailure(false, response.usage, "provider_invalid_output");
       }
+      if (qaTraceEnabled) qaTraceBatches.push({ index: batch.index, raw: response.result, validated });
       const actualCost = calculateAssistedImportCostMicrousd(response.usage);
       await settleCall(db, userId, operationId, batch.index, "completed", validated, response.usage, actualCost);
       return validated;
@@ -249,6 +256,7 @@ export async function executeAssistedImport(
     scenes: reconciled.document.content.filter((block) => block.attrs.kind === "sceneHeading").length,
     usage: operationUsage(operation ?? {}),
     qaTimings: { providerMs, localMs: Math.max(0, totalMs - providerMs), totalMs },
+    ...(qaTraceEnabled ? { qaTrace: { reasoning, batches: qaTraceBatches.sort((a, b) => a.index - b.index) } } : {}),
   };
 }
 
