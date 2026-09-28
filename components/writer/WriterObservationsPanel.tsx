@@ -9,6 +9,7 @@ import type {
   WriterCharacterDecision,
   WriterCharacterDecisionState,
 } from "@/lib/writer/character-observation-storage";
+import type { WriterFormatObservation } from "@/lib/writer/import-analysis";
 
 const EVIDENCE_LABELS: Record<WriterCharacterObservation["evidence"], string> = {
   intervention: "Intervención / bloque Personaje",
@@ -21,6 +22,7 @@ const SOURCE_LABELS: Record<WriterKnownCharacterIdentity["source"], string> = {
   characterBlock: "Bloque Personaje",
   confirmedAction: "Confirmado en Acción",
   manual: "Alta manual",
+  imported: "Detectado al importar",
 };
 
 export default function WriterObservationsPanel({
@@ -28,6 +30,8 @@ export default function WriterObservationsPanel({
   knownIdentities,
   decisions,
   storagePersistent,
+  importedAnalysisPersistent,
+  formatObservations,
   selectedBlockId,
   onClose,
   onConfirm,
@@ -36,11 +40,14 @@ export default function WriterObservationsPanel({
   onRestore,
   onAddManual,
   onView,
+  onViewFormat,
 }: {
   observations: WriterCharacterObservation[];
   knownIdentities: WriterKnownCharacterIdentity[];
   decisions: WriterCharacterDecisionState;
   storagePersistent: boolean;
+  importedAnalysisPersistent: boolean;
+  formatObservations: WriterFormatObservation[];
   selectedBlockId: string | null;
   onClose: () => void;
   onConfirm: (observation: WriterCharacterObservation, name: string) => void;
@@ -49,6 +56,7 @@ export default function WriterObservationsPanel({
   onRestore: (decision: WriterCharacterDecision) => void;
   onAddManual: (name: string) => void;
   onView: (observation: WriterCharacterObservation) => void;
+  onViewFormat: (observation: WriterFormatObservation) => void;
 }) {
   const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -128,10 +136,31 @@ export default function WriterObservationsPanel({
 
       <div className="writer-observations-scroll">
         <p className="writer-observations-local-note">
-          {storagePersistent
+          {importedAnalysisPersistent
+            ? "El análisis de importación se conserva con este guion. Las decisiones nuevas se sincronizan y también mantienen una copia local de respaldo."
+            : storagePersistent
             ? "Los reconocimientos manuales de esta versión se guardan en este navegador. Aún no se sincronizan entre dispositivos ni se exportan."
             : "El almacenamiento local no está disponible. Las decisiones sólo durarán durante esta sesión."}
         </p>
+
+        {formatObservations.length > 0 && (
+          <section aria-labelledby="writer-observations-format-heading">
+            <div className="writer-observations-section-heading">
+              <h3 id="writer-observations-format-heading">Formato opcional</h3>
+              <span>{formatObservations.length}</span>
+            </div>
+            {formatObservations.map((observation) => (
+              <article key={observation.id} className={observation.blockId === selectedBlockId ? "is-selected" : ""}>
+                <div className="writer-observation-title">
+                  <strong>{observation.message}</strong>
+                  <span>{observation.source === "ai" ? "IA" : "Regla local"}</span>
+                </div>
+                <p>Se aplicó {KIND_LABELS[observation.kind]}. Puedes cambiarlo directamente en Writer sin otra llamada.</p>
+                <div className="writer-observation-actions"><button type="button" onClick={() => onViewFormat(observation)}>Ver y ajustar</button></div>
+              </article>
+            ))}
+          </section>
+        )}
 
         <section aria-labelledby="writer-observations-review-heading">
           <div className="writer-observations-section-heading">
@@ -143,7 +172,7 @@ export default function WriterObservationsPanel({
             return (
               <article key={first.identityKey} className={group.some((item) => item.blockId === selectedBlockId) ? "is-selected" : ""}>
                 <div className="writer-observation-title">
-                  <strong>Posible personaje sin diálogo: {first.identity.toLocaleUpperCase("es-MX")}</strong>
+                  <strong>Identidad por revisar: {first.identity.toLocaleUpperCase("es-MX")}</strong>
                   {group.length > 1 && <span>{group.length} evidencias</span>}
                 </div>
                 {group.map((observation) => (
@@ -157,7 +186,7 @@ export default function WriterObservationsPanel({
                     <button type="button" onClick={() => onView(observation)}>Ver fragmento</button>
                   </div>
                 ))}
-                <p>Parece participar o estar mencionado en la acción. ¿Quieres reconocerlo como personaje?</p>
+                <p>La relación puede ser intervención, acción, mención o incierta. Reconocerla no cambia el texto ni crea diálogo.</p>
                 <div className="writer-observation-actions">
                   <button type="button" onClick={() => { setConfirming(first); setConfirmName(first.identity); }}>Confirmar personaje</button>
                   <button type="button" onClick={() => { setLinking(first); setLinkKey(knownIdentities[0]?.key ?? ""); }} disabled={!knownIdentities.length}>Vincular a existente</button>
@@ -191,7 +220,7 @@ export default function WriterObservationsPanel({
               return (
                 <li key={`${identity.source}:${identity.key}`}>
                   <div><strong>{identity.name}</strong><span>{SOURCE_LABELS[identity.source]}</span></div>
-                  <small>{references.length ? `${references.length} referencias actuales en Acción` : "Sin referencias actuales en Acción"}</small>
+                  <small>{references.length ? `${references.length} evidencias actuales` : "Sin evidencias actuales"}</small>
                 </li>
               );
             })}</ul>
@@ -234,3 +263,13 @@ function confidenceLabel(value: WriterCharacterObservation["confidence"]) {
   if (value === "medium") return "Media";
   return "Revisar";
 }
+
+const KIND_LABELS: Record<WriterFormatObservation["kind"], string> = {
+  sceneHeading: "Encabezado de escena",
+  action: "Acción",
+  character: "Personaje — encabezado de diálogo",
+  dialogue: "Diálogo",
+  parenthetical: "Acotación",
+  transition: "Transición",
+  authorNote: "Nota del autor",
+};

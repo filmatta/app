@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import {
   SCREENPLAY_KINDS,
   WRITER_SCHEMA_VERSION,
+  blockText,
   countDocumentWords,
   deriveCharacters,
   deriveScenes,
@@ -75,6 +76,11 @@ import {
   type WriterCharacterDecision,
   type WriterCharacterDecisionState,
 } from "@/lib/writer/character-observation-storage";
+import {
+  parsePersistedWriterImportAnalysis,
+  type PersistedWriterImportAnalysis,
+  type WriterFormatObservation,
+} from "@/lib/writer/import-analysis";
 
 type ScriptInput = {
   id: string;
@@ -125,6 +131,7 @@ export default function WriterWorkspace({
   const [observationsOpen, setObservationsOpen] = useState(false);
   const [selectedObservationBlockId, setSelectedObservationBlockId] = useState<string | null>(null);
   const [characterObservations, setCharacterObservations] = useState<WriterCharacterObservation[]>([]);
+  const [persistedImportAnalysis, setPersistedImportAnalysis] = useState<PersistedWriterImportAnalysis | null>(null);
   const [characterDecisions, setCharacterDecisions] = useState<WriterCharacterDecisionState>(() => emptyWriterCharacterDecisionState());
   const [characterStoragePersistent, setCharacterStoragePersistent] = useState(true);
   const [analysisEpoch, setAnalysisEpoch] = useState(0);
@@ -387,11 +394,17 @@ export default function WriterWorkspace({
   const scenes = useMemo(() => deriveScenes(document), [document]);
   const knownCharacterIdentities = useMemo(() => deriveWriterKnownCharacterIdentities(
     document,
-    characterDecisions.identities.map((identity) => ({
-      name: identity.name,
-      source: identity.source,
-    })),
-  ), [characterDecisions.identities, document]);
+    [
+      ...characterDecisions.identities.map((identity) => ({
+        name: identity.name,
+        source: identity.source,
+      })),
+      ...(persistedImportAnalysis?.identities.map((identity) => ({
+        name: identity.name,
+        source: identity.source,
+      })) ?? []),
+    ],
+  ), [characterDecisions.identities, document, persistedImportAnalysis?.identities]);
   localAutocompleteCharactersRef.current = knownCharacterIdentities
     .filter((identity) => identity.source !== "characterBlock")
     .map((identity) => identity.name);
@@ -400,10 +413,27 @@ export default function WriterWorkspace({
     () => new Set(characterDecisions.decisions.map((decision) => decision.fingerprint)),
     [characterDecisions.decisions],
   );
+  const currentBlocksById = useMemo(() => new Map(document.content.map((block) => [block.attrs.id, block])), [document]);
+  const combinedCharacterObservations = useMemo(() => {
+    const byEvidence = new Map<string, WriterCharacterObservation>();
+    for (const observation of [...characterObservations, ...(persistedImportAnalysis?.observations ?? [])]) {
+      const currentBlock = currentBlocksById.get(observation.blockId);
+      if (!currentBlock || writerObservationTextHash(blockText(currentBlock)) !== observation.blockHash) continue;
+      const key = [observation.identityKey, observation.blockId, observation.start, observation.end, observation.evidence].join("|");
+      const current = byEvidence.get(key);
+      if (!current || observation.source === "ai" || observation.source === "explicit") byEvidence.set(key, observation);
+    }
+    return [...byEvidence.values()];
+  }, [characterObservations, currentBlocksById, persistedImportAnalysis?.observations]);
+  const formatObservations = useMemo(() => (persistedImportAnalysis?.formatObservations ?? []).filter((observation) => {
+    const block = currentBlocksById.get(observation.blockId);
+    return Boolean(block && block.attrs.kind === observation.kind && writerObservationTextHash(blockText(block)) === observation.blockHash);
+  }), [currentBlocksById, persistedImportAnalysis?.formatObservations]);
   const pendingCharacterObservations = useMemo(
-    () => characterObservations.filter((observation) => !observation.known && !activeDecisionFingerprints.has(observation.fingerprint)),
-    [activeDecisionFingerprints, characterObservations],
+    () => combinedCharacterObservations.filter((observation) => !observation.known && !activeDecisionFingerprints.has(observation.fingerprint)),
+    [activeDecisionFingerprints, combinedCharacterObservations],
   );
+  const pendingObservationCount = pendingCharacterObservations.length + formatObservations.length;
 
   useEffect(() => {
     characterAnalysisCacheRef.current = new Map();
@@ -436,6 +466,48 @@ export default function WriterWorkspace({
       setCharacterStoragePersistent(false);
     }
   }, [script.id, userId]);
+
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/writer/scripts/${script.id}/analysis`, { cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (!active || !payload) return;
+        const parsed = parsePersistedWriterImportAnalysis(payload, script.document);
+        if (!parsed) return;
+        setPersistedImportAnalysis(parsed);
+        updateCharacterDecisions((current) => {
+          const byFingerprint = new Map(current.decisions.map((decision) => [decision.fingerprint, decision]));
+          for (const decision of parsed.decisions) byFingerprint.set(decision.fingerprint, decision);
+          return { ...current, decisions: [...byFingerprint.values()] };
+        });
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [script.document, script.id, updateCharacterDecisions]);
+
+  const persistCharacterDecision = useCallback(async (
+    decision: WriterCharacterDecision,
+    identityName?: string,
+  ) => {
+    if (!persistedImportAnalysis) return;
+    const response = await fetch(`/api/writer/scripts/${script.id}/analysis`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...decision, identityName }),
+    });
+    if (!response.ok) setFeedback("La decisión quedó guardada en este dispositivo, pero no pudo sincronizarse.");
+  }, [persistedImportAnalysis, script.id]);
+
+  const removePersistedCharacterDecision = useCallback(async (fingerprint: string) => {
+    if (!persistedImportAnalysis) return;
+    const response = await fetch(`/api/writer/scripts/${script.id}/analysis`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fingerprint }),
+    });
+    if (!response.ok) setFeedback("La decisión se restauró aquí, pero no pudo sincronizarse.");
+  }, [persistedImportAnalysis, script.id]);
 
   useEffect(() => {
     if (!editor || !ready || focusMode) {
@@ -664,13 +736,18 @@ export default function WriterWorkspace({
     if (!ready || importNoticeHandledRef.current) return;
     importNoticeHandledRef.current = true;
     const url = new URL(window.location.href);
-    if (url.searchParams.get("imported") !== "1") return;
+    const importedMode = url.searchParams.get("imported");
+    if (!importedMode) return;
     const sceneCount = deriveScenes(document).length;
     const characterCount = deriveCharacters(document).length;
+    const optionalObservations = Number(url.searchParams.get("observations") ?? "0");
     const frame = requestAnimationFrame(() => {
-      setFeedback(`Importación completada · ${sceneCount} escenas · ${characterCount} personajes · ${document.content.length} bloques.`);
+      setFeedback(importedMode === "ai"
+        ? `Guion importado · ${sceneCount} escenas · ${characterCount} personajes · ${document.content.length} bloques${optionalObservations ? ` · ${optionalObservations} observaciones opcionales de formato` : ""}.`
+        : `Importación completada · ${sceneCount} escenas · ${characterCount} personajes · ${document.content.length} bloques.`);
     });
     url.searchParams.delete("imported");
+    url.searchParams.delete("observations");
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     return () => cancelAnimationFrame(frame);
   }, [document, ready]);
@@ -811,6 +888,7 @@ export default function WriterWorkspace({
       ...current,
       decisions: [...current.decisions.filter((item) => item.fingerprint !== decision.fingerprint), decision],
     }));
+    void persistCharacterDecision(decision);
   }
 
   function confirmCharacterObservation(observation: WriterCharacterObservation, value: string) {
@@ -840,6 +918,14 @@ export default function WriterWorkspace({
         },
       ],
     }));
+    void persistCharacterDecision({
+      fingerprint: observation.fingerprint,
+      blockId: observation.blockId,
+      state: "confirmed",
+      identityId,
+      identityKey: key,
+      decidedAt: Date.now(),
+    }, name);
   }
 
   function addManualCharacter(value: string) {
@@ -873,6 +959,21 @@ export default function WriterWorkspace({
     editor.view.focus();
     setActiveScene(findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId));
     clearSceneHighlight();
+    setWriterSceneHighlight(editor, observation.blockId);
+    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
+    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
+  }
+
+  function viewFormatObservation(observation: WriterFormatObservation) {
+    if (!editor) return;
+    const target = findWriterBlockById(editor, observation.blockId);
+    if (!target || writerObservationTextHash(target.text) !== observation.blockHash) {
+      setFeedback("Este fragmento cambió y la observación de importación quedó desactualizada.");
+      return;
+    }
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, target.position + 1)).scrollIntoView());
+    editor.view.focus();
+    setActiveScene(findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId));
     setWriterSceneHighlight(editor, observation.blockId);
     highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
     if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
@@ -931,7 +1032,7 @@ export default function WriterWorkspace({
           onClick={() => { setSelectedObservationBlockId(null); setObservationsOpen(true); }}
           aria-expanded={observationsOpen}
         >
-          Observaciones{pendingCharacterObservations.length ? ` ${pendingCharacterObservations.length}` : ""}
+          Observaciones{pendingObservationCount ? ` ${pendingObservationCount}` : ""}
         </button>
         <input
           className="writer-title-input"
@@ -965,7 +1066,7 @@ export default function WriterWorkspace({
             type="button"
             onClick={() => { setSelectedObservationBlockId(null); setObservationsOpen((open) => !open); }}
             aria-expanded={observationsOpen}
-          >Observaciones{pendingCharacterObservations.length ? ` (${pendingCharacterObservations.length})` : ""}</button>
+          >Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
           <button
             className="writer-timeline-button"
             type="button"
@@ -1166,10 +1267,12 @@ export default function WriterWorkspace({
 
       {observationsOpen && !focusMode && (
         <WriterObservationsPanel
-          observations={characterObservations}
+          observations={combinedCharacterObservations}
           knownIdentities={knownCharacterIdentities}
           decisions={characterDecisions}
           storagePersistent={characterStoragePersistent}
+          importedAnalysisPersistent={Boolean(persistedImportAnalysis)}
+          formatObservations={formatObservations}
           selectedBlockId={selectedObservationBlockId}
           onClose={() => {
             setObservationsOpen(false);
@@ -1189,12 +1292,16 @@ export default function WriterWorkspace({
             state: "ignored",
             decidedAt: Date.now(),
           })}
-          onRestore={(decision) => updateCharacterDecisions((current) => ({
-            ...current,
-            decisions: current.decisions.filter((item) => item.fingerprint !== decision.fingerprint),
-          }))}
+          onRestore={(decision) => {
+            updateCharacterDecisions((current) => ({
+              ...current,
+              decisions: current.decisions.filter((item) => item.fingerprint !== decision.fingerprint),
+            }));
+            void removePersistedCharacterDecision(decision.fingerprint);
+          }}
           onAddManual={addManualCharacter}
           onView={viewCharacterObservation}
+          onViewFormat={viewFormatObservation}
         />
       )}
 

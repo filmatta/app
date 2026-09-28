@@ -241,6 +241,10 @@
 .writer-import-privacy p { margin: 5px 0 0; font-size: .72rem; line-height: 1.5; }
 .writer-import-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; }
 .writer-import-actions button { padding: 10px 14px; }
+.writer-import-actions--stacked { display: grid; justify-items: end; }
+.writer-import-actions--stacked > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
+.writer-import-disabled-reason { max-width: 620px; margin: 0; color: #f5aaa6; font-size: .68rem; line-height: 1.45; text-align: right; }
+.writer-import-stage { margin: 18px 0 0; color: #ffd0cd; font: .72rem/1.5 var(--font-geist-mono); }
 .writer-import-integrity { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--writer-border); border-bottom: 1px solid var(--writer-border); }
 .writer-import-integrity > div { display: grid; gap: 5px; padding: 15px; border-right: 1px solid var(--writer-border); }
 .writer-import-integrity > div:last-child { border-right: 0; }
@@ -450,6 +454,10 @@
   .writer-import-footer { bottom: -14px; margin: 18px -14px -14px; padding: 13px 14px calc(13px + env(safe-area-inset-bottom)); }
   .writer-import-footer > div { justify-content: stretch; }
   .writer-import-footer button { flex: 1 1 150px; }
+  .writer-import-actions--stacked,
+  .writer-import-actions--stacked > div { justify-items: stretch; justify-content: stretch; }
+  .writer-import-actions--stacked button { flex: 1 1 145px; }
+  .writer-import-disabled-reason { max-width: none; text-align: left; }
   .writer-autocomplete { max-width: calc(100vw - 16px); }
   .writer-observations-panel { inset: 0; width: 100vw; }
   .writer-observations-scroll { padding: 14px; }
