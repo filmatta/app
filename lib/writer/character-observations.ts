@@ -17,7 +17,7 @@ export type WriterCharacterConfidence = "high" | "medium" | "review";
 export type WriterKnownCharacterIdentity = {
   key: string;
   name: string;
-  source: "characterBlock" | "confirmedAction" | "manual";
+  source: "characterBlock" | "confirmedAction" | "manual" | "imported";
 };
 
 export type WriterCharacterObservation = {
@@ -36,6 +36,9 @@ export type WriterCharacterObservation = {
   known: boolean;
   blockHash: string;
   fingerprint: string;
+  source?: "explicit" | "rule" | "ai" | "user";
+  presence?: "present" | "absent" | "unknown";
+  detected?: boolean;
 };
 
 export type WriterCharacterAnalysisCache = Map<string, {
