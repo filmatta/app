@@ -26,7 +26,7 @@ import {
   type WriterCharacterEvidence,
 } from "./character-observations.ts";
 
-export const WRITER_ASSISTED_IMPORT_VERSION = "writer-import-ai-v1-candidates-v2";
+export const WRITER_ASSISTED_IMPORT_VERSION = "writer-import-ai-v1-compact-v3";
 export const WRITER_ASSISTED_IMPORT_MAX_BYTES = 2 * 1024 * 1024;
 export const WRITER_ASSISTED_IMPORT_MAX_WORDS = 30_000;
 export const WRITER_ASSISTED_IMPORT_MAX_SOURCE_TOKENS = 80_000;
@@ -206,80 +206,200 @@ export type AssistedImportReconciliation = {
   observations: WriterImportedFormatObservation[];
 };
 
-const SCREENPLAY_KIND_SCHEMA = {
-  type: "string",
-  enum: ["sceneHeading", "action", "character", "dialogue", "parenthetical", "transition", "authorNote"],
-} as const;
-
 export const WRITER_ASSISTED_IMPORT_OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["classifications", "candidateEvidence", "discoveries", "observations"],
+  required: ["b", "c", "x", "o"],
   properties: {
-    classifications: {
+    b: {
       type: "array",
+      maxItems: 256,
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["blockId", "kind", "uncertain", "reason"],
+        required: ["i", "k", "u"],
         properties: {
-          blockId: { type: "string" },
-          kind: SCREENPLAY_KIND_SCHEMA,
-          uncertain: { type: "boolean" },
-          reason: { type: "string", maxLength: 180 },
+          i: { type: "string" },
+          k: { type: "string", enum: ["h", "a", "c", "d", "p", "t", "n"] },
+          u: { type: "boolean" },
         },
       },
     },
-    candidateEvidence: {
+    c: {
       type: "array",
+      maxItems: 1_024,
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["candidateId", "disposition", "entityType", "relation", "presence", "uncertain", "reason"],
+        required: ["i", "d", "e", "r", "p"],
         properties: {
-          candidateId: { type: "string" },
-          disposition: { type: "string", enum: ["participant", "mention", "nonparticipant", "uncertain"] },
-          entityType: { type: "string", enum: ["named", "role", "collective"] },
-          relation: { type: "string", enum: ["intervention", "action", "mention", "indeterminate"] },
-          presence: { type: "string", enum: ["present", "absent", "unknown"] },
-          uncertain: { type: "boolean" },
-          reason: { type: "string", maxLength: 180 },
+          i: { type: "string" },
+          d: { type: "string", enum: ["p", "m", "n", "u"] },
+          e: { type: "string", enum: ["n", "r", "c"] },
+          r: { type: "string", enum: ["i", "a", "m", "u"] },
+          p: { type: "string", enum: ["p", "a", "u"] },
         },
       },
     },
-    discoveries: {
+    x: {
       type: "array",
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["blockId", "sentenceId", "mention", "quote", "entityType", "relation", "presence", "uncertain", "reason"],
+        required: ["b", "s", "m", "q", "e", "r", "p", "u"],
         properties: {
-          blockId: { type: ["string", "null"] },
-          sentenceId: { type: ["string", "null"] },
-          mention: { type: "string", minLength: 1, maxLength: 64 },
-          quote: { type: "string", minLength: 1, maxLength: 320 },
-          entityType: { type: "string", enum: ["named", "role", "collective"] },
-          relation: { type: "string", enum: ["intervention", "action", "mention", "indeterminate"] },
-          presence: { type: "string", enum: ["present", "absent", "unknown"] },
-          uncertain: { type: "boolean" },
-          reason: { type: "string", maxLength: 180 },
+          b: { type: ["string", "null"] },
+          s: { type: ["string", "null"] },
+          m: { type: "string", minLength: 1, maxLength: 64 },
+          q: { type: "string", minLength: 1, maxLength: 320 },
+          e: { type: "string", enum: ["n", "r", "c"] },
+          r: { type: "string", enum: ["i", "a", "m", "u"] },
+          p: { type: "string", enum: ["p", "a", "u"] },
+          u: { type: "boolean" },
         },
       },
     },
-    observations: {
+    o: {
       type: "array",
+      maxItems: 24,
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["blockId", "message"],
+        required: ["b", "c"],
         properties: {
-          blockId: { type: "string" },
-          message: { type: "string", minLength: 1, maxLength: 180 },
+          b: { type: "string" },
+          c: { type: "string", enum: ["format_ambiguous", "semantic_ambiguous"] },
         },
       },
     },
   },
 } as const;
+
+const TRANSPORT_KIND = {
+  h: "sceneHeading", a: "action", c: "character", d: "dialogue", p: "parenthetical", t: "transition", n: "authorNote",
+} as const;
+const KIND_TRANSPORT = Object.fromEntries(Object.entries(TRANSPORT_KIND).map(([code, kind]) => [kind, code])) as Record<ScreenplayKind, keyof typeof TRANSPORT_KIND>;
+const TRANSPORT_DISPOSITION = { p: "participant", m: "mention", n: "nonparticipant", u: "uncertain" } as const;
+const TRANSPORT_ENTITY = { n: "named", r: "role", c: "collective" } as const;
+const TRANSPORT_RELATION = { i: "intervention", a: "action", m: "mention", u: "indeterminate" } as const;
+const TRANSPORT_PRESENCE = { p: "present", a: "absent", u: "unknown" } as const;
+const SIGNAL_TRANSPORT: Record<string, string> = {
+  "nontraditional-name": "n",
+  "apparent-proper-name": "p",
+  "determiner-noun-phrase": "r",
+  "known-identity": "k",
+  "observable-agentive": "a",
+};
+
+export function assistedImportTransportInput(
+  batch: AssistedImportBatch,
+  stage: "terra" | "sol" = "terra",
+  triggers: AssistedImportRecoveryTrigger[] = [],
+  priorResult?: AssistedImportModelResult | null,
+) {
+  const blockIds = new Map(batch.blocks.map((block, index) => [block.id, `b${index}`]));
+  const sentenceIds = new Map(batch.sentences.map((sentence, index) => [sentence.sentenceId, `s${index}`]));
+  const candidateIds = new Map(batch.candidates.map((candidate, index) => [candidate.candidateId, `c${index}`]));
+  const sceneLabels = [...new Set(batch.blocks.map((block) => batch.sceneContextByBlock[block.id]?.sceneLabel).filter((label): label is string => Boolean(label)))];
+  const sceneIds = new Map(sceneLabels.map((label, index) => [label, `g${index}`]));
+  const relevantText = batch.blocks.map((block) => block.originalText).join("\n").toLocaleUpperCase("es");
+  const knownIdentities = batch.knownIdentities.filter((identity) => relevantText.includes(identity.toLocaleUpperCase("es")));
+  const prior = priorResult ? priorResult.candidateDecisions.flatMap((decision) => {
+    const id = candidateIds.get(decision.candidateId);
+    if (!id) return [];
+    return [{
+      i: id,
+      d: transportKey(TRANSPORT_DISPOSITION, decision.disposition),
+      r: transportKey(TRANSPORT_RELATION, decision.relation),
+      p: transportKey(TRANSPORT_PRESENCE, decision.presence),
+    }];
+  }) : [];
+  return {
+    v: WRITER_ASSISTED_IMPORT_VERSION,
+    m: stage === "terra" ? "c" : "r",
+    t: triggers.map(compactRecoveryTrigger),
+    g: sceneLabels.map((label) => [sceneIds.get(label), label]),
+    k: knownIdentities,
+    b: batch.blocks.map((block) => [
+      blockIds.get(block.id),
+      block.proposedKind ? KIND_TRANSPORT[block.proposedKind] : null,
+      block.confidence === "high" ? "h" : block.confidence === "medium" ? "m" : "r",
+      sceneIds.get(batch.sceneContextByBlock[block.id]?.sceneLabel ?? "") ?? null,
+      block.originalText,
+    ]),
+    s: batch.sentences.map((sentence) => [
+      sentenceIds.get(sentence.sentenceId), blockIds.get(sentence.blockId), sentence.start, sentence.end,
+    ]),
+    c: batch.candidates.map((candidate) => [
+      candidateIds.get(candidate.candidateId), sentenceIds.get(candidate.sentenceId), candidate.text,
+      candidate.signals.map((signal) => SIGNAL_TRANSPORT[signal] ?? "o"),
+    ]),
+    q: batch.classificationIds.flatMap((id) => blockIds.get(id) ?? []),
+    u: batch.coverage.filter((item) => item.candidateIds.length === 0 || item.truncated).map((item) => [
+      sentenceIds.get(item.sentenceId), item.candidateIds.length === 0 ? "e" : "t",
+    ]),
+    p: prior,
+  };
+}
+
+export function expandAssistedImportTransportResult(value: unknown, batch: AssistedImportBatch): unknown {
+  if (!isRecord(value) || !Array.isArray(value.b) || !Array.isArray(value.c)
+    || !Array.isArray(value.x) || !Array.isArray(value.o)) return value;
+  const blockIds = new Map(batch.blocks.map((block, index) => [`b${index}`, block.id]));
+  const sentenceIds = new Map(batch.sentences.map((sentence, index) => [`s${index}`, sentence.sentenceId]));
+  const candidateIds = new Map(batch.candidates.map((candidate, index) => [`c${index}`, candidate.candidateId]));
+  return {
+    classifications: value.b.map((item) => {
+      const entry = isRecord(item) ? item : {};
+      const kind = TRANSPORT_KIND[String(entry.k) as keyof typeof TRANSPORT_KIND];
+      const uncertain = entry.u === true;
+      return {
+        blockId: blockIds.get(String(entry.i)) ?? `unknown:${String(entry.i)}`,
+        kind: kind ?? String(entry.k),
+        uncertain,
+        reason: uncertain ? "La clasificación de formato requiere revisión." : "Clasificación contextual compatible.",
+      };
+    }),
+    candidateEvidence: value.c.map((item) => {
+      const entry = isRecord(item) ? item : {};
+      const disposition = TRANSPORT_DISPOSITION[String(entry.d) as keyof typeof TRANSPORT_DISPOSITION];
+      const relation = TRANSPORT_RELATION[String(entry.r) as keyof typeof TRANSPORT_RELATION];
+      return {
+        candidateId: candidateIds.get(String(entry.i)) ?? `unknown:${String(entry.i)}`,
+        disposition: disposition ?? String(entry.d),
+        entityType: TRANSPORT_ENTITY[String(entry.e) as keyof typeof TRANSPORT_ENTITY] ?? String(entry.e),
+        relation: relation ?? String(entry.r),
+        presence: TRANSPORT_PRESENCE[String(entry.p) as keyof typeof TRANSPORT_PRESENCE] ?? String(entry.p),
+        uncertain: disposition === "uncertain",
+        reason: semanticReason(disposition, relation),
+      };
+    }),
+    discoveries: value.x.map((item) => {
+      const entry = isRecord(item) ? item : {};
+      const relation = TRANSPORT_RELATION[String(entry.r) as keyof typeof TRANSPORT_RELATION];
+      return {
+        blockId: entry.b === null ? null : blockIds.get(String(entry.b)) ?? `unknown:${String(entry.b)}`,
+        sentenceId: entry.s === null ? null : sentenceIds.get(String(entry.s)) ?? `unknown:${String(entry.s)}`,
+        mention: entry.m,
+        quote: entry.q,
+        entityType: TRANSPORT_ENTITY[String(entry.e) as keyof typeof TRANSPORT_ENTITY] ?? String(entry.e),
+        relation: relation ?? String(entry.r),
+        presence: TRANSPORT_PRESENCE[String(entry.p) as keyof typeof TRANSPORT_PRESENCE] ?? String(entry.p),
+        uncertain: entry.u === true,
+        reason: semanticReason(entry.u === true ? "uncertain" : "participant", relation),
+      };
+    }),
+    observations: value.o.map((item) => {
+      const entry = isRecord(item) ? item : {};
+      return {
+        blockId: blockIds.get(String(entry.b)) ?? `unknown:${String(entry.b)}`,
+        message: entry.c === "semantic_ambiguous"
+          ? "La referencia narrativa requiere revisión."
+          : "La clasificación de formato requiere revisión.",
+      };
+    }),
+  };
+}
 
 const KIND_SET = new Set<ScreenplayKind>([
   "sceneHeading", "action", "character", "dialogue", "parenthetical", "transition", "authorNote",
@@ -331,7 +451,7 @@ export function buildAssistedImportBatches(staging: WriterImportStaging) {
       || !block.proposedKind;
     if (!shouldAnalyze) continue;
     const size = block.originalText.length + 180;
-    if (!current || current.blocks.length >= 50 || currentCharacters + size > 15_000) {
+    if (!current || current.blocks.length >= 250 || currentCharacters + size > 300_000) {
       current = {
         index: batches.length, sceneLabel, blocks: [], classificationIds: [], sentences: [], candidates: [], coverage: [],
         knownIdentities, sceneContextByBlock: {},
@@ -344,10 +464,12 @@ export function buildAssistedImportBatches(staging: WriterImportStaging) {
     if (block.confidence !== "high" || !block.proposedKind) current.classificationIds.push(block.id);
     currentCharacters += size;
   }
-  if (batches.length > WRITER_ASSISTED_IMPORT_MAX_CALLS - 4) {
+  const anchored = batches.map(withLocalAnchors).flatMap(splitAnchoredBatch)
+    .map((batch, index) => ({ ...batch, index }));
+  if (anchored.length > WRITER_ASSISTED_IMPORT_MAX_CALLS - 4) {
     throw new Error("El borrador requiere más de 20 tramos y no deja capacidad para recuperación dentro de las 24 llamadas.");
   }
-  return batches.map(withLocalAnchors);
+  return anchored;
 }
 
 export function validateAssistedImportModelResult(value: unknown, batch: AssistedImportBatch): AssistedImportModelResult {
@@ -497,6 +619,7 @@ export type AssistedImportRecoveryPlan = {
 export function planAssistedImportRecovery(
   batches: readonly AssistedImportBatch[],
   terraResults: ReadonlyMap<number, AssistedImportModelResult | null>,
+  options: { controlSample?: boolean } = {},
 ): AssistedImportRecoveryPlan {
   const proposals: AssistedImportRecoveryPlanItem[] = [];
   let controlUsed = false;
@@ -539,7 +662,7 @@ export function planAssistedImportRecovery(
           triggers.add("uncovered");
         }
       }
-      if (!controlUsed && triggers.size === 0) {
+      if (options.controlSample && !controlUsed && triggers.size === 0) {
         const control = result.candidateDecisions
           .filter((decision) => decision.disposition === "nonparticipant")
           .sort((left, right) => left.candidateId.localeCompare(right.candidateId))[0];
@@ -806,6 +929,73 @@ function withLocalAnchors(batch: AssistedImportBatch): AssistedImportBatch {
   return { ...batch, sentences, candidates, coverage };
 }
 
+function splitAnchoredBatch(batch: AssistedImportBatch): AssistedImportBatch[] {
+  const groups: WriterImportBlock[][] = [];
+  let current: WriterImportBlock[] = [];
+  let candidateCount = 0;
+  for (const block of batch.blocks) {
+    const blockCandidates = batch.candidates.filter((candidate) => candidate.blockId === block.id).length;
+    if (current.length && candidateCount + blockCandidates > 240) {
+      groups.push(current);
+      current = [];
+      candidateCount = 0;
+    }
+    current.push(block);
+    candidateCount += blockCandidates;
+  }
+  if (current.length) groups.push(current);
+  if (groups.length <= 1 && batch.candidates.length <= 240) return [batch];
+  return groups.flatMap((blocks) => splitAnchoredBlockGroup(batch, blocks));
+}
+
+function splitAnchoredBlockGroup(batch: AssistedImportBatch, blocks: WriterImportBlock[]): AssistedImportBatch[] {
+  if (blocks.length === 1) {
+    const block = blocks[0];
+    const sentences = batch.sentences.filter((sentence) => sentence.blockId === block.id);
+    const chunks: AssistedImportSentence[][] = [];
+    let current: AssistedImportSentence[] = [];
+    let candidateCount = 0;
+    for (const sentence of sentences) {
+      const sentenceCandidates = batch.candidates.filter((candidate) => candidate.sentenceId === sentence.sentenceId).length;
+      if (current.length && candidateCount + sentenceCandidates > 240) {
+        chunks.push(current);
+        current = [];
+        candidateCount = 0;
+      }
+      current.push(sentence);
+      candidateCount += sentenceCandidates;
+    }
+    if (current.length) chunks.push(current);
+    if (chunks.length > 1) return chunks.map((chunk, index) => {
+      const sentenceIds = new Set(chunk.map((sentence) => sentence.sentenceId));
+      return anchoredSubset(batch, blocks, chunk, sentenceIds, index === 0);
+    });
+  }
+  const sentences = batch.sentences.filter((sentence) => blocks.some((block) => block.id === sentence.blockId));
+  const sentenceIds = new Set(sentences.map((sentence) => sentence.sentenceId));
+  return [anchoredSubset(batch, blocks, sentences, sentenceIds, true)];
+}
+
+function anchoredSubset(
+  batch: AssistedImportBatch,
+  blocks: WriterImportBlock[],
+  sentences: AssistedImportSentence[],
+  sentenceIds: ReadonlySet<string>,
+  includeClassifications: boolean,
+) {
+    const blockIds = new Set(blocks.map((block) => block.id));
+    return {
+      ...batch,
+      sceneLabel: batch.sceneContextByBlock[blocks[0].id]?.sceneLabel ?? batch.sceneLabel,
+      blocks,
+      classificationIds: includeClassifications ? batch.classificationIds.filter((id) => blockIds.has(id)) : [],
+      sentences,
+      candidates: batch.candidates.filter((candidate) => sentenceIds.has(candidate.sentenceId)),
+      coverage: batch.coverage.filter((coverage) => sentenceIds.has(coverage.sentenceId)),
+      sceneContextByBlock: Object.fromEntries(blocks.map((block) => [block.id, batch.sceneContextByBlock[block.id]])),
+    };
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
@@ -1067,6 +1257,26 @@ function dedupeEvidence(items: WriterImportedEvidence[]) {
 
 function sourcePriority(source: AssistedImportSource) {
   return source === "user" ? 5 : source === "explicit" ? 4 : source === "rule" ? 3 : 2;
+}
+
+function transportKey(values: Record<string, string>, value: string) {
+  return Object.entries(values).find(([, expanded]) => expanded === value)?.[0] ?? "u";
+}
+
+function compactRecoveryTrigger(trigger: AssistedImportRecoveryTrigger) {
+  return trigger === "unresolved" ? "u"
+    : trigger === "uncovered" ? "c"
+      : trigger === "contradictory_negative" ? "n"
+        : trigger === "control_sample" ? "q"
+          : "i";
+}
+
+function semanticReason(disposition: unknown, relation: unknown) {
+  if (disposition === "nonparticipant") return "El contexto no la presenta como participante narrativo.";
+  if (disposition === "uncertain" || relation === "indeterminate") return "La referencia narrativa requiere revisión.";
+  if (relation === "mention") return "Referencia narrativa sin intervención física acreditada.";
+  if (relation === "intervention") return "Intervención explícita; la presencia física no se presume.";
+  return "Participa en la acción descrita.";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

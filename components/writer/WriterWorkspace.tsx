@@ -746,8 +746,8 @@ export default function WriterWorkspace({
       setFeedback(importedMode === "ai" && analysisStatus === "partial"
         ? "Guion importado. El análisis de personajes tiene observaciones pendientes."
         : importedMode === "ai"
-          ? `Guion importado · ${sceneCount} escenas · ${characterCount} personajes · ${document.content.length} bloques${optionalObservations ? ` · ${optionalObservations} observaciones opcionales de formato` : ""}.`
-        : `Importación completada · ${sceneCount} escenas · ${characterCount} personajes · ${document.content.length} bloques.`);
+          ? `Guion importado · ${sceneCount} escenas · ${characterCount} encabezados de personaje · ${document.content.length} bloques${optionalObservations ? ` · ${optionalObservations} observaciones opcionales de formato` : ""}.`
+        : `Importación completada · ${sceneCount} escenas · ${characterCount} encabezados de personaje · ${document.content.length} bloques.`);
     });
     url.searchParams.delete("imported");
     url.searchParams.delete("observations");

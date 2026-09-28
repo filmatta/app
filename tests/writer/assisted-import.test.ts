@@ -3,13 +3,22 @@ import test from "node:test";
 import { getEncoding } from "js-tiktoken";
 import {
   assertAssistedImportPreservation,
+  assistedImportTransportInput,
   buildAssistedImportBatches,
+  expandAssistedImportTransportResult,
   planAssistedImportRecovery,
   prepareAssistedImportStaging,
   reconcileAssistedImport,
   validateAssistedImportModelResult,
   type AssistedImportBatch,
 } from "../../lib/writer/assisted-import.ts";
+import {
+  assistedImportMaxOutputTokens,
+  assistedImportProviderInput,
+  assistedImportRequestBreakdown,
+  estimateAssistedImportPipelinePlan,
+} from "../../lib/writer/assisted-import-plan.ts";
+import { countAssistedImportTokens } from "../../lib/writer/assisted-import-accounting.ts";
 import { blockText, createBlock } from "../../lib/writer/document.ts";
 import { createBasicFdx, createWriterBackup } from "../../lib/writer/export.ts";
 import { defaultWriterPdfOptions, layoutWriterPdf } from "../../lib/writer/pdf.ts";
@@ -416,6 +425,28 @@ test("candidate extraction V2 records literal anchors, signals, source hashes, a
   assert.ok(batches.flatMap((batch) => batch.coverage).some((item) => item.candidateIds.length === 0));
 });
 
+test("compact transport sends source once, maps short ids, and expands to the canonical validation contract", () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted", sourceText: ASSISTED_IMPORT_EVALUATION_SOURCE, title: "Compacto",
+  });
+  const batch = buildAssistedImportBatches(staging)[0];
+  const payload = assistedImportTransportInput(batch);
+  const serialized = JSON.stringify(payload);
+  assert.doesNotMatch(serialized, /sourceHash|candidate:|sentence:|sceneContextByBlock/u);
+  assert.equal(payload.b.length, batch.blocks.length);
+  assert.equal(payload.s.length, batch.sentences.length);
+  assert.ok(countAssistedImportTokens(serialized) < 2_000);
+
+  const expanded = expandAssistedImportTransportResult({
+    b: payload.q.map((id) => ({ i: id, k: "a", u: false })),
+    c: payload.c.map(([id]) => ({ i: id, d: "n", e: "r", r: "u", p: "u" })),
+    x: [], o: [],
+  }, batch);
+  const validated = validateAssistedImportModelResult(expanded, batch);
+  assert.equal(validated.validationIssues.length, 0);
+  assert.equal(validated.candidateDecisions.length, batch.candidates.length);
+});
+
 test("bounded recovery routes omissions, contradictory negatives, uncovered text, and at most one control sample", () => {
   const staging = prepareAssistedImportStaging({
     format: "pasted",
@@ -442,6 +473,23 @@ test("bounded recovery routes omissions, contradictory negatives, uncovered text
   const negativePlan = planAssistedImportRecovery([batch], new Map([[batch.index, negative]]));
   assert.ok(negativePlan.items[0].triggers.includes("contradictory_negative"));
   assert.ok(negativePlan.items.length <= 4);
+
+  const controlStaging = prepareAssistedImportStaging({
+    format: "pasted", sourceText: "INT. SALA - DÍA\nLa mesa permanece.", title: "Control",
+  });
+  const controlBatch = buildAssistedImportBatches(controlStaging)[0];
+  const resolved = validateAssistedImportModelResult({
+    classifications: controlBatch.classificationIds.map((blockId) => classification(blockId, "action")),
+    candidateEvidence: controlBatch.candidates.map((candidate) => ({
+      ...candidateEvidence(candidate.candidateId, "role", "indeterminate", "unknown"),
+      disposition: "nonparticipant" as const,
+    })), discoveries: [], observations: [],
+  }, controlBatch);
+  const runtime = planAssistedImportRecovery([controlBatch], new Map([[controlBatch.index, resolved]]));
+  const qaControl = planAssistedImportRecovery([controlBatch], new Map([[controlBatch.index, resolved]]), { controlSample: true });
+  assert.equal(runtime.items.length, 0);
+  assert.equal(qaControl.items.length, 1);
+  assert.ok(qaControl.items[0].triggers.includes("control_sample"));
 
   const many = Array.from({ length: 6 }, (_, index) => ({ ...batch, index }));
   const capped = planAssistedImportRecovery(many, new Map(many.map((item) => [item.index, null])));
@@ -512,16 +560,24 @@ test("long synthetic input is partitioned without loss, overlap, or more than 24
   const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: source, title: "Volumen" });
   const batches = buildAssistedImportBatches(staging);
   const ids = batches.flatMap((batch) => batch.blocks.map((block) => block.id));
-  assert.ok(batches.length > 1 && batches.length <= 24);
+  assert.ok(batches.length >= 1 && batches.length <= 20);
   assert.equal(ids.length, new Set(ids).size);
   const expected = new Set(staging.blocks.filter((block) => block.proposedKind === "action" || block.proposedKind === "character" || block.confidence !== "high" || !block.proposedKind).map((block) => block.id));
   assert.deepEqual(new Set(ids), expected);
   const reconciled = reconcileAssistedImport(staging, []);
   assertAssistedImportPreservation(staging, reconciled.document);
   const sourceTokens = getEncoding("o200k_base").encode(source).length;
+  const plan = estimateAssistedImportPipelinePlan(batches);
   assert.ok(staging.source.words >= 25_000 && staging.source.words <= 30_000);
   assert.ok(sourceTokens < 80_000);
-  console.info(`QA_ASSISTED_LONG words=${staging.source.words} tokens=${sourceTokens} calls=${batches.length} realRequests=0 costUsd=0`);
+  assert.ok(batches.every((batch) => batch.candidates.length <= 240));
+  assert.ok(plan.base.costMicrousd < plan.maximum.costMicrousd);
+  assert.ok(plan.maximum.allInputCachedCostMicrousd < plan.maximum.costMicrousd);
+  const first = assistedImportRequestBreakdown(batches[0]);
+  assert.equal(first.maxOutputTokens, assistedImportMaxOutputTokens("terra", batches[0]));
+  assert.equal(countAssistedImportTokens(assistedImportProviderInput(batches[0])),
+    countAssistedImportTokens(JSON.stringify(assistedImportTransportInput(batches[0]))));
+  console.info(`QA_ASSISTED_LONG words=${staging.source.words} tokens=${sourceTokens} calls=${batches.length} baseUsd=${plan.base.costMicrousd / 1_000_000} observableUsd=${plan.observableRecovery.costMicrousd / 1_000_000} maximumUsd=${plan.maximum.costMicrousd / 1_000_000} cachedMaximumUsd=${plan.maximum.allInputCachedCostMicrousd / 1_000_000} realRequests=0`);
 });
 
 function classification(blockId: string, kind: "action" | "character", uncertain = false) {

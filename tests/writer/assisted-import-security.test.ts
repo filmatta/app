@@ -14,8 +14,10 @@ import { WRITER_ASSISTED_IMPORT_OUTPUT_SCHEMA } from "../../lib/writer/assisted-
 import { ASSISTED_IMPORT_EVALUATION_CONTRACT } from "./assisted-import-evaluation.fixture.ts";
 
 const server = fs.readFileSync("lib/writer/assisted-import-server.ts", "utf8");
+const plan = fs.readFileSync("lib/writer/assisted-import-plan.ts", "utf8");
 const route = fs.readFileSync("app/api/writer/imports/assisted/route.ts", "utf8");
 const interfaceSource = fs.readFileSync("components/writer/WriterImportFlow.tsx", "utf8");
+const workspaceSource = fs.readFileSync("components/writer/WriterWorkspace.tsx", "utf8");
 
 test("provider configuration is server-only, stored-output disabled, strict, and tool-free", () => {
   assert.match(server, /import "server-only"/u);
@@ -28,13 +30,14 @@ test("provider configuration is server-only, stored-output disabled, strict, and
   assert.doesNotMatch(server, /NEXT_PUBLIC_OPENAI/u);
   assert.doesNotMatch(server, /gpt-5\.6-luna/u);
   assert.doesNotMatch(server, /\btools\s*:/u);
-  assert.match(server, /candidates: batch\.candidates/u);
-  assert.match(server, /sentences: batch\.sentences/u);
+  assert.match(plan, /assistedImportTransportInput\(batch/u);
+  assert.equal("maxItems" in WRITER_ASSISTED_IMPORT_OUTPUT_SCHEMA.properties.x, false);
   assert.doesNotMatch(JSON.stringify(WRITER_ASSISTED_IMPORT_OUTPUT_SCHEMA), /"(?:start|end)"/u);
   assert.deepEqual(ASSISTED_IMPORT_EVALUATION_CONTRACT, {
     models: ["gpt-5.6-terra", "gpt-5.6-sol"], reasoning: { terra: "none", sol: "low" },
     runsPerModel: { terra: 2, sol: "recovery-only" },
     modelOffsetsAccepted: false, discoveryResolution: "exact-unique-literal",
+    runtimeControlSample: false, qaControlSample: true,
   });
 });
 
@@ -56,11 +59,12 @@ test("pipeline models and reasoning are server-controlled and closed", () => {
     writer_assisted_import_qa: true, writer_assisted_import_model: "gpt-untrusted",
   }), "gpt-5.6-terra");
   assert.doesNotMatch(route, /model/u);
-  assert.match(server, /const TERRA_MODEL = "gpt-5\.6-terra"/u);
-  assert.match(server, /const SOL_MODEL = "gpt-5\.6-sol"/u);
+  assert.match(plan, /TERRA_MODEL = "gpt-5\.6-terra"/u);
+  assert.match(plan, /SOL_MODEL = "gpt-5\.6-sol"/u);
   assert.match(server, /20 \+ recoveryIndex/u);
   assert.match(server, /maximumPlanCost > WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD/u);
   assert.match(server, /failure\.stage.*failure\.code.*failure\.path/u);
+  assert.match(server, /response\.incomplete_details\.reason/u);
 });
 
 test("private endpoint authenticates before reading the body and ignores client pricing or model choices", () => {
@@ -78,6 +82,8 @@ test("main import flow is one click, discloses OpenAI, and keeps manual review o
   assert.match(interfaceSource, /Enviaremos el texto necesario a OpenAI/u);
   assert.doesNotMatch(interfaceSource, /IMPORT FOUNDATION V0/u);
   assert.doesNotMatch(interfaceSource, />Revisar \(0\)</u);
+  assert.match(workspaceSource, /\$\{characterCount\} encabezados de personaje/u);
+  assert.doesNotMatch(workspaceSource, /\$\{characterCount\} personajes/u);
 });
 
 test("token and cost accounting includes cached input and output in microdollars", () => {

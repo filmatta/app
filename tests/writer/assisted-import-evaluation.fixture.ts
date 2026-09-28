@@ -1,4 +1,4 @@
-export const ASSISTED_IMPORT_EVALUATION_VERSION = "candidates-v2-2026-09-28";
+export const ASSISTED_IMPORT_EVALUATION_VERSION = "compact-v3-2026-09-28";
 
 export const ASSISTED_IMPORT_EVALUATION_CONTRACT = {
   models: ["gpt-5.6-terra", "gpt-5.6-sol"],
@@ -6,6 +6,8 @@ export const ASSISTED_IMPORT_EVALUATION_CONTRACT = {
   runsPerModel: { terra: 2, sol: "recovery-only" },
   modelOffsetsAccepted: false,
   discoveryResolution: "exact-unique-literal",
+  runtimeControlSample: false,
+  qaControlSample: true,
 } as const;
 
 export const ASSISTED_IMPORT_PROMPT_CASES = `INT. SALA - DÍA
