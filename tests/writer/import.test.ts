@@ -46,6 +46,28 @@ test("plain text classification is deterministic, contextual, and preserves sour
   assert.equal(summary.possibleActionCharacters, 0);
 });
 
+test("explicit standalone author notes are protected without stealing quoted dialogue", () => {
+  const source = `INT. SET - DÍA
+
+[[NOTA DEL AUTOR: conservar → y ⋮.]]
+
+ANA
+[[NOTA DEL AUTOR: esto se dice en diálogo]]
+
+[Una indicación cualquiera]`;
+  const staging = analyzePastedWriterText(source, "Notas");
+  assert.deepEqual(staging.blocks.map((block) => block.proposedKind), [
+    "sceneHeading",
+    "authorNote",
+    "character",
+    "dialogue",
+    "action",
+  ]);
+  assert.equal(staging.blocks[1].confidence, "high");
+  assert.equal(staging.blocks[1].originalText, "[[NOTA DEL AUTOR: conservar → y ⋮.]]");
+  assert.equal(writerImportPreservesSignificantText(staging), true);
+});
+
 test("ambiguous text requires an explicit decision before canonical conversion", () => {
   const staging = analyzeWriterTxt(PLAIN_TEXT, "borrador.txt");
   assert.throws(() => writerImportToDocument(staging.blocks), /1 elementos por revisar/u);

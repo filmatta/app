@@ -10,8 +10,20 @@ import {
   type AssistedImportModelResult,
 } from "../../lib/writer/assisted-import.ts";
 import { blockText, createBlock } from "../../lib/writer/document.ts";
+import { createBasicFdx, createWriterBackup } from "../../lib/writer/export.ts";
+import { defaultWriterPdfOptions, layoutWriterPdf } from "../../lib/writer/pdf.ts";
 import { parsePersistedWriterImportAnalysis } from "../../lib/writer/import-analysis.ts";
-import { writerObservationTextHash } from "../../lib/writer/character-observations.ts";
+import {
+  analyzeWriterCharacterObservations,
+  deriveWriterKnownCharacterIdentities,
+  writerObservationTextHash,
+} from "../../lib/writer/character-observations.ts";
+import type { WriterImportBlock } from "../../lib/writer/import.ts";
+import {
+  ASSISTED_IMPORT_EVALUATION_SOURCE,
+  ASSISTED_IMPORT_EVALUATION_VERSION,
+  ASSISTED_IMPORT_RESERVED_EXPECTATIONS,
+} from "./assisted-import-evaluation.fixture.ts";
 
 const SOURCE = `INT. BOSQUE - DÍA
 
@@ -58,9 +70,9 @@ test("automatic reconciliation preserves every source block and separates identi
   assert.deepEqual(reconciled.document.content.map(blockText), staging.blocks.map((block) => block.originalText));
   const girl = reconciled.document.content.find((block) => blockText(block).startsWith("Una niña"));
   assert.equal(girl?.attrs.kind, "action");
-  assert.ok(reconciled.identities.some((identity) => identity.name === "NIÑA"));
-  assert.ok(reconciled.identities.some((identity) => identity.name === "ROBOT"));
-  assert.ok(reconciled.identities.some((identity) => identity.name === "MATEO"));
+  assert.ok(reconciled.identities.some((identity) => identity.key.endsWith(":NIÑA")));
+  assert.ok(reconciled.identities.some((identity) => identity.key.endsWith(":ROBOT")));
+  assert.ok(reconciled.identities.some((identity) => identity.key === "MATEO"));
   assert.equal(reconciled.identities.filter((identity) => identity.key === "CAROLINA").length, 1);
   assert.ok(reconciled.evidence.some((item) => item.identityKey === "CAROLINA" && item.relation === "intervention"));
   assert.ok(reconciled.evidence.some((item) => item.identityKey === "CAROLINA" && item.relation === "action"));
@@ -68,7 +80,173 @@ test("automatic reconciliation preserves every source block and separates identi
   assert.equal(reconciled.evidence.some((item) => item.identity === "PUERTA"), false);
   assert.equal(reconciled.evidence.some((item) => item.identity === "ÉL"), false);
   assert.equal(reconciled.evidence.some((item) => item.identity === "ESPERANZA" && item.relation === "action"), false);
-  assert.ok(reconciled.evidence.some((item) => item.identity === "MATEO" && item.presence === "absent"));
+  assert.ok(reconciled.evidence.some((item) => item.identityKey === "MATEO" && item.presence === "absent"));
+});
+
+test("protected notes bypass analysis, remain in JSON, and stay out of PDF and FDX", () => {
+  const source = `INT. SET - DÍA
+
+Acción exportable.
+
+[[NOTA DEL AUTOR: conservar → y ⋮.]]`;
+  const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: source, title: "Notas" });
+  const note = staging.blocks.find((block) => block.originalText.startsWith("[[NOTA"))!;
+  assert.equal(note.proposedKind, "authorNote");
+  assert.equal(buildAssistedImportBatches(staging).flatMap((batch) => batch.blocks).some((block) => block.id === note.id), false);
+  const reconciled = reconcileAssistedImport(staging, []);
+  assertAssistedImportPreservation(staging, reconciled.document);
+  assert.equal(reconciled.document.content.at(-1)?.attrs.kind, "authorNote");
+  assert.equal(reconciled.evidence.some((item) => item.blockId === reconciled.document.content.at(-1)?.attrs.id), false);
+  const snapshot = { title: "Notas", schemaVersion: 1, document: reconciled.document };
+  assert.match(createWriterBackup(snapshot), /NOTA DEL AUTOR/u);
+  assert.doesNotMatch(createBasicFdx(snapshot), /NOTA DEL AUTOR/u);
+  const layout = layoutWriterPdf(snapshot, { ...defaultWriterPdfOptions(snapshot.title), includeCover: false });
+  assert.equal(layout.excludedAuthorNotes, 1);
+  assert.equal(layout.pages.flatMap((page) => page.items)
+    .some((item) => item.runs.some((run) => run.text.includes("NOTA DEL AUTOR"))), false);
+});
+
+test("validation uses source casing and narrative agency without noun blacklists", () => {
+  const source = `INT. SALA - DÍA
+La esperanza desaparece.
+Esperanza cierra la ventana.
+La puerta se abre.
+La puerta protesta: «No pienso dejarte pasar».
+Un robot observa a Carolina.
+Un robot de utilería permanece apagado en una repisa.`;
+  const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: source, title: "Contrastes" });
+  const byText = new Map(staging.blocks.map((block) => [block.originalText, block]));
+  const result: AssistedImportModelResult = {
+    classifications: [],
+    evidence: [
+      sourceEvidence(byText, "La esperanza desaparece.", "esperanza", "named", "action", "present"),
+      sourceEvidence(byText, "Esperanza cierra la ventana.", "Esperanza", "named", "action", "present"),
+      sourceEvidence(byText, "La puerta se abre.", "puerta", "role", "action", "present"),
+      sourceEvidence(byText, "La puerta protesta: «No pienso dejarte pasar».", "La puerta", "role", "action", "present"),
+      sourceEvidence(byText, "Un robot observa a Carolina.", "Un robot", "role", "action", "present"),
+      sourceEvidence(byText, "Un robot de utilería permanece apagado en una repisa.", "Un robot", "role", "action", "present"),
+    ],
+    observations: [],
+  };
+  const batch = { index: 0, sceneLabel: "INT. SALA - DÍA", blocks: staging.blocks, classificationIds: [] };
+  const validated = validateAssistedImportModelResult(result, batch);
+  assert.deepEqual(validated.evidence.map((item) => item.label), ["Esperanza", "La puerta", "Un robot"]);
+});
+
+test("reconciliation reuses repeated roles but keeps explicitly distinct participants", () => {
+  const source = `INT. LABORATORIO - DÍA
+Un robot entra. El robot saluda.
+Otro robot lo sigue.`;
+  const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: source, title: "Robots" });
+  const first = staging.blocks.find((block) => block.originalText.startsWith("Un robot"))!;
+  const second = staging.blocks.find((block) => block.originalText.startsWith("Otro robot"))!;
+  const result: AssistedImportModelResult = {
+    classifications: [],
+    evidence: [
+      spanEvidence(first, "Un robot", "role", "action", "present"),
+      spanEvidence(first, "El robot", "role", "action", "present"),
+      spanEvidence(second, "Otro robot", "role", "action", "present"),
+    ],
+    observations: [],
+  };
+  const validated = validateAssistedImportModelResult(result, {
+    index: 0, sceneLabel: "INT. LABORATORIO - DÍA", blocks: staging.blocks, classificationIds: [],
+  });
+  const reconciled = reconcileAssistedImport(staging, [validated]);
+  const robotIdentities = reconciled.identities.filter((identity) => identity.key.includes("ROBOT"));
+  assert.equal(robotIdentities.length, 2);
+  assert.equal(reconciled.evidence.filter((item) => item.identityKey.endsWith(":ROBOT")).length >= 2, true);
+  assert.ok(robotIdentities.some((identity) => identity.key.includes("OTRO ROBOT")));
+});
+
+test("local observations do not remap lowercase concepts to a known proper name", () => {
+  const document = {
+    type: "doc" as const,
+    content: [
+      createBlock("character", "ESPERANZA"),
+      createBlock("action", "La esperanza desaparece."),
+      createBlock("action", "Esperanza cierra la ventana."),
+    ],
+  };
+  const known = deriveWriterKnownCharacterIdentities(document);
+  const observations = analyzeWriterCharacterObservations(document, known).observations;
+  assert.equal(observations.some((item) => item.excerpt === "La esperanza desaparece."), false);
+  assert.ok(observations.some((item) => item.excerpt === "Esperanza cierra la ventana." && item.identityKey === "ESPERANZA"));
+});
+
+test("voice-over headings reuse the character identity without asserting physical presence", () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted",
+    sourceText: `INT. CUARTO - NOCHE
+
+CAROLINA (V.O.)
+No estoy ahí.
+
+Carolina recuerda a Mateo.`,
+    title: "Voz en off",
+  });
+  const heading = staging.blocks.find((block) => block.originalText === "CAROLINA (V.O.)")!;
+  const result = validateAssistedImportModelResult({
+    classifications: [classification(heading.id, "character")], evidence: [], observations: [],
+  }, { index: 0, sceneLabel: "INT. CUARTO - NOCHE", blocks: staging.blocks, classificationIds: [heading.id] });
+  const reconciled = reconcileAssistedImport(staging, [result]);
+  const carolina = reconciled.evidence.filter((item) => item.identityKey === "CAROLINA");
+  assert.ok(carolina.some((item) => item.relation === "intervention" && item.presence === "unknown"));
+  assert.ok(carolina.some((item) => item.relation === "action"));
+  assert.equal(reconciled.identities.filter((item) => item.key === "CAROLINA").length, 1);
+});
+
+test(`reserved semantic evaluation ${ASSISTED_IMPORT_EVALUATION_VERSION} is fixed before provider QA`, () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted",
+    sourceText: ASSISTED_IMPORT_EVALUATION_SOURCE,
+    title: "Evaluación semántica reservada",
+  });
+  const byText = new Map(staging.blocks.map((block) => [block.originalText, block]));
+  const raw: AssistedImportModelResult = {
+    classifications: staging.blocks
+      .filter((block) => block.confidence !== "high" && block.proposedKind !== "authorNote")
+      .map((block) => classification(block.id, block.originalText.includes("(V.O.)") ? "character" : "action")),
+    evidence: [
+      sourceEvidence(byText, "La nostalgia cubre el pasillo.", "nostalgia", "named", "action", "present"),
+      sourceEvidence(byText, "Nostalgia cierra el portón.", "Nostalgia", "named", "action", "present"),
+      sourceEvidence(byText, "La lámpara parpadea.", "lámpara", "role", "action", "present"),
+      sourceEvidence(byText, "La lámpara susurra: «No me apagues».", "La lámpara", "role", "action", "present"),
+      sourceEvidence(byText, "Una androide ayuda a Vera.", "Una androide", "role", "action", "present"),
+      sourceEvidence(byText, "Una androide de exhibición permanece inmóvil.", "Una androide", "role", "action", "present"),
+      sourceEvidence(byText, "Un guardia entra. El guardia saluda a Vera.", "Un guardia", "role", "action", "present"),
+      sourceEvidenceAt(byText, "Un guardia entra. El guardia saluda a Vera.", "El guardia", "role", "action", "present"),
+      sourceEvidence(byText, "Otro guardia lo sigue.", "Otro guardia", "role", "action", "present"),
+      sourceEvidence(byText, "Vera piensa en Lucía.", "Vera", "named", "action", "present"),
+      sourceEvidence(byText, "Vera piensa en Lucía.", "Lucía", "named", "mention", "unknown"),
+      sourceEvidence(byText, "Lucía no está allí.", "Lucía", "named", "mention", "absent"),
+    ],
+    observations: [],
+  };
+  const batch = {
+    index: 0,
+    sceneLabel: "INT. GALERÍA - NOCHE",
+    blocks: staging.blocks,
+    classificationIds: raw.classifications.map((item) => item.blockId),
+  };
+  const validated = validateAssistedImportModelResult(raw, batch);
+  for (const expected of ASSISTED_IMPORT_RESERVED_EXPECTATIONS.rejectedEvidence) {
+    const blockId = byText.get(expected.blockText)!.id;
+    assert.equal(validated.evidence.some((item) => item.blockId === blockId && item.label === expected.label), false,
+      `Rejected reserved evidence: ${expected.blockText} -> ${expected.label}`);
+  }
+  for (const expected of ASSISTED_IMPORT_RESERVED_EXPECTATIONS.acceptedEvidence) {
+    const blockId = byText.get(expected.blockText)!.id;
+    assert.ok(validated.evidence.some((item) => item.blockId === blockId && item.label === expected.label),
+      `Accepted reserved evidence: ${expected.blockText} -> ${expected.label}`);
+  }
+  const reconciled = reconcileAssistedImport(staging, [validated]);
+  assertAssistedImportPreservation(staging, reconciled.document);
+  assert.equal(reconciled.document.content.find((block) => blockText(block) === ASSISTED_IMPORT_RESERVED_EXPECTATIONS.authorNote)?.attrs.kind, "authorNote");
+  assert.equal(reconciled.document.content.find((block) => blockText(block) === ASSISTED_IMPORT_RESERVED_EXPECTATIONS.promptInjection)?.attrs.kind, "action");
+  const guards = reconciled.identities.filter((identity) => identity.key.includes("GUARDIA"));
+  assert.equal(guards.length, 2);
+  assert.ok(reconciled.evidence.some((item) => item.identityKey === "LUCÍA" && item.presence === "absent"));
 });
 
 test("prompt injection remains ordinary source text and cannot become rewritten output", () => {
@@ -190,4 +368,41 @@ function evidence(
   presence: "present" | "absent" | "unknown",
 ) {
   return { blockId, start, end, label, entityType, relation, presence, uncertain: false, reason: "Evidencia sintética." } as const;
+}
+
+function spanEvidence(
+  block: WriterImportBlock,
+  label: string,
+  entityType: "named" | "role" | "collective",
+  relation: "intervention" | "action" | "mention" | "indeterminate",
+  presence: "present" | "absent" | "unknown",
+) {
+  const start = block.originalText.indexOf(label);
+  assert.ok(start >= 0, `Missing synthetic span: ${label}`);
+  return evidence(block.id, start, start + label.length, label, entityType, relation, presence);
+}
+
+function sourceEvidence(
+  byText: Map<string, WriterImportBlock>,
+  blockTextValue: string,
+  label: string,
+  entityType: "named" | "role" | "collective",
+  relation: "intervention" | "action" | "mention" | "indeterminate",
+  presence: "present" | "absent" | "unknown",
+) {
+  return spanEvidence(byText.get(blockTextValue)!, label, entityType, relation, presence);
+}
+
+function sourceEvidenceAt(
+  byText: Map<string, WriterImportBlock>,
+  blockTextValue: string,
+  label: string,
+  entityType: "named" | "role" | "collective",
+  relation: "intervention" | "action" | "mention" | "indeterminate",
+  presence: "present" | "absent" | "unknown",
+) {
+  const block = byText.get(blockTextValue)!;
+  const start = block.originalText.lastIndexOf(label);
+  assert.ok(start >= 0, `Missing synthetic span: ${label}`);
+  return evidence(block.id, start, start + label.length, label, entityType, relation, presence);
 }
