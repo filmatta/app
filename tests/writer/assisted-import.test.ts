@@ -410,6 +410,7 @@ test("candidate extraction V2 records literal anchors, signals, source hashes, a
   const batches = buildAssistedImportBatches(staging);
   const candidates = batches.flatMap((batch) => batch.candidates);
   assert.ok(candidates.some((candidate) => candidate.text === "R-7" && candidate.signals.includes("nontraditional-name")));
+  assert.equal(candidates.some((candidate) => ["Un", "Una", "El", "La"].includes(candidate.text)), false);
   assert.ok(candidates.every((candidate) => candidate.sourceHash && candidate.sentenceId && candidate.blockId
     && candidate.text === batches.flatMap((batch) => batch.blocks).find((block) => block.id === candidate.blockId)!.originalText.slice(candidate.start, candidate.end)));
   assert.ok(batches.flatMap((batch) => batch.coverage).some((item) => item.candidateIds.length === 0));

@@ -285,6 +285,7 @@ const KIND_SET = new Set<ScreenplayKind>([
   "sceneHeading", "action", "character", "dialogue", "parenthetical", "transition", "authorNote",
 ]);
 const PRONOUNS = new Set(["ÉL", "EL", "ELLA", "ELLOS", "ELLAS", "ALGUIEN"]);
+const CANDIDATE_FUNCTION_WORDS = new Set(["UN", "UNA", "EL", "LA", "LOS", "LAS", "NO", "OTRO", "OTRA", "OTROS", "OTRAS", "DESPUÉS", "DESPUES"]);
 const LEADING_DETERMINER = /^(?:UN|UNA|EL|LA|LOS|LAS|DOS|TRES|VARIOS|VARIAS|OTRO|OTRA|OTROS|OTRAS)\s+/u;
 const INACTIVE_PROP_CONTEXT = /\b(?:de\s+utiler[ií]a|de\s+juguete|de\s+exhibici[oó]n|decorativ[oa]s?|maqueta|apagado|apagada|inm[oó]vil|inerte|sin\s+vida)\b/iu;
 const PERSONIFIED_CONTEXT = /\b(?:dice|responde|pregunta|protesta|grita|susurra|piensa|decide|se\s+niega|amenaza)\b|[«»“”]/iu;
@@ -755,6 +756,7 @@ function withLocalAnchors(batch: AssistedImportBatch): AssistedImportBatch {
     const properName = /(?:[A-ZÁÉÍÓÚÜÑ0-9]+(?:-[A-ZÁÉÍÓÚÜÑ0-9]+)+|\p{Lu}[\p{L}\p{M}'’-]*)(?:\s+(?:[A-ZÁÉÍÓÚÜÑ0-9]+(?:-[A-ZÁÉÍÓÚÜÑ0-9]+)+|\p{Lu}[\p{L}\p{M}'’-]*)){0,2}/gu;
     for (const match of block.originalText.matchAll(properName)) {
       const start = match.index ?? 0;
+      if (CANDIDATE_FUNCTION_WORDS.has(normalizeWriterCharacterIdentity(match[0]))) continue;
       add(start, start + match[0].length, /\d/u.test(match[0]) ? "nontraditional-name" : "apparent-proper-name");
     }
     const rolePhrase = /\b(?:un|una|el|la|los|las|dos|tres|varios|varias|otro|otra|otros|otras)\s+[\p{L}\p{M}'’-]+(?:\s+[\p{L}\p{M}'’-]+)?\b/giu;
@@ -762,9 +764,6 @@ function withLocalAnchors(batch: AssistedImportBatch): AssistedImportBatch {
       const start = match.index ?? 0;
       const words = match[0].split(/\s+/u);
       add(start, start + words.slice(0, 2).join(" ").length, "determiner-noun-phrase");
-      if (words.length > 2 && !/^(?:se|lo|la|los|las|le|les|de|del|a|al|en|con|sin|por|para)$/iu.test(words[2])) {
-        add(start, start + match[0].length, "expanded-noun-phrase");
-      }
     }
     for (const identity of batch.knownIdentities) {
       const matcher = new RegExp(escapeRegExp(identity), "giu");

@@ -60,6 +60,7 @@ test("pipeline models and reasoning are server-controlled and closed", () => {
   assert.match(server, /const SOL_MODEL = "gpt-5\.6-sol"/u);
   assert.match(server, /20 \+ recoveryIndex/u);
   assert.match(server, /maximumPlanCost > WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD/u);
+  assert.match(server, /failure\.stage.*failure\.code.*failure\.path/u);
 });
 
 test("private endpoint authenticates before reading the body and ignores client pricing or model choices", () => {

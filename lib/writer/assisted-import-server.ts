@@ -187,14 +187,14 @@ export async function executeAssistedImport(
 
   const provider = dependencies.provider ?? openAiProvider;
   const terraResults = new Map<number, AssistedImportModelResult | null>();
-  let invalidCalls = 0;
+  const failedCalls: Array<{ stage: AssistedImportStage; code: string; path: string }> = [];
   await mapConcurrent(batches.filter((batch) => batch.candidates.length > 0), WRITER_ASSISTED_IMPORT_MAX_CONCURRENCY, async (batch) => {
     const outcome = await executePipelineCall({
       db, userId, operationId, batchIndex: batch.index, batch, stage: "terra", model: TERRA_MODEL,
       triggers: [], provider, signal: request.signal, onRejectedOutput: dependencies.onRejectedOutput,
     });
-    terraResults.set(batch.index, outcome);
-    if (!outcome) invalidCalls += 1;
+    terraResults.set(batch.index, outcome.result);
+    if (!outcome.result) failedCalls.push({ stage: "terra", code: outcome.failureCode!, path: outcome.failurePath! });
   }).catch(async (cause) => {
     const error = cause instanceof AssistedImportError ? cause : new AssistedImportError("provider_error", "No se pudo completar la organización asistida.", 502);
     await failOperation(db, userId, operationId, error.code === "provider_uncertain" ? "uncertain" : "failed", error.code);
@@ -209,7 +209,7 @@ export async function executeAssistedImport(
       triggers: item.triggers, priorResult: prior, provider, signal: request.signal,
       onRejectedOutput: dependencies.onRejectedOutput,
     });
-    if (!outcome) invalidCalls += 1;
+    if (!outcome.result) failedCalls.push({ stage: "sol", code: outcome.failureCode!, path: outcome.failurePath! });
     return outcome;
   }).catch(async (cause) => {
     const error = cause instanceof AssistedImportError ? cause : new AssistedImportError("provider_error", "No se pudo completar la recuperación asistida.", 502);
@@ -217,13 +217,16 @@ export async function executeAssistedImport(
     throw error;
   });
 
-  const modelResults = [...terraResults.values(), ...solResults].filter((result): result is AssistedImportModelResult => Boolean(result));
+  const modelResults = [...terraResults.values(), ...solResults.map((outcome) => outcome.result)]
+    .filter((result): result is AssistedImportModelResult => Boolean(result));
   if (batches.length > 0 && modelResults.length === 0) {
-    await failOperation(db, userId, operationId, "failed", "provider_invalid_output");
-    throw new AssistedImportError("provider_invalid_output", "La asistencia no produjo ningún resultado estructural utilizable. Puedes importar el borrador sin IA.", 502);
+    const exactFailure = failedCalls.map((failure) => `${failure.stage}:${failure.code}@${failure.path}`).join("|").slice(0, 240)
+      || "provider_invalid_output";
+    await failOperation(db, userId, operationId, "failed", exactFailure);
+    throw new AssistedImportError("provider_invalid_output", `La asistencia no produjo un resultado utilizable (${exactFailure}). Puedes importar el borrador sin IA.`, 502);
   }
   const validationIssues = modelResults.flatMap((result) => result.validationIssues);
-  const analysisPartial = invalidCalls > 0 || recovery.partial || validationIssues.length > 0;
+  const analysisPartial = failedCalls.length > 0 || recovery.partial || validationIssues.length > 0;
 
   const reconciled = reconcileAssistedImport(staging, modelResults);
   try {
@@ -301,7 +304,13 @@ type PipelineCallInput = {
   onRejectedOutput?: (diagnostic: AssistedImportRejectedDiagnostic) => void | Promise<void>;
 };
 
-async function executePipelineCall(input: PipelineCallInput): Promise<AssistedImportModelResult | null> {
+type PipelineCallOutcome = {
+  result: AssistedImportModelResult | null;
+  failureCode?: string;
+  failurePath?: string;
+};
+
+async function executePipelineCall(input: PipelineCallInput): Promise<PipelineCallOutcome> {
   const prompt = providerInput(input.batch, input.stage, input.triggers, input.priorResult);
   const requestHash = sha256(JSON.stringify({
     version: WRITER_ASSISTED_IMPORT_VERSION,
@@ -312,7 +321,7 @@ async function executePipelineCall(input: PipelineCallInput): Promise<AssistedIm
   }));
   const existing = await loadBatch(input.db, input.operationId, input.batchIndex);
   if (existing?.status === "completed" && existing.request_hash === requestHash) {
-    return validateAssistedImportModelResult(checkpointResult(existing.result, input.stage, input.model), input.batch);
+    return { result: validateAssistedImportModelResult(checkpointResult(existing.result, input.stage, input.model), input.batch) };
   }
   if (existing && existing.status !== "failed") {
     throw new AssistedImportError("reconciliation_required", "Un lote anterior quedó pendiente de conciliación; no se repetirá automáticamente.", 409);
@@ -328,7 +337,7 @@ async function executePipelineCall(input: PipelineCallInput): Promise<AssistedIm
     p_max_cost_microusd: maxCost,
   });
   if (call.status === "completed") {
-    return validateAssistedImportModelResult(checkpointResult(call.result, input.stage, input.model), input.batch);
+    return { result: validateAssistedImportModelResult(checkpointResult(call.result, input.stage, input.model), input.batch) };
   }
   try {
     const response = await input.provider({
@@ -371,7 +380,7 @@ async function executePipelineCall(input: PipelineCallInput): Promise<AssistedIm
       result: response.result,
       validationIssues: validated.validationIssues,
     }, response.usage, actualCost);
-    return validated;
+    return { result: validated };
   } catch (cause) {
     const failure = cause instanceof ProviderFailure ? cause : new ProviderFailure(true, undefined, "provider_request_failed");
     const usage = failure.usage ?? emptyUsage();
@@ -387,7 +396,7 @@ async function executePipelineCall(input: PipelineCallInput): Promise<AssistedIm
       pipelineVersion: WRITER_ASSISTED_IMPORT_VERSION,
       diagnostic: { code: failure.code, path: failure.path, requestId: failure.requestId ?? null },
     }, usage, cost);
-    if (!failure.ambiguous) return null;
+    if (!failure.ambiguous) return { result: null, failureCode: failure.code, failurePath: failure.path };
     throw new AssistedImportError("provider_uncertain", "La llamada quedó en estado incierto y no se repetirá automáticamente.", 409);
   }
 }
@@ -493,7 +502,7 @@ function estimateRequestInputTokens(prompt: string, stage: AssistedImportStage) 
 
 function maxOutputTokensFor(stage: AssistedImportStage, batch: AssistedImportBatch) {
   const planned = 500 + batch.classificationIds.length * 70 + batch.candidates.length * 85 + batch.sentences.length * (stage === "sol" ? 45 : 25);
-  return Math.min(2_400, Math.max(stage === "sol" ? 1_200 : 900, planned));
+  return Math.min(stage === "sol" ? 2_400 : 5_200, Math.max(stage === "sol" ? 1_200 : 900, planned));
 }
 
 function estimatePipelineMaximumCost(batches: readonly AssistedImportBatch[]) {
