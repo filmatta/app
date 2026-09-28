@@ -26,7 +26,7 @@ import {
   type WriterCharacterEvidence,
 } from "./character-observations.ts";
 
-export const WRITER_ASSISTED_IMPORT_VERSION = "writer-import-ai-v1-compact-v3";
+export const WRITER_ASSISTED_IMPORT_VERSION = "writer-import-ai-v1-compact-v4";
 export const WRITER_ASSISTED_IMPORT_MAX_BYTES = 2 * 1024 * 1024;
 export const WRITER_ASSISTED_IMPORT_MAX_WORDS = 30_000;
 export const WRITER_ASSISTED_IMPORT_MAX_SOURCE_TOKENS = 80_000;
@@ -409,6 +409,7 @@ const CANDIDATE_FUNCTION_WORDS = new Set(["UN", "UNA", "EL", "LA", "LOS", "LAS",
 const LEADING_DETERMINER = /^(?:UN|UNA|EL|LA|LOS|LAS|DOS|TRES|VARIOS|VARIAS|OTRO|OTRA|OTROS|OTRAS)\s+/u;
 const INACTIVE_PROP_CONTEXT = /\b(?:de\s+utiler[ií]a|de\s+juguete|de\s+exhibici[oó]n|decorativ[oa]s?|maqueta|apagado|apagada|inm[oó]vil|inerte|sin\s+vida)\b/iu;
 const PERSONIFIED_CONTEXT = /\b(?:dice|responde|pregunta|protesta|grita|susurra|piensa|decide|se\s+niega|amenaza)\b|[«»“”]/iu;
+const EXPLICIT_INTERVENTION_CONTEXT = /\b(?:dice|responde|pregunta|protesta|grita|habla|susurra|amenaza)\b|[«»“”]/iu;
 const AGENTIVE_CONTEXT = /^\s+(?:abre|avanza|ayuda|bloquea|busca|camina|cierra|corre|entra|escucha|golpea|grita|habla|lee|mira|observa|protesta|responde|saluda|señala|sigue|sonríe|toma|trabaja|ve|vuelve)\b/iu;
 
 export function prepareAssistedImportStaging(input: {
@@ -539,6 +540,16 @@ export function validateAssistedImportModelResult(value: unknown, batch: Assiste
     if ((decision.disposition === "mention" && decision.relation !== "mention")
       || (decision.disposition === "participant" && decision.relation === "mention")) {
       issues.push(issue("bad_relation", path, "La relación contradice la disposición declarada.", decision.candidateId));
+      return;
+    }
+    const block = blocks.get(anchor.blockId)!;
+    if (decision.presence === "absent" && decision.disposition === "nonparticipant") {
+      issues.push(issue("bad_relation", path, "Una identidad ausente sigue siendo una mención, no un rechazo.", decision.candidateId));
+      return;
+    }
+    if (decision.relation === "intervention" && block.proposedKind !== "character"
+      && !EXPLICIT_INTERVENTION_CONTEXT.test(block.originalText)) {
+      issues.push(issue("bad_relation", path, "Intervención requiere habla o expresión explícita en el texto.", decision.candidateId));
       return;
     }
     if (decision.disposition === "nonparticipant" || decision.disposition === "uncertain") return;

@@ -13,6 +13,7 @@ import {
   type AssistedImportBatch,
 } from "../../lib/writer/assisted-import.ts";
 import {
+  WRITER_ASSISTED_IMPORT_TERRA_INSTRUCTIONS,
   assistedImportMaxOutputTokens,
   assistedImportProviderInput,
   assistedImportRequestBreakdown,
@@ -445,6 +446,44 @@ test("compact transport sends source once, maps short ids, and expands to the ca
   const validated = validateAssistedImportModelResult(expanded, batch);
   assert.equal(validated.validationIssues.length, 0);
   assert.equal(validated.candidateDecisions.length, batch.candidates.length);
+});
+
+test("compact instructions distinguish intervention, action, mention, and absence", () => {
+  assert.match(WRITER_ASSISTED_IMPORT_TERRA_INSTRUCTIONS, /r=i sólo si la identidad habla/u);
+  assert.match(WRITER_ASSISTED_IMPORT_TERRA_INSTRUCTIONS, /recordar, ver, entrar, saludar o volver usa r=a/u);
+  assert.match(WRITER_ASSISTED_IMPORT_TERRA_INSTRUCTIONS, /d=m,r=m,p=a, nunca rechazo/u);
+});
+
+test("observable semantic contradictions route normal actions and absent identities to recovery", () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted", sourceText: "Vera entra.\nLucía no está allí.", title: "Relaciones",
+  });
+  const batch = buildAssistedImportBatches(staging)[0];
+  const vera = batch.candidates.find((candidate) => candidate.text === "Vera")!;
+  const lucia = batch.candidates.find((candidate) => candidate.text === "Lucía")!;
+  const candidateEvidence = batch.candidates.map((candidate) => ({
+    candidateId: candidate.candidateId,
+    disposition: "nonparticipant" as const,
+    entityType: "role" as const,
+    relation: "indeterminate" as const,
+    presence: "unknown" as const,
+    uncertain: false,
+    reason: "No participa.",
+  }));
+  Object.assign(candidateEvidence.find((item) => item.candidateId === vera.candidateId)!, {
+    disposition: "participant", entityType: "named", relation: "intervention", presence: "present",
+  });
+  Object.assign(candidateEvidence.find((item) => item.candidateId === lucia.candidateId)!, {
+    disposition: "nonparticipant", entityType: "named", relation: "indeterminate", presence: "absent",
+  });
+  const validated = validateAssistedImportModelResult({
+    classifications: batch.classificationIds.map((blockId) => classification(blockId, "action")),
+    candidateEvidence, discoveries: [], observations: [],
+  }, batch);
+  assert.equal(validated.validationIssues.filter((item) => item.code === "bad_relation").length, 2);
+  const recovery = planAssistedImportRecovery([batch], new Map([[batch.index, validated]]));
+  assert.ok(recovery.items[0].triggers.includes("unresolved"));
+  assert.deepEqual(new Set(recovery.items[0].candidateIds), new Set([vera.candidateId, lucia.candidateId]));
 });
 
 test("bounded recovery routes omissions, contradictory negatives, uncovered text, and at most one control sample", () => {

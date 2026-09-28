@@ -1,4 +1,4 @@
-export const ASSISTED_IMPORT_EVALUATION_VERSION = "compact-v3-2026-09-28";
+export const ASSISTED_IMPORT_EVALUATION_VERSION = "compact-v4-2026-09-28";
 
 export const ASSISTED_IMPORT_EVALUATION_CONTRACT = {
   models: ["gpt-5.6-terra", "gpt-5.6-sol"],
