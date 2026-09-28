@@ -186,7 +186,7 @@ test("paste import requires review, creates a new canonical document, and export
   });
   await expect(dialog.getByText("Preparado:")).toBeVisible();
   await expect(dialog.getByText("ÁNGELA", { exact: true })).toBeHidden();
-  await dialog.getByRole("button", { name: "Analizar borrador" }).click();
+  await dialog.getByRole("button", { name: "Importar sin IA" }).click();
   await expect(dialog.getByText("ÁNGELA", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Volver al origen" }).click();
   await fileInput.setInputFiles({
@@ -195,7 +195,7 @@ test("paste import requires review, creates a new canonical document, and export
     buffer: Buffer.from("EXT. CALLE - NOCHE\n\nESPERANZA\nSeguimos aquí."),
   });
   await expect(dialog.getByText("ESPERANZA", { exact: true })).toBeHidden();
-  await dialog.getByRole("button", { name: "Analizar borrador" }).click();
+  await dialog.getByRole("button", { name: "Importar sin IA" }).click();
   await expect(dialog.getByText("ESPERANZA", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Volver al origen" }).click();
   await dialog.getByRole("tab", { name: "Texto pegado" }).click();
@@ -210,13 +210,12 @@ No podemos esperar más.
 CORTE A:
 
 MISTERIO`);
-  await dialog.getByRole("button", { name: "Analizar borrador" }).click();
+  await dialog.getByRole("button", { name: "Importar sin IA" }).click();
   await expect(dialog.getByRole("button", { name: /Revisar \(2\)/ })).toBeVisible();
   await expect(dialog.getByText("MISTERIO", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("1 bloque de tipo Personaje")).toBeVisible();
-  await expect(dialog.getByText("1 nombre distinto derivado de esos bloques")).toBeVisible();
-  await expect(dialog.getByText("0 posibles personajes en Acción", { exact: false })).toBeVisible();
-  await expect(dialog.getByText("Se creará un guion nuevo. Tu documento actual no se modificará.")).toBeVisible();
+  const characterSummary = dialog.locator(".writer-import-summary button").filter({ hasText: "Personaje — encabezado de diálogo" });
+  await expect(characterSummary.getByText("1", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Se creará un guion nuevo; el documento actual no se modificará.", { exact: false })).toBeVisible();
   await expect(originalEditor).toContainText("ANA observa la VENTANA.");
 
   const reviewCard = dialog.locator(".writer-import-list article").first();
@@ -230,8 +229,8 @@ MISTERIO`);
   await dialog.getByRole("button", { name: "Confirmar este tipo" }).click();
   const unresolvedCard = dialog.locator(".writer-import-list article").filter({ hasText: "MISTERIO" });
   await unresolvedCard.getByLabel("Tipo").selectOption("action");
-  await expect(dialog.getByRole("button", { name: "Revisar (0)" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Crear guion importado" }).click();
+  await expect(dialog.getByRole("button", { name: "Revisar (0)" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Importar al Writer" }).click();
   await expect(page).toHaveURL(/\/writer\/33333333-3333-4333-8333-333333333333$/);
   expect((await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json()).creates).toBe(1);
   const editor = page.getByLabel("Editor de guion");
@@ -260,13 +259,13 @@ test("character observations are revealed on demand, local, reversible, and abse
 
   await marker.click();
   const panel = page.getByRole("dialog", { name: "Observaciones" });
-  await expect(panel.getByText("Posible personaje sin diálogo: UN ROBOT")).toBeVisible();
+  await expect(panel.getByText("Identidad por revisar: UN ROBOT")).toBeVisible();
   await expect(panel.getByText("Un robot observa a ANA.", { exact: false })).toBeVisible();
   await panel.getByRole("button", { name: "Ignorar" }).click();
   await expect(panel.getByText("No hay posibles personajes pendientes en el texto actual.")).toBeVisible();
   await panel.getByText(/Ignoradas \(1\)/).click();
   await panel.getByRole("button", { name: "Restaurar" }).click();
-  await expect(panel.getByText("Posible personaje sin diálogo: UN ROBOT")).toBeVisible();
+  await expect(panel.getByText("Identidad por revisar: UN ROBOT")).toBeVisible();
   await panel.getByRole("button", { name: "Ver fragmento" }).click();
   await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe("Un robot");
   await panel.getByRole("button", { name: "Vincular a existente" }).click();
@@ -279,7 +278,7 @@ test("character observations are revealed on demand, local, reversible, and abse
   expect(afterLink.reads).toBe(afterEdit.reads);
 
   await replaceBlockText(page, action, "Un guardia bloquea la salida.");
-  await expect(panel.getByText("Posible personaje sin diálogo: UN GUARDIA")).toBeVisible();
+  await expect(panel.getByText("Identidad por revisar: UN GUARDIA")).toBeVisible();
   await panel.getByRole("button", { name: "Confirmar personaje" }).click();
   const confirmDialog = page.getByRole("dialog", { name: "Confirmar personaje" });
   await confirmDialog.getByLabel("Nombre reconocido").fill("ROBOT R-7");
