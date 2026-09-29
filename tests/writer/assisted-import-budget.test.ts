@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildAssistedImportBatches, prepareAssistedImportStaging } from "../../lib/writer/assisted-import.ts";
 import { assistedImportBudgetDecision, dryRunAssistedImport, estimateAssistedImportPipelinePlan } from "../../lib/writer/assisted-import-plan.ts";
+import { assistedImportDatabaseErrorDescriptor } from "../../lib/writer/assisted-import-errors.ts";
 
 test("the 11,529-character review shape admits Terra without pre-authorizing theoretical Sol", () => {
   let source = "INT. CASA - DÍA\n";
@@ -98,4 +99,19 @@ test("a base reservation equal to the operation limit is allowed without roundin
   });
   assert.equal(decision.allowed, true);
   assert.equal(decision.remainingAfterMicrousd, 0);
+});
+
+test("database policy errors keep authorization, budget, calls, global balance, and quota distinct", () => {
+  const cases = [
+    ["WRITER_IMPORT_BUDGET_AUTHORIZATION", "budget_authorization"],
+    ["WRITER_IMPORT_BUDGET", "budget"],
+    ["WRITER_IMPORT_CALL_LIMIT", "call_limit"],
+    ["WRITER_IMPORT_GLOBAL_BUDGET", "global_budget"],
+    ["WRITER_IMPORT_FREE_USED", "free_used"],
+    ["WRITER_IMPORT_ATTEMPTS", "attempts"],
+    ["WRITER_QUOTA_REACHED", "writer_quota"],
+  ] as const;
+  for (const [message, code] of cases) {
+    assert.equal(assistedImportDatabaseErrorDescriptor({ message })?.code, code);
+  }
 });

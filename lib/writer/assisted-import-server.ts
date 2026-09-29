@@ -52,6 +52,7 @@ import {
   type AssistedImportStage,
 } from "./assisted-import-plan";
 import type { WriterImportFormat } from "./import";
+import { assistedImportDatabaseErrorDescriptor } from "./assisted-import-errors";
 
 const PIPELINE_MODEL = `${TERRA_MODEL}+${SOL_MODEL}`;
 
@@ -651,15 +652,8 @@ async function rpcJson(db: ImportDatabase, name: string, args: Record<string, un
 }
 
 function normalizeDatabaseError(cause: unknown) {
-  const message = isRecord(cause) && typeof cause.message === "string" ? cause.message : "";
-  if (message.includes("WRITER_IMPORT_FREE_USED")) return new AssistedImportError("free_used", "Esta cuenta ya utilizó su importación asistida gratuita.", 409);
-  if (message.includes("WRITER_IMPORT_ATTEMPTS")) return new AssistedImportError("attempts", "Alcanzaste el límite de 3 intentos en 24 horas.", 429);
-  if (message.includes("WRITER_IMPORT_ACTIVE")) return new AssistedImportError("active", "Ya hay una importación asistida en curso.", 409);
-  if (message.includes("WRITER_IMPORT_GLOBAL_BUDGET")) return new AssistedImportError("global_budget", "El presupuesto de QA para importaciones asistidas está agotado.", 503);
-  if (message.includes("WRITER_IMPORT_CALL_LIMIT")) return new AssistedImportError("call_limit", "Esta importación alcanzaría su límite de llamadas.", 409);
-  if (message.includes("WRITER_IMPORT_BUDGET")) return new AssistedImportError("budget", "Esta importación alcanzaría su límite de costo.", 409);
-  if (message.includes("WRITER_QUOTA_REACHED")) return new AssistedImportError("writer_quota", "Alcanzaste el límite de 3 guiones.", 409);
-  if (message.includes("OPERATION_REUSED") || message.includes("BATCH_REUSED")) return new AssistedImportError("operation_reused", "El identificador de la operación ya fue usado con otro origen.", 409);
+  const known = assistedImportDatabaseErrorDescriptor(cause);
+  if (known) return new AssistedImportError(known.code, known.message, known.status);
   return cause instanceof AssistedImportError ? cause : new AssistedImportError("database_error", "No se pudo reservar o finalizar la importación.", 500);
 }
 

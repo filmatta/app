@@ -14,6 +14,7 @@ import { WRITER_ASSISTED_IMPORT_OUTPUT_SCHEMA } from "../../lib/writer/assisted-
 import { ASSISTED_IMPORT_EVALUATION_CONTRACT } from "./assisted-import-evaluation.fixture.ts";
 
 const server = fs.readFileSync("lib/writer/assisted-import-server.ts", "utf8");
+const errorSource = fs.readFileSync("lib/writer/assisted-import-errors.ts", "utf8");
 const statusSource = fs.readFileSync("lib/writer/assisted-import-status.ts", "utf8");
 const plan = fs.readFileSync("lib/writer/assisted-import-plan.ts", "utf8");
 const route = fs.readFileSync("app/api/writer/imports/assisted/route.ts", "utf8");
@@ -69,9 +70,10 @@ test("pipeline models and reasoning are server-controlled and closed", () => {
   assert.match(statusSource, /recovery_budget_unavailable/u);
   assert.match(statusSource, /recovery_call_limit_unavailable/u);
   assert.match(server, /recoverySkippedReasonForErrorCode\(cause\.code\)/u);
-  assert.match(server, /WRITER_IMPORT_CALL_LIMIT/u);
-  assert.match(server, /AssistedImportError\("call_limit"/u);
-  assert.doesNotMatch(server, /WRITER_IMPORT_BUDGET"\) \|\| message\.includes\("CALL_LIMIT/u);
+  assert.match(errorSource, /WRITER_IMPORT_CALL_LIMIT/u);
+  assert.match(errorSource, /code: "call_limit"/u);
+  assert.ok(errorSource.indexOf("WRITER_IMPORT_BUDGET_AUTHORIZATION") < errorSource.indexOf('WRITER_IMPORT_BUDGET\"'));
+  assert.doesNotMatch(errorSource, /WRITER_IMPORT_BUDGET"\) \|\| message\.includes\("CALL_LIMIT/u);
   assert.match(server, /writer_assisted_import_qa_budget_status/u);
   assert.match(server, /determineAssistedImportAnalysisStatus/u);
   assert.match(server, /loadPersistedAnalysisSummary/u);
