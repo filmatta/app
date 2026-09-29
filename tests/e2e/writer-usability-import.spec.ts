@@ -257,7 +257,7 @@ test("character observations are revealed on demand, local, reversible, and abse
   const afterEdit = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
 
   await marker.click();
-  const panel = page.getByRole("dialog", { name: "Observaciones" });
+  const panel = page.locator(".writer-observations-panel");
   await expect(panel.getByText("Identidad por revisar: UN ROBOT")).toBeVisible();
   await expect(panel.getByText("Un robot observa a ANA.", { exact: false })).toBeVisible();
   await panel.getByRole("button", { name: "Ignorar" }).click();
@@ -294,8 +294,8 @@ test("character observations are revealed on demand, local, reversible, and abse
   await page.reload();
   await expect(editor).toBeVisible();
   await page.locator(".writer-header").getByRole("button", { name: /Observaciones/ }).click();
-  await expect(page.getByRole("dialog", { name: "Observaciones" }).getByText("ROBOT R-7", { exact: true })).toBeVisible();
-  await page.getByRole("dialog", { name: "Observaciones" }).getByRole("button", { name: "Cerrar" }).click();
+  await expect(page.locator(".writer-observations-panel").getByText("ROBOT R-7", { exact: true })).toBeVisible();
+  await page.locator(".writer-observations-panel").getByRole("button", { name: "Cerrar" }).click();
 
   const character = editor.locator('[data-block-id$="03"]');
   await replaceBlockText(page, character, "ROB");
@@ -308,7 +308,7 @@ test("character observations are revealed on demand, local, reversible, and abse
   await expect(page.locator(".writer-observation-marker")).toBeHidden();
   await expect(page.locator(".writer-mobile-observations")).toBeHidden();
   await expect(page.locator(".writer-observations-open-button")).toBeHidden();
-  await expect(page.getByRole("dialog", { name: "Observaciones" })).toBeHidden();
+  await expect(page.locator(".writer-observations-panel")).toBeHidden();
   await page.getByRole("button", { name: "Salir de Focus" }).click();
   await expect(page.locator(".writer-observation-marker")).toBeVisible();
 });

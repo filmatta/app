@@ -58,6 +58,7 @@ import {
 import {
   currentWriterBlock,
   captureWriterSelectionTarget,
+  changeWriterBlockKind,
   findWriterBlockById,
   selectionSpansWriterBlocks,
   writerSelectionTargetIsCurrent,
@@ -91,6 +92,7 @@ import {
   type PersistedWriterImportAnalysis,
   type WriterFormatObservation,
 } from "@/lib/writer/import-analysis";
+import { deriveAcceptedCharacterActivity } from "@/lib/writer/writing-ux";
 
 type ScriptInput = {
   id: string;
@@ -133,7 +135,7 @@ export default function WriterWorkspace({
   const [ready, setReady] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [focusScale, setFocusScale] = useState(1);
-  const [mobileSidebar, setMobileSidebar] = useState<"scenes" | null>(null);
+  const [mobileSidebar, setMobileSidebar] = useState<"scenes" | "characters" | null>(null);
   const [activeScene, setActiveScene] = useState<string | null>(null);
   const [exportMenu, setExportMenu] = useState(false);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
@@ -173,6 +175,8 @@ export default function WriterWorkspace({
   const timelineOpenRef = useRef(false);
   const timelineInitialOpenHandledRef = useRef<string | null>(null);
   const timelineBeforeFocusRef = useRef(false);
+  const observationsBeforeFocusRef = useRef(false);
+  const observationsInitialOpenHandledRef = useRef<string | null>(null);
   const saveStateRef = useRef(saveState);
   const characterDecisionsRef = useRef(characterDecisions);
   const characterAnalysisCacheRef = useRef<WriterCharacterAnalysisCache>(new Map());
@@ -422,6 +426,8 @@ export default function WriterWorkspace({
       }
     }
     setTimelineOpen(shouldRestore);
+    setObservationsOpen(observationsBeforeFocusRef.current);
+    observationsBeforeFocusRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -467,6 +473,10 @@ export default function WriterWorkspace({
     }
     return [...byEvidence.values()];
   }, [characterObservations, currentBlocksById, persistedImportAnalysis?.observations]);
+  const characterActivity = useMemo(
+    () => deriveAcceptedCharacterActivity(document, knownCharacterIdentities, combinedCharacterObservations),
+    [combinedCharacterObservations, document, knownCharacterIdentities],
+  );
   const formatObservations = useMemo(() => (persistedImportAnalysis?.formatObservations ?? []).filter((observation) => {
     const block = currentBlocksById.get(observation.blockId);
     return Boolean(block && block.attrs.kind === observation.kind && writerObservationTextHash(blockText(block)) === observation.blockHash);
@@ -518,6 +528,13 @@ export default function WriterWorkspace({
         const parsed = parsePersistedWriterImportAnalysis(payload, script.document);
         if (!parsed) return;
         setPersistedImportAnalysis(parsed);
+        if (observationsInitialOpenHandledRef.current !== script.id) {
+          observationsInitialOpenHandledRef.current = script.id;
+          if (window.matchMedia(WRITER_TIMELINE_DESKTOP_QUERY).matches
+            && (parsed.formatObservations.length > 0 || parsed.observations.length > 0)) {
+            setObservationsOpen(true);
+          }
+        }
         updateCharacterDecisions((current) => {
           const byFingerprint = new Map(current.decisions.map((decision) => [decision.fingerprint, decision]));
           for (const decision of parsed.decisions) byFingerprint.set(decision.fingerprint, decision);
@@ -1056,11 +1073,25 @@ export default function WriterWorkspace({
     setActiveScene(findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId));
     setWriterSceneHighlight(editor, observation.blockId);
     highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
-    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
+  }
+
+  function changeFormatObservation(observation: WriterFormatObservation, kind: ScreenplayKind) {
+    if (!editor) return;
+    const target = findWriterBlockById(editor, observation.blockId);
+    if (!target || writerObservationTextHash(target.text) !== observation.blockHash) {
+      setFeedback("Este fragmento cambió y la observación de importación quedó desactualizada.");
+      return;
+    }
+    if (!changeWriterBlockKind(editor, observation.blockId, kind)) {
+      setFeedback("No se pudo cambiar el formato de este fragmento.");
+      return;
+    }
+    setFeedback(`Formato actualizado a ${WRITER_KIND_LABELS[kind]}. Puedes deshacer el cambio desde Writer.`);
   }
 
   async function enterFocus() {
     timelineBeforeFocusRef.current = timelineOpenRef.current;
+    observationsBeforeFocusRef.current = observationsOpen;
     timelineOpenRef.current = false;
     setTimelineOpen(false);
     setObservationsOpen(false);
@@ -1096,7 +1127,7 @@ export default function WriterWorkspace({
   return (
     <div
       ref={workspaceRef}
-      className={`writer-workspace${focusMode ? " writer-workspace--focus" : ""}${timelineOpen ? " writer-workspace--timeline" : ""}`}
+      className={`writer-workspace${focusMode ? " writer-workspace--focus" : ""}${timelineOpen ? " writer-workspace--timeline" : ""}${observationsOpen && !focusMode ? " writer-workspace--observations" : ""}`}
       data-focus-scale={focusScale.toFixed(3)}
       style={{ "--writer-focus-scale": focusScale } as CSSProperties}
     >
@@ -1108,6 +1139,9 @@ export default function WriterWorkspace({
         </div>
         <button className="writer-mobile-scenes" type="button" onClick={() => setMobileSidebar("scenes")} aria-expanded={mobileSidebar === "scenes"}>
           Escenas
+        </button>
+        <button className="writer-mobile-characters" type="button" onClick={() => setMobileSidebar("characters")} aria-expanded={mobileSidebar === "characters"}>
+          Personajes
         </button>
         <button
           ref={mobileObservationsButtonRef}
@@ -1138,7 +1172,7 @@ export default function WriterWorkspace({
               setExportMenu(false);
               setContextMenu(null);
               setInsertState(null);
-              setTimelineOpen(false);
+              closeTimeline();
               setObservationsOpen(false);
               setImportOpen(true);
             }}
@@ -1193,7 +1227,7 @@ export default function WriterWorkspace({
 
       <aside className={`writer-sidebar ${mobileSidebar ? "writer-sidebar--open" : ""} writer-sidebar--mobile-${mobileSidebar ?? "closed"}`}>
         <div className="writer-sidebar-mobile-head">
-          <strong>Escenas</strong>
+          <strong>{mobileSidebar === "characters" ? "Personajes" : "Escenas"}</strong>
           <button type="button" onClick={() => setMobileSidebar(null)}>Cerrar</button>
         </div>
         <div className="writer-sidebar-title">
@@ -1214,6 +1248,23 @@ export default function WriterWorkspace({
             </ol>
           ) : <p className="writer-sidebar-empty">Añade un encabezado para crear una escena.</p>}
         </nav>
+        <section className="writer-character-section" aria-labelledby="writer-character-heading">
+          <p id="writer-character-heading" className="writer-sidebar-heading">Personajes <span>{characterActivity.length}</span></p>
+          {characterActivity.length ? (
+            <ul>{characterActivity.map((character) => (
+              <li key={character.key}>
+                <button type="button" onClick={() => {
+                  setSelectedObservationBlockId(character.firstBlockId);
+                  setObservationsOpen(true);
+                  setMobileSidebar(null);
+                }}>
+                  <strong>{character.name}</strong>
+                  <span>{character.evidenceCount} {character.evidenceCount === 1 ? "evidencia" : "evidencias"}</span>
+                </button>
+              </li>
+            ))}</ul>
+          ) : <p className="writer-sidebar-empty">Los personajes aceptados aparecerán aquí.</p>}
+        </section>
       </aside>
 
       <main className="writer-editor-area">
@@ -1383,45 +1434,46 @@ export default function WriterWorkspace({
         />
       )}
 
-      {observationsOpen && !focusMode && (
-        <WriterObservationsPanel
-          observations={combinedCharacterObservations}
-          knownIdentities={knownCharacterIdentities}
-          decisions={characterDecisions}
-          storagePersistent={characterStoragePersistent}
-          importedAnalysisPersistent={Boolean(persistedImportAnalysis)}
-          formatObservations={formatObservations}
-          selectedBlockId={selectedObservationBlockId}
-          onClose={() => {
+      <WriterObservationsPanel
+        hidden={!observationsOpen || focusMode}
+        observations={combinedCharacterObservations}
+        knownIdentities={knownCharacterIdentities}
+        decisions={characterDecisions}
+        storagePersistent={characterStoragePersistent}
+        importedAnalysisPersistent={Boolean(persistedImportAnalysis)}
+        formatObservations={formatObservations}
+        sceneCount={scenes.length}
+        selectedBlockId={selectedObservationBlockId}
+        onClose={() => {
             setObservationsOpen(false);
             focusObservationsTrigger();
-          }}
-          onConfirm={confirmCharacterObservation}
-          onLink={(observation, identityKey) => setCharacterDecision({
+        }}
+        onConfirm={confirmCharacterObservation}
+        onLink={(observation, identityKey) => setCharacterDecision({
             fingerprint: observation.fingerprint,
             blockId: observation.blockId,
             state: "linked",
             identityKey,
             decidedAt: Date.now(),
-          })}
-          onIgnore={(observation) => setCharacterDecision({
+        })}
+        onIgnore={(observation) => setCharacterDecision({
             fingerprint: observation.fingerprint,
             blockId: observation.blockId,
             state: "ignored",
             decidedAt: Date.now(),
-          })}
-          onRestore={(decision) => {
+        })}
+        onRestore={(decision) => {
             updateCharacterDecisions((current) => ({
               ...current,
               decisions: current.decisions.filter((item) => item.fingerprint !== decision.fingerprint),
             }));
             void removePersistedCharacterDecision(decision.fingerprint);
-          }}
-          onAddManual={addManualCharacter}
-          onView={viewCharacterObservation}
-          onViewFormat={viewFormatObservation}
-        />
-      )}
+        }}
+        onAddManual={addManualCharacter}
+        onView={viewCharacterObservation}
+        onViewFormat={viewFormatObservation}
+        onChangeFormat={changeFormatObservation}
+      />
 
       {["conflict", "deleted", "sessionExpired"].includes(saveState.status) && (
         <div className="writer-modal-backdrop">

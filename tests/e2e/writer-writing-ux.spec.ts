@@ -33,6 +33,7 @@ test("context actions, assisted insertion, live metrics and reload use the canon
   await expect(editor).toBeVisible();
 
   const action = editor.locator('[data-block-id$="02"]');
+  await action.click();
   await action.click({ button: "right" });
   const menu = page.getByRole("menu", { name: "Acciones del bloque" });
   await expect(menu).toBeVisible();
@@ -61,9 +62,11 @@ test("context actions, assisted insertion, live metrics and reload use the canon
   await expect(editor.locator('[data-screenplay-kind="sceneHeading"]')).toHaveCount(3);
   await expect(editor.getByText("INT. COCINA - NOCHE")).toBeVisible();
 
-  const ana = page.getByRole("button", { name: /ANA 1 interv\. · 1 escenas/ });
+  const ana = page.getByRole("button", { name: /ANA 1 evidencia/ });
   await ana.click();
-  await expect(page.getByText("Menciones textuales").locator("..").getByText("1")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Observaciones" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Personajes reconocidos" })).toBeVisible();
+  await page.locator(".writer-observations-panel").getByRole("button", { name: "Cerrar", exact: true }).click();
 
   await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 10_000 });
   await page.reload();
@@ -111,7 +114,7 @@ test("writing presentation remains usable at desktop, tablet and phone widths", 
   fs.mkdirSync(evidence, { recursive: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/writer/${scriptId}`);
-  for (const width of [1440, 768, 390]) {
+  for (const width of [1440, 1024, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.getByLabel("Editor de guion")).toBeVisible();
     await expect(page.getByRole("button", { name: "Insertar en el guion" })).toBeVisible();
@@ -121,7 +124,7 @@ test("writing presentation remains usable at desktop, tablet and phone widths", 
       await expect(page.getByRole("button", { name: "Escenas", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Personajes", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Personajes", exact: true }).click();
-      await expect(page.getByText("Personajes identificados")).toBeVisible();
+      await expect(page.getByText("Personajes", { exact: true }).first()).toBeVisible();
       await page.getByRole("button", { name: "Cerrar" }).click();
       await expect(page.locator(".writer-sidebar")).not.toHaveClass(/writer-sidebar--open/);
       await page.waitForTimeout(250);
@@ -129,3 +132,129 @@ test("writing presentation remains usable at desktop, tablet and phone widths", 
     await page.screenshot({ path: `${evidence}/writer-${width}.png`, fullPage: true });
   }
 });
+
+test("assisted import shows immediate indeterminate progress, blocks duplicates, and preserves source on error", async ({ page }) => {
+  let posts = 0;
+  await page.route("**/api/writer/imports/assisted", async (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ enabled: true, reason: null, operationId: "qa-loader" }) });
+    }
+    posts += 1;
+    await new Promise((resolve) => setTimeout(resolve, 2_400));
+    return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ code: "request_failed", error: "Fallo sintético de QA." }) });
+  });
+  await page.goto(`/writer/${scriptId}`);
+  await page.locator(".writer-header").getByRole("button", { name: "Importar borrador" }).click();
+  const dialog = page.getByRole("dialog", { name: "Importar borrador" });
+  const source = "INT. ESTUDIO - DÍA\n\nANA\nEsto es una prueba local.";
+  await dialog.getByLabel("Texto del borrador").fill(source);
+  const submit = dialog.getByRole("button", { name: "Importar y organizar" });
+  await submit.click();
+  await expect(dialog.getByRole("status")).toContainText("Organizando estructura e identidades");
+  await expect(dialog.locator(".writer-import-spinner")).toBeVisible();
+  await expect(dialog.getByText("0:00", { exact: true })).toBeVisible();
+  const processingSubmit = dialog.getByRole("button", { name: "Organizando…" });
+  await expect(processingSubmit).toBeDisabled();
+  await processingSubmit.click({ force: true });
+  await expect(dialog.getByText("0:01", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("alert")).toContainText("Fallo sintético de QA");
+  await expect(dialog.getByLabel("Texto del borrador")).toHaveValue(source);
+  await expect(submit).toBeEnabled();
+  expect(posts).toBe(1);
+  await expect(dialog.getByText(/%/)).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: /Detener|Cancelar procesamiento/ })).toHaveCount(0);
+});
+
+test("observations aggregate format review in one detail and desktop workspace spans Timeline below both columns", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: () => Promise.reject(new DOMException("QA fallback", "NotAllowedError")),
+    });
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const actionText = "ANA observa la VENTANA.";
+  const secondActionText = "La segunda escena conserva un ID distinto.";
+  const dialogueText = "Hola, ANA MARÍA.";
+  await page.route(`**/api/writer/scripts/${scriptId}/analysis`, (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      analysis: {
+        identities: [{ key: "ANA", name: "ANA" }, { key: "NO", name: "NO" }],
+        evidence: [
+          { fingerprint: "ana-ok", identityKey: "ANA", identity: "ANA", blockId: "11111111-1111-4111-8111-111111111102", sceneId: "11111111-1111-4111-8111-111111111101", start: 0, end: 3, relation: "action", presence: "present", source: "ai", confidence: "medium", reason: "Participa en la acción.", blockHash: textHash(actionText) },
+          { fingerprint: "no-review", identityKey: "NO", identity: "NO", blockId: "11111111-1111-4111-8111-111111111102", sceneId: "11111111-1111-4111-8111-111111111101", start: 0, end: 2, relation: "indeterminate", presence: "unknown", source: "ai", confidence: "review", reason: "Candidato sin evidencia aceptada.", blockHash: textHash(actionText) },
+        ],
+        observations: [
+          { id: "format-action", blockId: "11111111-1111-4111-8111-111111111102", sceneId: "11111111-1111-4111-8111-111111111101", kind: "action", message: "Clasificación contextual compatible.", source: "ai", blockHash: textHash(actionText) },
+          { id: "format-action-2", blockId: "11111111-1111-4111-8111-111111111109", sceneId: "11111111-1111-4111-8111-111111111108", kind: "action", message: "Clasificación contextual compatible.", source: "rule", blockHash: textHash(secondActionText) },
+          { id: "format-dialogue", blockId: "11111111-1111-4111-8111-111111111104", sceneId: "11111111-1111-4111-8111-111111111101", kind: "dialogue", message: "La clasificación requiere revisión.", source: "ai", blockHash: textHash(dialogueText) },
+        ],
+      },
+      decisions: [],
+      compatibleRevision: true,
+    }),
+  }));
+  await page.goto(`/writer/${scriptId}`);
+  const observations = page.locator(".writer-observations-panel");
+  await expect(observations).toBeVisible();
+  await expect(observations.locator(".writer-observations-known")).toContainText("ANA");
+  await expect(observations.locator(".writer-observations-known").getByText("NO", { exact: true })).toHaveCount(0);
+  await expect(observations.locator(".writer-format-summary")).toHaveCount(2);
+  await expect(observations.locator(".writer-format-review")).toHaveCount(0);
+
+  await observations.locator('[data-category="dialogue"]').getByRole("button", { name: "Revisar" }).click();
+  await expect(observations.locator(".writer-format-review")).toContainText("Diálogos · 1 de 1");
+  await observations.locator('[data-category="action"]').getByRole("button", { name: "Revisar" }).click();
+  await expect(observations.locator(".writer-format-review")).toContainText("Acciones · 1 de 2");
+  await expect(observations.locator(".writer-format-review")).toHaveCount(1);
+  await observations.getByRole("button", { name: "Ver siguiente →" }).click();
+  await expect(observations.locator(".writer-format-review")).toContainText("Acciones · 2 de 2");
+  await observations.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await page.locator(".writer-header").getByRole("button", { name: /Observaciones/ }).click();
+  await expect(observations.locator(".writer-format-review")).toContainText("Acciones · 2 de 2");
+  await observations.getByRole("button", { name: "← Anterior" }).click();
+  await observations.locator(".writer-format-review select").selectOption("transition");
+  await expect(page.getByLabel("Editor de guion").locator('p[data-block-id$="02"]')).toHaveAttribute("data-screenplay-kind", "transition");
+  await page.getByRole("button", { name: "Deshacer" }).click();
+  await expect(page.getByLabel("Editor de guion").locator('p[data-block-id$="02"]')).toHaveAttribute("data-screenplay-kind", "action");
+
+  const timeline = page.locator(".writer-timeline-panel");
+  await expect(timeline).toBeVisible();
+  const [timelineBox, observationsBox] = await Promise.all([timeline.boundingBox(), observations.boundingBox()]);
+  expect(timelineBox).not.toBeNull();
+  expect(observationsBox).not.toBeNull();
+  expect(timelineBox!.x).toBeLessThan(observationsBox!.x);
+  expect(timelineBox!.x + timelineBox!.width).toBeGreaterThanOrEqual(observationsBox!.x + observationsBox!.width - 1);
+  expect(timelineBox!.y).toBeGreaterThanOrEqual(observationsBox!.y + observationsBox!.height - 1);
+
+  await page.getByRole("button", { name: "Focus" }).click();
+  await expect(observations).toBeHidden();
+  await expect(timeline).toBeHidden();
+  await expect(page.locator(".writer-sidebar")).toBeHidden();
+  await page.getByRole("button", { name: "Salir de Focus" }).click();
+  await expect(observations).toBeVisible();
+  await expect(timeline).toBeVisible();
+
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await expect(observations).toBeVisible();
+  await expect(timeline).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.setViewportSize({ width: 768, height: 900 });
+  await expect(timeline).toBeHidden();
+  await observations.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await expect(page.getByLabel("Editor de guion")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Escenas", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Personajes", exact: true })).toBeVisible();
+});
+
+function textHash(value: string) {
+  let hash = 0x811c9dc5;
+  for (const character of value) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}

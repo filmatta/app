@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-  WriterCharacterObservation,
-  WriterKnownCharacterIdentity,
-} from "@/lib/writer/character-observations";
-import type {
-  WriterCharacterDecision,
-  WriterCharacterDecisionState,
-} from "@/lib/writer/character-observation-storage";
-import type { WriterFormatObservation } from "@/lib/writer/import-analysis";
+import { useMemo, useState } from "react";
+import { SCREENPLAY_KINDS, type ScreenplayKind } from "@/lib/writer/document";
+import type { WriterCharacterObservation, WriterKnownCharacterIdentity } from "@/lib/writer/character-observations";
+import type { WriterCharacterDecision, WriterCharacterDecisionState } from "@/lib/writer/character-observation-storage";
+import {
+  groupWriterFormatObservations,
+  writerFormatObservationState,
+  writerObservationExcerpt,
+  type WriterFormatObservation,
+} from "@/lib/writer/import-analysis";
 
 const EVIDENCE_LABELS: Record<WriterCharacterObservation["evidence"], string> = {
   intervention: "Intervención / bloque Personaje",
@@ -25,22 +25,20 @@ const SOURCE_LABELS: Record<WriterKnownCharacterIdentity["source"], string> = {
   imported: "Detectado al importar",
 };
 
+const FORMAT_LABELS: Record<ScreenplayKind, { plural: string; singular: string; item: string }> = {
+  dialogue: { plural: "Diálogos", singular: "Diálogo", item: "fragmentos clasificados" },
+  character: { plural: "Personajes", singular: "Personaje", item: "encabezados clasificados" },
+  action: { plural: "Acciones", singular: "Acción", item: "fragmentos clasificados" },
+  parenthetical: { plural: "Acotaciones", singular: "Acotación", item: "acotaciones clasificadas" },
+  sceneHeading: { plural: "Encabezados de escena", singular: "Encabezado de escena", item: "encabezados clasificados" },
+  transition: { plural: "Transiciones", singular: "Transición", item: "transiciones clasificadas" },
+  authorNote: { plural: "Notas", singular: "Nota del autor", item: "notas clasificadas" },
+};
+
 export default function WriterObservationsPanel({
-  observations,
-  knownIdentities,
-  decisions,
-  storagePersistent,
-  importedAnalysisPersistent,
-  formatObservations,
-  selectedBlockId,
-  onClose,
-  onConfirm,
-  onLink,
-  onIgnore,
-  onRestore,
-  onAddManual,
-  onView,
-  onViewFormat,
+  observations, knownIdentities, decisions, storagePersistent, importedAnalysisPersistent,
+  formatObservations, sceneCount, selectedBlockId, hidden, onClose, onConfirm, onLink, onIgnore,
+  onRestore, onAddManual, onView, onViewFormat, onChangeFormat,
 }: {
   observations: WriterCharacterObservation[];
   knownIdentities: WriterKnownCharacterIdentity[];
@@ -48,7 +46,9 @@ export default function WriterObservationsPanel({
   storagePersistent: boolean;
   importedAnalysisPersistent: boolean;
   formatObservations: WriterFormatObservation[];
+  sceneCount: number;
   selectedBlockId: string | null;
+  hidden: boolean;
   onClose: () => void;
   onConfirm: (observation: WriterCharacterObservation, name: string) => void;
   onLink: (observation: WriterCharacterObservation, identityKey: string) => void;
@@ -57,14 +57,16 @@ export default function WriterObservationsPanel({
   onAddManual: (name: string) => void;
   onView: (observation: WriterCharacterObservation) => void;
   onViewFormat: (observation: WriterFormatObservation) => void;
+  onChangeFormat: (observation: WriterFormatObservation, kind: ScreenplayKind) => void;
 }) {
-  const panelRef = useRef<HTMLElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
   const [confirming, setConfirming] = useState<WriterCharacterObservation | null>(null);
   const [confirmName, setConfirmName] = useState("");
   const [linking, setLinking] = useState<WriterCharacterObservation | null>(null);
   const [linkKey, setLinkKey] = useState("");
   const [manualName, setManualName] = useState("");
+  const [activeKind, setActiveKind] = useState<ScreenplayKind | null>(null);
+  const [indexByKind, setIndexByKind] = useState<Partial<Record<ScreenplayKind, number>>>({});
+  const [reviewedFormatIds, setReviewedFormatIds] = useState<Set<string>>(() => new Set());
   const decisionByFingerprint = useMemo(
     () => new Map(decisions.decisions.map((decision) => [decision.fingerprint, decision])),
     [decisions.decisions],
@@ -73,7 +75,7 @@ export default function WriterObservationsPanel({
     () => observations.filter((observation) => !observation.known && !decisionByFingerprint.has(observation.fingerprint)),
     [decisionByFingerprint, observations],
   );
-  const groups = useMemo(() => {
+  const characterGroups = useMemo(() => {
     const byIdentity = new Map<string, WriterCharacterObservation[]>();
     for (const observation of pending) {
       const group = byIdentity.get(observation.identityKey) ?? [];
@@ -92,97 +94,115 @@ export default function WriterObservationsPanel({
       const observation = observations.find((item) => item.fingerprint === decision.fingerprint);
       return observation ? [{ decision, observation }] : [];
     }), [decisions.decisions, observations]);
+  const formatGroups = useMemo(
+    () => groupWriterFormatObservations(formatObservations, reviewedFormatIds),
+    [formatObservations, reviewedFormatIds],
+  );
+  const activeGroup = formatGroups.find((group) => group.kind === activeKind) ?? null;
+  const activeIndex = activeGroup
+    ? Math.min(indexByKind[activeGroup.kind] ?? 0, activeGroup.observations.length - 1)
+    : 0;
+  const activeFormat = activeGroup?.observations[activeIndex] ?? null;
 
-  useEffect(() => {
-    closeRef.current?.focus();
-  }, []);
+  function openFormatGroup(kind: ScreenplayKind) {
+    const group = formatGroups.find((candidate) => candidate.kind === kind);
+    if (!group) return;
+    const index = Math.min(indexByKind[kind] ?? 0, group.observations.length - 1);
+    setActiveKind(kind);
+    onViewFormat(group.observations[index]);
+  }
+
+  function moveFormat(delta: number) {
+    if (!activeGroup) return;
+    const next = Math.max(0, Math.min(activeGroup.observations.length - 1, activeIndex + delta));
+    setIndexByKind((current) => ({ ...current, [activeGroup.kind]: next }));
+    onViewFormat(activeGroup.observations[next]);
+  }
+
+  function markFormatCorrect() {
+    if (!activeFormat) return;
+    setReviewedFormatIds((current) => new Set(current).add(activeFormat.id));
+  }
 
   return (
-    <aside
-      ref={panelRef}
-      className="writer-observations-panel"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="writer-observations-title"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          onClose();
-          return;
-        }
-        if (event.key !== "Tab") return;
-        const focusable = [...(panelRef.current?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), select:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
-        ) ?? [])].filter((element) => element.offsetParent !== null);
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable.at(-1)!;
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }}
-    >
+    <aside hidden={hidden} className="writer-observations-panel" aria-labelledby="writer-observations-title" onKeyDown={(event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    }}>
       <header>
         <div>
-          <p className="writer-eyebrow">Revisión local</p>
+          <p className="writer-eyebrow">Revisión</p>
           <h2 id="writer-observations-title">Observaciones</h2>
+          <p>{sceneCount} escenas · {knownIdentities.length} personajes · {formatObservations.length} clasificaciones de formato</p>
         </div>
-        <button ref={closeRef} type="button" onClick={onClose}>Cerrar</button>
+        <button type="button" onClick={onClose}>Cerrar</button>
       </header>
 
       <div className="writer-observations-scroll">
         <p className="writer-observations-local-note">
           {importedAnalysisPersistent
-            ? "El análisis de importación se conserva con este guion. Las decisiones nuevas se sincronizan y también mantienen una copia local de respaldo."
+            ? "El análisis de importación se conserva con este guion. Revisar formato no ejecuta IA ni bloquea la escritura."
             : storagePersistent
-            ? "Los reconocimientos manuales de esta versión se guardan en este navegador. Aún no se sincronizan entre dispositivos ni se exportan."
+            ? "Las decisiones manuales se guardan en este navegador y no modifican el texto hasta que eliges un cambio."
             : "El almacenamiento local no está disponible. Las decisiones sólo durarán durante esta sesión."}
         </p>
 
-        {formatObservations.length > 0 && (
+        {formatGroups.length > 0 && (
           <section aria-labelledby="writer-observations-format-heading">
-            <div className="writer-observations-section-heading">
-              <h3 id="writer-observations-format-heading">Formato opcional</h3>
-              <span>{formatObservations.length}</span>
+            <div className="writer-observations-section-heading"><h3 id="writer-observations-format-heading">Formato</h3><span>{formatObservations.length}</span></div>
+            <div className="writer-format-summaries">
+              {formatGroups.map((group) => {
+                const labels = FORMAT_LABELS[group.kind];
+                return (
+                  <article key={group.kind} className="writer-format-summary" data-category={group.kind}>
+                    <div className="writer-observation-title"><strong>{labels.plural}</strong><span>{group.observations.length}</span></div>
+                    <p>{group.observations.length} {labels.item}{group.doubtCount ? ` · ${group.doubtCount} ${group.doubtCount === 1 ? "duda" : "dudas"}` : ""}</p>
+                    <blockquote>“{writerObservationExcerpt(group.observations[0].excerpt)}”</blockquote>
+                    <div className="writer-format-summary-footer"><small>{group.reviewedCount} revisados</small><button type="button" onClick={() => openFormatGroup(group.kind)}>Revisar</button></div>
+                  </article>
+                );
+              })}
             </div>
-            {formatObservations.map((observation) => (
-              <article key={observation.id} className={observation.blockId === selectedBlockId ? "is-selected" : ""}>
-                <div className="writer-observation-title">
-                  <strong>{observation.message}</strong>
-                  <span>{observation.source === "ai" ? "IA" : "Regla local"}</span>
+
+            {activeGroup && activeFormat && (
+              <article
+                className="writer-format-review"
+                data-category={activeGroup.kind}
+                data-state={writerFormatObservationState(activeFormat)}
+                aria-label={`${FORMAT_LABELS[activeGroup.kind].singular}. ${writerFormatObservationState(activeFormat) === "question" ? "Duda" : "Clasificación"}. Elemento ${activeIndex + 1} de ${activeGroup.observations.length}.`}
+              >
+                <div className="writer-format-review-heading"><strong>{FORMAT_LABELS[activeGroup.kind].plural} · {activeIndex + 1} de {activeGroup.observations.length}</strong><span>{writerFormatObservationState(activeFormat) === "question" ? "Duda" : "Clasificación"}</span></div>
+                <blockquote>“{writerObservationExcerpt(activeFormat.excerpt, 240)}”</blockquote>
+                <p>{activeFormat.message}</p>
+                {writerFormatObservationState(activeFormat) === "question" && <p>FILMATTA no está segura de esta clasificación.</p>}
+                <dl><div><dt>Clasificado como</dt><dd>{FORMAT_LABELS[activeFormat.kind].singular}</dd></div></dl>
+                <div className="writer-format-review-actions">
+                  <button type="button" onClick={markFormatCorrect} aria-pressed={reviewedFormatIds.has(activeFormat.id)}>Correcto</button>
+                  <label>Cambiar a<select value={activeFormat.kind} onChange={(event) => {
+                    const kind = event.target.value as ScreenplayKind;
+                    if (kind === activeFormat.kind) return;
+                    markFormatCorrect();
+                    onChangeFormat(activeFormat, kind);
+                  }}>{SCREENPLAY_KINDS.map((kind) => <option key={kind} value={kind}>{FORMAT_LABELS[kind].singular}</option>)}</select></label>
                 </div>
-                <p>Se aplicó {KIND_LABELS[observation.kind]}. Puedes cambiarlo directamente en Writer sin otra llamada.</p>
-                <div className="writer-observation-actions"><button type="button" onClick={() => onViewFormat(observation)}>Ver y ajustar</button></div>
+                <div className="writer-format-review-navigation"><button type="button" onClick={() => moveFormat(-1)} disabled={activeIndex === 0}>← Anterior</button><button type="button" onClick={() => moveFormat(1)} disabled={activeIndex >= activeGroup.observations.length - 1}>Ver siguiente →</button></div>
               </article>
-            ))}
+            )}
           </section>
         )}
 
         <section aria-labelledby="writer-observations-review-heading">
-          <div className="writer-observations-section-heading">
-            <h3 id="writer-observations-review-heading">Por revisar</h3>
-            <span>{pending.length}</span>
-          </div>
-          {groups.length ? groups.map((group) => {
+          <div className="writer-observations-section-heading"><h3 id="writer-observations-review-heading">Personajes por revisar</h3><span>{pending.length}</span></div>
+          {characterGroups.length ? characterGroups.map((group) => {
             const first = group[0];
             return (
-              <article key={first.identityKey} className={group.some((item) => item.blockId === selectedBlockId) ? "is-selected" : ""}>
-                <div className="writer-observation-title">
-                  <strong>Identidad por revisar: {first.identity.toLocaleUpperCase("es-MX")}</strong>
-                  {group.length > 1 && <span>{group.length} evidencias</span>}
-                </div>
+              <article key={first.identityKey} className={group.some((item) => item.blockId === selectedBlockId) ? "is-selected" : ""} data-state="question">
+                <div className="writer-observation-title"><strong>Identidad por revisar: {first.identity.toLocaleUpperCase("es-MX")}</strong><span>Duda</span></div>
                 {group.map((observation) => (
                   <div className="writer-observation-evidence" key={observation.id}>
-                    <p>“{observation.excerpt}”</p>
-                    <small>{EVIDENCE_LABELS[observation.evidence]} · {confidenceLabel(observation.confidence)}</small>
-                    <details>
-                      <summary>Por qué se señaló</summary>
-                      <ul>{observation.signals.map((signal) => <li key={signal}>{signal}</li>)}</ul>
-                    </details>
+                    <p>“{observation.excerpt}”</p><small>{EVIDENCE_LABELS[observation.evidence]} · {confidenceLabel(observation.confidence)}</small>
+                    <details><summary>Por qué se señaló</summary><ul>{observation.signals.map((signal) => <li key={signal}>{signal}</li>)}</ul></details>
                     <button type="button" onClick={() => onView(observation)}>Ver fragmento</button>
                   </div>
                 ))}
@@ -197,63 +217,22 @@ export default function WriterObservationsPanel({
           }) : <p className="writer-observations-empty">No hay posibles personajes pendientes en el texto actual.</p>}
         </section>
 
-        {ignored.length > 0 && (
-          <details className="writer-observations-ignored">
-            <summary>Ignoradas ({ignored.length})</summary>
-            {ignored.map(({ decision, observation }) => (
-              <div key={decision.fingerprint}>
-                <span>{observation.identity} · {EVIDENCE_LABELS[observation.evidence]}</span>
-                <button type="button" onClick={() => onRestore(decision)}>Restaurar</button>
-              </div>
-            ))}
-          </details>
-        )}
+        {ignored.length > 0 && <details className="writer-observations-ignored"><summary>Ignoradas ({ignored.length})</summary>{ignored.map(({ decision, observation }) => <div key={decision.fingerprint}><span>{observation.identity} · {EVIDENCE_LABELS[observation.evidence]}</span><button type="button" onClick={() => onRestore(decision)}>Restaurar</button></div>)}</details>}
 
         <section aria-labelledby="writer-observations-known-heading">
-          <div className="writer-observations-section-heading">
-            <h3 id="writer-observations-known-heading">Personajes reconocidos</h3>
-            <span>{knownIdentities.length}</span>
-          </div>
-          {knownIdentities.length ? (
-            <ul className="writer-observations-known">{knownIdentities.map((identity) => {
-              const references = observations.filter((observation) => observation.known && observation.identityKey === identity.key);
-              return (
-                <li key={`${identity.source}:${identity.key}`}>
-                  <div><strong>{identity.name}</strong><span>{SOURCE_LABELS[identity.source]}</span></div>
-                  <small>{references.length ? `${references.length} evidencias actuales` : "Sin evidencias actuales"}</small>
-                </li>
-              );
-            })}</ul>
-          ) : <p className="writer-observations-empty">Todavía no hay identidades reconocidas.</p>}
-          <form className="writer-observations-manual" onSubmit={(event) => {
-            event.preventDefault();
-            if (!manualName.trim()) return;
-            onAddManual(manualName);
-            setManualName("");
-          }}>
-            <label>Reconocer manualmente<input value={manualName} onChange={(event) => setManualName(event.target.value)} maxLength={64} placeholder="Nombre o identidad" /></label>
-            <button type="submit" disabled={!manualName.trim()}>Añadir</button>
+          <div className="writer-observations-section-heading"><h3 id="writer-observations-known-heading">Personajes reconocidos</h3><span>{knownIdentities.length}</span></div>
+          {knownIdentities.length ? <ul className="writer-observations-known">{knownIdentities.map((identity) => {
+            const references = observations.filter((observation) => observation.identityKey === identity.key);
+            return <li key={`${identity.source}:${identity.key}`}><div><strong>{identity.name}</strong><span>{SOURCE_LABELS[identity.source]}</span></div><small>{references.length ? `${references.length} evidencias actuales` : "Sin evidencias actuales"}</small></li>;
+          })}</ul> : <p className="writer-observations-empty">Todavía no hay identidades reconocidas.</p>}
+          <form className="writer-observations-manual" onSubmit={(event) => { event.preventDefault(); if (!manualName.trim()) return; onAddManual(manualName); setManualName(""); }}>
+            <label>Reconocer manualmente<input value={manualName} onChange={(event) => setManualName(event.target.value)} maxLength={64} placeholder="Nombre o identidad" /></label><button type="submit" disabled={!manualName.trim()}>Añadir</button>
           </form>
         </section>
       </div>
 
-      {confirming && (
-        <div className="writer-observation-decision" role="dialog" aria-modal="true" aria-labelledby="writer-observation-confirm-title">
-          <h3 id="writer-observation-confirm-title">Confirmar personaje</h3>
-          <label>Nombre reconocido<input autoFocus value={confirmName} onChange={(event) => setConfirmName(event.target.value)} maxLength={64} /></label>
-          <div><button type="button" onClick={() => setConfirming(null)}>Cancelar</button><button type="button" onClick={() => { onConfirm(confirming, confirmName); setConfirming(null); }} disabled={!confirmName.trim()}>Confirmar</button></div>
-        </div>
-      )}
-
-      {linking && (
-        <div className="writer-observation-decision" role="dialog" aria-modal="true" aria-labelledby="writer-observation-link-title">
-          <h3 id="writer-observation-link-title">Vincular evidencia</h3>
-          <label>Personaje<select autoFocus value={linkKey} onChange={(event) => setLinkKey(event.target.value)}>
-            {knownIdentities.map((identity) => <option key={`${identity.source}:${identity.key}`} value={identity.key}>{identity.name}</option>)}
-          </select></label>
-          <div><button type="button" onClick={() => setLinking(null)}>Cancelar</button><button type="button" onClick={() => { onLink(linking, linkKey); setLinking(null); }} disabled={!linkKey}>Vincular</button></div>
-        </div>
-      )}
+      {confirming && <div className="writer-observation-decision" role="dialog" aria-modal="true" aria-labelledby="writer-observation-confirm-title"><h3 id="writer-observation-confirm-title">Confirmar personaje</h3><label>Nombre reconocido<input autoFocus value={confirmName} onChange={(event) => setConfirmName(event.target.value)} maxLength={64} /></label><div><button type="button" onClick={() => setConfirming(null)}>Cancelar</button><button type="button" onClick={() => { onConfirm(confirming, confirmName); setConfirming(null); }} disabled={!confirmName.trim()}>Confirmar</button></div></div>}
+      {linking && <div className="writer-observation-decision" role="dialog" aria-modal="true" aria-labelledby="writer-observation-link-title"><h3 id="writer-observation-link-title">Vincular evidencia</h3><label>Personaje<select autoFocus value={linkKey} onChange={(event) => setLinkKey(event.target.value)}>{knownIdentities.map((identity) => <option key={`${identity.source}:${identity.key}`} value={identity.key}>{identity.name}</option>)}</select></label><div><button type="button" onClick={() => setLinking(null)}>Cancelar</button><button type="button" onClick={() => { onLink(linking, linkKey); setLinking(null); }} disabled={!linkKey}>Vincular</button></div></div>}
     </aside>
   );
 }
@@ -263,13 +242,3 @@ function confidenceLabel(value: WriterCharacterObservation["confidence"]) {
   if (value === "medium") return "Media";
   return "Revisar";
 }
-
-const KIND_LABELS: Record<WriterFormatObservation["kind"], string> = {
-  sceneHeading: "Encabezado de escena",
-  action: "Acción",
-  character: "Personaje — encabezado de diálogo",
-  dialogue: "Diálogo",
-  parenthetical: "Acotación",
-  transition: "Transición",
-  authorNote: "Nota del autor",
-};
