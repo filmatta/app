@@ -20,6 +20,12 @@ import {
   estimateAssistedImportPipelinePlan,
 } from "../../lib/writer/assisted-import-plan.ts";
 import { countAssistedImportTokens } from "../../lib/writer/assisted-import-accounting.ts";
+import {
+  assistedImportAnalysisVersion,
+  determineAssistedImportAnalysisStatus,
+  parseAssistedImportAnalysisVersion,
+  recoverySkippedReasonForErrorCode,
+} from "../../lib/writer/assisted-import-status.ts";
 import { blockText, createBlock } from "../../lib/writer/document.ts";
 import { createBasicFdx, createWriterBackup } from "../../lib/writer/export.ts";
 import { defaultWriterPdfOptions, layoutWriterPdf } from "../../lib/writer/pdf.ts";
@@ -92,6 +98,38 @@ test("automatic reconciliation preserves every source block and separates identi
   assert.equal(reconciled.evidence.some((item) => item.identity === "ÉL"), false);
   assert.equal(reconciled.evidence.some((item) => item.identity === "ESPERANZA" && item.relation === "action"), false);
   assert.ok(reconciled.evidence.some((item) => item.identityKey === "MATEO" && item.presence === "absent"));
+});
+
+test("valid Terra evidence persists as a partial Writer document when optional Sol has no budget or calls", () => {
+  const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: SOURCE, title: "Bosque parcial" });
+  const action = staging.blocks.find((block) => block.originalText === "Carolina abre la puerta.")!;
+  const batch = batchFor(staging, []);
+  const terra = validateAssistedImportModelResult(anchoredResult({
+    classifications: [],
+    evidence: [spanEvidence(action, "Carolina", "named", "action", "present")],
+    observations: [],
+  }, batch), batch);
+  const reconciled = reconcileAssistedImport(staging, [terra]);
+
+  assertAssistedImportPreservation(staging, reconciled.document);
+  assert.deepEqual(reconciled.document.content.map(blockText), staging.blocks.map((block) => block.originalText));
+  assert.ok(reconciled.evidence.some((item) => item.identityKey === "CAROLINA" && item.relation === "action"));
+
+  for (const code of ["budget", "call_limit"] as const) {
+    const recoverySkippedReason = recoverySkippedReasonForErrorCode(code);
+    assert.ok(recoverySkippedReason);
+    const status = determineAssistedImportAnalysisStatus({
+      incomplete: true,
+      validationIssueCount: terra.validationIssues.length,
+      usableResultCount: 1,
+    });
+    assert.equal(status, "partial");
+    assert.deepEqual(parseAssistedImportAnalysisVersion(assistedImportAnalysisVersion({
+      version: "writer-assisted-import-v1",
+      status,
+      recoverySkippedReason,
+    })), { status: "partial", recoverySkippedReason });
+  }
 });
 
 test("protected notes bypass analysis, remain in JSON, and stay out of PDF and FDX", () => {

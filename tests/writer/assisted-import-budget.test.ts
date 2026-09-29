@@ -11,8 +11,17 @@ test("the 11,529-character review shape admits Terra without pre-authorizing the
   const staging = prepareAssistedImportStaging({ format: "pasted", sourceText: source, title: "Caso humano" });
   const plan = estimateAssistedImportPipelinePlan(buildAssistedImportBatches(staging));
   assert.equal(source.length, 11_529);
-  assert.ok(plan.base.costMicrousd <= 200_000);
-  assert.ok(plan.maximum.costMicrousd > 200_000);
+  assert.equal(plan.base.costMicrousd, 124_104);
+  assert.equal(plan.observableRecovery.costMicrousd - plan.base.costMicrousd, 92_052);
+  assert.equal(plan.maximum.costMicrousd, 361_620);
+  const recoveryAfterTerraSettlement = assistedImportBudgetDecision({
+    operationBudgetMicrousd: 200_000,
+    actualCostMicrousd: 124_104,
+    reservedCostMicrousd: 0,
+    requestedMicrousd: 92_052,
+  });
+  assert.equal(recoveryAfterTerraSettlement.allowed, false);
+  assert.equal(recoveryAfterTerraSettlement.remainingBeforeMicrousd, 75_896);
 });
 
 test("Terra and conditional Sol fit when their staged reservations fit the operation", () => {

@@ -756,7 +756,11 @@ export default function WriterWorkspace({
         characterHeadingCount: characterCount,
         blockCount: document.content.length,
         observationCount: Number.isSafeInteger(optionalObservations) && optionalObservations >= 0 ? optionalObservations : 0,
-        recoverySkippedReason: url.searchParams.get("recovery") === "budget" ? "recovery_budget_unavailable" : null,
+        recoverySkippedReason: url.searchParams.get("recovery") === "budget"
+          ? "recovery_budget_unavailable"
+          : url.searchParams.get("recovery") === "calls"
+            ? "recovery_call_limit_unavailable"
+            : null,
       }));
     });
     url.searchParams.delete("imported");

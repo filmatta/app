@@ -16,6 +16,7 @@ import {
   assistedImportAnalysisVersion,
   determineAssistedImportAnalysisStatus,
   parseAssistedImportAnalysisVersion,
+  recoverySkippedReasonForErrorCode,
   type AssistedImportAnalysisStatus,
   type AssistedImportRecoverySkippedReason,
 } from "./assisted-import-status";
@@ -190,19 +191,27 @@ export async function executeAssistedImport(
     reasoning: { terra: "none", sol: "low" },
     basePlanCost,
   }));
-  const reserved = await rpcJson(db, "writer_reserve_assisted_import", {
-    p_user_id: userId,
-    p_operation_id: request.operationId,
-    p_source_hash: sourceHash,
-    p_options_hash: optionsHash,
-    p_source_format: request.format,
-    p_title: cleanTitle,
-    p_source_words: staging.source.words,
-    p_source_tokens: sourceTokens,
-    p_source_bytes: sourceBytes,
-    p_model: PIPELINE_MODEL,
-    p_maximum_plan_cost_microusd: Math.max(1, basePlanCost),
-  });
+  let reserved: Record<string, unknown>;
+  try {
+    reserved = await rpcJson(db, "writer_reserve_assisted_import", {
+      p_user_id: userId,
+      p_operation_id: request.operationId,
+      p_source_hash: sourceHash,
+      p_options_hash: optionsHash,
+      p_source_format: request.format,
+      p_title: cleanTitle,
+      p_source_words: staging.source.words,
+      p_source_tokens: sourceTokens,
+      p_source_bytes: sourceBytes,
+      p_model: PIPELINE_MODEL,
+      p_maximum_plan_cost_microusd: Math.max(1, basePlanCost),
+    });
+  } catch (cause) {
+    if (cause instanceof AssistedImportError && (cause.code === "budget" || cause.code === "call_limit")) {
+      throw new AssistedImportError("budget_plan", "La etapa asistida inicial supera el límite de uso. Puedes importar el borrador sin IA.", 409);
+    }
+    throw cause;
+  }
   const operationBudget = positiveInteger(reserved.operation_budget_microusd);
   if (operationBudget < WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD || basePlanCost > operationBudget) {
     throw new AssistedImportError("budget_plan", "Esta operación no tiene presupuesto suficiente para la etapa asistida inicial.", 409);
@@ -247,29 +256,23 @@ export async function executeAssistedImport(
   }, 0);
   const solResults = await mapConcurrent(recovery.items, WRITER_ASSISTED_IMPORT_MAX_CONCURRENCY, async (item, recoveryIndex) => {
     const prior = terraResults.get(item.batch.index) ?? null;
-    let outcome: PipelineCallOutcome;
-    try {
-      outcome = await executePipelineCall({
-        db, userId, operationId, batchIndex: 20 + recoveryIndex, batch: recoveryBatch(item), stage: "sol", model: SOL_MODEL,
-        triggers: item.triggers, priorResult: prior, provider, signal: request.signal,
-        onRejectedOutput: dependencies.onRejectedOutput,
-      });
-    } catch (cause) {
-      if (cause instanceof AssistedImportError && (cause.code === "budget" || cause.code === "global_budget")) {
-        return { result: null, skippedReason: "recovery_budget_unavailable" as const };
-      }
-      throw cause;
+    const outcome = await executePipelineCall({
+      db, userId, operationId, batchIndex: 20 + recoveryIndex, batch: recoveryBatch(item), stage: "sol", model: SOL_MODEL,
+      triggers: item.triggers, priorResult: prior, provider, signal: request.signal,
+      onRejectedOutput: dependencies.onRejectedOutput,
+    });
+    if (!outcome.result && !outcome.skippedReason) {
+      failedCalls.push({ stage: "sol", code: outcome.failureCode!, path: outcome.failurePath! });
     }
-    if (!outcome.result) failedCalls.push({ stage: "sol", code: outcome.failureCode!, path: outcome.failurePath! });
     return outcome;
   }).catch(async (cause) => {
     const error = cause instanceof AssistedImportError ? cause : new AssistedImportError("provider_error", "No se pudo completar la recuperación asistida.", 502);
     await failOperation(db, userId, operationId, error.code === "provider_uncertain" ? "uncertain" : "failed", error.code);
     throw error;
   });
-  const recoverySkippedReason: AssistedImportRecoverySkippedReason | null = solResults.some(
-    (outcome) => outcome.skippedReason === "recovery_budget_unavailable",
-  ) ? "recovery_budget_unavailable" : null;
+  const recoverySkippedReason: AssistedImportRecoverySkippedReason | null = solResults.find(
+    (outcome) => outcome.skippedReason,
+  )?.skippedReason ?? null;
 
   const modelResults = [...terraResults.values(), ...solResults.map((outcome) => outcome.result)]
     .filter((result): result is AssistedImportModelResult => Boolean(result));
@@ -414,13 +417,22 @@ async function executePipelineCall(input: PipelineCallInput): Promise<PipelineCa
   const maxCost = estimateAssistedImportMaximumCostMicrousd(
     input.model, requestPlan.estimatedInputTokens, maxOutputTokens,
   );
-  const call = await rpcJson(input.db, "writer_reserve_assisted_import_call", {
-    p_user_id: input.userId,
-    p_operation_id: input.operationId,
-    p_batch_index: input.batchIndex,
-    p_request_hash: requestHash,
-    p_max_cost_microusd: maxCost,
-  });
+  let call: Record<string, unknown>;
+  try {
+    call = await rpcJson(input.db, "writer_reserve_assisted_import_call", {
+      p_user_id: input.userId,
+      p_operation_id: input.operationId,
+      p_batch_index: input.batchIndex,
+      p_request_hash: requestHash,
+      p_max_cost_microusd: maxCost,
+    });
+  } catch (cause) {
+    const skippedReason = input.stage === "sol" && cause instanceof AssistedImportError
+      ? recoverySkippedReasonForErrorCode(cause.code)
+      : null;
+    if (skippedReason) return { result: null, executed: false, skippedReason };
+    throw cause;
+  }
   if (call.status === "completed") {
     return {
       result: validateAssistedImportModelResult(checkpointResult(call.result, input.stage, input.model), input.batch),
@@ -656,7 +668,8 @@ function normalizeDatabaseError(cause: unknown) {
   if (message.includes("WRITER_IMPORT_ATTEMPTS")) return new AssistedImportError("attempts", "Alcanzaste el límite de 3 intentos en 24 horas.", 429);
   if (message.includes("WRITER_IMPORT_ACTIVE")) return new AssistedImportError("active", "Ya hay una importación asistida en curso.", 409);
   if (message.includes("WRITER_IMPORT_GLOBAL_BUDGET")) return new AssistedImportError("global_budget", "El presupuesto de QA para importaciones asistidas está agotado.", 503);
-  if (message.includes("WRITER_IMPORT_BUDGET") || message.includes("CALL_LIMIT")) return new AssistedImportError("budget", "Esta importación alcanzaría su límite de costo o llamadas.", 409);
+  if (message.includes("WRITER_IMPORT_CALL_LIMIT")) return new AssistedImportError("call_limit", "Esta importación alcanzaría su límite de llamadas.", 409);
+  if (message.includes("WRITER_IMPORT_BUDGET")) return new AssistedImportError("budget", "Esta importación alcanzaría su límite de costo.", 409);
   if (message.includes("WRITER_QUOTA_REACHED")) return new AssistedImportError("writer_quota", "Alcanzaste el límite de 3 guiones.", 409);
   if (message.includes("OPERATION_REUSED") || message.includes("BATCH_REUSED")) return new AssistedImportError("operation_reused", "El identificador de la operación ya fue usado con otro origen.", 409);
   return cause instanceof AssistedImportError ? cause : new AssistedImportError("database_error", "No se pudo reservar o finalizar la importación.", 500);

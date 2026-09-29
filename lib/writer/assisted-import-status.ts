@@ -1,5 +1,7 @@
 export type AssistedImportAnalysisStatus = "complete" | "partial" | "unusable";
-export type AssistedImportRecoverySkippedReason = "recovery_budget_unavailable";
+export type AssistedImportRecoverySkippedReason =
+  | "recovery_budget_unavailable"
+  | "recovery_call_limit_unavailable";
 
 export function determineAssistedImportAnalysisStatus(input: {
   incomplete: boolean;
@@ -34,8 +36,18 @@ export function parseAssistedImportAnalysisVersion(value: unknown): {
   const [rawStatus, ...markers] = detail.split(";");
   return {
     status: parseAssistedImportAnalysisStatus(rawStatus, "partial"),
-    recoverySkippedReason: markers.includes("recovery_budget_unavailable") ? "recovery_budget_unavailable" : null,
+    recoverySkippedReason: markers.includes("recovery_budget_unavailable")
+      ? "recovery_budget_unavailable"
+      : markers.includes("recovery_call_limit_unavailable")
+        ? "recovery_call_limit_unavailable"
+        : null,
   };
+}
+
+export function recoverySkippedReasonForErrorCode(code: string): AssistedImportRecoverySkippedReason | null {
+  if (code === "budget" || code === "global_budget") return "recovery_budget_unavailable";
+  if (code === "call_limit") return "recovery_call_limit_unavailable";
+  return null;
 }
 
 export function writerImportCompletionMessage(input: {
@@ -55,7 +67,7 @@ export function writerImportCompletionMessage(input: {
     return "Tu guion se importó completo. No pudimos vincular el análisis de personajes a sus fragmentos.";
   }
   if (input.analysisStatus === "partial") {
-    if (input.recoverySkippedReason === "recovery_budget_unavailable") {
+    if (input.recoverySkippedReason) {
       return "Guion importado. Algunas referencias del análisis quedaron pendientes por el límite de uso.";
     }
     return "Tu guion se importó completo. Vinculamos algunas referencias de personajes; otras quedaron pendientes.";
