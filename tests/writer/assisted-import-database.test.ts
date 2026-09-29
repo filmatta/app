@@ -51,6 +51,7 @@ before(async () => {
     historicalOperation, historicalUser, "7".repeat(64), optionsHash,
   ]);
   await db.exec(fs.readFileSync("supabase/migrations/20260930030000_writer_assisted_import_operation_budgets.sql", "utf8"));
+  await db.exec(fs.readFileSync("supabase/migrations/20260930031000_writer_assisted_import_budget_status.sql", "utf8"));
 });
 
 after(() => db.close());
@@ -103,6 +104,7 @@ test("analysis and decisions remain owner-isolated while service accounting is n
   await assert.rejects(db.query("select writer_grant_assisted_import_qa_budget($1,$2,$3,clock_timestamp()+interval '1 hour')", [
     other, "dddddddd-dddd-4ddd-8ddd-dddddddddddc", "6".repeat(64),
   ]), /permission denied/u);
+  await assert.rejects(db.query("select writer_assisted_import_qa_budget_status($1)", [other]), /permission denied/u);
   await assert.rejects(db.query("select writer_reserve_assisted_import($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", [
     other, "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "f".repeat(64), optionsHash, "pasted", "QA other", 10, 20, 100, "gpt-5.6-luna",
   ]), /permission denied/u);
@@ -200,6 +202,12 @@ test("one exact QA grant persists a 600000 budget and cannot be reused", async (
     [user, id, hash, optionsHash],
   )).rows[0] as { value: RpcValue & { operation_budget_microusd: number } }).value;
   assert.equal(value.operation_budget_microusd, 600_000);
+  const grants = ((await db.query(
+    "select writer_assisted_import_qa_budget_status($1) value", [user],
+  )).rows[0] as { value: Array<{ operation_id: string; status: string; budget_microusd: number }> }).value;
+  assert.deepEqual(grants.map((grant) => ({
+    operation_id: grant.operation_id,status: grant.status,budget_microusd: grant.budget_microusd,
+  })), [{ operation_id: id, status: "consumed", budget_microusd: 600_000 }]);
   await as("postgres");
   assert.equal(((await db.query(
     "select status from private.writer_assisted_import_budget_grants where operation_id=$1", [id],
