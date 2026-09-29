@@ -23,7 +23,6 @@ import {
 import {
   WRITER_ASSISTED_IMPORT_MAX_BYTES,
   WRITER_ASSISTED_IMPORT_MAX_CONCURRENCY,
-  WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD,
   WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD,
   WRITER_ASSISTED_IMPORT_MAX_SOURCE_TOKENS,
   WRITER_ASSISTED_IMPORT_MAX_WORDS,
@@ -41,6 +40,10 @@ import {
   type AssistedImportModelResult,
   type AssistedImportRecoveryTrigger,
 } from "./assisted-import";
+import {
+  assistedImportBudgetPolicy,
+  isKnownAssistedImportOperationBudget,
+} from "./assisted-import-budget-policy";
 import {
   SOL_MODEL,
   TERRA_MODEL,
@@ -168,15 +171,16 @@ export async function executeAssistedImport(
   }
 
   const db = dependencies.db ?? createAdminClient();
+  const budgetPolicy = assistedImportBudgetPolicy();
   const sourceHash = sha256(request.sourceText);
   const authorization = await rpcJson(db, "writer_assisted_import_authorized_budget", {
     p_user_id: userId,
     p_operation_id: request.operationId,
     p_source_hash: sourceHash,
+    p_ordinary_budget_microusd: budgetPolicy.operationBudgetMicroUsd,
   });
   const authorizedBudget = positiveInteger(authorization.authorized_budget_microusd);
-  if (authorizedBudget !== WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD
-    && authorizedBudget !== WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD) {
+  if (!isKnownAssistedImportOperationBudget(authorizedBudget)) {
     throw new AssistedImportError("database_contract", "El control de presupuesto devolvió una autorización inválida.", 500);
   }
   const preflight = dryRunAssistedImport(staging, authorizedBudget);
@@ -210,6 +214,7 @@ export async function executeAssistedImport(
     p_source_bytes: sourceBytes,
     p_model: PIPELINE_MODEL,
     p_maximum_plan_cost_microusd: Math.max(1, basePlanCost),
+    p_ordinary_budget_microusd: budgetPolicy.operationBudgetMicroUsd,
   });
   const operationBudget = positiveInteger(reserved.operation_budget_microusd);
   if (operationBudget < WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD || basePlanCost > operationBudget) {
@@ -238,6 +243,7 @@ export async function executeAssistedImport(
     const outcome = await executePipelineCall({
       db, userId, operationId, batchIndex: batch.index, batch, stage: "terra", model: TERRA_MODEL,
       triggers: [], provider, signal: request.signal, onRejectedOutput: dependencies.onRejectedOutput,
+      globalBudgetMicrousd: budgetPolicy.globalBudgetMicroUsd,
     });
     terraResults.set(batch.index, outcome.result);
     if (!outcome.result) failedCalls.push({ stage: "terra", code: outcome.failureCode!, path: outcome.failurePath! });
@@ -259,6 +265,7 @@ export async function executeAssistedImport(
       db, userId, operationId, batchIndex: 20 + recoveryIndex, batch: recoveryBatch(item), stage: "sol", model: SOL_MODEL,
       triggers: item.triggers, priorResult: prior, provider, signal: request.signal,
       onRejectedOutput: dependencies.onRejectedOutput,
+      globalBudgetMicrousd: budgetPolicy.globalBudgetMicroUsd,
     });
     if (!outcome.result && !outcome.skippedReason) {
       failedCalls.push({ stage: "sol", code: outcome.failureCode!, path: outcome.failurePath! });
@@ -378,6 +385,7 @@ type PipelineCallInput = {
   triggers: AssistedImportRecoveryTrigger[];
   priorResult?: AssistedImportModelResult | null;
   provider: AssistedImportProvider;
+  globalBudgetMicrousd: number;
   signal?: AbortSignal;
   onRejectedOutput?: (diagnostic: AssistedImportRejectedDiagnostic) => void | Promise<void>;
 };
@@ -424,6 +432,7 @@ async function executePipelineCall(input: PipelineCallInput): Promise<PipelineCa
       p_batch_index: input.batchIndex,
       p_request_hash: requestHash,
       p_max_cost_microusd: maxCost,
+      p_global_budget_microusd: input.globalBudgetMicrousd,
     });
   } catch (cause) {
     const skippedReason = input.stage === "sol" && cause instanceof AssistedImportError

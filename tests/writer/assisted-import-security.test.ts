@@ -20,6 +20,7 @@ const plan = fs.readFileSync("lib/writer/assisted-import-plan.ts", "utf8");
 const route = fs.readFileSync("app/api/writer/imports/assisted/route.ts", "utf8");
 const interfaceSource = fs.readFileSync("components/writer/WriterImportFlow.tsx", "utf8");
 const workspaceSource = fs.readFileSync("components/writer/WriterWorkspace.tsx", "utf8");
+const budgetPolicySource = fs.readFileSync("lib/writer/assisted-import-budget-policy.ts", "utf8");
 
 test("provider configuration is server-only, stored-output disabled, strict, and tool-free", () => {
   assert.match(server, /import "server-only"/u);
@@ -93,6 +94,11 @@ test("private endpoint authenticates before reading the body and ignores client 
   assert.ok(authIndex >= 0 && bodyIndex > authIndex);
   assert.doesNotMatch(route, /value\.(?:model|price|plan|cost)/u);
   assert.match(route, /MAX_REQUEST_BYTES/u);
+  assert.doesNotMatch(route, /budget/u);
+  assert.doesNotMatch(budgetPolicySource, /NEXT_PUBLIC_/u);
+  assert.doesNotMatch(budgetPolicySource, /user_metadata|app_metadata|localStorage/u);
+  assert.match(budgetPolicySource, /VERCEL_ENV === "preview"/u);
+  assert.match(budgetPolicySource, /VERCEL_GIT_COMMIT_REF === "staging"/u);
 });
 
 test("main import flow is one click, discloses OpenAI, and keeps manual review optional", () => {
