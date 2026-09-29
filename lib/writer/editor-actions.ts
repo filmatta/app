@@ -14,6 +14,16 @@ export type WriterBlockTarget = {
 
 export type ReplaceWriterBlockResult = "applied" | "unchanged" | "missing" | "changed";
 
+export type WriterSelectionTarget = {
+  document: ProseMirrorNode;
+  from: number;
+  to: number;
+  targetId: string;
+  kind: ScreenplayKind;
+  text: string;
+  multipleBlocks: boolean;
+};
+
 export function findWriterBlockAtPosition(doc: ProseMirrorNode, position: number): WriterBlockTarget | null {
   const safePosition = Math.max(0, Math.min(position, doc.content.size));
   const resolved = doc.resolve(safePosition);
@@ -53,6 +63,26 @@ export function selectionSpansWriterBlocks(state: EditorState): boolean {
   const { from, to } = state.selection;
   return findWriterBlockAtPosition(state.doc, from)?.id !==
     findWriterBlockAtPosition(state.doc, Math.max(from, to - 1))?.id;
+}
+
+export function captureWriterSelectionTarget(state: EditorState): WriterSelectionTarget | null {
+  const target = findWriterBlockAtPosition(state.doc, state.selection.from);
+  if (!target) return null;
+  return {
+    document: state.doc,
+    from: state.selection.from,
+    to: state.selection.to,
+    targetId: target.id,
+    kind: target.kind,
+    text: target.text,
+    multipleBlocks: selectionSpansWriterBlocks(state),
+  };
+}
+
+export function writerSelectionTargetIsCurrent(state: EditorState, target: WriterSelectionTarget): boolean {
+  if (state.doc !== target.document || state.selection.from !== target.from || state.selection.to !== target.to) return false;
+  const current = findWriterBlockByIdInDocument(state.doc, target.targetId);
+  return Boolean(current && current.kind === target.kind && current.text === target.text);
 }
 
 export function changeWriterBlockKind(editor: Editor, targetId: string, kind: ScreenplayKind): boolean {

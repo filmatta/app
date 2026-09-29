@@ -142,11 +142,11 @@ export default function WriterLibrary({
           <p>Un espacio privado para escribir y conservar tu trabajo.</p>
         </div>
         <div className="writer-library-create-actions">
-          <button type="button" onClick={() => setImportOpen(true)} disabled={busy !== null || initialScripts.length >= limit}>
+          <button className="writer-library-action-button" type="button" onClick={() => setImportOpen(true)} disabled={busy !== null || initialScripts.length >= limit}>
             Importar borrador
           </button>
           <button
-            className="writer-primary-button"
+            className="writer-primary-button writer-library-action-button"
             type="button"
             onClick={createScript}
             disabled={busy !== null || initialScripts.length >= limit}
@@ -167,10 +167,12 @@ export default function WriterLibrary({
           <p className="writer-eyebrow">Tu primera página</p>
           <h2>Empieza un guion nuevo.</h2>
           <p>La escritura se guarda localmente y se sincroniza con la nube.</p>
-          <button className="writer-primary-button" type="button" onClick={createScript} disabled={busy !== null}>
-            Crear guion
-          </button>
-          <button type="button" onClick={() => setImportOpen(true)} disabled={busy !== null}>Importar borrador</button>
+          <div className="writer-empty-actions">
+            <button className="writer-primary-button writer-library-action-button" type="button" onClick={createScript} disabled={busy !== null}>
+              Crear guion
+            </button>
+            <button className="writer-library-action-button" type="button" onClick={() => setImportOpen(true)} disabled={busy !== null}>Importar borrador</button>
+          </div>
         </section>
       ) : (
         <section className="writer-script-list" aria-label="Guiones">

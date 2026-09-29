@@ -107,7 +107,6 @@ test("contextual autocomplete is explicit, keyboard-safe, undoable, and viewport
 test("saved revisions auto-refresh an open Timeline once, preserve state, and stop when closed", async ({ page, context }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWriter(page, context, 250);
-  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
   const panel = page.getByRole("region", { name: "Timeline del guion" });
   await expect(panel).toBeVisible();
   await expect(panel.getByText(/revisión 1/)).toBeVisible();

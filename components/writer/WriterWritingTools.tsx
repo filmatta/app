@@ -12,6 +12,8 @@ import {
   insertWriterPlainText,
   insertWriterBlock,
   replaceWriterBlockWithSceneHeading,
+  writerSelectionTargetIsCurrent,
+  type WriterSelectionTarget,
 } from "@/lib/writer/editor-actions";
 import {
   QUICK_INSERTS,
@@ -30,13 +32,9 @@ export const WRITER_KIND_LABELS: Record<ScreenplayKind, string> = {
 };
 
 export type WriterContextMenuState = {
-  targetId: string;
-  kind: ScreenplayKind;
+  target: WriterSelectionTarget | null;
   x: number;
   y: number;
-  multipleBlocks: boolean;
-  selectionFrom: number;
-  selectionTo: number;
   sceneId: string | null;
   timelineReason: string | null;
 };
@@ -51,6 +49,7 @@ export type WriterInsertState = {
   expectedText: string;
   selectionFrom: number;
   selectionTo: number;
+  documentAtOpen: WriterSelectionTarget["document"];
 };
 
 export function WriterContextMenu({
@@ -73,9 +72,11 @@ export function WriterContextMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: state.x, top: state.y });
   const [clipboardBusy, setClipboardBusy] = useState(false);
-  const currentTarget = findWriterBlockById(editor, state.targetId);
-  const currentKind = currentTarget?.kind ?? state.kind;
-  const hasSelection = state.selectionFrom !== state.selectionTo;
+  const target = state.target;
+  const hasValidTarget = Boolean(target);
+  const currentTarget = target ? findWriterBlockById(editor, target.targetId) : null;
+  const currentKind = currentTarget?.kind ?? target?.kind;
+  const hasSelection = Boolean(target && target.from !== target.to);
   const canUndo = editor.can().chain().undo().run();
   const canRedo = editor.can().chain().redo().run();
 
@@ -99,32 +100,34 @@ export function WriterContextMenu({
   }, [onClose]);
 
   function applyKind(kind: ScreenplayKind) {
-    if (state.multipleBlocks) return;
+    if (!target || target.multipleBlocks) return;
+    if (!contextIsCurrent()) return staleContext();
     if (kind === "sceneHeading") {
       onConvertSceneHeading();
       return;
     }
-    if (!changeWriterBlockKind(editor, state.targetId, kind)) return onClose();
+    if (!changeWriterBlockKind(editor, target.targetId, kind)) return staleContext();
     onClose();
   }
 
-  function contextIsCurrent(expectedDoc: typeof editor.state.doc) {
-    const selection = editor.state.selection;
-    return editor.state.doc === expectedDoc
-      && selection.from === state.selectionFrom
-      && selection.to === state.selectionTo
-      && Boolean(findWriterBlockById(editor, state.targetId));
+  function contextIsCurrent() {
+    return Boolean(target && writerSelectionTargetIsCurrent(editor.state, target));
+  }
+
+  function staleContext() {
+    onFeedback("El cursor o el documento cambió. Abre de nuevo el menú en el destino actual.");
+    onClose();
   }
 
   async function runClipboard(action: "copy" | "cut" | "paste") {
     if (clipboardBusy) return;
-    const expectedDoc = editor.state.doc;
+    if (!target || !contextIsCurrent()) return staleContext();
     setClipboardBusy(true);
     try {
       if (!navigator.clipboard) throw new Error("El portapapeles no está disponible en este navegador.");
       if (action === "paste") {
         const text = await navigator.clipboard.readText();
-        if (!contextIsCurrent(expectedDoc)) {
+        if (!contextIsCurrent()) {
           onFeedback("El destino cambió mientras se consultaba el portapapeles. No se pegó contenido.");
           return;
         }
@@ -136,11 +139,11 @@ export function WriterContextMenu({
         return;
       }
 
-      const text = expectedDoc.textBetween(state.selectionFrom, state.selectionTo, "\n");
+      const text = target.document.textBetween(target.from, target.to, "\n");
       if (!text) return;
       await navigator.clipboard.writeText(text);
       if (action === "cut") {
-        if (!contextIsCurrent(expectedDoc)) {
+        if (!contextIsCurrent()) {
           onFeedback("La selección cambió después de copiar. El texto no se eliminó.");
           return;
         }
@@ -168,7 +171,7 @@ export function WriterContextMenu({
       editor.commands.focus();
       return;
     }
-    if (/^[1-7]$/.test(event.key) && !state.multipleBlocks) {
+    if (/^[1-7]$/.test(event.key) && hasValidTarget && !target?.multipleBlocks) {
       event.preventDefault();
       applyKind(SCREENPLAY_KINDS[Number(event.key) - 1]);
       return;
@@ -190,25 +193,27 @@ export function WriterContextMenu({
       style={position}
       onKeyDown={handleKeyDown}
     >
+      <p className="writer-context-menu-label">En el cursor actual</p>
+      {!target && <p className="writer-context-menu-help">Coloca el cursor en el guion para insertar.</p>}
       <p className="writer-context-menu-label">Edición</p>
-      <button type="button" role="menuitem" disabled={!hasSelection || clipboardBusy} title={!hasSelection ? "Selecciona texto para cortar." : undefined} onClick={() => void runClipboard("cut")}>
+      <button type="button" role="menuitem" disabled={!hasValidTarget || !hasSelection || clipboardBusy} title={!hasSelection ? "Selecciona texto para cortar." : undefined} onClick={() => void runClipboard("cut")}>
         <span>Cortar</span><kbd>Ctrl/⌘ X</kbd>
       </button>
-      <button type="button" role="menuitem" disabled={!hasSelection || clipboardBusy} title={!hasSelection ? "Selecciona texto para copiar." : undefined} onClick={() => void runClipboard("copy")}>
+      <button type="button" role="menuitem" disabled={!hasValidTarget || !hasSelection || clipboardBusy} title={!hasSelection ? "Selecciona texto para copiar." : undefined} onClick={() => void runClipboard("copy")}>
         <span>Copiar</span><kbd>Ctrl/⌘ C</kbd>
       </button>
-      <button type="button" role="menuitem" disabled={clipboardBusy} onClick={() => void runClipboard("paste")}>
+      <button type="button" role="menuitem" disabled={!hasValidTarget || clipboardBusy} onClick={() => void runClipboard("paste")}>
         <span>Pegar<small>Desde el menú: texto plano</small></span><kbd>Ctrl/⌘ V</kbd>
       </button>
       <p className="writer-context-menu-label">Historial</p>
-      <button type="button" role="menuitem" disabled={!canUndo} onMouseDown={(event) => event.preventDefault()} onClick={() => { editor.chain().focus().undo().run(); onClose(); }}>
+      <button type="button" role="menuitem" disabled={!hasValidTarget || !canUndo} onMouseDown={(event) => event.preventDefault()} onClick={() => { if (!contextIsCurrent()) return staleContext(); editor.chain().focus().undo().run(); onClose(); }}>
         <span>Deshacer</span><kbd>Ctrl/⌘ Z</kbd>
       </button>
-      <button type="button" role="menuitem" disabled={!canRedo} onMouseDown={(event) => event.preventDefault()} onClick={() => { editor.chain().focus().redo().run(); onClose(); }}>
+      <button type="button" role="menuitem" disabled={!hasValidTarget || !canRedo} onMouseDown={(event) => event.preventDefault()} onClick={() => { if (!contextIsCurrent()) return staleContext(); editor.chain().focus().redo().run(); onClose(); }}>
         <span>Rehacer</span><kbd>Ctrl/⌘ ⇧ Z</kbd>
       </button>
       <p className="writer-context-menu-label">Cambiar bloque a</p>
-      {state.multipleBlocks && (
+      {target?.multipleBlocks && (
         <p className="writer-context-menu-help">Selecciona texto de un solo bloque para cambiar su tipo.</p>
       )}
       {SCREENPLAY_KINDS.map((kind, index) => (
@@ -217,7 +222,7 @@ export function WriterContextMenu({
           type="button"
           role="menuitemradio"
           aria-checked={currentKind === kind}
-          disabled={state.multipleBlocks}
+          disabled={!hasValidTarget || target?.multipleBlocks}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => applyKind(kind)}
         >
@@ -226,10 +231,10 @@ export function WriterContextMenu({
         </button>
       ))}
       <div className="writer-context-menu-separator" />
-      <button type="button" role="menuitem" disabled={state.multipleBlocks} title={state.multipleBlocks ? "La inserción no es inequívoca con varios bloques seleccionados." : undefined} onClick={() => onInsert("menu")}>
+      <button type="button" role="menuitem" disabled={!hasValidTarget || target?.multipleBlocks} title={target?.multipleBlocks ? "La inserción no es inequívoca con varios bloques seleccionados." : undefined} onClick={() => contextIsCurrent() ? onInsert("menu") : staleContext()}>
         <span>Insertar…</span><small>Nueva escena y convenciones rápidas</small>
       </button>
-      <button type="button" role="menuitem" disabled={!state.sceneId} title={state.timelineReason ?? undefined} onClick={() => state.sceneId && onTimeline(state.sceneId)}>
+      <button type="button" role="menuitem" disabled={!hasValidTarget || !state.sceneId} title={state.timelineReason ?? undefined} onClick={() => state.sceneId && (contextIsCurrent() ? onTimeline(state.sceneId) : staleContext())}>
         <span>Ver en línea de tiempo</span><small>{state.timelineReason ?? "Abrir la escena guardada"}</small>
       </button>
       <p className="writer-context-menu-shortcut">Abrir: Mayús+F10 · Menú contextual</p>
@@ -281,6 +286,7 @@ export function WriterInsertPanel({
         original={state.expectedText}
         selectionFrom={state.selectionFrom}
         selectionTo={state.selectionTo}
+        documentAtOpen={state.documentAtOpen}
         onBack={state.intent === "insert" && state.view === "menu" ? () => setSceneOpen(false) : undefined}
         onClose={onClose}
       />
@@ -289,6 +295,14 @@ export function WriterInsertPanel({
   if (!target) return null;
 
   function insertQuick(kind: ScreenplayKind, text: string) {
+    if (editor.state.doc !== state.documentAtOpen
+      || editor.state.selection.from !== state.selectionFrom
+      || editor.state.selection.to !== state.selectionTo
+      || target?.kind !== state.expectedKind
+      || target?.text !== state.expectedText) {
+      onClose();
+      return;
+    }
     insertWriterBlock(editor, state.targetId, kind, text);
     onClose();
   }
@@ -330,6 +344,7 @@ function SceneHeadingDialog({
   original,
   selectionFrom,
   selectionTo,
+  documentAtOpen,
   onBack,
   onClose,
 }: {
@@ -340,11 +355,11 @@ function SceneHeadingDialog({
   original: string;
   selectionFrom: number;
   selectionTo: number;
+  documentAtOpen: WriterSelectionTarget["document"];
   onBack?: () => void;
   onClose: () => void;
 }) {
   const [initial] = useState(() => sceneHeadingDialogDefaults(intent, original));
-  const documentAtOpen = useRef(editor.state.doc);
   const [environment, setEnvironment] = useState(initial.environment);
   const [place, setPlace] = useState(initial.place);
   const [momentChoice, setMomentChoice] = useState(initial.momentChoice);
@@ -356,7 +371,9 @@ function SceneHeadingDialog({
   function confirm() {
     if (!preview) return;
     const target = findWriterBlockById(editor, targetId);
-    if (!target) {
+    if (!target || editor.state.doc !== documentAtOpen
+      || editor.state.selection.from !== selectionFrom
+      || editor.state.selection.to !== selectionTo) {
       setError("El bloque objetivo ya no existe. No se aplicó ningún cambio.");
       return;
     }
@@ -378,7 +395,7 @@ function SceneHeadingDialog({
   }
 
   function cancel() {
-    if (editor.state.doc === documentAtOpen.current) {
+    if (editor.state.doc === documentAtOpen) {
       editor.chain().focus().setTextSelection({ from: selectionFrom, to: selectionTo }).run();
     }
     onClose();

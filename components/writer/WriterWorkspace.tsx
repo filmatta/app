@@ -4,7 +4,7 @@ import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Fragment, Slice } from "@tiptap/pm/model";
-import { TextSelection } from "@tiptap/pm/state";
+import { TextSelection, type EditorState } from "@tiptap/pm/state";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -39,6 +39,11 @@ import {
   setWriterSceneHighlight,
 } from "@/lib/writer/tiptap";
 import { deriveWriterTimeline } from "@/lib/writer/timeline";
+import {
+  WRITER_TIMELINE_DESKTOP_QUERY,
+  writerTimelineRestoresAfterFocus,
+  writerTimelineStartsOpen,
+} from "@/lib/writer/workspace-ui";
 import WriterImportFlow from "./WriterImportFlow";
 import WriterObservationsPanel from "./WriterObservationsPanel";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
@@ -52,11 +57,12 @@ import {
 } from "@/components/writer/WriterWritingTools";
 import {
   currentWriterBlock,
-  findWriterBlockAtPosition,
+  captureWriterSelectionTarget,
   findWriterBlockById,
-  findWriterBlockByIdInDocument,
   selectionSpansWriterBlocks,
+  writerSelectionTargetIsCurrent,
   writerSceneForSelection,
+  type WriterSelectionTarget,
 } from "@/lib/writer/editor-actions";
 import {
   acceptWriterAutocomplete,
@@ -155,13 +161,18 @@ export default function WriterWorkspace({
   const paperRef = useRef<HTMLDivElement>(null);
   const nativeFullscreenRef = useRef(false);
   const pointerRef = useRef<{ type: string; at: number }>({ type: "mouse", at: 0 });
+  const activeWriterSelectionRef = useRef<WriterSelectionTarget | null>(null);
+  const rightClickSelectionRef = useRef<WriterSelectionTarget | null>(null);
   const deepLinkHandledRef = useRef(false);
   const importNoticeHandledRef = useRef(false);
   const highlightTimeoutRef = useRef<number | null>(null);
   const autocompleteRef = useRef<WriterAutocompleteState | null>(null);
   const acceptAutocompleteRef = useRef<((suggestion: WriterAutocompleteSuggestion) => boolean) | null>(null);
   const confirmedTimelineRevisionRef = useRef(script.revision);
+  const timelineRequestedRevisionRef = useRef(script.revision);
   const timelineOpenRef = useRef(false);
+  const timelineInitialOpenHandledRef = useRef<string | null>(null);
+  const timelineBeforeFocusRef = useRef(false);
   const saveStateRef = useRef(saveState);
   const characterDecisionsRef = useRef(characterDecisions);
   const characterAnalysisCacheRef = useRef<WriterCharacterAnalysisCache>(new Map());
@@ -171,10 +182,25 @@ export default function WriterWorkspace({
   const mobileObservationsButtonRef = useRef<HTMLButtonElement>(null);
   const sessionIdRef = useRef(crypto.randomUUID());
   const openContextMenu = useCallback((next: WriterContextMenuState) => {
+    autocompleteRef.current = null;
+    setAutocomplete(null);
     setExportMenu(false);
     setInsertState(null);
     setContextMenu(next);
   }, []);
+  const openContextMenuAtPointer = useCallback((
+    state: EditorState,
+    snapshot: WriterSelectionTarget | null,
+    x: number,
+    y: number,
+  ) => {
+    const target = snapshot && writerSelectionTargetIsCurrent(state, snapshot) ? snapshot : null;
+    const scene = target ? writerSceneForSelection(state) : {
+      sceneId: null,
+      reason: "Coloca el cursor en el guion para abrir una escena en Timeline.",
+    };
+    openContextMenu({ target, x, y, sceneId: scene.sceneId, timelineReason: scene.reason });
+  }, [openContextMenu]);
   const updateAutocomplete = useCallback((next: WriterAutocompleteState | null) => {
     autocompleteRef.current = next;
     setAutocomplete(next);
@@ -275,45 +301,25 @@ export default function WriterWorkspace({
         pointerdown: (_view, event) => {
           const pointerEvent = event as PointerEvent;
           pointerRef.current = { type: pointerEvent.pointerType || "mouse", at: Date.now() };
+          if (pointerEvent.button === 2 && pointerRef.current.type === "mouse") {
+            rightClickSelectionRef.current = activeWriterSelectionRef.current
+              ? captureWriterSelectionTarget(_view.state)
+              : null;
+          }
           return false;
         },
         contextmenu: (view, event) => {
           const contextEvent = event as MouseEvent;
           const recentPointer = Date.now() - pointerRef.current.at < 2_000 ? pointerRef.current.type : "mouse";
           if (contextEvent.shiftKey || recentPointer !== "mouse") return false;
-          const eventElement = contextEvent.target instanceof Element ? contextEvent.target : null;
-          const pointedElement = window.document.elementFromPoint(contextEvent.clientX, contextEvent.clientY);
-          const blockElement = eventElement?.closest<HTMLElement>(".writer-screenplay-block[data-block-id]")
-            ?? pointedElement?.closest<HTMLElement>(".writer-screenplay-block[data-block-id]")
-            ?? null;
-          if (!blockElement || !view.dom.contains(blockElement)) return false;
-          const targetId = blockElement.dataset.blockId;
-          if (!targetId) return false;
-          const target = findWriterBlockByIdInDocument(view.state.doc, targetId);
-          if (!target) return false;
-          const result = view.posAtCoords({ left: contextEvent.clientX, top: contextEvent.clientY });
-          const coordinateTarget = result ? findWriterBlockAtPosition(view.state.doc, result.pos) : null;
-          const clickedPosition = coordinateTarget?.id === target.id ? result!.pos : target.position + 1;
-          const previousSelection = view.state.selection;
-          const insideSelection = !previousSelection.empty
-            && clickedPosition >= previousSelection.from
-            && clickedPosition < previousSelection.to;
-          if (!insideSelection) {
-            view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(clickedPosition))));
-          }
-          const scene = writerSceneForSelection(view.state);
           contextEvent.preventDefault();
-          openContextMenu({
-            targetId: target.id,
-            kind: target.kind,
-            x: contextEvent.clientX,
-            y: contextEvent.clientY,
-            multipleBlocks: selectionSpansWriterBlocks(view.state),
-            selectionFrom: view.state.selection.from,
-            selectionTo: view.state.selection.to,
-            sceneId: scene.sceneId,
-            timelineReason: scene.reason,
-          });
+          openContextMenuAtPointer(
+            view.state,
+            rightClickSelectionRef.current ?? activeWriterSelectionRef.current,
+            contextEvent.clientX,
+            contextEvent.clientY,
+          );
+          rightClickSelectionRef.current = null;
           return true;
         },
       },
@@ -346,22 +352,12 @@ export default function WriterWorkspace({
         if (view.composing || event.isComposing || !((event.shiftKey && event.key === "F10") || event.key === "ContextMenu")) {
           return false;
         }
-        const target = findWriterBlockAtPosition(view.state.doc, view.state.selection.from);
+        const target = captureWriterSelectionTarget(view.state);
         if (!target) return false;
-        const scene = writerSceneForSelection(view.state);
+        activeWriterSelectionRef.current = target;
         event.preventDefault();
         const coordinates = view.coordsAtPos(view.state.selection.from);
-        openContextMenu({
-          targetId: target.id,
-          kind: target.kind,
-          x: coordinates.left,
-          y: coordinates.bottom,
-          multipleBlocks: selectionSpansWriterBlocks(view.state),
-          selectionFrom: view.state.selection.from,
-          selectionTo: view.state.selection.to,
-          sceneId: scene.sceneId,
-          timelineReason: scene.reason,
-        });
+        openContextMenuAtPointer(view.state, target, coordinates.left, coordinates.bottom);
         return true;
       },
     },
@@ -380,11 +376,53 @@ export default function WriterWorkspace({
       syncAutocomplete(current);
     },
     onSelectionUpdate: ({ editor: current }) => {
+      if (current.isFocused) activeWriterSelectionRef.current = captureWriterSelectionTarget(current.state);
       const parent = current.state.selection.$from.parent;
       setActiveScene(findSceneForPosition(current.getJSON() as unknown as WriterDocument, parent.attrs.id));
       syncAutocomplete(current);
     },
+    onFocus: ({ editor: current }) => {
+      activeWriterSelectionRef.current = captureWriterSelectionTarget(current.state);
+    },
   });
+
+  useEffect(() => {
+    if (timelineInitialOpenHandledRef.current === script.id) return;
+    timelineInitialOpenHandledRef.current = script.id;
+    const shouldOpen = initialTimeline.ok
+      && writerTimelineStartsOpen(window.matchMedia(WRITER_TIMELINE_DESKTOP_QUERY).matches);
+    timelineOpenRef.current = shouldOpen;
+    setTimelineMounted(shouldOpen);
+    setTimelineOpen(shouldOpen);
+  }, [initialTimeline, script.id]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia(WRITER_TIMELINE_DESKTOP_QUERY);
+    const keepNarrowViewportClear = (event: MediaQueryListEvent) => {
+      if (event.matches || !timelineOpenRef.current) return;
+      timelineOpenRef.current = false;
+      setTimelineOpen(false);
+    };
+    desktop.addEventListener("change", keepNarrowViewportClear);
+    return () => desktop.removeEventListener("change", keepNarrowViewportClear);
+  }, []);
+
+  const restoreTimelineAfterFocus = useCallback(() => {
+    const shouldRestore = writerTimelineRestoresAfterFocus(
+      timelineBeforeFocusRef.current,
+      window.matchMedia(WRITER_TIMELINE_DESKTOP_QUERY).matches,
+    );
+    timelineBeforeFocusRef.current = false;
+    timelineOpenRef.current = shouldRestore;
+    if (shouldRestore) {
+      setTimelineMounted(true);
+      if (confirmedTimelineRevisionRef.current > timelineRequestedRevisionRef.current) {
+        timelineRequestedRevisionRef.current = confirmedTimelineRevisionRef.current;
+        setTimelineRefreshToken((value) => value + 1);
+      }
+    }
+    setTimelineOpen(shouldRestore);
+  }, []);
 
   useEffect(() => {
     acceptAutocompleteRef.current = editor
@@ -633,7 +671,10 @@ export default function WriterWorkspace({
           setSaveState(next);
           if (next.status !== "cloud" || next.revision <= confirmedTimelineRevisionRef.current) return;
           confirmedTimelineRevisionRef.current = next.revision;
-          if (timelineOpenRef.current) setTimelineRefreshToken((value) => value + 1);
+          if (timelineOpenRef.current) {
+            timelineRequestedRevisionRef.current = next.revision;
+            setTimelineRefreshToken((value) => value + 1);
+          }
         },
       });
       controllerRef.current = controller;
@@ -683,11 +724,12 @@ export default function WriterWorkspace({
         nativeFullscreenRef.current = false;
         setFocusMode(false);
         setFocusScale(1);
+        restoreTimelineAfterFocus();
       }
     };
     window.document.addEventListener("fullscreenchange", syncFullscreen);
     return () => window.document.removeEventListener("fullscreenchange", syncFullscreen);
-  }, []);
+  }, [restoreTimelineAfterFocus]);
 
   useEffect(() => {
     if (!focusMode) return;
@@ -718,12 +760,20 @@ export default function WriterWorkspace({
       if (insertState) return setInsertState(null);
       if (exportMenu) return setExportMenu(false);
       if (pdfExportOpen) return setPdfExportOpen(false);
-      if (timelineOpen) return setTimelineOpen(false);
-      if (focusMode && window.document.fullscreenElement !== workspaceRef.current) setFocusMode(false);
+      if (timelineOpen) {
+        timelineOpenRef.current = false;
+        setTimelineOpen(false);
+        return;
+      }
+      if (focusMode && window.document.fullscreenElement !== workspaceRef.current) {
+        setFocusMode(false);
+        setFocusScale(1);
+        restoreTimelineAfterFocus();
+      }
     };
     window.addEventListener("keydown", closeSurfaceOrFocus);
     return () => window.removeEventListener("keydown", closeSurfaceOrFocus);
-  }, [contextMenu, exportMenu, focusMode, importOpen, insertState, observationsOpen, pdfExportOpen, timelineOpen]);
+  }, [contextMenu, exportMenu, focusMode, importOpen, insertState, observationsOpen, pdfExportOpen, restoreTimelineAfterFocus, timelineOpen]);
 
   useEffect(() => {
     if (!editor || !ready || deepLinkHandledRef.current) return;
@@ -879,9 +929,19 @@ export default function WriterWorkspace({
     setMobileSidebar(null);
     setTimelineRequestedScene(sceneId);
     setTimelineMounted(true);
+    timelineRequestedRevisionRef.current = confirmedTimelineRevisionRef.current;
     setTimelineRefreshToken((value) => value + 1);
+    timelineOpenRef.current = true;
     setTimelineOpen(true);
-    if (focusMode) void exitFocus();
+    if (focusMode) {
+      timelineBeforeFocusRef.current = true;
+      void exitFocus();
+    }
+  }
+
+  function closeTimeline() {
+    timelineOpenRef.current = false;
+    setTimelineOpen(false);
   }
 
   function focusObservationsTrigger() {
@@ -1000,6 +1060,8 @@ export default function WriterWorkspace({
   }
 
   async function enterFocus() {
+    timelineBeforeFocusRef.current = timelineOpenRef.current;
+    timelineOpenRef.current = false;
     setTimelineOpen(false);
     setObservationsOpen(false);
     setSelectedObservationBlockId(null);
@@ -1023,10 +1085,12 @@ export default function WriterWorkspace({
     if (window.document.fullscreenElement === workspaceRef.current) {
       try {
         await window.document.exitFullscreen();
+        return;
       } catch {
         nativeFullscreenRef.current = false;
       }
     }
+    restoreTimelineAfterFocus();
   }
 
   return (
@@ -1092,7 +1156,7 @@ export default function WriterWorkspace({
             type="button"
             aria-expanded={timelineOpen}
             aria-controls="writer-timeline-panel"
-            onClick={() => timelineOpen ? setTimelineOpen(false) : openTimeline()}
+            onClick={() => timelineOpen ? closeTimeline() : openTimeline()}
             disabled={!initialTimeline.ok}
           >Timeline</button>
           <div className="writer-export-wrap">
@@ -1168,7 +1232,33 @@ export default function WriterWorkspace({
           }}
         />
         {feedback && <div className="writer-editor-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback(null)}>Cerrar</button></div>}
-        <div ref={paperRef} className="writer-paper" aria-busy={!ready}>
+        <div
+          ref={paperRef}
+          className="writer-paper"
+          aria-busy={!ready}
+          onPointerDownCapture={(event) => {
+            pointerRef.current = { type: event.pointerType || "mouse", at: Date.now() };
+            if (event.button !== 2 || pointerRef.current.type !== "mouse") return;
+            rightClickSelectionRef.current = activeWriterSelectionRef.current && editor
+              ? captureWriterSelectionTarget(editor.state)
+              : null;
+            event.preventDefault();
+          }}
+          onContextMenu={(event) => {
+            if (event.defaultPrevented || event.shiftKey) return;
+            const recentPointer = Date.now() - pointerRef.current.at < 2_000 ? pointerRef.current.type : "mouse";
+            if (recentPointer !== "mouse") return;
+            event.preventDefault();
+            if (!editor) return;
+            openContextMenuAtPointer(
+              editor.state,
+              rightClickSelectionRef.current ?? activeWriterSelectionRef.current,
+              event.clientX,
+              event.clientY,
+            );
+            rightClickSelectionRef.current = null;
+          }}
+        >
           {!ready && <div className="writer-loading">Preparando tu guion…</div>}
           <div className="writer-paper-sheet">
             <EditorContent editor={editor} />
@@ -1184,40 +1274,48 @@ export default function WriterWorkspace({
         )}
       </main>
 
-      {editor && contextMenu && document.content.some((block) => block.attrs.id === contextMenu.targetId) && (
+      {editor && contextMenu && (
         <WriterContextMenu
           editor={editor}
           state={contextMenu}
           onClose={() => setContextMenu(null)}
           onInsert={(view) => {
-            const target = findWriterBlockById(editor, contextMenu.targetId);
-            if (!target) return setContextMenu(null);
+            const snapshot = contextMenu.target;
+            if (!snapshot || !writerSelectionTargetIsCurrent(editor.state, snapshot)) {
+              setFeedback("El cursor o el documento cambió. Abre de nuevo el menú en el destino actual.");
+              return setContextMenu(null);
+            }
             setInsertState({
-              targetId: target.id,
+              targetId: snapshot.targetId,
               x: contextMenu.x,
               y: contextMenu.y,
               view,
               intent: "insert",
-              expectedKind: target.kind,
-              expectedText: target.text,
-              selectionFrom: contextMenu.selectionFrom,
-              selectionTo: contextMenu.selectionTo,
+              expectedKind: snapshot.kind,
+              expectedText: snapshot.text,
+              selectionFrom: snapshot.from,
+              selectionTo: snapshot.to,
+              documentAtOpen: snapshot.document,
             });
             setContextMenu(null);
           }}
           onConvertSceneHeading={() => {
-            const target = findWriterBlockById(editor, contextMenu.targetId);
-            if (!target) return setContextMenu(null);
+            const snapshot = contextMenu.target;
+            if (!snapshot || !writerSelectionTargetIsCurrent(editor.state, snapshot)) {
+              setFeedback("El cursor o el documento cambió. Abre de nuevo el menú en el destino actual.");
+              return setContextMenu(null);
+            }
             setInsertState({
-              targetId: target.id,
+              targetId: snapshot.targetId,
               x: contextMenu.x,
               y: contextMenu.y,
               view: "scene",
               intent: "convert",
-              expectedKind: target.kind,
-              expectedText: target.text,
-              selectionFrom: contextMenu.selectionFrom,
-              selectionTo: contextMenu.selectionTo,
+              expectedKind: snapshot.kind,
+              expectedText: snapshot.text,
+              selectionFrom: snapshot.from,
+              selectionTo: snapshot.to,
+              documentAtOpen: snapshot.document,
             });
             setContextMenu(null);
           }}
@@ -1244,7 +1342,7 @@ export default function WriterWorkspace({
             active={timelineOpen}
             requestedSceneId={timelineRequestedScene}
             refreshToken={timelineRefreshToken}
-            onClose={() => setTimelineOpen(false)}
+            onClose={closeTimeline}
             onGoToWriter={(sceneId) => {
               if (!editor) {
                 setFeedback("El editor todavía no está preparado.");
@@ -1433,6 +1531,7 @@ function WriterToolbar({
               expectedText: target.text,
               selectionFrom: editor.state.selection.from,
               selectionTo: editor.state.selection.to,
+              documentAtOpen: editor.state.doc,
             });
             return;
           }
@@ -1459,6 +1558,7 @@ function WriterToolbar({
             expectedText: target.text,
             selectionFrom: editor.state.selection.from,
             selectionTo: editor.state.selection.to,
+            documentAtOpen: editor.state.doc,
           });
         }}
         aria-label="Insertar en el guion"

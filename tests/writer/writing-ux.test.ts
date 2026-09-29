@@ -7,10 +7,12 @@ import { EditorState, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { createBlock, type WriterDocument } from "../../lib/writer/document.ts";
 import {
   changeWriterBlockKind,
+  captureWriterSelectionTarget,
   insertWriterBlock,
   insertWriterPlainText,
   replaceWriterBlockWithSceneHeading,
   writerSceneForSelection,
+  writerSelectionTargetIsCurrent,
 } from "../../lib/writer/editor-actions.ts";
 import {
   buildSceneHeading,
@@ -277,4 +279,62 @@ test("assisted scene insertion always creates a new block without converting an 
   assert.equal(state.doc.child(0).textContent, "");
   assert.equal(state.doc.child(1).attrs.kind, "sceneHeading");
   assert.notEqual(state.doc.child(1).attrs.id, id);
+});
+
+test("a context target keeps the active caret block instead of the right-clicked block", () => {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: "screenplayBlock+" },
+      text: { group: "inline" },
+      screenplayBlock: {
+        group: "block", content: "inline*", attrs: { id: { default: null }, kind: { default: "action" } },
+      },
+    },
+  });
+  const firstId = crypto.randomUUID();
+  const secondId = crypto.randomUUID();
+  let state = EditorState.create({
+    schema,
+    doc: schema.node("doc", null, [
+      schema.node("screenplayBlock", { id: firstId, kind: "action" }, schema.text("Bloque A")),
+      schema.node("screenplayBlock", { id: secondId, kind: "action" }, schema.text("Bloque B")),
+    ]),
+  });
+  state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 3)));
+  const snapshot = captureWriterSelectionTarget(state);
+  assert.ok(snapshot);
+  assert.equal(snapshot.targetId, firstId);
+  const editor = {
+    get state() { return state; },
+    view: { dispatch(transaction: Transaction) { state = state.apply(transaction); } },
+    commands: { focus() { return true; } },
+  } as unknown as Editor;
+
+  // Pointer placement over B is deliberately irrelevant: the captured caret is A.
+  assert.equal(insertWriterBlock(editor, snapshot.targetId, "transition", "CUT TO:"), true);
+  assert.equal(state.doc.child(1).attrs.kind, "transition");
+  assert.equal(state.doc.child(2).attrs.id, secondId);
+});
+
+test("a context target is invalidated by a concurrent document edit", () => {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: "screenplayBlock+" },
+      text: { group: "inline" },
+      screenplayBlock: {
+        group: "block", content: "inline*", attrs: { id: { default: null }, kind: { default: "action" } },
+      },
+    },
+  });
+  const id = crypto.randomUUID();
+  let state = EditorState.create({
+    schema,
+    doc: schema.node("doc", null, [schema.node("screenplayBlock", { id, kind: "action" }, schema.text("Original"))]),
+  });
+  state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2)));
+  const snapshot = captureWriterSelectionTarget(state);
+  assert.ok(snapshot);
+  assert.equal(writerSelectionTargetIsCurrent(state, snapshot), true);
+  state = state.apply(state.tr.insertText("X", 2));
+  assert.equal(writerSelectionTargetIsCurrent(state, snapshot), false);
 });

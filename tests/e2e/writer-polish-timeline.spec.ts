@@ -30,6 +30,13 @@ async function openWriter(page: Page, context: BrowserContext, saveDelay = 0) {
 }
 
 async function rightClick(page: Page, locator: Locator) {
+  const ownsSelection = await locator.evaluate((element) => {
+    const selection = window.getSelection();
+    return Boolean(selection && !selection.isCollapsed
+      && selection.anchorNode && selection.focusNode
+      && element.contains(selection.anchorNode) && element.contains(selection.focusNode));
+  });
+  if (!ownsSelection) await locator.click({ position: { x: 12, y: 12 } });
   await locator.click({ button: "right", position: { x: 12, y: 12 } });
   return page.getByRole("menu", { name: "Acciones del bloque" });
 }
@@ -113,6 +120,49 @@ test("context menu preserves selection, uses the real clipboard, and fails close
   await expect(menu).toBeHidden();
 });
 
+test("right-click uses the active caret across blocks and screenplay margins", async ({ page, context }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWriter(page, context);
+  const editor = page.getByLabel("Editor de guion");
+  const paper = page.locator(".writer-paper");
+  const paperBox = await paper.boundingBox();
+  expect(paperBox).not.toBeNull();
+
+  await page.mouse.click(paperBox!.x + 6, paperBox!.y + 10, { button: "right" });
+  let menu = page.getByRole("menu", { name: "Acciones del bloque" });
+  await expect(menu.getByText("Coloca el cursor en el guion para insertar.")).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /^Insertar/ })).toBeDisabled();
+  await page.keyboard.press("Escape");
+
+  const blockA = editor.locator('[data-block-id$="02"]');
+  const blockB = editor.locator('[data-block-id$="09"]');
+  await blockA.click({ position: { x: 18, y: 12 } });
+  await blockB.click({ button: "right", position: { x: 18, y: 12 } });
+  menu = page.getByRole("menu", { name: "Acciones del bloque" });
+  await expect(menu.getByText("En el cursor actual")).toBeVisible();
+  await menu.getByRole("menuitem", { name: /^Insertar/ }).click();
+  await page.getByRole("button", { name: /Nueva escena/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Nueva escena" });
+  await dialog.getByLabel("Lugar").fill("DESTINO CARET");
+  await dialog.getByLabel("Momento").selectOption("NOCHE");
+  await dialog.getByRole("button", { name: "Insertar encabezado" }).click();
+
+  const order = await editor.locator(".writer-screenplay-block").evaluateAll((blocks) => blocks.map((block) => ({
+    id: block.getAttribute("data-block-id"),
+    text: block.textContent,
+  })));
+  const indexA = order.findIndex((block) => block.id?.endsWith("02"));
+  const indexB = order.findIndex((block) => block.id?.endsWith("09"));
+  const inserted = order.findIndex((block) => block.text === "INT. DESTINO CARET - NOCHE");
+  expect(inserted).toBe(indexA + 1);
+  expect(inserted).toBeLessThan(indexB);
+
+  await blockA.click({ position: { x: 18, y: 12 } });
+  await page.mouse.click(paperBox!.x + 6, paperBox!.y + 10, { button: "right" });
+  await expect(menu.getByRole("menuitem", { name: /^Insertar/ })).toBeEnabled();
+  await page.keyboard.press("Escape");
+});
+
 test("context menu rejects ambiguous, composing, denied, cancelled, and obsolete actions", async ({ page, context }) => {
   await openWriter(page, context);
   const editor = page.getByLabel("Editor de guion");
@@ -176,7 +226,7 @@ test("context menu rejects ambiguous, composing, denied, cancelled, and obsolete
   await expect(editor).not.toContainText("OBSOLETE_PASTE");
 });
 
-test("context menu resolves empty editable lines in Normal and Focus without claiming sheet whitespace", async ({ page, context }) => {
+test("context menu resolves empty editable lines and keeps the caret across sheet whitespace", async ({ page, context }) => {
   await page.addInitScript(() => {
     Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
       configurable: true,
@@ -219,7 +269,9 @@ test("context menu resolves empty editable lines in Normal and Focus without cla
   await page.getByRole("button", { name: "Salir de Focus" }).click();
 
   await page.locator(".writer-paper").click({ button: "right", position: { x: 5, y: 5 } });
-  await expect(menu).toBeHidden();
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /^Insertar/ })).toBeEnabled();
+  await page.keyboard.press("Escape");
 });
 
 test("scene heading assistant separates conversion, cancellation, insertion, and history", async ({ page, context }) => {
@@ -410,7 +462,6 @@ test("late save acknowledgement survives Timeline and Focus without remounting t
   await page.keyboard.press("End");
   await page.keyboard.type(" ACK_TIMELINE_A");
   await expect(page.locator(".writer-save-status")).toContainText("Guardando");
-  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
   await expect(page.getByRole("region", { name: "Timeline del guion" })).toBeVisible();
   await page.getByRole("button", { name: "Focus" }).click();
   await expect(page.locator(".writer-workspace")).toHaveClass(/writer-workspace--focus/);
@@ -428,12 +479,12 @@ test("late save acknowledgement survives Timeline and Focus without remounting t
   await expect(page.locator(".writer-workspace")).toHaveClass(/writer-workspace--focus/);
   await page.getByRole("button", { name: "Salir de Focus" }).click();
   await expect(page.locator(".writer-workspace")).not.toHaveClass(/writer-workspace--focus/);
+  await expect(page.getByRole("region", { name: "Timeline del guion" })).toBeVisible();
 
   await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 15_000 });
   const state = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
   expect(JSON.stringify(state.document)).toContain("ACK_TIMELINE_A ACK_FOCUS_B");
   const revision = state.revision;
-  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
   await page.getByRole("region", { name: "Timeline del guion" }).getByRole("button", { name: "Cerrar", exact: true }).click();
   const stable = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
   expect(stable.revision).toBe(revision);
