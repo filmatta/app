@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SCREENPLAY_KINDS, WRITER_SCHEMA_VERSION, type ScreenplayKind } from "@/lib/writer/document";
+import { parseAssistedImportAnalysisStatus } from "@/lib/writer/assisted-import-status";
 import {
   PENDING_WRITER_IMPORT_ADAPTERS,
   analyzePastedWriterText,
@@ -166,8 +167,9 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "No se pudo organizar el borrador con IA.");
       setStage("Comprobando integridad y abriendo Writer…");
-      const analysis = payload.analysisStatus === "partial" ? "partial" : "complete";
-      router.push(`/writer/${payload.script.id}?imported=ai&analysis=${analysis}&observations=${Number(payload.observations ?? 0)}`);
+      const analysis = parseAssistedImportAnalysisStatus(payload.analysisStatus);
+      const identities = Number.isSafeInteger(payload.identities) && payload.identities >= 0 ? payload.identities : 0;
+      router.push(`/writer/${payload.script.id}?imported=ai&analysis=${analysis}&identities=${identities}&observations=${Number(payload.observations ?? 0)}`);
     } catch (cause) {
       setError(controller.signal.aborted
         ? "La importación se canceló. El origen sigue aquí y no se creó un guion parcial."

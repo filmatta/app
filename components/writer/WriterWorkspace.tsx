@@ -20,6 +20,10 @@ import {
   type WriterDocument,
   type WriterSnapshot,
 } from "@/lib/writer/document";
+import {
+  parseAssistedImportAnalysisStatus,
+  writerImportCompletionMessage,
+} from "@/lib/writer/assisted-import-status";
 import { createBasicFdx, createWriterBackup, writerFileStem } from "@/lib/writer/export";
 import {
   WriterPersistenceController,
@@ -741,17 +745,23 @@ export default function WriterWorkspace({
     const sceneCount = deriveScenes(document).length;
     const characterCount = deriveCharacters(document).length;
     const optionalObservations = Number(url.searchParams.get("observations") ?? "0");
-    const analysisStatus = url.searchParams.get("analysis");
+    const identityCount = Number(url.searchParams.get("identities") ?? "0");
+    const analysisStatus = parseAssistedImportAnalysisStatus(url.searchParams.get("analysis"));
     const frame = requestAnimationFrame(() => {
-      setFeedback(importedMode === "ai" && analysisStatus === "partial"
-        ? "Guion importado. El análisis de personajes tiene observaciones pendientes."
-        : importedMode === "ai"
-          ? `Guion importado · ${sceneCount} escenas · ${characterCount} encabezados de personaje · ${document.content.length} bloques${optionalObservations ? ` · ${optionalObservations} observaciones opcionales de formato` : ""}.`
-        : `Importación completada · ${sceneCount} escenas · ${characterCount} encabezados de personaje · ${document.content.length} bloques.`);
+      setFeedback(writerImportCompletionMessage({
+        mode: importedMode,
+        analysisStatus,
+        identityCount: Number.isSafeInteger(identityCount) && identityCount >= 0 ? identityCount : 0,
+        sceneCount,
+        characterHeadingCount: characterCount,
+        blockCount: document.content.length,
+        observationCount: Number.isSafeInteger(optionalObservations) && optionalObservations >= 0 ? optionalObservations : 0,
+      }));
     });
     url.searchParams.delete("imported");
     url.searchParams.delete("observations");
     url.searchParams.delete("analysis");
+    url.searchParams.delete("identities");
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     return () => cancelAnimationFrame(frame);
   }, [document, ready]);

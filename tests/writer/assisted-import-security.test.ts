@@ -66,6 +66,8 @@ test("pipeline models and reasoning are server-controlled and closed", () => {
   assert.match(server, /p_maximum_plan_cost_microusd: maximumPlanCost/u);
   assert.match(server, /maximumPlanCost > operationBudget/u);
   assert.match(server, /writer_assisted_import_qa_budget_status/u);
+  assert.match(server, /determineAssistedImportAnalysisStatus/u);
+  assert.match(server, /loadPersistedAnalysisSummary/u);
   assert.match(interfaceSource, /availability\.operationId \?\? crypto\.randomUUID\(\)/u);
   assert.match(server, /failure\.stage.*failure\.code.*failure\.path/u);
   assert.match(server, /response\.incomplete_details\.reason/u);
@@ -86,7 +88,8 @@ test("main import flow is one click, discloses OpenAI, and keeps manual review o
   assert.match(interfaceSource, /Enviaremos el texto necesario a OpenAI/u);
   assert.doesNotMatch(interfaceSource, /IMPORT FOUNDATION V0/u);
   assert.doesNotMatch(interfaceSource, />Revisar \(0\)</u);
-  assert.match(workspaceSource, /\$\{characterCount\} encabezados de personaje/u);
+  assert.match(workspaceSource, /writerImportCompletionMessage/u);
+  assert.match(interfaceSource, /parseAssistedImportAnalysisStatus/u);
   assert.doesNotMatch(workspaceSource, /\$\{characterCount\} personajes/u);
 });
 

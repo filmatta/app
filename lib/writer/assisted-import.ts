@@ -411,7 +411,18 @@ const LEADING_DETERMINER = /^(?:UN|UNA|EL|LA|LOS|LAS|DOS|TRES|VARIOS|VARIAS|OTRO
 const INACTIVE_PROP_CONTEXT = /\b(?:de\s+utiler[ií]a|de\s+juguete|de\s+exhibici[oó]n|decorativ[oa]s?|maqueta|apagado|apagada|inm[oó]vil|inerte|sin\s+vida)\b/iu;
 const PERSONIFIED_CONTEXT = /\b(?:dice|responde|pregunta|protesta|grita|susurra|piensa|decide|se\s+niega|amenaza)\b|[«»“”]/iu;
 const EXPLICIT_INTERVENTION_CONTEXT = /\b(?:dice|responde|pregunta|protesta|grita|habla|susurra|amenaza)\b|[«»“”]/iu;
-const AGENTIVE_CONTEXT = /^\s+(?:abre|avanza|ayuda|bloquea|busca|camina|cierra|corre|entra|escucha|golpea|grita|habla|lee|mira|observa|protesta|responde|saluda|señala|sigue|sonríe|toma|trabaja|ve|vuelve)\b/iu;
+const AGENTIVE_VERB_WORDS = [
+  "abre", "avanza", "ayuda", "bloquea", "busca", "camina", "cierra", "corre", "entra", "escucha", "golpea",
+  "grita", "habla", "lee", "mira", "observa", "protesta", "responde", "saluda", "señala", "sigue", "sonríe",
+  "toma", "trabaja", "ve", "vuelve",
+] as const;
+const AGENTIVE_CONTEXT = new RegExp(`^\\s+(?:${AGENTIVE_VERB_WORDS.join("|")})\\b`, "iu");
+const AGENTIVE_VERBS = new Set(AGENTIVE_VERB_WORDS.map((word) => normalizeWriterCharacterIdentity(word)));
+const NON_MODIFIER_WORDS = new Set([
+  "A", "AL", "ANTE", "BAJO", "CON", "CONTRA", "DE", "DEL", "DESDE", "DURANTE", "E", "EL", "EN", "ENTRE",
+  "HACIA", "HASTA", "LA", "LAS", "LE", "LES", "LO", "LOS", "O", "PARA", "POR", "QUE", "SEGÚN", "SE",
+  "SIN", "SOBRE", "SU", "SUS", "TRAS", "U", "UN", "UNA", "Y",
+]);
 
 export function prepareAssistedImportStaging(input: {
   format: WriterImportFormat;
@@ -554,7 +565,7 @@ export function validateAssistedImportModelResult(value: unknown, batch: Assiste
       return;
     }
     if (decision.disposition === "nonparticipant" || decision.disposition === "uncertain") return;
-    const accepted = acceptedEvidence(anchor.blockId, anchor.start, anchor.end, semantic, blocks);
+    const accepted = acceptedEvidence(anchor.blockId, anchor.start, anchor.end, semantic, blocks, anchor);
     if (accepted.length === 0) {
       issues.push(issue("integrity_conflict", path, "La decisión no supera las reglas locales de integridad.", decision.candidateId));
       return;
@@ -1070,6 +1081,7 @@ function acceptedEvidence(
   end: number,
   semantic: Record<string, unknown>,
   blocks: ReadonlyMap<string, WriterImportBlock>,
+  anchor?: AssistedImportCandidate,
 ): AssistedImportEntityEvidence[] {
   const block = blocks.get(blockId);
   if (!block || start < 0 || end <= start || end > block.originalText.length || cutsWordBoundary(block.originalText, start, end)) return [];
@@ -1086,6 +1098,7 @@ function acceptedEvidence(
     rangeEnd: end,
     entityType,
     relation,
+    candidateSignals: anchor?.signals ?? [],
   })) return [];
   return [{
     blockId,
@@ -1181,6 +1194,7 @@ function supportsNarrativeParticipant(input: {
   rangeEnd: number;
   entityType: AssistedImportEntityEvidence["entityType"];
   relation: AssistedImportRelation;
+  candidateSignals: readonly string[];
 }) {
   const normalized = normalizeWriterCharacterIdentity(input.label);
   const after = input.blockText.slice(input.rangeEnd, Math.min(input.blockText.length, input.rangeEnd + 100));
@@ -1194,7 +1208,19 @@ function supportsNarrativeParticipant(input: {
   }
   if (isWriterParticipantRole(input.label)) return true;
   if (input.relation === "mention") return false;
-  return AGENTIVE_CONTEXT.test(after);
+  if (AGENTIVE_CONTEXT.test(after)) return true;
+  return input.relation === "action"
+    && input.candidateSignals.includes("determiner-noun-phrase")
+    && hasBoundedAgentiveContext(after);
+}
+
+function hasBoundedAgentiveContext(value: string) {
+  const phrase = value.match(/^\s+([\p{L}\p{M}\p{N}'’-]+(?:\s+[\p{L}\p{M}\p{N}'’-]+){0,3})/u)?.[1];
+  if (!phrase) return false;
+  const words = phrase.split(/\s+/u).map((word) => normalizeWriterCharacterIdentity(word));
+  const verbIndex = words.findIndex((word) => AGENTIVE_VERBS.has(word));
+  return verbIndex > 0 && verbIndex <= 3
+    && words.slice(0, verbIndex).every((word) => !NON_MODIFIER_WORDS.has(word));
 }
 
 function cutsWordBoundary(text: string, start: number, end: number) {

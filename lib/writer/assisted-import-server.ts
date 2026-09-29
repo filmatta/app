@@ -13,6 +13,11 @@ import {
 } from "./assisted-import-accounting";
 import { checkAssistedImportAccess } from "./assisted-import-access";
 import {
+  determineAssistedImportAnalysisStatus,
+  parseAssistedImportAnalysisStatus,
+  type AssistedImportAnalysisStatus,
+} from "./assisted-import-status";
+import {
   WRITER_ASSISTED_IMPORT_MAX_BYTES,
   WRITER_ASSISTED_IMPORT_MAX_CONCURRENCY,
   WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD,
@@ -195,7 +200,12 @@ export async function executeAssistedImport(
   }
   const operationId = String(reserved.id ?? request.operationId);
   if (reserved.status === "completed" && typeof reserved.script_id === "string") {
-    return { script: { id: reserved.script_id }, reused: true, observations: 0, analysisStatus: "partial" as const, usage: operationUsage(reserved) };
+    const persisted = await loadPersistedAnalysisSummary(db, reserved.script_id);
+    return {
+      script: { id: reserved.script_id }, reused: true,
+      observations: persisted.observations, identities: persisted.identities,
+      analysisStatus: persisted.status, usage: operationUsage(reserved),
+    };
   }
   if (reserved.reused === true) {
     throw new AssistedImportError("active", reserved.status === "uncertain"
@@ -244,7 +254,12 @@ export async function executeAssistedImport(
     throw new AssistedImportError("provider_invalid_output", `La asistencia no produjo un resultado utilizable (${exactFailure}). Puedes importar el borrador sin IA.`, 502);
   }
   const validationIssues = modelResults.flatMap((result) => result.validationIssues);
-  const analysisPartial = failedCalls.length > 0 || recovery.partial || validationIssues.length > 0;
+  const analysisStatus = determineAssistedImportAnalysisStatus({
+    incomplete: failedCalls.length > 0 || recovery.partial,
+    validationIssueCount: validationIssues.length,
+    usableResultCount: modelResults.reduce((count, result) => count
+      + result.classifications.length + result.evidence.length + result.observations.length, 0),
+  });
 
   const reconciled = reconcileAssistedImport(staging, modelResults);
   try {
@@ -259,7 +274,7 @@ export async function executeAssistedImport(
     p_title: cleanTitle,
     p_document: reconciled.document,
     p_schema_version: reconciled.schemaVersion,
-    p_analysis_version: `${WRITER_ASSISTED_IMPORT_VERSION}/${analysisPartial ? "partial" : "complete"}`,
+    p_analysis_version: `${WRITER_ASSISTED_IMPORT_VERSION}/${analysisStatus}`,
     p_model: batches.length ? (recovery.items.length ? PIPELINE_MODEL : TERRA_MODEL) : null,
     p_identities: reconciled.identities,
     p_evidence: reconciled.evidence,
@@ -277,7 +292,7 @@ export async function executeAssistedImport(
     identities: reconciled.identities.length,
     blocks: reconciled.document.content.length,
     scenes: reconciled.document.content.filter((block) => block.attrs.kind === "sceneHeading").length,
-    analysisStatus: analysisPartial ? "partial" : "complete",
+    analysisStatus,
     coverage: {
       segments: batches.length,
       terraSegments: terraResults.size,
@@ -543,6 +558,23 @@ async function loadOperation(db: ImportDatabase, operationId: string) {
     .select("provider_calls,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,actual_cost_microusd")
     .eq("id", operationId).maybeSingle();
   return response.error ? null : response.data;
+}
+
+async function loadPersistedAnalysisSummary(
+  db: ImportDatabase,
+  scriptId: string,
+): Promise<{ status: AssistedImportAnalysisStatus; identities: number; observations: number }> {
+  const response = await db.from("writer_import_analyses")
+    .select("analysis_version,identities,observations")
+    .eq("script_id", scriptId).maybeSingle();
+  if (response.error || !isRecord(response.data) || typeof response.data.analysis_version !== "string") {
+    return { status: "partial", identities: 0, observations: 0 };
+  }
+  return {
+    status: parseAssistedImportAnalysisStatus(response.data.analysis_version.split("/").at(-1), "partial"),
+    identities: Array.isArray(response.data.identities) ? response.data.identities.length : 0,
+    observations: Array.isArray(response.data.observations) ? response.data.observations.length : 0,
+  };
 }
 
 async function rpcJson(db: ImportDatabase, name: string, args: Record<string, unknown>) {

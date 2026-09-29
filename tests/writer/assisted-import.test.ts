@@ -144,6 +144,66 @@ Un robot de utilería permanece apagado en una repisa.`;
   assert.deepEqual(validated.evidence.map((item) => item.label).sort(), ["Esperanza", "La puerta", "Un robot"].sort());
 });
 
+test("anchored roles allow bounded descriptive modifiers before an observable action", () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted",
+    sourceText: "INT. ESPACIO SINTÉTICO - DÍA\nLa persona sintética 112 camina y conserva el objeto.",
+    title: "Modificadores",
+  });
+  const batch = buildAssistedImportBatches(staging)[0];
+  const participant = batch.candidates.find((candidate) => candidate.text === "La persona")!;
+  const validated = validateAssistedImportModelResult({
+    classifications: batch.classificationIds.map((blockId) => classification(blockId, "action")),
+    candidateEvidence: batch.candidates.map((candidate) => candidate.candidateId === participant.candidateId
+      ? candidateEvidence(candidate.candidateId, "role", "action", "present")
+      : { ...candidateEvidence(candidate.candidateId, "role", "indeterminate", "unknown"), disposition: "nonparticipant" as const }),
+    discoveries: [], observations: [],
+  }, batch);
+  assert.deepEqual(validated.validationIssues, []);
+  assert.equal(validated.evidence.length, 1);
+  assert.equal(validated.evidence[0].label, "La persona");
+});
+
+test("bounded role modifiers do not turn reflexive props into participants", () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted", sourceText: "La puerta azul se abre.", title: "Objeto",
+  });
+  const batch = buildAssistedImportBatches(staging)[0];
+  const door = batch.candidates.find((candidate) => candidate.text === "La puerta")!;
+  const validated = validateAssistedImportModelResult({
+    classifications: batch.classificationIds.map((blockId) => classification(blockId, "action")),
+    candidateEvidence: [candidateEvidence(door.candidateId, "role", "action", "present")],
+    discoveries: [], observations: [],
+  }, batch);
+  assert.deepEqual(validated.evidence, []);
+  assert.ok(validated.validationIssues.some((issue) => issue.code === "integrity_conflict" && issue.candidateId === door.candidateId));
+});
+
+test("repeated anonymous mentions remain block-scoped and become distinct scene identities", () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted",
+    sourceText: `INT. PASILLO UNO - DÍA
+La persona sintética 1 camina.
+INT. PASILLO DOS - DÍA
+La persona sintética 2 corre.`,
+    title: "Repeticiones",
+  });
+  const batch = buildAssistedImportBatches(staging)[0];
+  const people = batch.candidates.filter((candidate) => candidate.text === "La persona");
+  assert.equal(people.length, 2);
+  assert.notEqual(people[0].candidateId, people[1].candidateId);
+  const validated = validateAssistedImportModelResult({
+    classifications: batch.classificationIds.map((blockId) => classification(blockId, "action")),
+    candidateEvidence: people.map((candidate) => candidateEvidence(candidate.candidateId, "role", "action", "present")),
+    discoveries: [], observations: [],
+  }, batch);
+  assert.deepEqual(validated.validationIssues, []);
+  const reconciled = reconcileAssistedImport(staging, [validated]);
+  assert.equal(reconciled.evidence.filter((item) => item.identity === "La persona").length, 2);
+  assert.equal(reconciled.identities.filter((identity) => identity.name === "La persona").length, 2);
+  assert.equal(new Set(reconciled.identities.map((identity) => identity.key)).size, reconciled.identities.length);
+});
+
 test("validation drops partial-word evidence and observations outside classification scope", () => {
   const staging = prepareAssistedImportStaging({
     format: "pasted", sourceText: "Esperanza cierra la ventana.", title: "Rangos",
@@ -610,6 +670,20 @@ test("long synthetic input is partitioned without loss, overlap, or more than 24
   assert.ok(staging.source.words >= 25_000 && staging.source.words <= 30_000);
   assert.ok(sourceTokens < 80_000);
   assert.ok(batches.every((batch) => batch.candidates.length <= 240));
+  assert.equal(batches.length, 1);
+  const historicalShape = validateAssistedImportModelResult({
+    classifications: [],
+    candidateEvidence: batches[0].candidates.map((candidate) => candidateEvidence(candidate.candidateId, "role", "action", "present")),
+    discoveries: [], observations: [],
+  }, batches[0]);
+  assert.deepEqual(historicalShape.validationIssues, []);
+  assert.equal(historicalShape.evidence.length, 225);
+  const analyzed = reconcileAssistedImport(staging, [historicalShape]);
+  assertAssistedImportPreservation(staging, analyzed.document);
+  assert.equal(analyzed.evidence.length, 225);
+  assert.equal(analyzed.identities.length, 225);
+  assert.equal(new Set(analyzed.identities.map((identity) => identity.key)).size, 225);
+  assert.ok(staging.blocks.every((block, index) => block.id !== analyzed.document.content[index].attrs.id));
   assert.ok(plan.base.costMicrousd < plan.maximum.costMicrousd);
   assert.ok(plan.maximum.allInputCachedCostMicrousd < plan.maximum.costMicrousd);
   const first = assistedImportRequestBreakdown(batches[0]);
