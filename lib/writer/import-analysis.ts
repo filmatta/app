@@ -14,6 +14,25 @@ export type WriterFormatObservation = {
   message: string;
   source: "rule" | "ai";
   blockHash: string;
+  excerpt: string;
+};
+
+export type WriterObservationVisualState =
+  | "classification"
+  | "question"
+  | "warning"
+  | "error"
+  | "suggestion"
+  | "narrativeQuestion"
+  | "setupPayoff"
+  | "outOfCharacter"
+  | "pulse";
+
+export type WriterFormatObservationGroup = {
+  kind: ScreenplayKind;
+  observations: WriterFormatObservation[];
+  doubtCount: number;
+  reviewedCount: number;
 };
 
 export type PersistedWriterImportAnalysis = {
@@ -94,6 +113,7 @@ export function parsePersistedWriterImportAnalysis(value: unknown, document: Wri
       message: candidate.message,
       source: candidate.source === "ai" ? "ai" as const : "rule" as const,
       blockHash: candidate.blockHash,
+      excerpt: blockText(block),
     }];
   });
   const decisions = value.decisions.flatMap((candidate) => {
@@ -108,8 +128,16 @@ export function parsePersistedWriterImportAnalysis(value: unknown, document: Wri
       decidedAt: Date.parse(String(candidate.decided_at)) || Date.now(),
     }];
   });
+  // Persisted candidates only become recognized characters when still-valid
+  // evidence was accepted by validation/reconciliation. Review-only evidence
+  // remains in Observations until a person explicitly confirms it.
+  const acceptedIdentityKeys = new Set(
+    observations.filter((observation) => observation.known).map((observation) => observation.identityKey),
+  );
   const identitiesByKey = new Map<string, WriterKnownCharacterIdentity>(
-    parsedIdentities.map((identity) => [identity.key, identity]),
+    parsedIdentities
+      .filter((identity) => acceptedIdentityKeys.has(identity.key))
+      .map((identity) => [identity.key, identity]),
   );
   for (const decision of decisions) {
     if (decision.state !== "confirmed" || !decision.identityKey || !decision.identityName) continue;
@@ -127,6 +155,42 @@ export function parsePersistedWriterImportAnalysis(value: unknown, document: Wri
     persistent: true,
     compatibleRevision: value.compatibleRevision === true,
   };
+}
+
+export function writerFormatObservationState(
+  observation: Pick<WriterFormatObservation, "message">,
+): WriterObservationVisualState {
+  return /(?:duda|inciert|no est[aá] segura|requiere revisi[oó]n|conservador)/iu.test(observation.message)
+    ? "question"
+    : "classification";
+}
+
+export function groupWriterFormatObservations(
+  observations: readonly WriterFormatObservation[],
+  reviewedIds: ReadonlySet<string> = new Set(),
+): WriterFormatObservationGroup[] {
+  const grouped = new Map<ScreenplayKind, WriterFormatObservation[]>();
+  for (const observation of observations) {
+    const current = grouped.get(observation.kind) ?? [];
+    current.push(observation);
+    grouped.set(observation.kind, current);
+  }
+  return SCREENPLAY_KINDS.flatMap((kind) => {
+    const items = grouped.get(kind);
+    if (!items?.length) return [];
+    return [{
+      kind,
+      observations: items,
+      doubtCount: items.filter((item) => writerFormatObservationState(item) === "question").length,
+      reviewedCount: items.filter((item) => reviewedIds.has(item.id)).length,
+    }];
+  });
+}
+
+export function writerObservationExcerpt(value: string, maximum = 118) {
+  const normalized = value.trim().replace(/\s+/gu, " ");
+  if (normalized.length <= maximum) return normalized;
+  return `${normalized.slice(0, Math.max(1, maximum - 1)).trimEnd()}…`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

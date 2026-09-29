@@ -36,7 +36,6 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const operationIdRef = useRef<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const [mode, setMode] = useState<"paste" | "file">("paste");
   const [pastedText, setPastedText] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -47,6 +46,8 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
   const [bulkKind, setBulkKind] = useState<ScreenplayKind>("action");
   const [busy, setBusy] = useState<Busy>(null);
   const [stage, setStage] = useState<string | null>(null);
+  const [assistedStartedAt, setAssistedStartedAt] = useState<number | null>(null);
+  const [assistedElapsed, setAssistedElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [availability, setAvailability] = useState<Availability>({ enabled: false, reason: "Comprobando disponibilidad…" });
 
@@ -79,6 +80,14 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
       .catch(() => active && setAvailability({ enabled: false, reason: "No se pudo comprobar el cupo asistido." }));
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (assistedStartedAt === null) return;
+    const update = () => setAssistedElapsed(Math.max(0, Math.floor((Date.now() - assistedStartedAt) / 1_000)));
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
+  }, [assistedStartedAt]);
 
   const requestClose = useCallback(() => {
     if (busy === "assisted") return;
@@ -151,8 +160,8 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
     setBusy("assisted");
     setError(null);
     setStage("Validando el origen…");
-    const controller = new AbortController();
-    abortRef.current = controller;
+    setAssistedElapsed(0);
+    setAssistedStartedAt(Date.now());
     try {
       const input = await sourceInput();
       await beforeCreate?.();
@@ -161,7 +170,6 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
       const response = await fetch("/api/writer/imports/assisted", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
         body: JSON.stringify({ operationId: operationIdRef.current, title: title.trim().slice(0, 160), ...input }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -179,19 +187,11 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
           : "";
       router.push(`/writer/${payload.script.id}?imported=ai&analysis=${analysis}&identities=${identities}&observations=${Number(payload.observations ?? 0)}${recoveryLimit}`);
     } catch (cause) {
-      setError(controller.signal.aborted
-        ? "La importación se canceló. El origen sigue aquí y no se creó un guion parcial."
-        : assistedImportError(cause));
+      setError(assistedImportError(cause));
       setBusy(null);
       setStage(null);
-    } finally {
-      abortRef.current = null;
+      setAssistedStartedAt(null);
     }
-  }
-
-  function cancelAssisted() {
-    abortRef.current?.abort();
-    setStage("Cancelando solicitudes nuevas…");
   }
 
   function setBlockKind(block: WriterImportBlock, kind: ScreenplayKind) {
@@ -278,16 +278,25 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
             <p>La solicitud usa almacenamiento desactivado en la API. FILMATTA conserva decisiones estructuradas y evidencias, no una copia adicional del archivo fuente. También puedes importar sin IA.</p>
             <p>DOCX y PDF siguen pendientes: {PENDING_WRITER_IMPORT_ADAPTERS.map((adapter) => adapter.format.toUpperCase()).join(" y ")} no están disponibles en esta entrega.</p>
           </aside>
-          {stage && <p className="writer-import-stage" role="status">{stage}</p>}
+          {busy === "assisted" ? (
+            <div className="writer-import-processing" role="status" aria-live="polite" aria-atomic="true">
+              <span className="writer-import-spinner" aria-hidden="true" />
+              <div>
+                <strong>{stage ?? "Organizando tu guion…"}</strong>
+                <p>Esto puede tardar un momento. El texto original permanece seguro.</p>
+              </div>
+              <time dateTime={`PT${assistedElapsed}S`}>{formatElapsed(assistedElapsed)}</time>
+            </div>
+          ) : stage ? <p className="writer-import-stage" role="status">{stage}</p> : null}
           {error && <p className="writer-feedback writer-feedback--error" role="alert">{error}</p>}
           <div className="writer-import-actions writer-import-actions--stacked">
             <div>
               <button type="button" onClick={requestClose} disabled={busy === "assisted"}>Cancelar</button>
               <button type="button" onClick={() => void analyzeBasic()} disabled={busy !== null || !sourceReady || !title.trim()}>{busy === "basic" ? "Preparando…" : "Importar sin IA"}</button>
               <button type="button" onClick={() => void analyzeBasic()} disabled={busy !== null || !sourceReady || !title.trim()}>Ajustar formato manualmente</button>
-              {busy === "assisted"
-                ? <button type="button" onClick={cancelAssisted}>Detener</button>
-                : <button className="writer-primary-button" type="button" onClick={() => void importAssisted()} disabled={Boolean(assistedDisabledReason)}>Importar y organizar</button>}
+              <button className="writer-primary-button" type="button" onClick={() => void importAssisted()} disabled={Boolean(assistedDisabledReason)}>
+                {busy === "assisted" ? "Organizando…" : "Importar y organizar"}
+              </button>
             </div>
             {assistedDisabledReason && <p className="writer-import-disabled-reason">{assistedDisabledReason}</p>}
           </div>
@@ -340,6 +349,12 @@ function toggle(current: Set<string>, id: string) {
 
 function importError(cause: unknown) {
   return cause instanceof Error ? cause.message : "No se pudo analizar el borrador.";
+}
+
+function formatElapsed(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 export function assistedImportError(cause: unknown) {

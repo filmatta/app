@@ -4,12 +4,24 @@ import {
   type ScreenplayKind,
   type WriterDocument,
 } from "./document.ts";
+import {
+  writerCharacterIdentityKey,
+  type WriterCharacterObservation,
+  type WriterKnownCharacterIdentity,
+} from "./character-observations.ts";
 
 export type CharacterWritingMetrics = {
   key: string;
   name: string;
   interventions: number;
   sceneInterventions: number;
+};
+
+export type WriterAcceptedCharacterActivity = {
+  key: string;
+  name: string;
+  evidenceCount: number;
+  firstBlockId: string | null;
 };
 
 const TURN_END_KINDS = new Set<ScreenplayKind>([
@@ -87,6 +99,41 @@ export function deriveCharacterWritingMetrics(document: WriterDocument): Charact
   return [...byKey.values()].sort((left, right) =>
     left.name.localeCompare(right.name, "es", { sensitivity: "base" }),
   );
+}
+
+export function deriveAcceptedCharacterActivity(
+  document: WriterDocument,
+  identities: readonly WriterKnownCharacterIdentity[],
+  observations: readonly WriterCharacterObservation[],
+): WriterAcceptedCharacterActivity[] {
+  const accepted = new Map(identities.map((identity) => [identity.key, identity]));
+  const evidenceByKey = new Map<string, Map<string, string>>();
+  for (const observation of observations) {
+    if (!accepted.has(observation.identityKey)) continue;
+    const evidence = evidenceByKey.get(observation.identityKey) ?? new Map<string, string>();
+    evidence.set(observation.fingerprint, observation.blockId);
+    evidenceByKey.set(observation.identityKey, evidence);
+  }
+  for (const block of document.content) {
+    if (block.attrs.kind !== "character") continue;
+    const key = writerCharacterIdentityKey(blockText(block));
+    if (!accepted.has(key)) continue;
+    const evidence = evidenceByKey.get(key) ?? new Map<string, string>();
+    if (![...evidence.values()].includes(block.attrs.id)) evidence.set(`block:${block.attrs.id}`, block.attrs.id);
+    evidenceByKey.set(key, evidence);
+  }
+  return identities
+    .map((identity) => {
+      const evidence = evidenceByKey.get(identity.key) ?? new Map<string, string>();
+      return {
+        key: identity.key,
+        name: identity.name,
+        evidenceCount: evidence.size,
+        firstBlockId: evidence.values().next().value ?? null,
+      };
+    })
+    .sort((left, right) => right.evidenceCount - left.evidenceCount
+      || left.name.localeCompare(right.name, "es", { sensitivity: "base" }));
 }
 
 export function countTextualMentions(
