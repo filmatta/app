@@ -13,9 +13,11 @@ import {
 } from "./assisted-import-accounting";
 import { checkAssistedImportAccess } from "./assisted-import-access";
 import {
+  assistedImportAnalysisVersion,
   determineAssistedImportAnalysisStatus,
-  parseAssistedImportAnalysisStatus,
+  parseAssistedImportAnalysisVersion,
   type AssistedImportAnalysisStatus,
+  type AssistedImportRecoverySkippedReason,
 } from "./assisted-import-status";
 import {
   WRITER_ASSISTED_IMPORT_MAX_BYTES,
@@ -44,6 +46,7 @@ import {
   TERRA_MODEL,
   WRITER_ASSISTED_IMPORT_SOL_INSTRUCTIONS,
   WRITER_ASSISTED_IMPORT_TERRA_INSTRUCTIONS,
+  assistedImportBudgetDecision,
   assistedImportProviderInput,
   assistedImportRequestBreakdown,
   estimateAssistedImportPipelinePlan,
@@ -166,9 +169,15 @@ export async function executeAssistedImport(
 
   const batches = buildAssistedImportBatches(staging);
   const pipelinePlan = estimateAssistedImportPipelinePlan(batches);
-  const maximumPlanCost = pipelinePlan.maximum.costMicrousd;
-  if (maximumPlanCost > WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD) {
-    throw new AssistedImportError("budget_plan", "El plan completo, incluida la recuperación, supera el máximo autorizado y no se iniciará parcialmente.", 409);
+  const basePlanCost = pipelinePlan.base.costMicrousd;
+  const baseBudgetDecision = assistedImportBudgetDecision({
+    operationBudgetMicrousd: WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD,
+    actualCostMicrousd: 0,
+    reservedCostMicrousd: 0,
+    requestedMicrousd: basePlanCost,
+  });
+  if (basePlanCost > 0 && !baseBudgetDecision.allowed) {
+    throw new AssistedImportError("budget_plan", "La etapa asistida inicial supera el límite de uso. Puedes importar el borrador sin IA.", 409);
   }
   const db = dependencies.db ?? createAdminClient();
   const sourceHash = sha256(request.sourceText);
@@ -179,7 +188,7 @@ export async function executeAssistedImport(
     models: [TERRA_MODEL, SOL_MODEL],
     version: WRITER_ASSISTED_IMPORT_VERSION,
     reasoning: { terra: "none", sol: "low" },
-    maximumPlanCost,
+    basePlanCost,
   }));
   const reserved = await rpcJson(db, "writer_reserve_assisted_import", {
     p_user_id: userId,
@@ -192,11 +201,11 @@ export async function executeAssistedImport(
     p_source_tokens: sourceTokens,
     p_source_bytes: sourceBytes,
     p_model: PIPELINE_MODEL,
-    p_maximum_plan_cost_microusd: maximumPlanCost,
+    p_maximum_plan_cost_microusd: Math.max(1, basePlanCost),
   });
   const operationBudget = positiveInteger(reserved.operation_budget_microusd);
-  if (operationBudget < WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD || maximumPlanCost > operationBudget) {
-    throw new AssistedImportError("budget_plan", "Esta operación no tiene presupuesto suficiente para el plan completo.", 409);
+  if (operationBudget < WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD || basePlanCost > operationBudget) {
+    throw new AssistedImportError("budget_plan", "Esta operación no tiene presupuesto suficiente para la etapa asistida inicial.", 409);
   }
   const operationId = String(reserved.id ?? request.operationId);
   if (reserved.status === "completed" && typeof reserved.script_id === "string") {
@@ -204,7 +213,8 @@ export async function executeAssistedImport(
     return {
       script: { id: reserved.script_id }, reused: true,
       observations: persisted.observations, identities: persisted.identities,
-      analysisStatus: persisted.status, usage: operationUsage(reserved),
+      analysisStatus: persisted.status, recoverySkippedReason: persisted.recoverySkippedReason,
+      usage: operationUsage(reserved),
     };
   }
   if (reserved.reused === true) {
@@ -230,13 +240,26 @@ export async function executeAssistedImport(
   });
 
   const recovery = planAssistedImportRecovery(batches, terraResults);
+  const recoveryBudgetRequested = recovery.items.reduce((total, item) => {
+    const prior = terraResults.get(item.batch.index) ?? null;
+    const plan = assistedImportRequestBreakdown(recoveryBatch(item), "sol", item.triggers, prior);
+    return total + estimateAssistedImportMaximumCostMicrousd(SOL_MODEL, plan.estimatedInputTokens, plan.maxOutputTokens);
+  }, 0);
   const solResults = await mapConcurrent(recovery.items, WRITER_ASSISTED_IMPORT_MAX_CONCURRENCY, async (item, recoveryIndex) => {
     const prior = terraResults.get(item.batch.index) ?? null;
-    const outcome = await executePipelineCall({
-      db, userId, operationId, batchIndex: 20 + recoveryIndex, batch: recoveryBatch(item), stage: "sol", model: SOL_MODEL,
-      triggers: item.triggers, priorResult: prior, provider, signal: request.signal,
-      onRejectedOutput: dependencies.onRejectedOutput,
-    });
+    let outcome: PipelineCallOutcome;
+    try {
+      outcome = await executePipelineCall({
+        db, userId, operationId, batchIndex: 20 + recoveryIndex, batch: recoveryBatch(item), stage: "sol", model: SOL_MODEL,
+        triggers: item.triggers, priorResult: prior, provider, signal: request.signal,
+        onRejectedOutput: dependencies.onRejectedOutput,
+      });
+    } catch (cause) {
+      if (cause instanceof AssistedImportError && (cause.code === "budget" || cause.code === "global_budget")) {
+        return { result: null, skippedReason: "recovery_budget_unavailable" as const };
+      }
+      throw cause;
+    }
     if (!outcome.result) failedCalls.push({ stage: "sol", code: outcome.failureCode!, path: outcome.failurePath! });
     return outcome;
   }).catch(async (cause) => {
@@ -244,6 +267,9 @@ export async function executeAssistedImport(
     await failOperation(db, userId, operationId, error.code === "provider_uncertain" ? "uncertain" : "failed", error.code);
     throw error;
   });
+  const recoverySkippedReason: AssistedImportRecoverySkippedReason | null = solResults.some(
+    (outcome) => outcome.skippedReason === "recovery_budget_unavailable",
+  ) ? "recovery_budget_unavailable" : null;
 
   const modelResults = [...terraResults.values(), ...solResults.map((outcome) => outcome.result)]
     .filter((result): result is AssistedImportModelResult => Boolean(result));
@@ -255,7 +281,7 @@ export async function executeAssistedImport(
   }
   const validationIssues = modelResults.flatMap((result) => result.validationIssues);
   const analysisStatus = determineAssistedImportAnalysisStatus({
-    incomplete: failedCalls.length > 0 || recovery.partial,
+    incomplete: failedCalls.length > 0 || recovery.partial || Boolean(recoverySkippedReason),
     validationIssueCount: validationIssues.length,
     usableResultCount: modelResults.reduce((count, result) => count
       + result.classifications.length + result.evidence.length + result.observations.length, 0),
@@ -274,8 +300,12 @@ export async function executeAssistedImport(
     p_title: cleanTitle,
     p_document: reconciled.document,
     p_schema_version: reconciled.schemaVersion,
-    p_analysis_version: `${WRITER_ASSISTED_IMPORT_VERSION}/${analysisStatus}`,
-    p_model: batches.length ? (recovery.items.length ? PIPELINE_MODEL : TERRA_MODEL) : null,
+    p_analysis_version: assistedImportAnalysisVersion({
+      version: WRITER_ASSISTED_IMPORT_VERSION,
+      status: analysisStatus,
+      recoverySkippedReason,
+    }),
+    p_model: batches.length ? (solResults.some((outcome) => outcome.executed) ? PIPELINE_MODEL : TERRA_MODEL) : null,
     p_identities: reconciled.identities,
     p_evidence: reconciled.evidence,
     p_observations: reconciled.observations,
@@ -285,6 +315,17 @@ export async function executeAssistedImport(
     throw error;
   });
   const operation = await loadOperation(db, operationId);
+  const recoveryCostActual = solResults.reduce((total, outcome) => total + (outcome.actualCostMicrousd ?? 0), 0);
+  const budget = {
+    baseBudgetReservedMicrousd: basePlanCost,
+    baseCostActualMicrousd: Math.max(0, positiveInteger(operation?.actual_cost_microusd) - recoveryCostActual),
+    recoveryRequired: recovery.items.length > 0,
+    recoveryBudgetRequestedMicrousd: recoveryBudgetRequested,
+    recoveryExecuted: solResults.some((outcome) => outcome.executed),
+    recoverySkippedReason,
+    totalCostMicrousd: positiveInteger(operation?.actual_cost_microusd),
+  };
+  console.info("writer_assisted_import_budget", { operationId, ...budget });
   return {
     script: { id: finalized.id, revision: Number(finalized.revision ?? 1) },
     reused: Boolean(finalized.reused),
@@ -293,12 +334,14 @@ export async function executeAssistedImport(
     blocks: reconciled.document.content.length,
     scenes: reconciled.document.content.filter((block) => block.attrs.kind === "sceneHeading").length,
     analysisStatus,
+    recoverySkippedReason,
     coverage: {
       segments: batches.length,
       terraSegments: terraResults.size,
-      solSegments: recovery.items.length,
-      skippedRecoverySegments: recovery.skippedBatchIndexes.length,
+      solSegments: solResults.filter((outcome) => outcome.executed).length,
+      skippedRecoverySegments: recovery.skippedBatchIndexes.length + solResults.filter((outcome) => outcome.skippedReason).length,
     },
+    budget,
     usage: operationUsage(operation ?? {}),
   };
 }
@@ -341,6 +384,9 @@ type PipelineCallOutcome = {
   result: AssistedImportModelResult | null;
   failureCode?: string;
   failurePath?: string;
+  executed?: boolean;
+  actualCostMicrousd?: number;
+  skippedReason?: AssistedImportRecoverySkippedReason;
 };
 
 async function executePipelineCall(input: PipelineCallInput): Promise<PipelineCallOutcome> {
@@ -354,7 +400,11 @@ async function executePipelineCall(input: PipelineCallInput): Promise<PipelineCa
   }));
   const existing = await loadBatch(input.db, input.operationId, input.batchIndex);
   if (existing?.status === "completed" && existing.request_hash === requestHash) {
-    return { result: validateAssistedImportModelResult(checkpointResult(existing.result, input.stage, input.model), input.batch) };
+    return {
+      result: validateAssistedImportModelResult(checkpointResult(existing.result, input.stage, input.model), input.batch),
+      executed: true,
+      actualCostMicrousd: checkpointActualCost(existing.result),
+    };
   }
   if (existing && existing.status !== "failed") {
     throw new AssistedImportError("reconciliation_required", "Un lote anterior quedó pendiente de conciliación; no se repetirá automáticamente.", 409);
@@ -372,7 +422,11 @@ async function executePipelineCall(input: PipelineCallInput): Promise<PipelineCa
     p_max_cost_microusd: maxCost,
   });
   if (call.status === "completed") {
-    return { result: validateAssistedImportModelResult(checkpointResult(call.result, input.stage, input.model), input.batch) };
+    return {
+      result: validateAssistedImportModelResult(checkpointResult(call.result, input.stage, input.model), input.batch),
+      executed: true,
+      actualCostMicrousd: checkpointActualCost(call.result),
+    };
   }
   try {
     const response = await input.provider({
@@ -412,10 +466,11 @@ async function executePipelineCall(input: PipelineCallInput): Promise<PipelineCa
       triggers: input.triggers,
       latencyMs: response.latencyMs,
       actualCostMicrousd: actualCost,
+      maximumCostMicrousd: maxCost,
       result: expandAssistedImportTransportResult(response.result, input.batch),
       validationIssues: validated.validationIssues,
     }, response.usage, actualCost);
-    return { result: validated };
+    return { result: validated, executed: true, actualCostMicrousd: actualCost };
   } catch (cause) {
     const failure = cause instanceof ProviderFailure ? cause : new ProviderFailure(true, undefined, "provider_request_failed");
     const usage = failure.usage ?? emptyUsage();
@@ -431,7 +486,7 @@ async function executePipelineCall(input: PipelineCallInput): Promise<PipelineCa
       pipelineVersion: WRITER_ASSISTED_IMPORT_VERSION,
       diagnostic: { code: failure.code, path: failure.path, requestId: failure.requestId ?? null },
     }, usage, cost);
-    if (!failure.ambiguous) return { result: null, failureCode: failure.code, failurePath: failure.path };
+    if (!failure.ambiguous) return { result: null, failureCode: failure.code, failurePath: failure.path, executed: true, actualCostMicrousd: cost };
     throw new AssistedImportError("provider_uncertain", "La llamada quedó en estado incierto y no se repetirá automáticamente.", 409);
   }
 }
@@ -495,6 +550,10 @@ function checkpointResult(value: unknown, stage: AssistedImportStage, model: Ass
   throw new AssistedImportValidationError("integrity_conflict", "$", "El checkpoint no coincide con la etapa y modelo actuales.");
 }
 
+function checkpointActualCost(value: unknown) {
+  return isRecord(value) ? positiveInteger(value.actualCostMicrousd) : 0;
+}
+
 function readUsage(value: unknown): ProviderUsage {
   if (!isRecord(value)) return emptyUsage();
   const inputDetails = isRecord(value.input_tokens_details) ? value.input_tokens_details : {};
@@ -555,7 +614,7 @@ async function loadBatch(db: ImportDatabase, operationId: string, index: number)
 
 async function loadOperation(db: ImportDatabase, operationId: string) {
   const response = await db.from("writer_assisted_imports")
-    .select("provider_calls,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,actual_cost_microusd")
+    .select("provider_calls,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,actual_cost_microusd,operation_budget_microusd,reserved_cost_microusd")
     .eq("id", operationId).maybeSingle();
   return response.error ? null : response.data;
 }
@@ -563,15 +622,22 @@ async function loadOperation(db: ImportDatabase, operationId: string) {
 async function loadPersistedAnalysisSummary(
   db: ImportDatabase,
   scriptId: string,
-): Promise<{ status: AssistedImportAnalysisStatus; identities: number; observations: number }> {
+): Promise<{
+  status: AssistedImportAnalysisStatus;
+  identities: number;
+  observations: number;
+  recoverySkippedReason: AssistedImportRecoverySkippedReason | null;
+}> {
   const response = await db.from("writer_import_analyses")
     .select("analysis_version,identities,observations")
     .eq("script_id", scriptId).maybeSingle();
   if (response.error || !isRecord(response.data) || typeof response.data.analysis_version !== "string") {
-    return { status: "partial", identities: 0, observations: 0 };
+    return { status: "partial", identities: 0, observations: 0, recoverySkippedReason: null };
   }
+  const version = parseAssistedImportAnalysisVersion(response.data.analysis_version);
   return {
-    status: parseAssistedImportAnalysisStatus(response.data.analysis_version.split("/").at(-1), "partial"),
+    status: version.status,
+    recoverySkippedReason: version.recoverySkippedReason,
     identities: Array.isArray(response.data.identities) ? response.data.identities.length : 0,
     observations: Array.isArray(response.data.observations) ? response.data.observations.length : 0,
   };

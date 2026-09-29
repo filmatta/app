@@ -756,12 +756,14 @@ export default function WriterWorkspace({
         characterHeadingCount: characterCount,
         blockCount: document.content.length,
         observationCount: Number.isSafeInteger(optionalObservations) && optionalObservations >= 0 ? optionalObservations : 0,
+        recoverySkippedReason: url.searchParams.get("recovery") === "budget" ? "recovery_budget_unavailable" : null,
       }));
     });
     url.searchParams.delete("imported");
     url.searchParams.delete("observations");
     url.searchParams.delete("analysis");
     url.searchParams.delete("identities");
+    url.searchParams.delete("recovery");
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     return () => cancelAnimationFrame(frame);
   }, [document, ready]);

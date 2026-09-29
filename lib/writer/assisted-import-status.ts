@@ -1,4 +1,5 @@
 export type AssistedImportAnalysisStatus = "complete" | "partial" | "unusable";
+export type AssistedImportRecoverySkippedReason = "recovery_budget_unavailable";
 
 export function determineAssistedImportAnalysisStatus(input: {
   incomplete: boolean;
@@ -16,6 +17,27 @@ export function parseAssistedImportAnalysisStatus(
   return value === "complete" || value === "partial" || value === "unusable" ? value : fallback;
 }
 
+export function assistedImportAnalysisVersion(input: {
+  version: string;
+  status: AssistedImportAnalysisStatus;
+  recoverySkippedReason?: AssistedImportRecoverySkippedReason | null;
+}) {
+  return `${input.version}/${input.status}${input.recoverySkippedReason ? `;${input.recoverySkippedReason}` : ""}`;
+}
+
+export function parseAssistedImportAnalysisVersion(value: unknown): {
+  status: AssistedImportAnalysisStatus;
+  recoverySkippedReason: AssistedImportRecoverySkippedReason | null;
+} {
+  if (typeof value !== "string") return { status: "partial", recoverySkippedReason: null };
+  const detail = value.split("/").at(-1) ?? "";
+  const [rawStatus, ...markers] = detail.split(";");
+  return {
+    status: parseAssistedImportAnalysisStatus(rawStatus, "partial"),
+    recoverySkippedReason: markers.includes("recovery_budget_unavailable") ? "recovery_budget_unavailable" : null,
+  };
+}
+
 export function writerImportCompletionMessage(input: {
   mode: string;
   analysisStatus: AssistedImportAnalysisStatus;
@@ -24,6 +46,7 @@ export function writerImportCompletionMessage(input: {
   characterHeadingCount: number;
   blockCount: number;
   observationCount: number;
+  recoverySkippedReason?: AssistedImportRecoverySkippedReason | null;
 }) {
   if (input.mode !== "ai") {
     return `Importación completada · ${input.sceneCount} escenas · ${input.characterHeadingCount} encabezados de personaje · ${input.blockCount} bloques.`;
@@ -32,6 +55,9 @@ export function writerImportCompletionMessage(input: {
     return "Tu guion se importó completo. No pudimos vincular el análisis de personajes a sus fragmentos.";
   }
   if (input.analysisStatus === "partial") {
+    if (input.recoverySkippedReason === "recovery_budget_unavailable") {
+      return "Guion importado. Algunas referencias del análisis quedaron pendientes por el límite de uso.";
+    }
     return "Tu guion se importó completo. Vinculamos algunas referencias de personajes; otras quedaron pendientes.";
   }
   if (input.identityCount === 0) {

@@ -169,7 +169,8 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
       setStage("Comprobando integridad y abriendo Writer…");
       const analysis = parseAssistedImportAnalysisStatus(payload.analysisStatus);
       const identities = Number.isSafeInteger(payload.identities) && payload.identities >= 0 ? payload.identities : 0;
-      router.push(`/writer/${payload.script.id}?imported=ai&analysis=${analysis}&identities=${identities}&observations=${Number(payload.observations ?? 0)}`);
+      const recoveryBudgetLimited = payload.recoverySkippedReason === "recovery_budget_unavailable" ? "&recovery=budget" : "";
+      router.push(`/writer/${payload.script.id}?imported=ai&analysis=${analysis}&identities=${identities}&observations=${Number(payload.observations ?? 0)}${recoveryBudgetLimited}`);
     } catch (cause) {
       setError(controller.signal.aborted
         ? "La importación se canceló. El origen sigue aquí y no se creó un guion parcial."

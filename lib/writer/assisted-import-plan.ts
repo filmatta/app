@@ -58,6 +58,33 @@ export type AssistedImportPipelinePlan = {
   maximum: AssistedImportCostScenario;
 };
 
+export type AssistedImportBudgetDecision = {
+  allowed: boolean;
+  requestedMicrousd: number;
+  remainingBeforeMicrousd: number;
+  remainingAfterMicrousd: number;
+};
+
+export function assistedImportBudgetDecision(input: {
+  operationBudgetMicrousd: number;
+  actualCostMicrousd: number;
+  reservedCostMicrousd: number;
+  requestedMicrousd: number;
+}): AssistedImportBudgetDecision {
+  const operationBudgetMicrousd = nonNegativeInteger(input.operationBudgetMicrousd);
+  const actualCostMicrousd = nonNegativeInteger(input.actualCostMicrousd);
+  const reservedCostMicrousd = nonNegativeInteger(input.reservedCostMicrousd);
+  const requestedMicrousd = nonNegativeInteger(input.requestedMicrousd);
+  const remainingBeforeMicrousd = Math.max(0, operationBudgetMicrousd - actualCostMicrousd - reservedCostMicrousd);
+  const allowed = requestedMicrousd > 0 && requestedMicrousd <= remainingBeforeMicrousd;
+  return {
+    allowed,
+    requestedMicrousd,
+    remainingBeforeMicrousd,
+    remainingAfterMicrousd: allowed ? remainingBeforeMicrousd - requestedMicrousd : remainingBeforeMicrousd,
+  };
+}
+
 export function assistedImportProviderInput(
   batch: AssistedImportBatch,
   stage: AssistedImportStage = "terra",
@@ -198,4 +225,8 @@ function cachedMaximumCost(model: AssistedImportModel, inputTokens: number, outp
 
 function count(value: unknown) {
   return countAssistedImportTokens(JSON.stringify(value));
+}
+
+function nonNegativeInteger(value: number) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
