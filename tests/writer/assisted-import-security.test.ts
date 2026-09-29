@@ -62,7 +62,9 @@ test("pipeline models and reasoning are server-controlled and closed", () => {
   assert.match(plan, /TERRA_MODEL = "gpt-5\.6-terra"/u);
   assert.match(plan, /SOL_MODEL = "gpt-5\.6-sol"/u);
   assert.match(server, /20 \+ recoveryIndex/u);
-  assert.match(server, /maximumPlanCost > WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD/u);
+  assert.match(server, /maximumPlanCost > WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD/u);
+  assert.match(server, /p_maximum_plan_cost_microusd: maximumPlanCost/u);
+  assert.match(server, /maximumPlanCost > operationBudget/u);
   assert.match(server, /failure\.stage.*failure\.code.*failure\.path/u);
   assert.match(server, /response\.incomplete_details\.reason/u);
 });

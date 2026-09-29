@@ -15,6 +15,7 @@ import { checkAssistedImportAccess } from "./assisted-import-access";
 import {
   WRITER_ASSISTED_IMPORT_MAX_BYTES,
   WRITER_ASSISTED_IMPORT_MAX_CONCURRENCY,
+  WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD,
   WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD,
   WRITER_ASSISTED_IMPORT_MAX_SOURCE_TOKENS,
   WRITER_ASSISTED_IMPORT_MAX_WORDS,
@@ -158,8 +159,8 @@ export async function executeAssistedImport(
   const batches = buildAssistedImportBatches(staging);
   const pipelinePlan = estimateAssistedImportPipelinePlan(batches);
   const maximumPlanCost = pipelinePlan.maximum.costMicrousd;
-  if (maximumPlanCost > WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD) {
-    throw new AssistedImportError("budget_plan", "El plan completo, incluida la recuperación, supera el límite de US$0.20 y no se iniciará parcialmente.", 409);
+  if (maximumPlanCost > WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD) {
+    throw new AssistedImportError("budget_plan", "El plan completo, incluida la recuperación, supera el máximo autorizado y no se iniciará parcialmente.", 409);
   }
   const db = dependencies.db ?? createAdminClient();
   const sourceHash = sha256(request.sourceText);
@@ -183,7 +184,12 @@ export async function executeAssistedImport(
     p_source_tokens: sourceTokens,
     p_source_bytes: sourceBytes,
     p_model: PIPELINE_MODEL,
+    p_maximum_plan_cost_microusd: maximumPlanCost,
   });
+  const operationBudget = positiveInteger(reserved.operation_budget_microusd);
+  if (operationBudget < WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD || maximumPlanCost > operationBudget) {
+    throw new AssistedImportError("budget_plan", "Esta operación no tiene presupuesto suficiente para el plan completo.", 409);
+  }
   const operationId = String(reserved.id ?? request.operationId);
   if (reserved.status === "completed" && typeof reserved.script_id === "string") {
     return { script: { id: reserved.script_id }, reused: true, observations: 0, analysisStatus: "partial" as const, usage: operationUsage(reserved) };

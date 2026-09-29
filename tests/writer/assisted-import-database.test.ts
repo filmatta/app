@@ -7,6 +7,8 @@ const db = new PGlite();
 const owner = "11111111-1111-4111-8111-111111111111";
 const other = "22222222-2222-4222-8222-222222222222";
 const attemptsUser = "44444444-4444-4444-8444-444444444444";
+const historicalUser = "33333333-3333-4333-8333-333333333334";
+const historicalOperation = "33333333-3333-4333-8333-333333333335";
 const operation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const sourceHash = "a".repeat(64);
 const optionsHash = "b".repeat(64);
@@ -40,9 +42,15 @@ before(async () => {
           raise exception 'WRITER_INVALID_DOCUMENT';
         end if;
       end$$;
-    insert into auth.users values('${owner}'),('${other}'),('${attemptsUser}');
+    insert into auth.users values('${owner}'),('${other}'),('${attemptsUser}'),('${historicalUser}');
   `);
   await db.exec(fs.readFileSync("supabase/migrations/20260930020000_writer_assisted_imports.sql", "utf8"));
+  await db.query(`insert into writer_assisted_imports(
+    id,owner_id,source_hash,options_hash,source_format,title,status,source_words,source_tokens,source_bytes,actual_cost_microusd
+  ) values($1,$2,$3,$4,'pasted','Historical','failed',1,1,1,1234)`, [
+    historicalOperation, historicalUser, "7".repeat(64), optionsHash,
+  ]);
+  await db.exec(fs.readFileSync("supabase/migrations/20260930030000_writer_assisted_import_operation_budgets.sql", "utf8"));
 });
 
 after(() => db.close());
@@ -91,6 +99,10 @@ test("analysis and decisions remain owner-isolated while service accounting is n
   assert.equal(((await db.query("select count(*)::int count from writer_import_analyses")).rows[0] as { count: number }).count, 0);
   await assert.rejects(db.query("select * from writer_assisted_imports"), /permission denied/u);
   await assert.rejects(db.query("update writer_assisted_imports set actual_cost_microusd=0"), /permission denied/u);
+  await assert.rejects(db.query("update writer_assisted_imports set operation_budget_microusd=600000"), /permission denied/u);
+  await assert.rejects(db.query("select writer_grant_assisted_import_qa_budget($1,$2,$3,clock_timestamp()+interval '1 hour')", [
+    other, "dddddddd-dddd-4ddd-8ddd-dddddddddddc", "6".repeat(64),
+  ]), /permission denied/u);
   await assert.rejects(db.query("select writer_reserve_assisted_import($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", [
     other, "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "f".repeat(64), optionsHash, "pasted", "QA other", 10, 20, 100, "gpt-5.6-luna",
   ]), /permission denied/u);
@@ -146,6 +158,139 @@ test("deleting an imported document does not restore the completed Free entitlem
     "select writer_reserve_assisted_import($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
     [owner, "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "e".repeat(64), optionsHash, "pasted", "QA 2", 10, 20, 100, "gpt-5.6-luna"],
   ), /WRITER_IMPORT_FREE_USED/u);
+});
+
+test("historical operations retain their spend and ordinary budget after migration", async () => {
+  await as("postgres");
+  const row = (await db.query(
+    "select actual_cost_microusd,reserved_cost_microusd,operation_budget_microusd from writer_assisted_imports where id=$1",
+    [historicalOperation],
+  )).rows[0] as { actual_cost_microusd: number; reserved_cost_microusd: number; operation_budget_microusd: number };
+  assert.deepEqual(row, { actual_cost_microusd: 1234, reserved_cost_microusd: 0, operation_budget_microusd: 200_000 });
+});
+
+test("legacy callers and ordinary operations remain capped at 200000 microdollars", async () => {
+  const user = "10101010-1010-4010-8010-101010101010";
+  const id = "10101010-1010-4010-8010-101010101011";
+  await as("postgres");
+  await db.query("insert into auth.users(id) values($1)", [user]);
+  await as("service_role");
+  const value = ((await db.query(
+    "select writer_reserve_assisted_import($1,$2,$3,$4,'pasted','Ordinary',1,1,1,'gpt-5.6-terra') value",
+    [user, id, "1".repeat(64), optionsHash],
+  )).rows[0] as { value: RpcValue & { operation_budget_microusd: number } }).value;
+  assert.equal(value.operation_budget_microusd, 200_000);
+  await assert.rejects(db.query("select writer_reserve_assisted_import_call($1,$2,0,$3,200001)", [
+    user, id, "2".repeat(64),
+  ]), /WRITER_IMPORT_BUDGET/u);
+  await db.query("select writer_fail_assisted_import($1,$2,'failed','qa_cleanup')", [user, id]);
+});
+
+test("one exact QA grant persists a 600000 budget and cannot be reused", async () => {
+  const user = "20202020-2020-4020-8020-202020202020";
+  const id = "20202020-2020-4020-8020-202020202021";
+  const otherId = "20202020-2020-4020-8020-202020202022";
+  const hash = "2".repeat(64);
+  await as("postgres");
+  await db.query("insert into auth.users(id) values($1)", [user]);
+  await as("service_role");
+  await db.query("select writer_grant_assisted_import_qa_budget($1,$2,$3,clock_timestamp()+interval '1 hour')", [user, id, hash]);
+  const value = ((await db.query(
+    "select writer_reserve_assisted_import($1,$2,$3,$4,'pasted','QA budget',1,1,1,'gpt-5.6-terra+gpt-5.6-sol',541152) value",
+    [user, id, hash, optionsHash],
+  )).rows[0] as { value: RpcValue & { operation_budget_microusd: number } }).value;
+  assert.equal(value.operation_budget_microusd, 600_000);
+  await as("postgres");
+  assert.equal(((await db.query(
+    "select status from private.writer_assisted_import_budget_grants where operation_id=$1", [id],
+  )).rows[0] as { status: string }).status, "consumed");
+  await as("service_role");
+  await assert.rejects(db.query(
+    "select writer_reserve_assisted_import($1,$2,$3,$4,'pasted','Other operation',1,1,1,'gpt-5.6-terra+gpt-5.6-sol',541152)",
+    [user, otherId, hash, optionsHash],
+  ), /WRITER_IMPORT_(?:ACTIVE|BUDGET_AUTHORIZATION)/u);
+  await db.query("select writer_reserve_assisted_import_call($1,$2,0,$3,600000)", [user, id, "3".repeat(64)]);
+  await assert.rejects(db.query("select writer_reserve_assisted_import_call($1,$2,1,$3,1)", [
+    user, id, "4".repeat(64),
+  ]), /WRITER_IMPORT_BUDGET/u);
+  await db.query("select writer_fail_assisted_import($1,$2,'failed','qa_cleanup')", [user, id]);
+  await db.query("select writer_revoke_assisted_import_qa_budget($1,$2)", [user, id]);
+});
+
+test("a QA grant cannot authorize another account, hash, or plan above 600000", async () => {
+  const user = "30303030-3030-4030-8030-303030303030";
+  const anotherUser = "30303030-3030-4030-8030-303030303031";
+  const id = "30303030-3030-4030-8030-303030303032";
+  const hash = "3".repeat(64);
+  await as("postgres");
+  await db.query("insert into auth.users(id) values($1),($2)", [user, anotherUser]);
+  await as("service_role");
+  await db.query("select writer_grant_assisted_import_qa_budget($1,$2,$3,clock_timestamp()+interval '1 hour')", [user, id, hash]);
+  await assert.rejects(db.query(
+    "select writer_reserve_assisted_import($1,$2,$3,$4,'pasted','Wrong owner',1,1,1,'gpt-5.6-terra+gpt-5.6-sol',541152)",
+    [anotherUser, id, hash, optionsHash],
+  ), /WRITER_IMPORT_BUDGET_AUTHORIZATION/u);
+  await assert.rejects(db.query(
+    "select writer_reserve_assisted_import($1,$2,$3,$4,'pasted','Wrong hash',1,1,1,'gpt-5.6-terra+gpt-5.6-sol',541152)",
+    [user, id, "4".repeat(64), optionsHash],
+  ), /WRITER_IMPORT_BUDGET_AUTHORIZATION/u);
+  await assert.rejects(db.query(
+    "select writer_reserve_assisted_import($1,$2,$3,$4,'pasted','Too expensive',1,1,1,'gpt-5.6-terra+gpt-5.6-sol',600001)",
+    [user, id, hash, optionsHash],
+  ), /WRITER_IMPORT_INVALID/u);
+  await db.query("select writer_revoke_assisted_import_qa_budget($1,$2)", [user, id]);
+});
+
+test("concurrent-looking reservations cannot exceed the persisted operation budget", async () => {
+  const user = "40404040-4040-4040-8040-404040404040";
+  const id = "40404040-4040-4040-8040-404040404041";
+  const hash = "4".repeat(64);
+  await as("postgres");
+  await db.query("insert into auth.users(id) values($1)", [user]);
+  await as("service_role");
+  await db.query("select writer_grant_assisted_import_qa_budget($1,$2,$3,clock_timestamp()+interval '1 hour')", [user, id, hash]);
+  await db.query(
+    "select writer_reserve_assisted_import($1,$2,$3,$4,'pasted','Concurrent',1,1,1,'gpt-5.6-terra+gpt-5.6-sol',541152)",
+    [user, id, hash, optionsHash],
+  );
+  const reservations = await Promise.allSettled([
+    db.query("select writer_reserve_assisted_import_call($1,$2,0,$3,350000)", [user, id, "5".repeat(64)]),
+    db.query("select writer_reserve_assisted_import_call($1,$2,1,$3,350000)", [user, id, "6".repeat(64)]),
+  ]);
+  assert.equal(reservations.filter((item) => item.status === "fulfilled").length, 1);
+  assert.equal(reservations.filter((item) => item.status === "rejected").length, 1);
+  const row = (await db.query(
+    "select actual_cost_microusd,reserved_cost_microusd,operation_budget_microusd from writer_assisted_imports where id=$1", [id],
+  )).rows[0] as { actual_cost_microusd: number; reserved_cost_microusd: number; operation_budget_microusd: number };
+  assert.equal(row.actual_cost_microusd + row.reserved_cost_microusd, 350_000);
+  assert.equal(row.operation_budget_microusd, 600_000);
+  await db.query("select writer_fail_assisted_import($1,$2,'failed','qa_cleanup')", [user, id]);
+  await db.query("select writer_revoke_assisted_import_qa_budget($1,$2)", [user, id]);
+});
+
+test("an idempotent retry preserves the granted budget instead of increasing it", async () => {
+  const user = "50505050-5050-4050-8050-505050505050";
+  const id = "50505050-5050-4050-8050-505050505051";
+  const hash = "5".repeat(64);
+  const args = [user, id, hash, optionsHash, "pasted", "Retry QA", 1, 1, 1, "gpt-5.6-terra+gpt-5.6-sol", 541152];
+  await as("postgres");
+  await db.query("insert into auth.users(id) values($1)", [user]);
+  await as("service_role");
+  await db.query("select writer_grant_assisted_import_qa_budget($1,$2,$3,clock_timestamp()+interval '1 hour')", [user, id, hash]);
+  await db.query("select writer_reserve_assisted_import($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", args);
+  await db.query("select writer_fail_assisted_import($1,$2,'failed','synthetic')", [user, id]);
+  const resumed = ((await db.query(
+    "select writer_reserve_assisted_import($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) value", args,
+  )).rows[0] as { value: RpcValue & { resumed: boolean; operation_budget_microusd: number } }).value;
+  assert.equal(resumed.resumed, true);
+  assert.equal(resumed.operation_budget_microusd, 600_000);
+  await as("postgres");
+  assert.equal(((await db.query(
+    "select status from private.writer_assisted_import_budget_grants where operation_id=$1", [id],
+  )).rows[0] as { status: string }).status, "consumed");
+  await as("service_role");
+  await db.query("select writer_fail_assisted_import($1,$2,'failed','qa_cleanup')", [user, id]);
+  await db.query("select writer_revoke_assisted_import_qa_budget($1,$2)", [user, id]);
 });
 
 test("the global two-dollar ledger blocks another provider reservation", async () => {

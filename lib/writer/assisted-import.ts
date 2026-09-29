@@ -33,6 +33,7 @@ export const WRITER_ASSISTED_IMPORT_MAX_SOURCE_TOKENS = 80_000;
 export const WRITER_ASSISTED_IMPORT_MAX_CALLS = 24;
 export const WRITER_ASSISTED_IMPORT_MAX_CONCURRENCY = 2;
 export const WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD = 200_000;
+export const WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD = 600_000;
 export const WRITER_ASSISTED_IMPORT_GLOBAL_COST_MICRO_USD = 2_000_000;
 
 export type AssistedImportRelation = "intervention" | "action" | "mention" | "indeterminate";
