@@ -58,6 +58,10 @@ export function parsePersistedWriterImportAnalysis(value: unknown, document: Wri
   const blocks = new Map(document.content.map((block) => [block.attrs.id, block]));
   const parsedIdentities = value.analysis.identities.flatMap((candidate) => {
     if (!isRecord(candidate) || typeof candidate.key !== "string" || typeof candidate.name !== "string") return [];
+    // `analysis.identities` is also the persisted audit catalogue for raw rule/AI
+    // candidates. Only explicit screenplay structure represents an accepted
+    // identity without a later human decision.
+    if (candidate.source !== "explicit") return [];
     const key = candidate.key.trim().slice(0, 128);
     const name = candidate.name.trim().replace(/\s+/gu, " ").slice(0, 64);
     return key && name ? [{ key, name, source: "imported" as const }] : [];
@@ -128,12 +132,14 @@ export function parsePersistedWriterImportAnalysis(value: unknown, document: Wri
       decidedAt: Date.parse(String(candidate.decided_at)) || Date.now(),
     }];
   });
-  // Persisted candidates only become recognized characters when still-valid
-  // evidence was accepted by validation/reconciliation. Review-only evidence
-  // remains in Observations until a person explicitly confirms it.
-  const acceptedIdentityKeys = new Set(
-    observations.filter((observation) => observation.known).map((observation) => observation.identityKey),
-  );
+  // The persisted catalogue also retains rule/AI candidates for audit. Only
+  // explicit character structure is recognized automatically; every other
+  // identity needs an explicit human confirmation.
+  const acceptedIdentityKeys = new Set(observations
+    .filter((observation) => observation.source === "explicit"
+      && observation.confidence === "high"
+      && blocks.get(observation.blockId)?.attrs.kind === "character")
+    .map((observation) => observation.identityKey));
   const identitiesByKey = new Map<string, WriterKnownCharacterIdentity>(
     parsedIdentities
       .filter((identity) => acceptedIdentityKeys.has(identity.key))

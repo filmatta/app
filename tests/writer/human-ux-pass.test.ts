@@ -15,19 +15,19 @@ import {
 } from "../../lib/writer/import-analysis.ts";
 import { deriveAcceptedCharacterActivity } from "../../lib/writer/writing-ux.ts";
 
-test("recognized characters exclude review-only and evidence-free import candidates", () => {
+test("recognized characters exclude persisted rule/AI candidates until explicitly accepted", () => {
   const review = createBlock("action", "No entra.");
   const accepted = createBlock("action", "Un robot observa la puerta.");
   const document: WriterDocument = { type: "doc", content: [review, accepted] };
   const parsed = parsePersistedWriterImportAnalysis({
     analysis: {
       identities: [
-        { key: "NO", name: "NO" },
-        { key: "ROBOT", name: "ROBOT" },
-        { key: "AMBOS", name: "AMBOS" },
+        { key: "NO", name: "NO", source: "ai" },
+        { key: "ROBOT", name: "ROBOT", source: "ai" },
+        { key: "AMBOS", name: "AMBOS", source: "rule" },
       ],
       evidence: [
-        persistedEvidence(review.attrs.id, "No entra.", "NO", "NO", "review"),
+        persistedEvidence(review.attrs.id, "No entra.", "NO", "NO", "medium"),
         persistedEvidence(accepted.attrs.id, "Un robot observa la puerta.", "ROBOT", "robot", "medium", 3, 8),
       ],
       observations: [],
@@ -36,15 +36,15 @@ test("recognized characters exclude review-only and evidence-free import candida
       fingerprint: "human-1",
       block_id: review.attrs.id,
       decision: "confirmed",
-      identity_key: "TODOS",
-      identity_name: "TODOS",
+      identity_key: "ROBOT",
+      identity_name: "ROBOT",
       decided_at: "2026-09-29T00:00:00Z",
     }],
     compatibleRevision: true,
   }, document);
 
   assert.ok(parsed);
-  assert.deepEqual(parsed.identities.map((identity) => identity.name).sort(), ["ROBOT", "TODOS"]);
+  assert.deepEqual(parsed.identities.map((identity) => identity.name).sort(), ["ROBOT"]);
   assert.equal(parsed.identities.some((identity) => identity.name === "NO"), false);
   assert.equal(parsed.identities.some((identity) => identity.name === "AMBOS"), false);
 });

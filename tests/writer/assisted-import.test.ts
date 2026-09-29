@@ -472,7 +472,7 @@ test("local anchors own ranges and discoveries require one exact Unicode-safe oc
   assert.ok(nonexistent.validationIssues.some((item) => item.code === "nonexistent_quote"));
 });
 
-test("a literal participant outside local candidates survives validation, reconciliation, and persisted analysis", () => {
+test("a literal participant outside local candidates survives persisted audit without becoming recognized before confirmation", () => {
   const staging = prepareAssistedImportStaging({
     format: "pasted", sourceText: "INT. TALLER - NOCHE\nR-7 cruza el taller y cierra la compuerta.", title: "Descubrimiento",
   });
@@ -506,7 +506,8 @@ test("a literal participant outside local candidates survives validation, reconc
     compatibleRevision: true,
   }, reconciled.document);
   assert.ok(reconciled.identities.some((identity) => identity.key === "R-7"));
-  assert.ok(persisted?.identities.some((identity) => identity.key === "R-7"));
+  assert.ok(persisted?.observations.some((observation) => observation.identityKey === "R-7"));
+  assert.equal(persisted?.identities.some((identity) => identity.key === "R-7"), false);
 });
 
 test("candidate extraction V2 records literal anchors, signals, source hashes, and uncovered Action sentences", () => {
