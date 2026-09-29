@@ -60,6 +60,7 @@ export type AssistedImportRequest = {
 export type AssistedImportAvailability = {
   enabled: boolean;
   reason: string | null;
+  operationId?: string;
   limits: {
     maxBytes: number;
     maxWords: number;
@@ -111,19 +112,21 @@ export async function assistedImportAccountStatus(userId: string, auth: Assisted
   const availability = assistedImportAvailability(userId, auth);
   if (!availability.enabled) return availability;
   const db = createAdminClient();
-  const [completed, active, attempts] = await Promise.all([
+  const [completed, active, attempts, grants] = await Promise.all([
     db.from("writer_assisted_imports").select("id", { count: "exact", head: true }).eq("owner_id", userId).eq("status", "completed"),
     db.from("writer_assisted_imports").select("id,status").eq("owner_id", userId).in("status", ["reserved", "processing", "ready", "uncertain"]).maybeSingle(),
     db.from("writer_assisted_imports").select("id", { count: "exact", head: true }).eq("owner_id", userId)
       .gte("created_at", new Date(Date.now() - 86_400_000).toISOString()),
+    db.rpc("writer_assisted_import_qa_budget_status", { p_user_id: userId }),
   ]);
-  if (completed.error || active.error || attempts.error) return unavailable("El control de cupo asistido no está disponible.");
+  if (completed.error || active.error || attempts.error || grants.error) return unavailable("El control de cupo asistido no está disponible.");
   if ((completed.count ?? 0) >= 1) return unavailable("Esta cuenta ya utilizó su importación asistida gratuita.");
   if (active.data) return unavailable(active.data.status === "uncertain"
     ? "Hay una operación anterior pendiente de conciliación segura."
     : "Ya hay una importación asistida en curso para esta cuenta.");
   if ((attempts.count ?? 0) >= 3) return unavailable("Esta cuenta alcanzó el límite de 3 intentos en 24 horas.");
-  return availability;
+  const operationId = activeQaGrantOperationId(grants.data);
+  return operationId ? { ...availability, operationId } : availability;
 }
 
 export async function executeAssistedImport(
@@ -595,6 +598,17 @@ function positiveInteger(value: unknown) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function activeQaGrantOperationId(value: unknown) {
+  if (!Array.isArray(value)) return null;
+  const now = Date.now();
+  const grant = value.find((item) => isRecord(item)
+    && item.status === "active"
+    && typeof item.operation_id === "string"
+    && typeof item.expires_at === "string"
+    && Date.parse(item.expires_at) > now);
+  return isRecord(grant) && typeof grant.operation_id === "string" ? grant.operation_id : null;
 }
 
 async function mapConcurrent<T, R>(items: readonly T[], concurrency: number, task: (item: T, index: number) => Promise<R>) {

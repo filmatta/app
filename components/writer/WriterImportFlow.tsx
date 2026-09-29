@@ -29,7 +29,7 @@ const KIND_LABELS: Record<ScreenplayKind, string> = {
 
 type Filter = "all" | "review" | ScreenplayKind;
 type Busy = "basic" | "creating" | "assisted" | null;
-type Availability = { enabled: boolean; reason: string | null; limits?: { maxBytes: number; maxWords: number; maxSourceTokens: number } };
+type Availability = { enabled: boolean; reason: string | null; operationId?: string; limits?: { maxBytes: number; maxWords: number; maxSourceTokens: number } };
 
 export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: () => void; beforeCreate?: () => Promise<void> }) {
   const router = useRouter();
@@ -72,7 +72,7 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
       .then(({ response, payload }) => {
         if (!active) return;
         setAvailability(response.ok
-          ? { enabled: Boolean(payload.enabled), reason: payload.reason ?? null, limits: payload.limits }
+          ? { enabled: Boolean(payload.enabled), reason: payload.reason ?? null, operationId: payload.operationId, limits: payload.limits }
           : { enabled: false, reason: payload.error ?? "No se pudo comprobar el cupo asistido." });
       })
       .catch(() => active && setAvailability({ enabled: false, reason: "No se pudo comprobar el cupo asistido." }));
@@ -155,7 +155,7 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
     try {
       const input = await sourceInput();
       await beforeCreate?.();
-      operationIdRef.current ??= crypto.randomUUID();
+      operationIdRef.current ??= availability.operationId ?? crypto.randomUUID();
       setStage("Organizando estructura e identidades…");
       const response = await fetch("/api/writer/imports/assisted", {
         method: "POST",
