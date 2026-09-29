@@ -167,16 +167,26 @@ export async function executeAssistedImport(
     throw new AssistedImportError("too_many_tokens", "El borrador supera el límite de 80,000 tokens de origen.", 413);
   }
 
-  const preflight = dryRunAssistedImport(staging, WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD);
+  const db = dependencies.db ?? createAdminClient();
+  const sourceHash = sha256(request.sourceText);
+  const authorization = await rpcJson(db, "writer_assisted_import_authorized_budget", {
+    p_user_id: userId,
+    p_operation_id: request.operationId,
+    p_source_hash: sourceHash,
+  });
+  const authorizedBudget = positiveInteger(authorization.authorized_budget_microusd);
+  if (authorizedBudget !== WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD
+    && authorizedBudget !== WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD) {
+    throw new AssistedImportError("database_contract", "El control de presupuesto devolvió una autorización inválida.", 500);
+  }
+  const preflight = dryRunAssistedImport(staging, authorizedBudget);
   const batches = preflight.batches;
   const pipelinePlan = preflight.plan;
   const basePlanCost = pipelinePlan.base.costMicrousd;
   const baseBudgetDecision = preflight.baseBudgetDecision;
   if (basePlanCost > 0 && !baseBudgetDecision.allowed) {
-    throw new AssistedImportError("budget_plan", "Este borrador supera la capacidad de la importación asistida. Puedes conservar el origen e importarlo sin IA.", 409);
+    throw new AssistedImportError("base_budget_exceeded", "La etapa asistida inicial supera el límite de uso. Puedes conservar el origen e importarlo sin IA.", 409);
   }
-  const db = dependencies.db ?? createAdminClient();
-  const sourceHash = sha256(request.sourceText);
   const optionsHash = sha256(JSON.stringify({
     title: cleanTitle,
     format: request.format,

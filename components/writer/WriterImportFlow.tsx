@@ -344,6 +344,9 @@ function importError(cause: unknown) {
 
 export function assistedImportError(cause: unknown) {
   const message = importError(cause).trim();
+  if (cause instanceof WriterImportRequestError && cause.code === "budget_authorization") {
+    return "La configuración interna del presupuesto es inconsistente. No vuelvas a intentar esta importación; el origen sigue aquí.";
+  }
   if (/importar(?:lo| el borrador)? sin (?:IA|asistencia)/iu.test(message)) return message;
   return `${message} Puedes conservar el origen e importarlo sin IA.`;
 }

@@ -52,6 +52,7 @@ before(async () => {
   ]);
   await db.exec(fs.readFileSync("supabase/migrations/20260930030000_writer_assisted_import_operation_budgets.sql", "utf8"));
   await db.exec(fs.readFileSync("supabase/migrations/20260930031000_writer_assisted_import_budget_status.sql", "utf8"));
+  await db.exec(fs.readFileSync("supabase/migrations/20260930032000_writer_assisted_import_ordinary_budget.sql", "utf8"));
 });
 
 after(() => db.close());
@@ -171,6 +172,52 @@ test("historical operations retain their spend and ordinary budget after migrati
   assert.deepEqual(row, { actual_cost_microusd: 1234, reserved_cost_microusd: 0, operation_budget_microusd: 200_000 });
 });
 
+test("a theoretical 361620 plan with a 124104 Terra base creates an ordinary 200000 operation", async () => {
+  const user = "10000000-1000-4000-8000-100000000000";
+  const id = "10000000-1000-4000-8000-100000000001";
+  const hash = "0".repeat(64);
+  const theoreticalMaximum = 361_620;
+  const baseReservation = 124_104;
+  await as("postgres");
+  await db.query("insert into auth.users(id) values($1)", [user]);
+  await as("service_role");
+  const authorization = ((await db.query(
+    "select writer_assisted_import_authorized_budget($1,$2,$3) value", [user, id, hash],
+  )).rows[0] as { value: RpcValue & { authorized_budget_microusd: number; authorization: string } }).value;
+  assert.deepEqual(authorization, { authorized_budget_microusd: 200_000, authorization: "ordinary" });
+  assert.ok(theoreticalMaximum > authorization.authorized_budget_microusd);
+  const value = ((await db.query(
+    "select writer_reserve_assisted_import($1,$2,$3,$4,'pasted','Ordinary base',1,1,1,'gpt-5.6-terra+gpt-5.6-sol',$5) value",
+    [user, id, hash, optionsHash, baseReservation],
+  )).rows[0] as { value: RpcValue & { operation_budget_microusd: number } }).value;
+  assert.equal(value.operation_budget_microusd, 200_000);
+  await db.query("select writer_fail_assisted_import($1,$2,'failed','qa_cleanup')", [user, id]);
+});
+
+test("ordinary over-budget base and client-like 600000 requests do not create operations or calls", async () => {
+  const user = "10000000-1000-4000-8000-100000000010";
+  const hash = "a".repeat(64);
+  await as("postgres");
+  await db.query("insert into auth.users(id) values($1)", [user]);
+  await as("service_role");
+  for (const [id, requested] of [
+    ["10000000-1000-4000-8000-100000000011", 210_000],
+    ["10000000-1000-4000-8000-100000000012", 600_000],
+  ] as const) {
+    await assert.rejects(db.query(
+      "select writer_reserve_assisted_import($1,$2,$3,$4,'pasted','Over budget',1,1,1,'gpt-5.6-terra+gpt-5.6-sol',$5)",
+      [user, id, hash, optionsHash, requested],
+    ), /WRITER_IMPORT_BUDGET/u);
+  }
+  assert.equal(((await db.query(
+    "select count(*)::int count from writer_assisted_imports where owner_id=$1", [user],
+  )).rows[0] as { count: number }).count, 0);
+  assert.equal(((await db.query(
+    "select count(*)::int count from writer_assisted_import_batches where operation_id in ($1,$2)",
+    ["10000000-1000-4000-8000-100000000011", "10000000-1000-4000-8000-100000000012"],
+  )).rows[0] as { count: number }).count, 0);
+});
+
 test("legacy callers and ordinary operations remain capped at 200000 microdollars", async () => {
   const user = "10101010-1010-4010-8010-101010101010";
   const id = "10101010-1010-4010-8010-101010101011";
@@ -197,6 +244,10 @@ test("one exact QA grant persists a 600000 budget and cannot be reused", async (
   await db.query("insert into auth.users(id) values($1)", [user]);
   await as("service_role");
   await db.query("select writer_grant_assisted_import_qa_budget($1,$2,$3,clock_timestamp()+interval '1 hour')", [user, id, hash]);
+  const authorization = ((await db.query(
+    "select writer_assisted_import_authorized_budget($1,$2,$3) value", [user, id, hash],
+  )).rows[0] as { value: RpcValue & { authorized_budget_microusd: number; authorization: string } }).value;
+  assert.deepEqual(authorization, { authorized_budget_microusd: 600_000, authorization: "qa_grant" });
   const value = ((await db.query(
     "select writer_reserve_assisted_import($1,$2,$3,$4,'pasted','QA budget',1,1,1,'gpt-5.6-terra+gpt-5.6-sol',541152) value",
     [user, id, hash, optionsHash],
@@ -234,6 +285,12 @@ test("a QA grant cannot authorize another account, hash, or plan above 600000", 
   await db.query("insert into auth.users(id) values($1),($2)", [user, anotherUser]);
   await as("service_role");
   await db.query("select writer_grant_assisted_import_qa_budget($1,$2,$3,clock_timestamp()+interval '1 hour')", [user, id, hash]);
+  await assert.rejects(db.query(
+    "select writer_assisted_import_authorized_budget($1,$2,$3)", [anotherUser, id, hash],
+  ), /WRITER_IMPORT_BUDGET_AUTHORIZATION/u);
+  await assert.rejects(db.query(
+    "select writer_assisted_import_authorized_budget($1,$2,$3)", [user, id, "4".repeat(64)],
+  ), /WRITER_IMPORT_BUDGET_AUTHORIZATION/u);
   await assert.rejects(db.query(
     "select writer_reserve_assisted_import($1,$2,$3,$4,'pasted','Wrong owner',1,1,1,'gpt-5.6-terra+gpt-5.6-sol',541152)",
     [anotherUser, id, hash, optionsHash],
@@ -287,6 +344,10 @@ test("an idempotent retry preserves the granted budget instead of increasing it"
   await db.query("select writer_grant_assisted_import_qa_budget($1,$2,$3,clock_timestamp()+interval '1 hour')", [user, id, hash]);
   await db.query("select writer_reserve_assisted_import($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", args);
   await db.query("select writer_fail_assisted_import($1,$2,'failed','synthetic')", [user, id]);
+  const persistedAuthorization = ((await db.query(
+    "select writer_assisted_import_authorized_budget($1,$2,$3) value", [user, id, hash],
+  )).rows[0] as { value: RpcValue & { authorized_budget_microusd: number; authorization: string } }).value;
+  assert.deepEqual(persistedAuthorization, { authorized_budget_microusd: 600_000, authorization: "persisted_operation" });
   const resumed = ((await db.query(
     "select writer_reserve_assisted_import($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) value", args,
   )).rows[0] as { value: RpcValue & { resumed: boolean; operation_budget_microusd: number } }).value;
