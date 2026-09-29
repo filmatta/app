@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildAssistedImportBatches, prepareAssistedImportStaging } from "../../lib/writer/assisted-import.ts";
-import { assistedImportBudgetDecision, estimateAssistedImportPipelinePlan } from "../../lib/writer/assisted-import-plan.ts";
+import { assistedImportBudgetDecision, dryRunAssistedImport, estimateAssistedImportPipelinePlan } from "../../lib/writer/assisted-import-plan.ts";
 
 test("the 11,529-character review shape admits Terra without pre-authorizing theoretical Sol", () => {
   let source = "INT. CASA - DÍA\n";
@@ -61,4 +61,41 @@ test("pending reservations are included so concurrent recovery attempts cannot o
 test("no recovery budget is requested when the router does not require recovery", () => {
   const recoveryItems: unknown[] = [];
   assert.equal(recoveryItems.reduce<number>((total) => total + 1, 0), 0);
+});
+
+test("the dry-run uses the execution planner without reserving or calling external services", () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted",
+    title: "Dry run",
+    sourceText: "INT. CASA - DÍA\n\nANA\nHola.\n\nLa puerta se cierra.",
+  });
+  const dryRun = dryRunAssistedImport(staging, 200_000);
+  const direct = estimateAssistedImportPipelinePlan(buildAssistedImportBatches(staging));
+  assert.deepEqual(dryRun.plan, direct);
+  assert.equal(dryRun.baseBudgetDecision.requestedMicrousd, direct.base.costMicrousd);
+  assert.equal(dryRun.batches.length, direct.base.terraCalls);
+  assert.ok(dryRun.candidateCount > 0);
+});
+
+test("equal source length can produce different plans when screenplay structure differs", () => {
+  const action = "INT. CASA - DÍA\n" + "Carolina camina por la sala.\n".repeat(80);
+  const dialogue = "INT. CASA - DÍA\n" + "CAROLINA\nHola, Esperanza.\n".repeat(80);
+  const length = Math.max(action.length, dialogue.length);
+  const pad = (value: string) => value + "x".repeat(length - value.length);
+  const actionRun = dryRunAssistedImport(prepareAssistedImportStaging({ format: "pasted", sourceText: pad(action), title: "Acción" }), 200_000);
+  const dialogueRun = dryRunAssistedImport(prepareAssistedImportStaging({ format: "pasted", sourceText: pad(dialogue), title: "Diálogo" }), 200_000);
+  assert.equal(pad(action).length, pad(dialogue).length);
+  assert.notEqual(actionRun.candidateCount, dialogueRun.candidateCount);
+  assert.notEqual(actionRun.plan.base.costMicrousd, dialogueRun.plan.base.costMicrousd);
+});
+
+test("a base reservation equal to the operation limit is allowed without rounding drift", () => {
+  const decision = assistedImportBudgetDecision({
+    operationBudgetMicrousd: 200_000,
+    actualCostMicrousd: 0,
+    reservedCostMicrousd: 0,
+    requestedMicrousd: 200_000,
+  });
+  assert.equal(decision.allowed, true);
+  assert.equal(decision.remainingAfterMicrousd, 0);
 });

@@ -165,7 +165,10 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
         body: JSON.stringify({ operationId: operationIdRef.current, title: title.trim().slice(0, 160), ...input }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? "No se pudo organizar el borrador con IA.");
+      if (!response.ok) throw new WriterImportRequestError(
+        typeof payload.code === "string" ? payload.code : "request_failed",
+        payload.error ?? "No se pudo organizar el borrador con IA.",
+      );
       setStage("Comprobando integridad y abriendo Writer…");
       const analysis = parseAssistedImportAnalysisStatus(payload.analysisStatus);
       const identities = Number.isSafeInteger(payload.identities) && payload.identities >= 0 ? payload.identities : 0;
@@ -178,7 +181,7 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
     } catch (cause) {
       setError(controller.signal.aborted
         ? "La importación se canceló. El origen sigue aquí y no se creó un guion parcial."
-        : `${importError(cause)} Puedes conservar el origen e importar sin IA.`);
+        : assistedImportError(cause));
       setBusy(null);
       setStage(null);
     } finally {
@@ -337,4 +340,16 @@ function toggle(current: Set<string>, id: string) {
 
 function importError(cause: unknown) {
   return cause instanceof Error ? cause.message : "No se pudo analizar el borrador.";
+}
+
+export function assistedImportError(cause: unknown) {
+  const message = importError(cause).trim();
+  if (/importar(?:lo| el borrador)? sin (?:IA|asistencia)/iu.test(message)) return message;
+  return `${message} Puedes conservar el origen e importarlo sin IA.`;
+}
+
+class WriterImportRequestError extends Error {
+  constructor(public code: string, message: string) {
+    super(message);
+  }
 }

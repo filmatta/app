@@ -2,6 +2,7 @@ import {
   WRITER_ASSISTED_IMPORT_OUTPUT_SCHEMA,
   WRITER_ASSISTED_IMPORT_VERSION,
   assistedImportTransportInput,
+  buildAssistedImportBatches,
   recoveryBatch,
   type AssistedImportBatch,
   type AssistedImportModelResult,
@@ -14,6 +15,7 @@ import {
   estimateAssistedImportMaximumCostMicrousd,
   type AssistedImportModel,
 } from "./assisted-import-accounting.ts";
+import type { WriterImportStaging } from "./import.ts";
 
 export const TERRA_MODEL = "gpt-5.6-terra" as const;
 export const SOL_MODEL = "gpt-5.6-sol" as const;
@@ -65,6 +67,15 @@ export type AssistedImportBudgetDecision = {
   remainingAfterMicrousd: number;
 };
 
+export type AssistedImportDryRun = {
+  batches: AssistedImportBatch[];
+  candidateCount: number;
+  blockCounts: Record<string, number>;
+  requestBreakdowns: AssistedImportRequestBreakdown[];
+  plan: AssistedImportPipelinePlan;
+  baseBudgetDecision: AssistedImportBudgetDecision;
+};
+
 export function assistedImportBudgetDecision(input: {
   operationBudgetMicrousd: number;
   actualCostMicrousd: number;
@@ -82,6 +93,40 @@ export function assistedImportBudgetDecision(input: {
     requestedMicrousd,
     remainingBeforeMicrousd,
     remainingAfterMicrousd: allowed ? remainingBeforeMicrousd - requestedMicrousd : remainingBeforeMicrousd,
+  };
+}
+
+/**
+ * Side-effect-free preflight used by the real execution path and diagnostic
+ * tests. It does not touch the database, reserve budget, consume quota or call
+ * a provider; all values come from the exact batches and payload planner that
+ * execution will use.
+ */
+export function dryRunAssistedImport(
+  staging: WriterImportStaging,
+  operationBudgetMicrousd: number,
+): AssistedImportDryRun {
+  const batches = buildAssistedImportBatches(staging);
+  const plan = estimateAssistedImportPipelinePlan(batches);
+  const blockCounts = staging.blocks.reduce<Record<string, number>>((counts, block) => {
+    const key = block.proposedKind ?? "unresolved";
+    counts[key] = (counts[key] ?? 0) + 1;
+    return counts;
+  }, {});
+  return {
+    batches,
+    candidateCount: batches.reduce((total, batch) => total + batch.candidates.length, 0),
+    blockCounts,
+    requestBreakdowns: batches
+      .filter((batch) => batch.candidates.length > 0)
+      .map((batch) => assistedImportRequestBreakdown(batch, "terra", [])),
+    plan,
+    baseBudgetDecision: assistedImportBudgetDecision({
+      operationBudgetMicrousd,
+      actualCostMicrousd: 0,
+      reservedCostMicrousd: 0,
+      requestedMicrousd: plan.base.costMicrousd,
+    }),
   };
 }
 

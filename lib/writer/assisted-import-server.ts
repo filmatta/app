@@ -30,7 +30,6 @@ import {
   WRITER_ASSISTED_IMPORT_OUTPUT_SCHEMA,
   WRITER_ASSISTED_IMPORT_VERSION,
   assertAssistedImportPreservation,
-  buildAssistedImportBatches,
   planAssistedImportRecovery,
   prepareAssistedImportStaging,
   reconcileAssistedImport,
@@ -47,10 +46,9 @@ import {
   TERRA_MODEL,
   WRITER_ASSISTED_IMPORT_SOL_INSTRUCTIONS,
   WRITER_ASSISTED_IMPORT_TERRA_INSTRUCTIONS,
-  assistedImportBudgetDecision,
   assistedImportProviderInput,
   assistedImportRequestBreakdown,
-  estimateAssistedImportPipelinePlan,
+  dryRunAssistedImport,
   type AssistedImportStage,
 } from "./assisted-import-plan";
 import type { WriterImportFormat } from "./import";
@@ -168,17 +166,13 @@ export async function executeAssistedImport(
     throw new AssistedImportError("too_many_tokens", "El borrador supera el límite de 80,000 tokens de origen.", 413);
   }
 
-  const batches = buildAssistedImportBatches(staging);
-  const pipelinePlan = estimateAssistedImportPipelinePlan(batches);
+  const preflight = dryRunAssistedImport(staging, WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD);
+  const batches = preflight.batches;
+  const pipelinePlan = preflight.plan;
   const basePlanCost = pipelinePlan.base.costMicrousd;
-  const baseBudgetDecision = assistedImportBudgetDecision({
-    operationBudgetMicrousd: WRITER_ASSISTED_IMPORT_MAX_AUTHORIZED_COST_MICRO_USD,
-    actualCostMicrousd: 0,
-    reservedCostMicrousd: 0,
-    requestedMicrousd: basePlanCost,
-  });
+  const baseBudgetDecision = preflight.baseBudgetDecision;
   if (basePlanCost > 0 && !baseBudgetDecision.allowed) {
-    throw new AssistedImportError("budget_plan", "La etapa asistida inicial supera el límite de uso. Puedes importar el borrador sin IA.", 409);
+    throw new AssistedImportError("budget_plan", "Este borrador supera la capacidad de la importación asistida. Puedes conservar el origen e importarlo sin IA.", 409);
   }
   const db = dependencies.db ?? createAdminClient();
   const sourceHash = sha256(request.sourceText);
@@ -191,27 +185,21 @@ export async function executeAssistedImport(
     reasoning: { terra: "none", sol: "low" },
     basePlanCost,
   }));
-  let reserved: Record<string, unknown>;
-  try {
-    reserved = await rpcJson(db, "writer_reserve_assisted_import", {
-      p_user_id: userId,
-      p_operation_id: request.operationId,
-      p_source_hash: sourceHash,
-      p_options_hash: optionsHash,
-      p_source_format: request.format,
-      p_title: cleanTitle,
-      p_source_words: staging.source.words,
-      p_source_tokens: sourceTokens,
-      p_source_bytes: sourceBytes,
-      p_model: PIPELINE_MODEL,
-      p_maximum_plan_cost_microusd: Math.max(1, basePlanCost),
-    });
-  } catch (cause) {
-    if (cause instanceof AssistedImportError && (cause.code === "budget" || cause.code === "call_limit")) {
-      throw new AssistedImportError("budget_plan", "La etapa asistida inicial supera el límite de uso. Puedes importar el borrador sin IA.", 409);
-    }
-    throw cause;
-  }
+  // Preserve the RPC's real policy code. A call, account or global limit is
+  // not evidence that the source itself is too large for the planned base.
+  const reserved = await rpcJson(db, "writer_reserve_assisted_import", {
+    p_user_id: userId,
+    p_operation_id: request.operationId,
+    p_source_hash: sourceHash,
+    p_options_hash: optionsHash,
+    p_source_format: request.format,
+    p_title: cleanTitle,
+    p_source_words: staging.source.words,
+    p_source_tokens: sourceTokens,
+    p_source_bytes: sourceBytes,
+    p_model: PIPELINE_MODEL,
+    p_maximum_plan_cost_microusd: Math.max(1, basePlanCost),
+  });
   const operationBudget = positiveInteger(reserved.operation_budget_microusd);
   if (operationBudget < WRITER_ASSISTED_IMPORT_MAX_COST_MICRO_USD || basePlanCost > operationBudget) {
     throw new AssistedImportError("budget_plan", "Esta operación no tiene presupuesto suficiente para la etapa asistida inicial.", 409);
