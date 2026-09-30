@@ -37,8 +37,9 @@ const FORMAT_LABELS: Record<ScreenplayKind, { plural: string; singular: string; 
 
 export default function WriterObservationsPanel({
   observations, knownIdentities, decisions, storagePersistent, importedAnalysisPersistent,
-  formatObservations, sceneCount, selectedBlockId, hidden, onClose, onConfirm, onLink, onIgnore,
-  onRestore, onAddManual, onView, onViewFormat, onChangeFormat,
+  formatObservations, reviewedFormatIds, activeFormatObservationId, showHighlights, formatReviewPersistent,
+  sceneCount, selectedBlockId, hidden, onClose, onConfirm, onLink, onIgnore,
+  onRestore, onAddManual, onView, onViewFormat, onReviewFormat, onChangeFormat, onToggleHighlights,
 }: {
   observations: WriterCharacterObservation[];
   knownIdentities: WriterKnownCharacterIdentity[];
@@ -46,6 +47,10 @@ export default function WriterObservationsPanel({
   storagePersistent: boolean;
   importedAnalysisPersistent: boolean;
   formatObservations: WriterFormatObservation[];
+  reviewedFormatIds: ReadonlySet<string>;
+  activeFormatObservationId: string | null;
+  showHighlights: boolean;
+  formatReviewPersistent: boolean;
   sceneCount: number;
   selectedBlockId: string | null;
   hidden: boolean;
@@ -57,7 +62,9 @@ export default function WriterObservationsPanel({
   onAddManual: (name: string) => void;
   onView: (observation: WriterCharacterObservation) => void;
   onViewFormat: (observation: WriterFormatObservation) => void;
+  onReviewFormat: (observation: WriterFormatObservation) => void;
   onChangeFormat: (observation: WriterFormatObservation, kind: ScreenplayKind) => void;
+  onToggleHighlights: (visible: boolean) => void;
 }) {
   const [confirming, setConfirming] = useState<WriterCharacterObservation | null>(null);
   const [confirmName, setConfirmName] = useState("");
@@ -66,7 +73,6 @@ export default function WriterObservationsPanel({
   const [manualName, setManualName] = useState("");
   const [activeKind, setActiveKind] = useState<ScreenplayKind | null>(null);
   const [indexByKind, setIndexByKind] = useState<Partial<Record<ScreenplayKind, number>>>({});
-  const [reviewedFormatIds, setReviewedFormatIds] = useState<Set<string>>(() => new Set());
   const decisionByFingerprint = useMemo(
     () => new Map(decisions.decisions.map((decision) => [decision.fingerprint, decision])),
     [decisions.decisions],
@@ -98,9 +104,17 @@ export default function WriterObservationsPanel({
     () => groupWriterFormatObservations(formatObservations, reviewedFormatIds),
     [formatObservations, reviewedFormatIds],
   );
-  const activeGroup = formatGroups.find((group) => group.kind === activeKind) ?? null;
+  const requestedActiveGroup = activeFormatObservationId
+    ? formatGroups.find((group) => group.observations.some((item) => item.id === activeFormatObservationId)) ?? null
+    : null;
+  const activeGroup = requestedActiveGroup ?? formatGroups.find((group) => group.kind === activeKind) ?? null;
   const activeIndex = activeGroup
-    ? Math.min(indexByKind[activeGroup.kind] ?? 0, activeGroup.observations.length - 1)
+    ? Math.min(
+      requestedActiveGroup
+        ? Math.max(0, requestedActiveGroup.observations.findIndex((item) => item.id === activeFormatObservationId))
+        : indexByKind[activeGroup.kind] ?? 0,
+      activeGroup.observations.length - 1,
+    )
     : 0;
   const activeFormat = activeGroup?.observations[activeIndex] ?? null;
 
@@ -121,7 +135,14 @@ export default function WriterObservationsPanel({
 
   function markFormatCorrect() {
     if (!activeFormat) return;
-    setReviewedFormatIds((current) => new Set(current).add(activeFormat.id));
+    onReviewFormat(activeFormat);
+    if (!activeGroup) return;
+    const nextIndex = activeGroup.observations.findIndex((item, index) => index > activeIndex && !reviewedFormatIds.has(item.id));
+    const fallbackIndex = activeGroup.observations.findIndex((item, index) => index < activeIndex && !reviewedFormatIds.has(item.id));
+    const targetIndex = nextIndex >= 0 ? nextIndex : fallbackIndex;
+    if (targetIndex < 0) return;
+    setIndexByKind((current) => ({ ...current, [activeGroup.kind]: targetIndex }));
+    onViewFormat(activeGroup.observations[targetIndex]);
   }
 
   return (
@@ -147,6 +168,11 @@ export default function WriterObservationsPanel({
             ? "Las decisiones manuales se guardan en este navegador y no modifican el texto hasta que eliges un cambio."
             : "El almacenamiento local no está disponible. Las decisiones sólo durarán durante esta sesión."}
         </p>
+
+        {formatObservations.length > 0 && <label className="writer-observations-highlight-toggle">
+          <input type="checkbox" checked={showHighlights} onChange={(event) => onToggleHighlights(event.target.checked)} />
+          <span><strong>Mostrar ajustes en documento</strong><small>{formatReviewPersistent ? "Los revisados no reaparecen al recargar en este navegador." : "La revisión durará sólo durante esta sesión."}</small></span>
+        </label>}
 
         {formatGroups.length > 0 && (
           <section aria-labelledby="writer-observations-format-heading">
@@ -182,7 +208,7 @@ export default function WriterObservationsPanel({
                   <label>Cambiar a<select value={activeFormat.kind} onChange={(event) => {
                     const kind = event.target.value as ScreenplayKind;
                     if (kind === activeFormat.kind) return;
-                    markFormatCorrect();
+                    onReviewFormat(activeFormat);
                     onChangeFormat(activeFormat, kind);
                   }}>{SCREENPLAY_KINDS.map((kind) => <option key={kind} value={kind}>{FORMAT_LABELS[kind].singular}</option>)}</select></label>
                 </div>

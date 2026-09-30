@@ -69,7 +69,7 @@ test("automatic reconciliation preserves every source block and separates identi
       classification(byText.get("MISTERIO")!.id, "action", true),
     ],
     evidence: [
-      evidence(byText.get("Una niña aparece en medio del bosque.")!.id, 4, 8, "NIÑA", "role", "action", "present"),
+      evidence(byText.get("Una niña aparece en medio del bosque.")!.id, 4, 8, "niña", "role", "action", "present"),
       evidence(byText.get("Carolina abre la puerta.")!.id, 0, 8, "CAROLINA", "named", "action", "present"),
       evidence(byText.get("Carolina recuerda a Esperanza.")!.id, 20, 29, "ESPERANZA", "named", "mention", "unknown"),
       evidence(byText.get("Un robot observa a Carolina.")!.id, 3, 8, "ROBOT", "role", "action", "present"),
@@ -88,8 +88,10 @@ test("automatic reconciliation preserves every source block and separates identi
   const girl = reconciled.document.content.find((block) => blockText(block).startsWith("Una niña"));
   assert.equal(girl?.attrs.kind, "action");
   assert.ok(reconciled.identities.some((identity) => identity.key.endsWith(":NIÑA")));
+  assert.equal(reconciled.identities.find((identity) => identity.key.endsWith(":NIÑA"))?.accepted, true);
   assert.ok(reconciled.identities.some((identity) => identity.key.endsWith(":ROBOT")));
   assert.ok(reconciled.identities.some((identity) => identity.key === "MATEO"));
+  assert.equal(reconciled.identities.find((identity) => identity.key === "MATEO")?.accepted, false);
   assert.equal(reconciled.identities.filter((identity) => identity.key === "CAROLINA").length, 1);
   assert.ok(reconciled.evidence.some((item) => item.identityKey === "CAROLINA" && item.relation === "intervention"));
   assert.ok(reconciled.evidence.some((item) => item.identityKey === "CAROLINA" && item.relation === "action"));
@@ -98,6 +100,13 @@ test("automatic reconciliation preserves every source block and separates identi
   assert.equal(reconciled.evidence.some((item) => item.identity === "ÉL"), false);
   assert.equal(reconciled.evidence.some((item) => item.identity === "ESPERANZA" && item.relation === "action"), false);
   assert.ok(reconciled.evidence.some((item) => item.identityKey === "MATEO" && item.presence === "absent"));
+  const persisted = parsePersistedWriterImportAnalysis({
+    analysis: reconciled,
+    decisions: [],
+    compatibleRevision: true,
+  }, reconciled.document);
+  assert.equal(persisted?.identities.some((identity) => identity.key.endsWith(":NIÑA")), true);
+  assert.equal(persisted?.identities.some((identity) => identity.name.toLocaleLowerCase("es-MX") === "esperanza"), false);
 });
 
 test("valid Terra evidence persists as a partial Writer document when optional Sol has no budget or calls", () => {
@@ -472,7 +481,7 @@ test("local anchors own ranges and discoveries require one exact Unicode-safe oc
   assert.ok(nonexistent.validationIssues.some((item) => item.code === "nonexistent_quote"));
 });
 
-test("a literal participant outside local candidates survives persisted audit without becoming recognized before confirmation", () => {
+test("a reconciled literal participant outside local candidates becomes a recognized action-only identity", () => {
   const staging = prepareAssistedImportStaging({
     format: "pasted", sourceText: "INT. TALLER - NOCHE\nR-7 cruza el taller y cierra la compuerta.", title: "Descubrimiento",
   });
@@ -506,8 +515,9 @@ test("a literal participant outside local candidates survives persisted audit wi
     compatibleRevision: true,
   }, reconciled.document);
   assert.ok(reconciled.identities.some((identity) => identity.key === "R-7"));
+  assert.equal(reconciled.identities.find((identity) => identity.key === "R-7")?.accepted, true);
   assert.ok(persisted?.observations.some((observation) => observation.identityKey === "R-7"));
-  assert.equal(persisted?.identities.some((identity) => identity.key === "R-7"), false);
+  assert.equal(persisted?.identities.some((identity) => identity.key === "R-7"), true);
 });
 
 test("candidate extraction V2 records literal anchors, signals, source hashes, and uncovered Action sentences", () => {

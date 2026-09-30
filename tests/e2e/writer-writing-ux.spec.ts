@@ -181,7 +181,10 @@ test("observations aggregate format review in one detail and desktop workspace s
     contentType: "application/json",
     body: JSON.stringify({
       analysis: {
-        identities: [{ key: "ANA", name: "ANA" }, { key: "NO", name: "NO" }],
+        identities: [
+          { key: "ANA", name: "ANA", source: "ai", accepted: true },
+          { key: "NO", name: "NO", source: "ai", accepted: false },
+        ],
         evidence: [
           { fingerprint: "ana-ok", identityKey: "ANA", identity: "ANA", blockId: "11111111-1111-4111-8111-111111111102", sceneId: "11111111-1111-4111-8111-111111111101", start: 0, end: 3, relation: "action", presence: "present", source: "ai", confidence: "medium", reason: "Participa en la acción.", blockHash: textHash(actionText) },
           { fingerprint: "no-review", identityKey: "NO", identity: "NO", blockId: "11111111-1111-4111-8111-111111111102", sceneId: "11111111-1111-4111-8111-111111111101", start: 0, end: 2, relation: "indeterminate", presence: "unknown", source: "ai", confidence: "review", reason: "Candidato sin evidencia aceptada.", blockHash: textHash(actionText) },
@@ -203,9 +206,26 @@ test("observations aggregate format review in one detail and desktop workspace s
   await expect(observations.locator(".writer-observations-known").getByText("NO", { exact: true })).toHaveCount(0);
   await expect(observations.locator(".writer-format-summary")).toHaveCount(2);
   await expect(observations.locator(".writer-format-review")).toHaveCount(0);
+  const highlights = page.locator(".writer-import-review-highlight");
+  const highlightToggle = observations.getByRole("checkbox", { name: "Mostrar ajustes en documento" });
+  await expect(highlights).toHaveCount(3);
+  await expect(highlightToggle).toBeChecked();
+  await highlightToggle.uncheck();
+  await expect(highlights).toHaveCount(0);
+  await highlightToggle.check();
+  await expect(highlights).toHaveCount(3);
 
-  await observations.locator('[data-category="dialogue"]').getByRole("button", { name: "Revisar" }).click();
+  await page.locator('[data-writer-import-review-id="format-dialogue"]').click();
   await expect(observations.locator(".writer-format-review")).toContainText("Diálogos · 1 de 1");
+  await expect(page.locator('[data-writer-import-review-id="format-dialogue"]')).toHaveClass(/is-active/);
+  await observations.getByRole("button", { name: "Correcto" }).click();
+  await expect(page.locator('[data-writer-import-review-id="format-dialogue"]')).toHaveCount(0);
+  await expect(highlights).toHaveCount(2);
+  await page.reload();
+  await expect(observations).toBeVisible();
+  await expect(highlights).toHaveCount(2);
+  await expect(page.locator('[data-writer-import-review-id="format-dialogue"]')).toHaveCount(0);
+
   await observations.locator('[data-category="action"]').getByRole("button", { name: "Revisar" }).click();
   await expect(observations.locator(".writer-format-review")).toContainText("Acciones · 1 de 2");
   await expect(observations.locator(".writer-format-review")).toHaveCount(1);
@@ -217,8 +237,11 @@ test("observations aggregate format review in one detail and desktop workspace s
   await observations.getByRole("button", { name: "← Anterior" }).click();
   await observations.locator(".writer-format-review select").selectOption("transition");
   await expect(page.getByLabel("Editor de guion").locator('p[data-block-id$="02"]')).toHaveAttribute("data-screenplay-kind", "transition");
+  await expect(page.locator('[data-writer-import-review-id="format-action"]')).toHaveCount(0);
   await page.getByRole("button", { name: "Deshacer" }).click();
   await expect(page.getByLabel("Editor de guion").locator('p[data-block-id$="02"]')).toHaveAttribute("data-screenplay-kind", "action");
+  await expect(page.locator('[data-writer-import-review-id="format-action"]')).toHaveCount(0);
+  await expect(highlights).toHaveCount(1);
 
   const timeline = page.locator(".writer-timeline-panel");
   await expect(timeline).toBeVisible();
@@ -231,11 +254,32 @@ test("observations aggregate format review in one detail and desktop workspace s
 
   await page.getByRole("button", { name: "Focus" }).click();
   await expect(observations).toBeHidden();
+  await expect(highlights).toHaveCount(0);
   await expect(timeline).toBeHidden();
   await expect(page.locator(".writer-sidebar")).toBeHidden();
   await page.getByRole("button", { name: "Salir de Focus" }).click();
   await expect(observations).toBeVisible();
   await expect(timeline).toBeVisible();
+  await expect(highlights).toHaveCount(1);
+
+  const remainingBlock = page.getByLabel("Editor de guion").locator('p[data-block-id$="09"]');
+  await remainingBlock.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" CAMBIO");
+  await expect(highlights).toHaveCount(0);
+  await page.getByRole("button", { name: "Deshacer" }).click();
+  await expect(highlights).toHaveCount(1);
+  await remainingBlock.evaluate((element) => {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  });
+  await page.keyboard.press("Backspace");
+  await expect(highlights).toHaveCount(0);
+  await page.getByRole("button", { name: "Deshacer" }).click();
+  await expect(highlights).toHaveCount(1);
 
   await page.setViewportSize({ width: 1024, height: 900 });
   await expect(observations).toBeVisible();

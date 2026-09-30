@@ -35,6 +35,7 @@ import { loadLocalWriterDrafts } from "@/lib/writer/storage";
 import { startWriterTabLease, type WriterTabLease } from "@/lib/writer/tab-lease";
 import {
   ScreenplayBlockExtension,
+  setWriterImportReviewDecorations,
   setWriterObservationMarkers,
   setWriterSceneHighlight,
 } from "@/lib/writer/tiptap";
@@ -89,9 +90,15 @@ import {
 } from "@/lib/writer/character-observation-storage";
 import {
   parsePersistedWriterImportAnalysis,
+  writerFormatObservationState,
   type PersistedWriterImportAnalysis,
   type WriterFormatObservation,
 } from "@/lib/writer/import-analysis";
+import {
+  emptyWriterImportReviewState,
+  loadWriterImportReviewState,
+  saveWriterImportReviewState,
+} from "@/lib/writer/import-review-storage";
 import { deriveAcceptedCharacterActivity } from "@/lib/writer/writing-ux";
 
 type ScriptInput = {
@@ -146,6 +153,10 @@ export default function WriterWorkspace({
   const [persistedImportAnalysis, setPersistedImportAnalysis] = useState<PersistedWriterImportAnalysis | null>(null);
   const [characterDecisions, setCharacterDecisions] = useState<WriterCharacterDecisionState>(() => emptyWriterCharacterDecisionState());
   const [characterStoragePersistent, setCharacterStoragePersistent] = useState(true);
+  const [reviewedFormatIds, setReviewedFormatIds] = useState<Set<string>>(() => new Set());
+  const [formatReviewStoragePersistent, setFormatReviewStoragePersistent] = useState(true);
+  const [showImportReviewHighlights, setShowImportReviewHighlights] = useState(true);
+  const [activeFormatObservationId, setActiveFormatObservationId] = useState<string | null>(null);
   const [analysisEpoch, setAnalysisEpoch] = useState(0);
   const [contextMenu, setContextMenu] = useState<WriterContextMenuState | null>(null);
   const [insertState, setInsertState] = useState<WriterInsertState | null>(null);
@@ -184,6 +195,15 @@ export default function WriterWorkspace({
   const composingRef = useRef(false);
   const observationsButtonRef = useRef<HTMLButtonElement>(null);
   const mobileObservationsButtonRef = useRef<HTMLButtonElement>(null);
+  const formatObservationsRef = useRef<WriterFormatObservation[]>([]);
+  const reviewedFormatIdsRef = useRef<ReadonlySet<string>>(new Set());
+  const importReviewDecorationItemsRef = useRef<Array<{
+    id: string;
+    blockId: string;
+    category: ScreenplayKind;
+    state: "classification" | "question";
+    active: boolean;
+  }>>([]);
   const sessionIdRef = useRef(crypto.randomUUID());
   const openContextMenu = useCallback((next: WriterContextMenuState) => {
     autocompleteRef.current = null;
@@ -485,7 +505,32 @@ export default function WriterWorkspace({
     () => combinedCharacterObservations.filter((observation) => !observation.known && !activeDecisionFingerprints.has(observation.fingerprint)),
     [activeDecisionFingerprints, combinedCharacterObservations],
   );
-  const pendingObservationCount = pendingCharacterObservations.length + formatObservations.length;
+  const pendingFormatObservations = useMemo(
+    () => formatObservations.filter((observation) => !reviewedFormatIds.has(observation.id)),
+    [formatObservations, reviewedFormatIds],
+  );
+  const importReviewDecorationItems = useMemo(() => {
+    const byBlockId = new Map<string, (typeof importReviewDecorationItemsRef.current)[number]>();
+    for (const observation of pendingFormatObservations) {
+      const item = {
+        id: observation.id,
+        blockId: observation.blockId,
+        category: observation.kind,
+        state: writerFormatObservationState(observation) === "question" ? "question" as const : "classification" as const,
+        active: observation.id === activeFormatObservationId,
+      };
+      const current = byBlockId.get(observation.blockId);
+      if (!current || item.active) byBlockId.set(observation.blockId, item);
+    }
+    return [...byBlockId.values()];
+  }, [activeFormatObservationId, pendingFormatObservations]);
+  const importReviewDecorationSignature = importReviewDecorationItems
+    .map((item) => `${item.id}:${item.blockId}:${item.category}:${item.state}:${item.active ? 1 : 0}`)
+    .join("|");
+  formatObservationsRef.current = formatObservations;
+  reviewedFormatIdsRef.current = reviewedFormatIds;
+  importReviewDecorationItemsRef.current = importReviewDecorationItems;
+  const pendingObservationCount = pendingCharacterObservations.length + pendingFormatObservations.length;
 
   useEffect(() => {
     characterAnalysisCacheRef.current = new Map();
@@ -500,6 +545,20 @@ export default function WriterWorkspace({
         characterDecisionsRef.current = empty;
         setCharacterDecisions(empty);
         setCharacterStoragePersistent(false);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [script.id, userId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const loaded = loadWriterImportReviewState(location.origin, userId, script.id);
+        setReviewedFormatIds(new Set(loaded.reviewedFormatIds));
+        setFormatReviewStoragePersistent(true);
+      } catch {
+        setReviewedFormatIds(new Set(emptyWriterImportReviewState().reviewedFormatIds));
+        setFormatReviewStoragePersistent(false);
       }
     }, 0);
     return () => window.clearTimeout(timer);
@@ -600,11 +659,44 @@ export default function WriterWorkspace({
       if (!editor.isDestroyed) setWriterObservationMarkers(editor, new Map(), () => undefined);
     };
   }, [editor, focusMode, pendingCharacterObservations]);
+
   const clearSceneHighlight = useCallback(() => {
     if (highlightTimeoutRef.current !== null) window.clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = null;
     if (editor && !editor.isDestroyed) setWriterSceneHighlight(editor, null);
   }, [editor]);
+  const openFormatObservation = useCallback((observation: WriterFormatObservation) => {
+    if (!editor) return;
+    const target = findWriterBlockById(editor, observation.blockId);
+    if (!target || writerObservationTextHash(target.text) !== observation.blockHash) {
+      setFeedback("Este fragmento cambió y la observación de importación quedó desactualizada.");
+      return;
+    }
+    setActiveFormatObservationId(observation.id);
+    setSelectedObservationBlockId(observation.blockId);
+    setObservationsOpen(true);
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, target.position + 1)).scrollIntoView());
+    editor.view.focus();
+    setActiveScene(findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId));
+    clearSceneHighlight();
+    setWriterSceneHighlight(editor, observation.blockId);
+    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
+  }, [clearSceneHighlight, editor]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !ready || focusMode || !showImportReviewHighlights) {
+      if (editor && !editor.isDestroyed) setWriterImportReviewDecorations(editor, [], () => undefined);
+      return;
+    }
+    setWriterImportReviewDecorations(editor, importReviewDecorationItemsRef.current, (id) => {
+      const observation = formatObservationsRef.current.find((candidate) => candidate.id === id);
+      if (!observation || reviewedFormatIdsRef.current.has(id)) return;
+      openFormatObservation(observation);
+    });
+    return () => {
+      if (!editor.isDestroyed) setWriterImportReviewDecorations(editor, [], () => undefined);
+    };
+  }, [editor, focusMode, importReviewDecorationSignature, openFormatObservation, ready, showImportReviewHighlights]);
   const navigateToScene = useCallback((id: string, requireSceneHeading = false, highlight = false) => {
     if (!editor) return false;
     const target = findWriterBlockById(editor, id);
@@ -1062,17 +1154,24 @@ export default function WriterWorkspace({
   }
 
   function viewFormatObservation(observation: WriterFormatObservation) {
-    if (!editor) return;
-    const target = findWriterBlockById(editor, observation.blockId);
-    if (!target || writerObservationTextHash(target.text) !== observation.blockHash) {
-      setFeedback("Este fragmento cambió y la observación de importación quedó desactualizada.");
-      return;
-    }
-    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, target.position + 1)).scrollIntoView());
-    editor.view.focus();
-    setActiveScene(findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId));
-    setWriterSceneHighlight(editor, observation.blockId);
-    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
+    openFormatObservation(observation);
+  }
+
+  function reviewFormatObservation(observation: WriterFormatObservation) {
+    setReviewedFormatIds((current) => {
+      if (current.has(observation.id)) return current;
+      const next = new Set(current).add(observation.id);
+      try {
+        saveWriterImportReviewState(location.origin, userId, script.id, {
+          version: 1,
+          reviewedFormatIds: [...next],
+        });
+        setFormatReviewStoragePersistent(true);
+      } catch {
+        setFormatReviewStoragePersistent(false);
+      }
+      return next;
+    });
   }
 
   function changeFormatObservation(observation: WriterFormatObservation, kind: ScreenplayKind) {
@@ -1442,6 +1541,10 @@ export default function WriterWorkspace({
         storagePersistent={characterStoragePersistent}
         importedAnalysisPersistent={Boolean(persistedImportAnalysis)}
         formatObservations={formatObservations}
+        reviewedFormatIds={reviewedFormatIds}
+        activeFormatObservationId={activeFormatObservationId}
+        showHighlights={showImportReviewHighlights}
+        formatReviewPersistent={formatReviewStoragePersistent}
         sceneCount={scenes.length}
         selectedBlockId={selectedObservationBlockId}
         onClose={() => {
@@ -1472,7 +1575,9 @@ export default function WriterWorkspace({
         onAddManual={addManualCharacter}
         onView={viewCharacterObservation}
         onViewFormat={viewFormatObservation}
+        onReviewFormat={reviewFormatObservation}
         onChangeFormat={changeFormatObservation}
+        onToggleHighlights={setShowImportReviewHighlights}
       />
 
       {["conflict", "deleted", "sessionExpired"].includes(saveState.status) && (

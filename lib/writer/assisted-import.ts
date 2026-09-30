@@ -171,6 +171,7 @@ export type WriterImportedIdentity = {
   name: string;
   source: AssistedImportSource;
   detected: true;
+  accepted?: boolean;
 };
 
 export type WriterImportedEvidence = {
@@ -807,6 +808,7 @@ export function reconcileAssistedImport(
       return canonical ? [{ blockId: canonical.attrs.id, start: decision.start, end: decision.end }] : [];
     }));
   const explicitByScene = new Map<string, Set<string>>();
+  const modelAcceptedIdentityKeys = new Set<string>();
   for (const characterBlock of document.content.filter((block) => block.attrs.kind === "character")) {
     const identity = blockText(characterBlock).trim();
     if (!identity) continue;
@@ -843,6 +845,10 @@ export function reconcileAssistedImport(
         && candidate.start === item.start && candidate.end === item.end);
       const key = overlapping?.identityKey
         ?? reconcileRuleIdentityKey(initialKey, item.label, sceneId, explicitByScene);
+      if (!item.uncertain && item.presence === "present"
+        && (item.relation === "action" || item.relation === "intervention")) {
+        modelAcceptedIdentityKeys.add(key);
+      }
       evidence.push(importedEvidence({
         identityKey: key, identity: item.label, block, sceneId, start: item.start, end: item.end,
         relation: item.relation, presence: item.presence, source: "ai",
@@ -851,11 +857,21 @@ export function reconcileAssistedImport(
     }
   }
   const uniqueEvidence = dedupeEvidence(evidence);
+  const acceptedIdentityKeys = new Set(uniqueEvidence
+    .filter((item) => item.source === "explicit"
+      || modelAcceptedIdentityKeys.has(item.identityKey))
+    .map((item) => item.identityKey));
   const identityMap = new Map<string, WriterImportedIdentity>();
   for (const item of uniqueEvidence) {
     const current = identityMap.get(item.identityKey);
     if (!current || sourcePriority(item.source) > sourcePriority(current.source)) {
-      identityMap.set(item.identityKey, { key: item.identityKey, name: item.identity, source: item.source, detected: true });
+      identityMap.set(item.identityKey, {
+        key: item.identityKey,
+        name: item.identity,
+        source: item.source,
+        detected: true,
+        accepted: acceptedIdentityKeys.has(item.identityKey),
+      });
     }
   }
   return {

@@ -154,6 +154,15 @@
 .writer-observation-marker { display: inline-grid; width: 19px; height: 19px; margin-left: 8px; place-items: center; border: 1px solid rgba(182,51,49,.52); border-radius: 50%; color: #8f2827; background: rgba(182,51,49,.08); font: 700 .63rem/1 var(--font-geist-sans); vertical-align: .1em; }
 .writer-observation-marker:hover,
 .writer-observation-marker:focus-visible { outline: 2px solid rgba(182,51,49,.28); outline-offset: 2px; background: rgba(182,51,49,.16); }
+.writer-import-review-highlight { --import-review-color: var(--observation-neutral); border-radius: 2px; background: color-mix(in srgb, var(--import-review-color) 11%, transparent); box-shadow: inset 0 -1px color-mix(in srgb, var(--import-review-color) 48%, transparent); cursor: pointer; transition: background .14s, box-shadow .14s; }
+.writer-import-review-highlight[data-writer-import-review-category="dialogue"] { --import-review-color: var(--observation-dialogue); }
+.writer-import-review-highlight[data-writer-import-review-category="character"] { --import-review-color: var(--observation-character); }
+.writer-import-review-highlight[data-writer-import-review-category="action"] { --import-review-color: var(--observation-action); }
+.writer-import-review-highlight[data-writer-import-review-category="sceneHeading"],
+.writer-import-review-highlight[data-writer-import-review-category="transition"] { --import-review-color: var(--observation-technical); }
+.writer-import-review-highlight[data-writer-import-review-category="parenthetical"] { --import-review-color: var(--observation-parenthetical); }
+.writer-import-review-highlight[data-writer-import-review-state="question"] { --import-review-color: var(--observation-question); }
+.writer-import-review-highlight.is-active { background: color-mix(in srgb, var(--import-review-color) 18%, transparent); box-shadow: inset 0 -2px color-mix(in srgb, var(--import-review-color) 72%, transparent), 0 0 0 2px color-mix(in srgb, var(--import-review-color) 9%, transparent); }
 .writer-screenplay-block.writer-scene-target-highlight { outline: 2px solid rgba(237,90,85,.82); outline-offset: 6px; background: rgba(237,90,85,.14); box-shadow: 0 0 0 8px rgba(237,90,85,.05); scroll-margin-block: 88px; }
 .writer-screenplay-block[data-screenplay-kind="sceneHeading"] { margin-top: 1.7em; font-weight: 700; text-transform: uppercase; }
 .writer-screenplay-block[data-screenplay-kind="character"] { width: 38%; margin: 1.35em 0 0 48%; text-transform: uppercase; }
@@ -177,6 +186,7 @@
 .writer-workspace--focus .writer-export-wrap { display: none; }
 .writer-workspace--focus .writer-observation-marker,
 .writer-workspace--focus .writer-observations-panel { display: none; }
+.writer-workspace--focus .writer-import-review-highlight { background: transparent; box-shadow: none; cursor: text; }
 .writer-workspace--focus .writer-header-actions { grid-column: 2; padding-inline: 12px; }
 .writer-workspace--focus .writer-toolbar,
 .writer-workspace--focus .writer-editor-feedback { display: none; }
@@ -328,6 +338,11 @@
 .writer-observations-panel > header button { padding: 8px 10px; }
 .writer-observations-scroll { min-height: 0; overflow-y: auto; padding: 18px; }
 .writer-observations-local-note { margin: 0 0 22px; padding: 12px 14px; border-left: 2px solid var(--writer-accent); color: var(--writer-muted); background: rgba(255,255,255,.025); font-size: .68rem; line-height: 1.55; }
+.writer-observations-highlight-toggle { display: flex; align-items: start; gap: 10px; margin: -8px 0 22px; padding: 10px 12px; border: 1px solid var(--writer-border); border-radius: 8px; color: #eeeae1; cursor: pointer; }
+.writer-observations-highlight-toggle input { margin: 2px 0 0; accent-color: var(--writer-accent); }
+.writer-observations-highlight-toggle span { display: grid; gap: 3px; }
+.writer-observations-highlight-toggle strong { font-size: .68rem; }
+.writer-observations-highlight-toggle small { color: var(--writer-muted); font-size: .59rem; line-height: 1.4; }
 .writer-observations-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .writer-observations-section-heading h3 { margin: 0; font-size: .72rem; letter-spacing: .13em; text-transform: uppercase; }
 .writer-observations-section-heading span { color: var(--writer-muted); font: .7rem var(--font-geist-mono); }
@@ -596,6 +611,7 @@
   .writer-workspace button:focus-visible { outline-color: Highlight; }
   .writer-format-summary::before,
   .writer-format-review::before { background: Highlight; }
+  .writer-import-review-highlight { background: transparent; box-shadow: inset 0 -2px Highlight; }
 }
 
 @media (prefers-reduced-motion: reduce) {

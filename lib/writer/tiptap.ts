@@ -18,6 +18,19 @@ const enterNext: Record<ScreenplayKind, ScreenplayKind> = {
 
 const sceneHighlightKey = new PluginKey<DecorationSet>("writerSceneHighlight");
 const observationMarkerKey = new PluginKey<DecorationSet>("writerObservationMarkers");
+type ImportReviewDecorationState = {
+  decorations: DecorationSet;
+  onOpen: (id: string) => void;
+};
+const importReviewDecorationKey = new PluginKey<ImportReviewDecorationState>("writerImportReviewDecorations");
+
+export type WriterImportReviewDecoration = {
+  id: string;
+  blockId: string;
+  category: ScreenplayKind;
+  state: "classification" | "question";
+  active: boolean;
+};
 
 function sceneHighlightDecorations(doc: ProseMirrorNode, id: string) {
   let decorations = DecorationSet.empty;
@@ -73,6 +86,38 @@ export function setWriterObservationMarkers(
     observationMarkerKey,
     DecorationSet.create(editor.state.doc, decorations),
   ));
+}
+
+export function setWriterImportReviewDecorations(
+  editor: Editor,
+  items: readonly WriterImportReviewDecoration[],
+  onOpen: (id: string) => void,
+) {
+  const byBlockId = new Map(items.map((item) => [item.blockId, item]));
+  const decorations: Decoration[] = [];
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== "screenplayBlock") return;
+    const item = byBlockId.get(String(node.attrs.id ?? ""));
+    if (!item) return;
+    const attributes = {
+      class: `writer-import-review-highlight${item.active ? " is-active" : ""}`,
+      "data-writer-import-review-id": item.id,
+      "data-writer-import-review-category": item.category,
+      "data-writer-import-review-state": item.state,
+    };
+    if (node.content.size > 0) {
+      decorations.push(Decoration.inline(position + 1, position + 1 + node.content.size, attributes, {
+        inclusiveStart: false,
+        inclusiveEnd: false,
+      }));
+    } else {
+      decorations.push(Decoration.node(position, position + node.nodeSize, attributes));
+    }
+  });
+  editor.view.dispatch(editor.state.tr.setMeta(importReviewDecorationKey, {
+    decorations: DecorationSet.create(editor.state.doc, decorations),
+    onOpen,
+  } satisfies ImportReviewDecorationState));
 }
 
 export const ScreenplayBlockExtension = Node.create({
@@ -179,6 +224,31 @@ export const ScreenplayBlockExtension = Node.create({
         },
         props: {
           decorations: (state) => observationMarkerKey.getState(state),
+        },
+      }),
+      new Plugin<ImportReviewDecorationState>({
+        key: importReviewDecorationKey,
+        state: {
+          init: () => ({ decorations: DecorationSet.empty, onOpen: () => undefined }),
+          apply(transaction, current) {
+            const next = transaction.getMeta(importReviewDecorationKey) as ImportReviewDecorationState | undefined;
+            if (next !== undefined) return next;
+            return transaction.docChanged
+              ? { ...current, decorations: current.decorations.map(transaction.mapping, transaction.doc) }
+              : current;
+          },
+        },
+        props: {
+          decorations: (state) => importReviewDecorationKey.getState(state)?.decorations,
+          handleClick: (view, _position, event) => {
+            const target = event.target instanceof Element
+              ? event.target.closest<HTMLElement>("[data-writer-import-review-id]")
+              : null;
+            const id = target?.dataset.writerImportReviewId;
+            if (!id) return false;
+            importReviewDecorationKey.getState(view.state)?.onOpen(id);
+            return true;
+          },
         },
       }),
     ];
