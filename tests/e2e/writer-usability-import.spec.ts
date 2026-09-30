@@ -248,6 +248,11 @@ MISTERIO`);
   await expect(editor).toContainText("MISTERIO");
   await expect(page.getByRole("status")).toContainText("Importación completada");
 
+  const importedMobileNotice = page.getByRole("dialog", { name: "Writer en móvil" });
+  if (await importedMobileNotice.isVisible()) {
+    await importedMobileNotice.getByRole("button", { name: "Entendido" }).click();
+  }
+
   await page.getByRole("button", { name: "Más acciones de Writer" }).click();
   await page.getByRole("dialog", { name: "Más acciones de Writer" }).getByRole("button", { name: "Exportar PDF" }).click();
   const pdfDialog = page.getByRole("dialog", { name: "Generar PDF de guion" });
