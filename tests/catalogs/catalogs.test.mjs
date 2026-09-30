@@ -16,12 +16,22 @@ test("untrusted URL filters have bounded pages, text and enums", () => {
     filters.parseCatalogFilters({ availability: "evil" }).availability,
     "",
   );
+  assert.equal(
+    filters.parseCatalogFilters({ compensation: "sponsored" }).compensation,
+    "",
+  );
+  assert.equal(
+    filters.parseCatalogFilters({ compensation: "collaboration" })
+      .compensation,
+    "collaboration",
+  );
   assert.equal(filters.escapeLike("100%_\\"), "100\\%\\_\\\\");
 });
 test("pagination preserves encoded filters without page-one clutter", () => {
   const parsed = filters.parseCatalogFilters({
     city: "México & León",
     category: "crew",
+    compensation: "paid",
   });
   const next = new URL(
     filters.catalogPageHref("/oportunidades", parsed, 2),
@@ -30,6 +40,7 @@ test("pagination preserves encoded filters without page-one clutter", () => {
   assert.equal(next.searchParams.get("city"), "México & León");
   assert.equal(next.searchParams.get("page"), "2");
   assert.equal(next.searchParams.get("category"), "crew");
+  assert.equal(next.searchParams.get("compensation"), "paid");
   assert.equal(
     filters.catalogPageHref("/perfiles", filters.parseCatalogFilters({}), 1),
     "/perfiles",
@@ -84,7 +95,7 @@ test("location filters and stable pagination use the explicit public projection"
   assert.equal(call[2].p_offset, 24);
   assert.equal(call[2].p_limit, 25);
 });
-test("opportunity pagination includes independent listings and applies its own publication filter", async () => {
+test("opportunity search sends only bounded public filters to the catalog RPC", async () => {
   const f = clientFixture();
   const mod = load("lib/opportunities/public.ts", {
     react: { cache: (fn) => fn },
@@ -92,18 +103,37 @@ test("opportunity pagination includes independent listings and applies its own p
     "@/lib/supabase/server": { createClient: async () => f.client },
   });
   await mod.getPublishedOpportunities(
-    filters.parseCatalogFilters({ category: "crew", workMode: "remote" }),
+    filters.parseCatalogFilters({
+      q: "directora de foto",
+      category: "crew",
+      city: "Guadalajara",
+      compensation: "paid",
+      workMode: "remote",
+    }),
   );
-  assert.ok(!f.calls.find((c) => c[0] === "select")[1].includes("projects!inner"));
-  assert.ok(
-    f.calls.findIndex((c) => c[0] === "eq" && c[1] === "status" && c[2] === "published") <
-      f.calls.findIndex((c) => c[0] === "range"),
+  const call = f.calls.find((c) => c[0] === "rpc");
+  assert.equal(call[1], "list_public_opportunities");
+  assert.deepEqual(
+    {
+      q: call[2].p_q,
+      category: call[2].p_category,
+      city: call[2].p_city,
+      compensation: call[2].p_compensation,
+      workMode: call[2].p_work_mode,
+      offset: call[2].p_offset,
+      limit: call[2].p_limit,
+    },
+    {
+      q: "directora de foto",
+      category: "crew",
+      city: "Guadalajara",
+      compensation: "paid",
+      workMode: "remote",
+      offset: 0,
+      limit: 25,
+    },
   );
-  assert.ok(
-    f.calls.some(
-      (c) => c[0] === "eq" && c[1] === "category" && c[2] === "crew",
-    ),
-  );
+  assert.equal(Object.hasOwn(call[2], "owner_id"), false);
 });
 test("missing schema is distinguished from network failure and empty catalog", async () => {
   for (const [error, kind] of [
@@ -183,19 +213,14 @@ test("Jobs filters keep paid subset, currency semantics and pagination on Opport
     }),
     true,
   );
-  for (const expected of [
-    ["from", "opportunities"],
-    ["eq", "opportunity_type", "job"],
-    ["eq", "compensation_type", "paid"],
-    ["eq", "compensation_currency", "MXN"],
-    ["gte", "compensation_min", 1500],
-    ["gte", "application_deadline", "2030-01-01T00:00:00Z"],
-    ["range", 24, 48],
-  ])
-    assert.ok(
-      f.calls.some((c) => JSON.stringify(c) === JSON.stringify(expected)),
-      JSON.stringify(expected),
-    );
+  const call = f.calls.find((c) => c[0] === "rpc");
+  assert.equal(call[1], "list_public_opportunities");
+  assert.equal(call[2].p_jobs_only, true);
+  assert.equal(call[2].p_currency, "MXN");
+  assert.equal(call[2].p_budget_min, 1500);
+  assert.equal(call[2].p_deadline_from, "2030-01-01");
+  assert.equal(call[2].p_offset, 24);
+  assert.equal(call[2].p_limit, 25);
   assert.equal(
     filters.parseCatalogFilters({
       deadlineFrom: "2030-02-30",
@@ -214,5 +239,6 @@ test("Jobs filters keep paid subset, currency semantics and pagination on Opport
     filters.parseCatalogFilters({ budgetMin: "1500" }),
     true,
   );
-  assert.ok(!f2.calls.some((c) => c[0] === "gte"));
+  const call2 = f2.calls.find((c) => c[0] === "rpc");
+  assert.equal(call2[2].p_budget_min, null);
 });

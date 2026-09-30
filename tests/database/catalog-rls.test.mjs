@@ -42,6 +42,7 @@ before(async () => {
     "20260916030000_services_directory.sql",
     "20260916040000_jobs_specialization.sql",
     "20260928010000_locations_beta_v1.sql",
+    "20260930020000_opportunities_search_v1.sql",
   ]) {
     await db.exec(fs.readFileSync(`supabase/migrations/${file}`, "utf8"));
   }
@@ -208,6 +209,43 @@ test("opportunities require a published project and retain compound ownership", 
   ]);
   await as("anon");
   assert.equal((await db.query("select * from opportunities")).rows.length, 1);
+});
+
+test("Opportunities Search returns only active public rows with safe fields and combined filters", async () => {
+  await as("authenticated", owner);
+  const projectId = (
+    await db.query("select id from projects where slug='test-project'")
+  ).rows[0].id;
+  await db.query(
+    `insert into opportunities(
+      owner_id,project_id,title,slug,summary,description,category,discipline,
+      city,work_mode,compensation_type,compensation_min,compensation_currency,
+      application_deadline,status
+    ) values
+      ($1,$2,'Directora de fotografía','directora-foto','Videoclip independiente','Buscamos dirección de foto para un videoclip musical.','crew','Dirección de fotografía','Guadalajara','hybrid','paid',2000,'MXN','2099-01-01','published'),
+      ($1,$2,'Directora borrador','directora-draft',null,'Este borrador nunca debe aparecer.','crew','Dirección de fotografía','Guadalajara','hybrid','paid',2000,'MXN','2099-01-01','draft'),
+      ($1,$2,'Casting vencido','casting-expired',null,'Una convocatoria ya vencida.','casting','Actuación','Guadalajara','on_site','unpaid',null,null,'2020-01-01','published')`,
+    [owner, projectId],
+  );
+
+  await as("anon");
+  const { rows } = await db.query(
+    "select * from list_public_opportunities('director de foto','crew','guadalajara','paid','hybrid',0,25,false,null,null,null)",
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].slug, "directora-foto");
+  assert.equal(rows[0].project_title, "Proyecto");
+  assert.ok(!Object.hasOwn(rows[0], "owner_id"));
+  assert.ok(!Object.hasOwn(rows[0], "project_id"));
+  assert.ok(!Object.hasOwn(rows[0], "email"));
+  assert.equal(
+    (
+      await db.query(
+        "select * from list_public_opportunities('casting',null,null,null,null,0,25,false,null,null,null)",
+      )
+    ).rows.length,
+    0,
+  );
 });
 test("public profile pagination is bounded, stable and does not duplicate boundary rows", async () => {
   await as("postgres");

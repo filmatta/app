@@ -6,6 +6,7 @@ export type CatalogFilters = {
   city: string;
   skill: string;
   category: string;
+  compensation: string;
   discipline: string;
   availability: string;
   environment: string;
@@ -34,6 +35,11 @@ export function parseCatalogFilters(params: SearchParams): CatalogFilters {
     city: text("city"),
     skill: text("skill"),
     category: text("category"),
+    compensation: choice("compensation", [
+      "paid",
+      "collaboration",
+      "unspecified",
+    ]),
     discipline: text("discipline"),
     availability: choice("availability", [
       "available",

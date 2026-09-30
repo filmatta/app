@@ -217,6 +217,23 @@ http
         return res.end(
           JSON.stringify(body.p_slug === profile.slug ? [profile] : []),
         );
+      if (url.pathname.endsWith("list_public_opportunities"))
+        return res.end(
+          JSON.stringify(
+            body.p_q === "sin-resultados" ||
+              body.p_city === "Sin resultados"
+              ? []
+              : [
+                  {
+                    ...opportunity,
+                    project_title: project.title,
+                    project_slug: project.slug,
+                    description_excerpt: opportunity.description,
+                    application_deadline: null,
+                  },
+                ],
+          ),
+        );
       if (url.searchParams.get("slug") === "eq.draft-only")
         return res.end("[]");
       if (url.pathname === "/rest/v1/locations")
