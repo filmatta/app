@@ -106,7 +106,7 @@ X y “Ahora no”. El CTA sólo navega a `/planes`.
 
 ## Rollout
 
-1. Aplicar `20260930010000_entitlements_foundation_v1.sql` en Preview/Staging.
+1. Aplicar `20260930050000_entitlements_foundation_v1.sql` en Preview/Staging.
 2. Validar los cinco estados desde `/admin/planes`.
 3. Verificar RLS y `get_my_entitlement_context()` con cuentas autenticadas y una
    sesión anónima.

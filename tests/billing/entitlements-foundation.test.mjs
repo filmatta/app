@@ -6,7 +6,7 @@ import load from './load.mjs';
 const resolver = load('lib/entitlements/resolver.ts');
 const catalog = load('lib/entitlements/catalog.ts');
 const migration = fs.readFileSync(
-  'supabase/migrations/20260930010000_entitlements_foundation_v1.sql',
+  'supabase/migrations/20260930050000_entitlements_foundation_v1.sql',
   'utf8'
 );
 const planBadge = fs.readFileSync('components/entitlements/PlanBadge.tsx', 'utf8');
