@@ -29,6 +29,9 @@ const styles = StyleSheet.create({
     fontSize: WRITER_PDF_FONT_SIZE,
     lineHeight: 1.2,
   },
+  lineBox: {
+    minHeight: WRITER_PDF_LINE_HEIGHT,
+  },
   sceneHeading: {
     fontFamily: "FilmattaCousine",
     fontWeight: 700,
@@ -98,26 +101,35 @@ export function createWriterPdfDocument(
       const marginTop = Math.max(0, item.y - previousBottom);
       previousBottom = item.y + WRITER_PDF_LINE_HEIGHT;
       return React.createElement(
-        Text,
+        View,
         {
           key: `${item.sourceBlockId ?? item.generated}-${item.y}-${index}`,
           style: [
-            styles.line,
-            ...(item.kind === "sceneHeading" ? [styles.sceneHeading] : []),
+            styles.lineBox,
             {
               marginTop,
               marginLeft: item.x - layout.paper.marginLeft,
               width: item.width,
-              textAlign: item.align,
             },
           ],
           wrap: false,
         },
-        ...item.runs.map((run, runIndex) => React.createElement(
+        React.createElement(
           Text,
-          { key: runIndex, style: runStyle(run, item.kind === "sceneHeading") },
-          run.text,
-        )),
+          {
+            style: [
+              styles.line,
+              ...(item.kind === "sceneHeading" ? [styles.sceneHeading] : []),
+              { textAlign: item.align },
+            ],
+            wrap: false,
+          },
+          ...item.runs.map((run, runIndex) => React.createElement(
+            Text,
+            { key: runIndex, style: runStyle(run, item.kind === "sceneHeading") },
+            run.text,
+          )),
+        ),
       );
     });
     pages.push(React.createElement(

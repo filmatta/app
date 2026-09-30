@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createBlock, type WriterSnapshot } from "../../lib/writer/document.ts";
 import {
@@ -103,4 +104,50 @@ test("moves a scene heading away from the final two lines of a page", () => {
     .find(({ item }) => item.sourceBlockId === following.attrs.id);
   assert.ok(headingItem && followingItem);
   assert.equal(headingItem.page, followingItem.page);
+});
+
+test("screenplay spacing groups dialogue without adding source blocks or changing content", () => {
+  const blocks = [
+    createBlock("sceneHeading", "INT. SALA — DÍA"),
+    createBlock("action", "ANA entra."),
+    createBlock("character", "ANA"),
+    createBlock("dialogue", "Hola."),
+    createBlock("character", "BRUNO"),
+    createBlock("parenthetical", "(bajo)"),
+    createBlock("dialogue", "Te esperaba."),
+    createBlock("action", "Ambos se miran."),
+    createBlock("transition", "CORTE A:"),
+  ];
+  const source = snapshotWith(...blocks);
+  const before = JSON.stringify(source.document);
+  const layout = layoutWriterPdf(source, { ...defaultWriterPdfOptions(source.title), includeCover: false });
+  const items = layout.pages.flatMap((page) => page.items);
+  const firstById = new Map(items.filter((item) => item.sourceBlockId).map((item) => [item.sourceBlockId!, item]));
+
+  assert.equal(JSON.stringify(source.document), before);
+  assert.deepEqual(layout.sourceBlockIds, blocks.map((block) => block.attrs.id));
+  assert.equal(layout.pages.length, 1);
+  assert.ok(firstById.get(blocks[2].attrs.id)!.y - firstById.get(blocks[1].attrs.id)!.y >= WRITER_PDF_LINE_HEIGHT * 2);
+  assert.ok(Math.abs(firstById.get(blocks[3].attrs.id)!.y - firstById.get(blocks[2].attrs.id)!.y - WRITER_PDF_LINE_HEIGHT) < 0.001);
+  assert.ok(firstById.get(blocks[4].attrs.id)!.y - firstById.get(blocks[3].attrs.id)!.y >= WRITER_PDF_LINE_HEIGHT * 2);
+  assert.ok(Math.abs(firstById.get(blocks[6].attrs.id)!.y - firstById.get(blocks[5].attrs.id)!.y - WRITER_PDF_LINE_HEIGHT) < 0.001);
+});
+
+test("keeps a character cue with dialogue when the previous action nearly fills a page", () => {
+  const action = createBlock("action", Array.from({ length: 300 }, (_, index) => `acción${index}`).join(" "));
+  const character = createBlock("character", "ANA");
+  const dialogue = createBlock("dialogue", "Una respuesta breve que debe acompañar al personaje.");
+  const source = snapshotWith(action, character, dialogue);
+  const layout = layoutWriterPdf(source, { ...defaultWriterPdfOptions(source.title), includeCover: false });
+  const located = layout.pages.flatMap((page) => page.items.map((item) => ({ page: page.number, item })));
+  const characterItem = located.find(({ item }) => item.sourceBlockId === character.attrs.id);
+  const dialogueItem = located.find(({ item }) => item.sourceBlockId === dialogue.attrs.id);
+  assert.ok(characterItem && dialogueItem);
+  assert.equal(characterItem.page, dialogueItem.page);
+});
+
+test("renders every calculated PDF line in its own minimum-height flow box", async () => {
+  const source = await readFile("lib/writer/pdf-renderer.ts", "utf8");
+  assert.match(source, /lineBox:\s*\{[\s\S]*?minHeight:\s*WRITER_PDF_LINE_HEIGHT/u);
+  assert.match(source, /React\.createElement\(\s*View,[\s\S]*?styles\.lineBox/u);
 });

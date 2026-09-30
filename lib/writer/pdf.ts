@@ -610,8 +610,9 @@ function columnsForKind(kind: Exclude<ScreenplayKind, "authorNote">, paper: Writ
 }
 
 function gapBefore(kind: Exclude<ScreenplayKind, "authorNote">) {
-  if (kind === "sceneHeading") return 24;
-  if (kind === "character" || kind === "transition") return 12;
-  if (kind === "action") return 12;
+  if (kind === "sceneHeading") return WRITER_PDF_LINE_HEIGHT * 2;
+  if (kind === "character") return WRITER_PDF_LINE_HEIGHT;
+  if (kind === "transition") return WRITER_PDF_LINE_HEIGHT * 1.25;
+  if (kind === "action") return WRITER_PDF_LINE_HEIGHT * .75;
   return 0;
 }
