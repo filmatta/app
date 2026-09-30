@@ -161,6 +161,25 @@ export function blockText(block: WriterBlock): string {
     .join("");
 }
 
+export function canonicalWriterDocument(document: WriterDocument): WriterDocument {
+  return {
+    type: "doc",
+    content: document.content.map((block) => ({
+      type: "screenplayBlock",
+      attrs: { id: block.attrs.id, kind: block.attrs.kind },
+      ...(block.content ? {
+        content: block.content.map((node) => node.type === "text"
+          ? {
+              type: "text" as const,
+              text: node.text,
+              ...(node.marks ? { marks: node.marks.map((mark) => ({ ...mark })) } : {}),
+            }
+          : { type: "hardBreak" as const }),
+      } : {}),
+    })),
+  };
+}
+
 export function deriveScenes(document: WriterDocument): SceneSummary[] {
   const scenes: SceneSummary[] = [];
   for (const block of document.content) {

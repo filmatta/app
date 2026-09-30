@@ -22,6 +22,9 @@ export type WriterAcceptedCharacterActivity = {
   name: string;
   evidenceCount: number;
   firstBlockId: string | null;
+  sceneCount: number;
+  firstSceneOrder: number | null;
+  lastSceneOrder: number | null;
 };
 
 const TURN_END_KINDS = new Set<ScreenplayKind>([
@@ -108,11 +111,33 @@ export function deriveAcceptedCharacterActivity(
 ): WriterAcceptedCharacterActivity[] {
   const accepted = new Map(identities.map((identity) => [identity.key, identity]));
   const evidenceByKey = new Map<string, Map<string, string>>();
+  const sceneOrderById = new Map<string, number>();
+  const sceneIdsByKey = new Map<string, Set<string>>();
+  let currentSceneId: string | null = null;
+  let currentSceneOrder = 0;
+  for (const block of document.content) {
+    if (block.attrs.kind === "sceneHeading") {
+      currentSceneId = block.attrs.id;
+      currentSceneOrder += 1;
+      sceneOrderById.set(currentSceneId, currentSceneOrder);
+    }
+    if (block.attrs.kind !== "character") continue;
+    const key = writerCharacterIdentityKey(blockText(block));
+    if (!accepted.has(key) || !currentSceneId) continue;
+    const scenes = sceneIdsByKey.get(key) ?? new Set<string>();
+    scenes.add(currentSceneId);
+    sceneIdsByKey.set(key, scenes);
+  }
   for (const observation of observations) {
     if (!accepted.has(observation.identityKey)) continue;
     const evidence = evidenceByKey.get(observation.identityKey) ?? new Map<string, string>();
     evidence.set(observation.fingerprint, observation.blockId);
     evidenceByKey.set(observation.identityKey, evidence);
+    if (observation.sceneId) {
+      const scenes = sceneIdsByKey.get(observation.identityKey) ?? new Set<string>();
+      scenes.add(observation.sceneId);
+      sceneIdsByKey.set(observation.identityKey, scenes);
+    }
   }
   for (const block of document.content) {
     if (block.attrs.kind !== "character") continue;
@@ -125,13 +150,21 @@ export function deriveAcceptedCharacterActivity(
   return identities
     .map((identity) => {
       const evidence = evidenceByKey.get(identity.key) ?? new Map<string, string>();
+      const orders = [...(sceneIdsByKey.get(identity.key) ?? new Set<string>())]
+        .map((sceneId) => sceneOrderById.get(sceneId))
+        .filter((order): order is number => typeof order === "number")
+        .sort((left, right) => left - right);
       return {
         key: identity.key,
         name: identity.name,
         evidenceCount: evidence.size,
         firstBlockId: evidence.values().next().value ?? null,
+        sceneCount: orders.length,
+        firstSceneOrder: orders.at(0) ?? null,
+        lastSceneOrder: orders.at(-1) ?? null,
       };
     })
+    .filter((activity, index) => activity.evidenceCount > 0 || identities[index]?.source === "manual")
     .sort((left, right) => right.evidenceCount - left.evidenceCount
       || left.name.localeCompare(right.name, "es", { sensitivity: "base" }));
 }
