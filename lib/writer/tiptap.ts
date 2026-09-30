@@ -20,6 +20,7 @@ const sceneHighlightKey = new PluginKey<DecorationSet>("writerSceneHighlight");
 const observationMarkerKey = new PluginKey<DecorationSet>("writerObservationMarkers");
 type ImportReviewDecorationState = {
   decorations: DecorationSet;
+  items: readonly WriterImportReviewDecoration[];
   onOpen: (id: string) => void;
 };
 const importReviewDecorationKey = new PluginKey<ImportReviewDecorationState>("writerImportReviewDecorations");
@@ -93,9 +94,20 @@ export function setWriterImportReviewDecorations(
   items: readonly WriterImportReviewDecoration[],
   onOpen: (id: string) => void,
 ) {
+  editor.view.dispatch(editor.state.tr.setMeta(importReviewDecorationKey, {
+    decorations: importReviewDecorations(editor.state.doc, items),
+    items,
+    onOpen,
+  } satisfies ImportReviewDecorationState));
+}
+
+function importReviewDecorations(
+  doc: ProseMirrorNode,
+  items: readonly WriterImportReviewDecoration[],
+) {
   const byBlockId = new Map(items.map((item) => [item.blockId, item]));
   const decorations: Decoration[] = [];
-  editor.state.doc.descendants((node, position) => {
+  doc.descendants((node, position) => {
     if (node.type.name !== "screenplayBlock") return;
     const item = byBlockId.get(String(node.attrs.id ?? ""));
     if (!item) return;
@@ -114,10 +126,7 @@ export function setWriterImportReviewDecorations(
       decorations.push(Decoration.node(position, position + node.nodeSize, attributes));
     }
   });
-  editor.view.dispatch(editor.state.tr.setMeta(importReviewDecorationKey, {
-    decorations: DecorationSet.create(editor.state.doc, decorations),
-    onOpen,
-  } satisfies ImportReviewDecorationState));
+  return DecorationSet.create(doc, decorations);
 }
 
 export const ScreenplayBlockExtension = Node.create({
@@ -138,6 +147,11 @@ export const ScreenplayBlockExtension = Node.create({
         default: "action",
         parseHTML: (element) => element.getAttribute("data-screenplay-kind") ?? "action",
         renderHTML: ({ kind }) => ({ "data-screenplay-kind": kind }),
+      },
+      sceneNickname: {
+        default: null,
+        parseHTML: () => null,
+        renderHTML: () => ({}),
       },
     };
   },
@@ -229,10 +243,20 @@ export const ScreenplayBlockExtension = Node.create({
       new Plugin<ImportReviewDecorationState>({
         key: importReviewDecorationKey,
         state: {
-          init: () => ({ decorations: DecorationSet.empty, onOpen: () => undefined }),
-          apply(transaction, current) {
+          init: () => ({ decorations: DecorationSet.empty, items: [], onOpen: () => undefined }),
+          apply(transaction, current, oldState) {
             const next = transaction.getMeta(importReviewDecorationKey) as ImportReviewDecorationState | undefined;
             if (next !== undefined) return next;
+            const replacedWholeDocument = transaction.steps.some((step) => {
+              const json = step.toJSON() as { stepType?: string; from?: number; to?: number };
+              return json.stepType === "replace" && json.from === 0 && json.to === oldState.doc.content.size;
+            });
+            if (transaction.docChanged && (transaction.getMeta("writerStructuralOperation") || replacedWholeDocument)) {
+              return {
+                ...current,
+                decorations: importReviewDecorations(transaction.doc, current.items),
+              };
+            }
             return transaction.docChanged
               ? { ...current, decorations: current.decorations.map(transaction.mapping, transaction.doc) }
               : current;

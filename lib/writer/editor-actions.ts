@@ -4,6 +4,7 @@ import type { Editor } from "@tiptap/core";
 import { Fragment, Slice, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { TextSelection, type EditorState } from "@tiptap/pm/state";
 import type { ScreenplayKind } from "./document.ts";
+import { writerCharacterIdentityKey } from "./character-observations.ts";
 
 export type WriterBlockTarget = {
   id: string;
@@ -23,6 +24,24 @@ export type WriterSelectionTarget = {
   text: string;
   multipleBlocks: boolean;
 };
+
+export type WriterSceneMovePosition = "before" | "after";
+
+export type WriterCharacterReference = {
+  blockId: string;
+  start: number;
+  end: number;
+  text: string;
+};
+
+export type WriterCharacterRenameInput = {
+  identityId: string;
+  sourceKey: string;
+  newName: string;
+  references: readonly WriterCharacterReference[];
+};
+
+export type WriterStructuralCommandResult = "applied" | "unchanged" | "missing" | "invalid";
 
 export function findWriterBlockAtPosition(doc: ProseMirrorNode, position: number): WriterBlockTarget | null {
   const safePosition = Math.max(0, Math.min(position, doc.content.size));
@@ -99,6 +118,153 @@ export function changeWriterBlockKind(editor: Editor, targetId: string, kind: Sc
   );
   editor.commands.focus();
   return true;
+}
+
+export function writerSceneIds(doc: ProseMirrorNode) {
+  const ids: string[] = [];
+  doc.forEach((node) => {
+    if (node.type.name === "screenplayBlock" && node.attrs.kind === "sceneHeading") {
+      ids.push(String(node.attrs.id));
+    }
+  });
+  return ids;
+}
+
+export function moveWriterScene(
+  editor: Editor,
+  sceneId: string,
+  targetSceneId: string,
+  position: WriterSceneMovePosition,
+): WriterStructuralCommandResult {
+  if (sceneId === targetSceneId) return "unchanged";
+  const nodes: ProseMirrorNode[] = [];
+  editor.state.doc.forEach((node) => nodes.push(node));
+  const sourceStart = nodes.findIndex((node) => node.attrs.id === sceneId && node.attrs.kind === "sceneHeading");
+  const targetStart = nodes.findIndex((node) => node.attrs.id === targetSceneId && node.attrs.kind === "sceneHeading");
+  if (sourceStart < 0 || targetStart < 0) return "missing";
+  const sourceEnd = nextSceneIndex(nodes, sourceStart + 1);
+  const moving = nodes.slice(sourceStart, sourceEnd);
+  const remaining = [...nodes.slice(0, sourceStart), ...nodes.slice(sourceEnd)];
+  const targetIndex = remaining.findIndex((node) => node.attrs.id === targetSceneId && node.attrs.kind === "sceneHeading");
+  if (targetIndex < 0) return "missing";
+  const insertIndex = position === "before" ? targetIndex : nextSceneIndex(remaining, targetIndex + 1);
+  const next = [...remaining.slice(0, insertIndex), ...moving, ...remaining.slice(insertIndex)];
+  if (next.every((node, index) => node === nodes[index])) return "unchanged";
+
+  const transaction = editor.state.tr
+    .replaceWith(0, editor.state.doc.content.size, Fragment.fromArray(next))
+    .setMeta("writerStructuralOperation", "sceneOrderChanged");
+  const headingPosition = topLevelNodePosition(transaction.doc, sceneId);
+  if (headingPosition !== null) {
+    transaction.setSelection(TextSelection.near(transaction.doc.resolve(headingPosition + 1)));
+  }
+  editor.view.dispatch(transaction.scrollIntoView());
+  editor.view.focus();
+  return "applied";
+}
+
+export function duplicateWriterScene(
+  editor: Editor,
+  sceneId: string,
+  nickname = "",
+): { status: WriterStructuralCommandResult; sceneId?: string; blockIds?: string[] } {
+  const nodes: Array<{ node: ProseMirrorNode; position: number }> = [];
+  editor.state.doc.forEach((node, position) => nodes.push({ node, position }));
+  const sourceStart = nodes.findIndex(({ node }) => node.attrs.id === sceneId && node.attrs.kind === "sceneHeading");
+  if (sourceStart < 0) return { status: "missing" };
+  const sourceEnd = nextSceneEntryIndex(nodes, sourceStart + 1);
+  const source = nodes.slice(sourceStart, sourceEnd);
+  const blockIds: string[] = [];
+  const copies = source.map(({ node }, index) => {
+    const id = crypto.randomUUID();
+    blockIds.push(id);
+    return node.type.create(
+      {
+        ...node.attrs,
+        id,
+        ...(index === 0 ? { sceneNickname: nickname || null } : {}),
+      },
+      node.content,
+      node.marks,
+    );
+  });
+  const insertAt = sourceEnd < nodes.length
+    ? nodes[sourceEnd].position
+    : editor.state.doc.content.size;
+  const transaction = editor.state.tr
+    .insert(insertAt, Fragment.fromArray(copies))
+    .setMeta("writerStructuralOperation", "sceneDuplicated");
+  transaction.setSelection(TextSelection.near(transaction.doc.resolve(insertAt + 1)));
+  editor.view.dispatch(transaction.scrollIntoView());
+  editor.view.focus();
+  return { status: "applied", sceneId: blockIds[0], blockIds };
+}
+
+export function renameWriterCharacter(
+  editor: Editor,
+  input: WriterCharacterRenameInput,
+): WriterStructuralCommandResult {
+  if (!input.identityId) return "invalid";
+  const { sourceKey, newName, references } = input;
+  const replacements: Array<{ from: number; to: number; text: string }> = [];
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== "screenplayBlock") return;
+    const blockId = String(node.attrs.id ?? "");
+    if (node.attrs.kind === "character" && writerCharacterIdentityKey(node.textContent) === sourceKey) {
+      const suffix = node.textContent.match(/\s*\((?:V\.?\s*O\.?|O\.?\s*S\.?|OFF|CONT(?:INUED|INUADO|['’]?D|\.)?)\)\s*$/iu)?.[0] ?? "";
+      replacements.push({ from: position + 1, to: position + 1 + node.content.size, text: `${newName}${suffix}` });
+    }
+    for (const reference of references) {
+      if (reference.blockId !== blockId || reference.start < 0 || reference.end <= reference.start) continue;
+      if (node.textContent.slice(reference.start, reference.end) !== reference.text) continue;
+      replacements.push({
+        from: position + 1 + reference.start,
+        to: position + 1 + reference.end,
+        text: newName,
+      });
+    }
+  });
+  const unique = new Map(replacements.map((item) => [`${item.from}:${item.to}`, item]));
+  const ordered = [...unique.values()].sort((left, right) => right.from - left.from);
+  if (!ordered.length) return "missing";
+  const transaction = editor.state.tr.setMeta("writerStructuralOperation", "characterRenamed");
+  for (const replacement of ordered) transaction.insertText(replacement.text, replacement.from, replacement.to);
+  const first = ordered.at(-1);
+  if (first) transaction.setSelection(TextSelection.near(transaction.doc.resolve(first.from + newName.length)));
+  editor.view.dispatch(transaction.scrollIntoView());
+  editor.view.focus();
+  return "applied";
+}
+
+export function renameWriterSceneNickname(editor: Editor, sceneId: string, nickname: string) {
+  const target = findWriterBlockById(editor, sceneId);
+  if (!target || target.kind !== "sceneHeading") return "missing" as const;
+  const node = editor.state.doc.nodeAt(target.position);
+  if (!node) return "missing" as const;
+  const current = typeof node.attrs.sceneNickname === "string" ? node.attrs.sceneNickname : "";
+  if (current === nickname) return "unchanged" as const;
+  editor.view.dispatch(editor.state.tr
+    .setNodeMarkup(target.position, undefined, { ...node.attrs, sceneNickname: nickname || null })
+    .setMeta("writerStructuralOperation", "sceneNicknameChanged"));
+  return "applied" as const;
+}
+
+function nextSceneIndex(nodes: readonly ProseMirrorNode[], from: number) {
+  const next = nodes.findIndex((node, index) => index >= from && node.attrs.kind === "sceneHeading");
+  return next < 0 ? nodes.length : next;
+}
+
+function nextSceneEntryIndex(nodes: ReadonlyArray<{ node: ProseMirrorNode }>, from: number) {
+  const next = nodes.findIndex(({ node }, index) => index >= from && node.attrs.kind === "sceneHeading");
+  return next < 0 ? nodes.length : next;
+}
+
+function topLevelNodePosition(doc: ProseMirrorNode, id: string) {
+  let result: number | null = null;
+  doc.forEach((node, position) => {
+    if (result === null && node.attrs.id === id) result = position;
+  });
+  return result;
 }
 
 export function writerSceneForSelection(state: EditorState):

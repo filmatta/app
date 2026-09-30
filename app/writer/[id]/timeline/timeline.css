@@ -170,6 +170,7 @@
 .timeline-lane-label--header small { color: var(--timeline-muted); font-size: .57rem; letter-spacing: .15em; }
 .timeline-scene-row { position: sticky; top: 66px; z-index: 25; border-bottom: 1px solid var(--timeline-border); background: #0d1115; }
 .timeline-scene-cell {
+  position: relative;
   display: grid;
   min-width: 0;
   height: 76px;
@@ -181,6 +182,19 @@
   border-radius: 0 !important;
   text-align: left;
 }
+.timeline-scene-activate { display: grid; width: 100%; min-width: 0; height: 100%; padding: 9px 10px 20px; border: 0; text-align: left; }
+.timeline-scene-activate small { overflow: hidden; color: rgba(241,239,233,.38); font-size: .52rem; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-scene-structural-actions { position: absolute; right: 5px; bottom: 3px; display: flex; gap: 3px; opacity: 0; transition: opacity .14s ease; }
+.timeline-scene-cell:hover .timeline-scene-structural-actions,
+.timeline-scene-cell:focus-within .timeline-scene-structural-actions { opacity: 1; }
+.timeline-scene-structural-actions button { min-width: 20px; min-height: 18px; padding: 1px 4px; border: 1px solid rgba(255,255,255,.12); border-radius: 4px; color: rgba(241,239,233,.68); background: rgba(6,8,10,.9); font-size: .56rem; }
+.timeline-scene-drag-handle { cursor: grab; letter-spacing: -2px; }
+.timeline-scene-drag-handle:active { cursor: grabbing; }
+.timeline-scene-cell.is-drop-before::before,
+.timeline-scene-cell.is-drop-after::after { position: absolute; z-index: 3; top: 0; bottom: 0; width: 2px; background: var(--timeline-accent); content: ""; }
+.timeline-scene-cell.is-drop-before::before { left: -1px; }
+.timeline-scene-cell.is-drop-after::after { right: -1px; }
+.timeline-reorder-notice { margin: 0 auto 12px; width: min(100% - 36px, 1480px); color: #ffc0bd; font-size: .68rem; }
 
 .timeline-scene-cell strong { color: var(--timeline-accent); font: 600 .7rem var(--font-geist-mono), monospace; }
 .timeline-scene-cell span { overflow: hidden; color: rgba(241, 239, 233, .72); font-size: .63rem; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
