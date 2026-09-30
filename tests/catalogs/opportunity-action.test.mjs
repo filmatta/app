@@ -32,7 +32,6 @@ function valid() {
   const f = new FormData();
   for (const [k, v] of Object.entries({
     title: "Convocatoria",
-    project_title: "Corto",
     category: "crew",
     work_mode: "remote",
     compensation_type: "unspecified",

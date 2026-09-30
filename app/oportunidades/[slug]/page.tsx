@@ -95,7 +95,7 @@ export default async function OpportunityPage({
   const expired = isJob && deadlineClosed(opportunity.applicationDeadline);
   const dateRange = formatDateRange(opportunity.startsOn, opportunity.endsOn);
   const details = [
-    { label: "Proyecto", value: opportunity.projectTitle },
+    opportunity.projectTitle && { label: "Proyecto", value: opportunity.projectTitle },
     {
       label: "Modalidad",
       value: getOpportunityWorkModeLabel(opportunity.workMode),
@@ -137,7 +137,7 @@ export default async function OpportunityPage({
               {opportunity.title}
             </h1>
             <p className="mt-6 text-sm font-medium text-white/65">
-              Proyecto · {opportunity.projectTitle}
+              {opportunity.projectTitle ? <>{opportunity.projectSlug ? <Link href={`/proyectos/${opportunity.projectSlug}`}>Vinculada a: {opportunity.projectTitle} ↗</Link> : <>Vinculada a: {opportunity.projectTitle}</>}</> : "Opportunity independiente"}
             </p>
             {opportunity.summary && (
               <p className="mt-8 max-w-3xl text-xl leading-8 text-white/60 sm:text-2xl sm:leading-9">

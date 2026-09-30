@@ -6,9 +6,9 @@ export async function getAccountDashboard(userId: string) {
  const [profile, summary, active, pending, latest, locations] = await Promise.all([
   db.from("professional_profiles").select("is_public,slug,display_name,presentation").eq("user_id", userId).maybeSingle(),
   db.rpc("get_my_network_summary"),
-  db.from("projects").select("id", { count: "exact", head: true }).eq("owner_id",userId).eq("networking_private",true).eq("status","draft").eq("operational_status","active"),
-  db.from("projects").select("id", { count: "exact", head: true }).eq("owner_id",userId).eq("networking_private",true).eq("status","draft").eq("operational_status","pending_confirmation"),
-  db.from("projects").select("id,slug,title,summary,project_type,client_name,client_type,city,work_area,shooting_schedule,economic_mode,date_window,roles,requirements,status,operational_status,updated_at").eq("owner_id",userId).eq("networking_private",true).order("updated_at",{ascending:false}).limit(1).maybeSingle(),
+  db.from("projects").select("id", { count: "exact", head: true }).eq("owner_id",userId).neq("lifecycle_status","archived").eq("operational_status","active"),
+  db.from("projects").select("id", { count: "exact", head: true }).eq("owner_id",userId).neq("lifecycle_status","archived").eq("operational_status","pending_confirmation"),
+  db.from("projects").select("id,slug,title,summary,description,cover_image_path,project_type,client_name,share_client_name,client_type,city,work_area,shooting_schedule,economic_mode,date_window,starts_on,ends_on,dates_confirmed,roles,requirements,status,lifecycle_status,visibility,operational_status,updated_at").eq("owner_id",userId).order("updated_at",{ascending:false}).limit(1).maybeSingle(),
   db.from("locations").select("id",{count:"exact",head:true}).eq("owner_id",userId).eq("status","published"),
  ]);
  return { profile: profile.error ? undefined : profile.data,

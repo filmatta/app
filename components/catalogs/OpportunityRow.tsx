@@ -39,7 +39,9 @@ export function OpportunityRow({
         <h2 className="mt-4 text-3xl font-semibold tracking-[-0.025em] transition group-hover:text-white/80 sm:text-4xl">
           {opportunity.title}
         </h2>
-        <p className="mt-3 text-sm text-white/65">{opportunity.projectTitle}</p>
+        <p className="mt-3 text-sm text-white/65">
+          {opportunity.projectTitle ? `Project · ${opportunity.projectTitle}` : "Opportunity independiente"}
+        </p>
         {opportunity.summary && (
           <p className="mt-5 max-w-3xl text-base leading-7 text-white/65">
             {opportunity.summary}

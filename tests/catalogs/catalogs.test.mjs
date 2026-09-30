@@ -84,7 +84,7 @@ test("location filters and stable pagination use the explicit public projection"
   assert.equal(call[2].p_offset, 24);
   assert.equal(call[2].p_limit, 25);
 });
-test("opportunity pagination excludes unpublished projects before the range", async () => {
+test("opportunity pagination includes independent listings and applies its own publication filter", async () => {
   const f = clientFixture();
   const mod = load("lib/opportunities/public.ts", {
     react: { cache: (fn) => fn },
@@ -94,11 +94,9 @@ test("opportunity pagination excludes unpublished projects before the range", as
   await mod.getPublishedOpportunities(
     filters.parseCatalogFilters({ category: "crew", workMode: "remote" }),
   );
+  assert.ok(!f.calls.find((c) => c[0] === "select")[1].includes("projects!inner"));
   assert.ok(
-    f.calls.find((c) => c[0] === "select")[1].includes("projects!inner"),
-  );
-  assert.ok(
-    f.calls.findIndex((c) => c[0] === "eq" && c[1] === "projects.status") <
+    f.calls.findIndex((c) => c[0] === "eq" && c[1] === "status" && c[2] === "published") <
       f.calls.findIndex((c) => c[0] === "range"),
   );
   assert.ok(

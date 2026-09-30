@@ -114,7 +114,7 @@ export function getAccountNavigation(role: string): NavigationLink[] {
     { label: "Mi perfil profesional", href: "/mi-perfil" },
     { label: "Contactos", href: "/cuenta/contactos" },
     { label: "Mi red", href: "/mi-red" },
-    { label: "Mis proyectos", href: "/proyectos" },
+    { label: "Mis proyectos", href: "/mis-proyectos" },
     { label: "Mi aprendizaje", href: "/cuenta/configuracion#mis-cursos" },
     { label: "Mis locaciones", href: "/mis-locaciones" },
     { label: "Mis publicaciones", href: "/mis-oportunidades" },
@@ -130,6 +130,7 @@ export function getAccountNavigation(role: string): NavigationLink[] {
 
 export const publishingNavigation: NavigationLink[] = [
   { label: "Completar mi perfil", href: "/mi-perfil" },
+  { label: "Nuevo proyecto", href: "/mis-proyectos/nuevo" },
   { label: "Nueva locación", href: "/mis-locaciones/nueva" },
   { label: "Publicar oportunidad", href: "/mis-oportunidades/nueva" },
   { label: "Publicar encargo", href: "/mis-oportunidades/nueva?type=job" },

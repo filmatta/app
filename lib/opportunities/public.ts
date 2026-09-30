@@ -15,9 +15,9 @@ export type PublicOpportunity = {
   id: string;
   opportunityType: "opportunity" | "job";
   deliverables: string | null;
-  projectId: string;
-  projectTitle: string;
-  projectSlug: string;
+  projectId: string | null;
+  projectTitle: string | null;
+  projectSlug: string | null;
   title: string;
   slug: string;
   summary: string | null;
@@ -54,7 +54,7 @@ type OpportunityRow = {
   id: string;
   opportunity_type: "opportunity" | "job";
   deliverables: string | null;
-  project_id: string;
+  project_id: string | null;
   title: string;
   slug: string;
   summary: string | null;
@@ -118,15 +118,15 @@ const getPublishedProjects = async (projectIds: string[]) => {
 
 function mapOpportunitySummary(
   row: OpportunitySummaryRow,
-  project: ProjectRow,
+  project?: ProjectRow,
 ): PublicOpportunitySummary {
   return {
     id: row.id,
     opportunityType: row.opportunity_type,
     deliverables: row.deliverables,
     projectId: row.project_id,
-    projectTitle: project.title,
-    projectSlug: project.slug,
+    projectTitle: project?.title ?? null,
+    projectSlug: project?.slug ?? null,
     title: row.title,
     slug: row.slug,
     summary: row.summary,
@@ -144,7 +144,7 @@ function mapOpportunitySummary(
 
 function mapOpportunity(
   row: OpportunityRow,
-  project: ProjectRow,
+  project?: ProjectRow,
 ): PublicOpportunity {
   return {
     ...mapOpportunitySummary(row, project),
@@ -163,9 +163,8 @@ export const getPublishedOpportunities = cache(
     const supabase = await createClient();
     let query = supabase
       .from("opportunities")
-      .select(`${OPPORTUNITY_SUMMARY_FIELDS}, projects!inner(id,title,slug)`)
+      .select(OPPORTUNITY_SUMMARY_FIELDS)
       .eq("status", "published")
-      .eq("projects.status", "published")
       .order("published_at", { ascending: false })
       .order("id", { ascending: true });
     if (jobsOnly) {
@@ -200,16 +199,20 @@ export const getPublishedOpportunities = cache(
       return { ok: false, opportunities: [], kind: catalogErrorKind(error) };
     }
 
-    const rows = (data ?? []) as unknown as (OpportunitySummaryRow & {
-      projects: ProjectRow;
-    })[];
+    const rows = (data ?? []) as OpportunitySummaryRow[];
+    const linkedProjects = await getPublishedProjects(
+      rows.map((row) => row.project_id).filter((id): id is string => Boolean(id)),
+    );
+    if (linkedProjects.error) {
+      return { ok: false, opportunities: [], kind: "error" };
+    }
 
     return {
       ok: true,
       hasNext: rows.length > PAGE_SIZE,
       opportunities: rows
         .slice(0, PAGE_SIZE)
-        .map((row) => mapOpportunitySummary(row, row.projects)),
+        .map((row) => mapOpportunitySummary(row, row.project_id ? linkedProjects.projectsById.get(row.project_id) : undefined)),
     };
   },
 );
@@ -234,15 +237,11 @@ export const getPublishedOpportunity = cache(
     }
 
     const row = data as OpportunityRow;
-    const projects = await getPublishedProjects([row.project_id]);
-    const project = projects.projectsById.get(row.project_id);
+    const projects = await getPublishedProjects(row.project_id ? [row.project_id] : []);
+    const project = row.project_id ? projects.projectsById.get(row.project_id) : undefined;
 
     if (projects.error) {
       return { kind: "error" };
-    }
-
-    if (!project) {
-      return { kind: "not-found" };
     }
 
     return { kind: "found", opportunity: mapOpportunity(row, project) };

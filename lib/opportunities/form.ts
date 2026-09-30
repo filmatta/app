@@ -14,6 +14,7 @@ export function parseOpportunityForm(form: FormData) {
   const status = text("status") || "draft";
   const projectTitle = text("project_title");
   const values = {
+    project_id: optional("project_id"),
     title: text("title"),
     opportunity_type: text("opportunity_type") || "opportunity",
     deliverables: optional("deliverables"),
@@ -66,16 +67,13 @@ export function parseOpportunityForm(form: FormData) {
     };
   if (id && !UUID_PATTERN.test(id))
     return { ok: false as const, error: "No encontramos esta publicación." };
+  if (values.project_id && !UUID_PATTERN.test(values.project_id))
+    return { ok: false as const, error: "Selecciona un Project válido." };
   if (
     !["draft", "published", "closed", "archived"].includes(status) ||
     (!id && !["draft", "published"].includes(status))
   )
     return { ok: false as const, error: "El estado no es válido." };
-  if (!id && (projectTitle.length < 3 || projectTitle.length > 160))
-    return {
-      ok: false as const,
-      error: "Escribe un título de proyecto de 3 a 160 caracteres.",
-    };
   if (values.title.length < 3 || values.title.length > 160)
     return {
       ok: false as const,
