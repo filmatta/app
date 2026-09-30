@@ -99,9 +99,8 @@ test("real Jobs use Opportunities ownership, paid subset, dates and shared priva
     const query = () =>
       anon
         .from("opportunities")
-        .select("id,slug,deliverables,projects!inner(id)")
+        .select("id,slug,deliverables")
         .eq("status", "published")
-        .eq("projects.status", "published")
         .eq("opportunity_type", "job")
         .eq("compensation_type", "paid")
         .eq("city", prefix)

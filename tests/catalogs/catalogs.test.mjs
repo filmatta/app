@@ -56,6 +56,11 @@ function clientFixture(data = [], error = null) {
       return query;
     };
   query.then = (resolve) => Promise.resolve({ data, error }).then(resolve);
+  query.maybeSingle = () =>
+    Promise.resolve({
+      data: Array.isArray(data) ? (data[0] ?? null) : data,
+      error,
+    });
   return {
     calls,
     client: {
@@ -134,6 +139,39 @@ test("opportunity search sends only bounded public filters to the catalog RPC", 
     },
   );
   assert.equal(Object.hasOwn(call[2], "owner_id"), false);
+});
+test("an expired opportunity is not exposed by the public detail to its owner", async () => {
+  const f = clientFixture([
+    {
+      id: "expired-opportunity",
+      opportunity_type: "opportunity",
+      deliverables: null,
+      project_id: null,
+      title: "Expired",
+      slug: "expired",
+      summary: null,
+      description: null,
+      category: "crew",
+      discipline: null,
+      city: null,
+      work_mode: "remote",
+      compensation_type: "paid",
+      compensation_min: null,
+      compensation_max: null,
+      compensation_currency: null,
+      starts_on: null,
+      ends_on: null,
+      application_deadline: "2000-01-01T00:00:00.000Z",
+      published_at: "1999-01-01T00:00:00.000Z",
+    },
+  ]);
+  const mod = load("lib/opportunities/public.ts", {
+    react: { cache: (fn) => fn },
+    "@/lib/catalogs/filters": filters,
+    "@/lib/supabase/server": { createClient: async () => f.client },
+  });
+  assert.equal((await mod.getPublishedOpportunity("expired")).kind, "not-found");
+  assert.equal(f.calls.some((call) => call[0] === "from" && call[1] === "projects"), false);
 });
 test("missing schema is distinguished from network failure and empty catalog", async () => {
   for (const [error, kind] of [

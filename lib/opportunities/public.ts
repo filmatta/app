@@ -247,6 +247,13 @@ export const getPublishedOpportunity = cache(
     }
 
     const row = data as OpportunityRow;
+    if (
+      row.application_deadline &&
+      new Date(row.application_deadline).getTime() <= Date.now()
+    ) {
+      return { kind: "not-found" };
+    }
+
     const projects = await getPublishedProjects(row.project_id ? [row.project_id] : []);
     const project = row.project_id ? projects.projectsById.get(row.project_id) : undefined;
 
