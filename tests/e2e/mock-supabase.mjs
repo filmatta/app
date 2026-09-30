@@ -2,6 +2,7 @@
 // No production credentials or remote database access.
 import http from "node:http";
 import {profileFixture,resetProfileFixture} from "./profiles-fixture.mjs";
+const port = Number.parseInt(process.env.MOCK_SUPABASE_PORT ?? "54329", 10);
 const id = "11111111-1111-4111-8111-111111111111";
 let scenario = "empty";
 let profileDelayMs = 0;
@@ -65,7 +66,7 @@ const location = {
 };
 http
   .createServer(async (req, res) => {
-    const url = new URL(req.url, "http://127.0.0.1:54329");
+    const url = new URL(req.url, `http://127.0.0.1:${port}`);
     const token = (req.headers.authorization ?? "").replace("Bearer ", "");
     let role = "user";
     try {
@@ -243,8 +244,8 @@ http
     }
     res.end("[]");
   })
-  .listen(54329, "127.0.0.1", () =>
-    console.log("Local fixture listening on 54329"),
+  .listen(port, "127.0.0.1", () =>
+    console.log(`Local fixture listening on ${port}`),
   );
 
 async function readJson(req) {

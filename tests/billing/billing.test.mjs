@@ -947,14 +947,11 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   assert.equal(keepCalls, 2);
 });
 
-test('checkout forms submit canonical MX while displaying Mexico to the user', () => {
-  assert.match(subscriptionPage,
-    /<select name="country" required[^>]*><option value="MX">México<\/option><\/select>/);
-  assert.match(plansPage, /<input type="hidden" name="country" value="MX" \/>/);
-  assert.match(subscriptionPage, /feedback\.error === "country"/);
-  assert.match(subscriptionPage, /feedback\.error === "checkout"/);
-  assert.doesNotMatch(subscriptionPage,
-    /Revisa tu suscripción existente o intenta más tarde\. Las suscripciones están limitadas a México\./);
+test('Entitlements surfaces expose no Checkout forms or fake purchase actions', () => {
+  assert.doesNotMatch(subscriptionPage, /startCheckout|name="country"|Comprar Plus|Comprar Pro/);
+  assert.doesNotMatch(plansPage, /startCheckout|name="country"|Comprar Plus|Comprar Pro/);
+  assert.match(subscriptionPage, /Esta fase no inicia checkout ni pagos/);
+  assert.match(plansPage, /Esta fase no incluye checkout ni cobros/);
 });
 
 test('portal button depends on server configuration instead of the visual subscription list', () => {

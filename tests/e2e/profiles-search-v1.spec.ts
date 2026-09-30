@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+const fixtureOrigin =
+  process.env.PROFILES_FIXTURE_ORIGIN ?? "http://127.0.0.1:54329";
+
 test.beforeEach(async ({ request }) => {
-  await request.get("http://127.0.0.1:54329/__scenario?value=profiles-polish");
+  await request.get(`${fixtureOrigin}/__scenario?value=profiles-polish`);
 });
 
 test("search, chips and profile return keep URL state", async ({ page }) => {

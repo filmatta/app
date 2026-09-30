@@ -4,6 +4,7 @@ import SiteHeader from "@/components/SiteHeader";
 import WriterLibrary, { type WriterListItem } from "@/components/writer/WriterLibrary";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getBillingAccess } from "@/lib/billing/access";
+import type { CommercialPlanCode } from "@/lib/entitlements/types";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -28,12 +29,8 @@ export default async function WriterPage() {
   );
 }
 
-function writerLimitForPlan(plan: "plus" | "pro" | null) {
+function writerLimitForPlan(plan: CommercialPlanCode | null) {
   // Writer does not have paid entitlements yet. Keep the product decision explicit.
-  switch (plan) {
-    case "plus":
-    case "pro":
-    case null:
-      return 3;
-  }
+  void plan;
+  return 3;
 }

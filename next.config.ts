@@ -7,11 +7,13 @@ const require = createRequire(import.meta.url);
 const dependencyRoot = path.dirname(
   path.dirname(path.dirname(require.resolve("next/package.json")))
 );
+const projectRoot = path.resolve(process.cwd());
+const turbopackRoot = commonAncestor(projectRoot, dependencyRoot);
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   turbopack: {
-    root: dependencyRoot,
+    root: turbopackRoot,
   },
   async headers() {
     return [
@@ -45,5 +47,25 @@ const nextConfig: NextConfig = {
     ];
   },
 };
+
+function commonAncestor(firstPath: string, secondPath: string) {
+  let candidate = firstPath;
+
+  while (!containsPath(candidate, secondPath)) {
+    const parent = path.dirname(candidate);
+    if (parent === candidate) return path.parse(firstPath).root;
+    candidate = parent;
+  }
+
+  return candidate;
+}
+
+function containsPath(parentPath: string, childPath: string) {
+  const relative = path.relative(parentPath, childPath);
+  return (
+    relative === "" ||
+    (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
+  );
+}
 
 export default nextConfig;
