@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { SCREENPLAY_KINDS, type ScreenplayKind } from "@/lib/writer/document";
 import type { WriterCharacterObservation, WriterKnownCharacterIdentity } from "@/lib/writer/character-observations";
 import type { WriterCharacterDecision, WriterCharacterDecisionState } from "@/lib/writer/character-observation-storage";
@@ -38,7 +38,7 @@ const FORMAT_LABELS: Record<ScreenplayKind, { plural: string; singular: string; 
 export default function WriterObservationsPanel({
   observations, knownIdentities, decisions, storagePersistent, importedAnalysisPersistent,
   formatObservations, reviewedFormatIds, activeFormatObservationId, showHighlights, formatReviewPersistent,
-  sceneCount, selectedBlockId, hidden, onClose, onConfirm, onLink, onIgnore,
+  sceneCount, selectedBlockId, hidden, section, assistantPanel, onSectionChange, onClose, onConfirm, onLink, onIgnore,
   onRestore, onAddManual, onView, onViewFormat, onReviewFormat, onChangeFormat, onToggleHighlights,
 }: {
   observations: WriterCharacterObservation[];
@@ -54,6 +54,9 @@ export default function WriterObservationsPanel({
   sceneCount: number;
   selectedBlockId: string | null;
   hidden: boolean;
+  section: "review" | "assistant";
+  assistantPanel: ReactNode;
+  onSectionChange: (section: "review" | "assistant") => void;
   onClose: () => void;
   onConfirm: (observation: WriterCharacterObservation, name: string) => void;
   onLink: (observation: WriterCharacterObservation, identityKey: string) => void;
@@ -160,7 +163,13 @@ export default function WriterObservationsPanel({
         <button type="button" onClick={onClose}>Cerrar</button>
       </header>
 
+      <nav className="writer-observations-tabs" aria-label="Secciones de Observaciones">
+        <button type="button" aria-current={section === "review" ? "page" : undefined} onClick={() => onSectionChange("review")}><small>Revisión</small><strong>Formato y personajes</strong></button>
+        <button type="button" aria-current={section === "assistant" ? "page" : undefined} onClick={() => onSectionChange("assistant")}><small>Assistant</small><strong>Narrativa</strong></button>
+      </nav>
+
       <div className="writer-observations-scroll">
+        {section === "assistant" ? assistantPanel : <>
         <p className="writer-observations-local-note">
           {importedAnalysisPersistent
             ? "El análisis de importación se conserva con este guion. Revisar formato no ejecuta IA ni bloquea la escritura."
@@ -255,6 +264,7 @@ export default function WriterObservationsPanel({
             <label>Reconocer manualmente<input value={manualName} onChange={(event) => setManualName(event.target.value)} maxLength={64} placeholder="Nombre o identidad" /></label><button type="submit" disabled={!manualName.trim()}>Añadir</button>
           </form>
         </section>
+        </>}
       </div>
 
       {confirming && <div className="writer-observation-decision" role="dialog" aria-modal="true" aria-labelledby="writer-observation-confirm-title"><h3 id="writer-observation-confirm-title">Confirmar personaje</h3><label>Nombre reconocido<input autoFocus value={confirmName} onChange={(event) => setConfirmName(event.target.value)} maxLength={64} /></label><div><button type="button" onClick={() => setConfirming(null)}>Cancelar</button><button type="button" onClick={() => { onConfirm(confirming, confirmName); setConfirming(null); }} disabled={!confirmName.trim()}>Confirmar</button></div></div>}

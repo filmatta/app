@@ -60,6 +60,8 @@ export function WriterContextMenu({
   onInsert,
   onConvertSceneHeading,
   onTimeline,
+  onAnalyzeScene,
+  onAssistant,
   onFeedback,
 }: {
   editor: Editor;
@@ -68,6 +70,8 @@ export function WriterContextMenu({
   onInsert: (view: WriterInsertState["view"]) => void;
   onConvertSceneHeading: () => void;
   onTimeline: (sceneId: string) => void;
+  onAnalyzeScene: (sceneId: string) => void;
+  onAssistant: (sceneId: string) => void;
   onFeedback: (message: string) => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -241,6 +245,12 @@ export function WriterContextMenu({
       <div className="writer-context-menu-separator" />
       <button type="button" role="menuitem" disabled={!hasValidTarget || target?.multipleBlocks} title={target?.multipleBlocks ? "La inserción no es inequívoca con varios bloques seleccionados." : undefined} onClick={() => contextIsCurrent() ? onInsert("menu") : staleContext()}>
         <span>Insertar…</span><small>Nueva escena y convenciones rápidas</small>
+      </button>
+      <button type="button" role="menuitem" disabled={!hasValidTarget || !state.sceneId} title={state.timelineReason ?? undefined} onClick={() => state.sceneId && (contextIsCurrent() ? onAnalyzeScene(state.sceneId) : staleContext())}>
+        <span>Analizar escena</span><small>Objective · Obstacle · Change</small>
+      </button>
+      <button type="button" role="menuitem" disabled={!hasValidTarget || !state.sceneId} title={state.timelineReason ?? undefined} onClick={() => state.sceneId && (contextIsCurrent() ? onAssistant(state.sceneId) : staleContext())}>
+        <span>Ver Assistant</span><small>Abrir observaciones narrativas</small>
       </button>
       <button type="button" role="menuitem" disabled={!hasValidTarget || !state.sceneId} title={state.timelineReason ?? undefined} onClick={() => state.sceneId && (contextIsCurrent() ? onTimeline(state.sceneId) : staleContext())}>
         <span>Ver en línea de tiempo</span><small>{state.timelineReason ?? "Abrir la escena guardada"}</small>

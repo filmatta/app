@@ -36,6 +36,7 @@ import { loadLocalWriterDrafts } from "@/lib/writer/storage";
 import { startWriterTabLease, type WriterTabLease } from "@/lib/writer/tab-lease";
 import {
   ScreenplayBlockExtension,
+  setWriterAssistantMarkers,
   setWriterImportReviewDecorations,
   setWriterObservationMarkers,
   setWriterSceneHighlight,
@@ -47,6 +48,7 @@ import {
   writerTimelineStartsOpen,
 } from "@/lib/writer/workspace-ui";
 import WriterImportFlow from "./WriterImportFlow";
+import WriterAssistantNarrative from "./WriterAssistantNarrative";
 import WriterObservationsPanel from "./WriterObservationsPanel";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
 import WriterTimelineView from "./WriterTimeline";
@@ -118,6 +120,8 @@ import {
   type WriterStructuralMetadata,
 } from "@/lib/writer/structural-metadata-storage";
 import { setWriterDragPreview } from "@/lib/writer/drag-preview";
+import { useWriterScriptAssistant } from "@/lib/writer/script-assistant-client";
+import type { WriterNarrativeObservation } from "@/lib/writer/script-assistant";
 
 type ScriptInput = {
   id: string;
@@ -192,7 +196,9 @@ export default function WriterWorkspace({
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [observationsOpen, setObservationsOpen] = useState(false);
+  const [observationsSection, setObservationsSection] = useState<"review" | "assistant">("review");
   const [selectedObservationBlockId, setSelectedObservationBlockId] = useState<string | null>(null);
+  const [selectedAssistantObservationId, setSelectedAssistantObservationId] = useState<string | null>(null);
   const [characterObservations, setCharacterObservations] = useState<WriterCharacterObservation[]>([]);
   const [persistedImportAnalysis, setPersistedImportAnalysis] = useState<PersistedWriterImportAnalysis | null>(null);
   const [characterDecisions, setCharacterDecisions] = useState<WriterCharacterDecisionState>(() => emptyWriterCharacterDecisionState());
@@ -313,6 +319,13 @@ export default function WriterWorkspace({
     revision: script.revision,
     updatedAt: script.updatedAt,
   }), [script]);
+  const assistant = useWriterScriptAssistant({
+    scriptId: script.id,
+    document,
+    activeSceneId: activeScene,
+    saveStatus: saveState.status,
+    focusMode,
+  });
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -814,6 +827,27 @@ export default function WriterWorkspace({
     };
   }, [editor, focusMode, pendingCharacterObservations]);
 
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || focusMode || !assistant.enabled) {
+      if (editor && !editor.isDestroyed) setWriterAssistantMarkers(editor, [], () => undefined);
+      return;
+    }
+    setWriterAssistantMarkers(editor, assistant.markers, (item) => {
+      setActiveScene(item.sceneId);
+      setSelectedAssistantObservationId(item.observationId);
+      setObservationsSection("assistant");
+      setObservationsOpen(true);
+      const target = findWriterBlockById(editor, item.blockId);
+      if (target) {
+        editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(target.position + 1))).scrollIntoView());
+        setWriterSceneHighlight(editor, item.blockId);
+      }
+    });
+    return () => {
+      if (!editor.isDestroyed) setWriterAssistantMarkers(editor, [], () => undefined);
+    };
+  }, [assistant.enabled, assistant.markers, editor, focusMode]);
+
   const clearSceneHighlight = useCallback(() => {
     if (highlightTimeoutRef.current !== null) window.clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = null;
@@ -1260,6 +1294,26 @@ export default function WriterWorkspace({
     }
   }
 
+  async function analyzeSceneFromMenu(sceneId: string) {
+    setContextMenu(null);
+    setActiveScene(sceneId);
+    setObservationsSection("assistant");
+    setObservationsOpen(true);
+    try {
+      await ensureCurrentDocumentSaved();
+      await assistant.analyzeScene(sceneId);
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No pudimos analizar esta escena ahora.");
+    }
+  }
+
+  function openAssistantForScene(sceneId: string) {
+    setContextMenu(null);
+    setActiveScene(sceneId);
+    setObservationsSection("assistant");
+    setObservationsOpen(true);
+  }
+
   function openImportFlow() {
     setExportMenu(false);
     setMobileMoreOpen(false);
@@ -1382,6 +1436,23 @@ export default function WriterWorkspace({
         createdAt: Date.now(),
       }],
     }));
+  }
+
+  function viewNarrativeObservation(observation: WriterNarrativeObservation) {
+    if (!editor || !activeScene) return;
+    const blockId = observation.evidence[0]?.blockId ?? activeScene;
+    const target = findWriterBlockById(editor, blockId);
+    if (!target) {
+      setFeedback("La evidencia ya no existe en la escena actual.");
+      return;
+    }
+    setSelectedAssistantObservationId(observation.id);
+    recordCurrentNavigation();
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(target.position + 1))).scrollIntoView());
+    clearSceneHighlight();
+    setWriterSceneHighlight(editor, blockId);
+    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
+    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
   }
 
   function viewCharacterObservation(observation: WriterCharacterObservation) {
@@ -1656,7 +1727,7 @@ export default function WriterWorkspace({
             ref={observationsButtonRef}
             className="writer-observations-open-button"
             type="button"
-            onClick={() => { setSelectedObservationBlockId(null); setObservationsOpen((open) => !open); }}
+            onClick={() => { setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen((open) => !open); }}
             aria-expanded={observationsOpen}
           >Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
           <button
@@ -1706,7 +1777,8 @@ export default function WriterWorkspace({
             <div className="writer-mobile-nav-tabs" role="group" aria-label="Secciones de Writer">
               <button type="button" onClick={() => { setMobileSidebar("scenes"); setMobileNavigateOpen(false); }}>Escenas</button>
               <button type="button" onClick={() => { setMobileSidebar("characters"); setMobileNavigateOpen(false); }}>Personajes</button>
-              <button ref={mobileObservationsButtonRef} type="button" onClick={() => { setSelectedObservationBlockId(null); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
+              <button ref={mobileObservationsButtonRef} type="button" onClick={() => { setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
+              <button type="button" onClick={() => { setObservationsSection("assistant"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Assistant</button>
               <button type="button" disabled={!initialTimeline.ok} onClick={() => openTimeline()}>Timeline</button>
             </div>
           </div>
@@ -1967,6 +2039,8 @@ export default function WriterWorkspace({
             setContextMenu(null);
           }}
           onTimeline={(sceneId) => openTimeline(sceneId)}
+          onAnalyzeScene={(sceneId) => void analyzeSceneFromMenu(sceneId)}
+          onAssistant={openAssistantForScene}
           onFeedback={setFeedback}
         />
       )}
@@ -2043,6 +2117,29 @@ export default function WriterWorkspace({
 
       <WriterObservationsPanel
         hidden={!observationsOpen || focusMode}
+        section={observationsSection}
+        onSectionChange={setObservationsSection}
+        assistantPanel={(
+          <WriterAssistantNarrative
+            enabled={assistant.enabled}
+            sceneNumber={activeScene ? (scenes.find((scene) => scene.id === activeScene)?.order ?? null) : null}
+            sceneTitle={activeScene ? (structuralMetadata.sceneNicknames[activeScene]
+              || scenes.find((scene) => scene.id === activeScene)?.title || null) : null}
+            status={assistant.activeStatus}
+            analysis={assistant.activeAnalysis}
+            override={assistant.activeOverride}
+            observations={assistant.activeObservations}
+            selectedObservationId={selectedAssistantObservationId}
+            feedback={assistant.feedback}
+            onToggle={(next) => void assistant.setEnabled(next)}
+            onAnalyze={() => { if (activeScene) void analyzeSceneFromMenu(activeScene); }}
+            onSaveOverride={(field, value) => { if (activeScene) void assistant.saveOverride(activeScene, field, value); }}
+            onDismiss={(observation) => {
+              if (activeScene && assistant.activeHash) void assistant.dismissObservation(activeScene, assistant.activeHash, observation.id);
+            }}
+            onViewObservation={viewNarrativeObservation}
+          />
+        )}
         observations={combinedCharacterObservations}
         knownIdentities={knownCharacterIdentities}
         decisions={characterDecisions}

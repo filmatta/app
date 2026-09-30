@@ -18,6 +18,7 @@ const enterNext: Record<ScreenplayKind, ScreenplayKind> = {
 
 const sceneHighlightKey = new PluginKey<DecorationSet>("writerSceneHighlight");
 const observationMarkerKey = new PluginKey<DecorationSet>("writerObservationMarkers");
+const assistantMarkerKey = new PluginKey<DecorationSet>("writerAssistantMarkers");
 type ImportReviewDecorationState = {
   decorations: DecorationSet;
   items: readonly WriterImportReviewDecoration[];
@@ -31,6 +32,13 @@ export type WriterImportReviewDecoration = {
   category: ScreenplayKind;
   state: "classification" | "question";
   active: boolean;
+};
+
+export type WriterAssistantMarkerDecoration = {
+  sceneId: string;
+  blockId: string;
+  observationId: string;
+  state: "QUESTION" | "INFO" | "REVIEW";
 };
 
 function sceneHighlightDecorations(doc: ProseMirrorNode, id: string) {
@@ -85,6 +93,46 @@ export function setWriterObservationMarkers(
   });
   editor.view.dispatch(editor.state.tr.setMeta(
     observationMarkerKey,
+    DecorationSet.create(editor.state.doc, decorations),
+  ));
+}
+
+export function setWriterAssistantMarkers(
+  editor: Editor,
+  items: readonly WriterAssistantMarkerDecoration[],
+  onOpen: (item: WriterAssistantMarkerDecoration) => void,
+) {
+  const byBlockId = new Map(items.map((item) => [item.blockId, item]));
+  const decorations: Decoration[] = [];
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== "screenplayBlock") return;
+    const item = byBlockId.get(String(node.attrs.id ?? ""));
+    if (!item) return;
+    decorations.push(Decoration.widget(position + node.nodeSize - 1, () => {
+      const marker = document.createElement("button");
+      marker.type = "button";
+      marker.className = "writer-assistant-marker";
+      marker.dataset.assistantObservationId = item.observationId;
+      marker.dataset.assistantState = item.state.toLocaleLowerCase("en-US");
+      marker.contentEditable = "false";
+      marker.setAttribute("aria-label", "Abrir observación narrativa");
+      marker.title = item.state === "QUESTION" ? "Pregunta narrativa" : "Observación narrativa";
+      marker.textContent = "!";
+      marker.addEventListener("mousedown", (event) => event.preventDefault());
+      marker.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onOpen(item);
+      });
+      return marker;
+    }, {
+      key: `writer-assistant-${item.sceneId}-${item.blockId}-${item.observationId}`,
+      side: 1,
+      stopEvent: (event) => event.type === "mousedown" || event.type === "click",
+    }));
+  });
+  editor.view.dispatch(editor.state.tr.setMeta(
+    assistantMarkerKey,
     DecorationSet.create(editor.state.doc, decorations),
   ));
 }
@@ -238,6 +286,20 @@ export const ScreenplayBlockExtension = Node.create({
         },
         props: {
           decorations: (state) => observationMarkerKey.getState(state),
+        },
+      }),
+      new Plugin<DecorationSet>({
+        key: assistantMarkerKey,
+        state: {
+          init: () => DecorationSet.empty,
+          apply(transaction, current) {
+            const next = transaction.getMeta(assistantMarkerKey) as DecorationSet | undefined;
+            if (next !== undefined) return next;
+            return transaction.docChanged ? current.map(transaction.mapping, transaction.doc) : current;
+          },
+        },
+        props: {
+          decorations: (state) => assistantMarkerKey.getState(state),
         },
       }),
       new Plugin<ImportReviewDecorationState>({
