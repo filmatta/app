@@ -1,7 +1,9 @@
 import "server-only";
-import { getBillingAccess } from "@/lib/billing/access";
 
-export type HeaderBillingPlan = "PLUS" | "PRO" | null;
+import { getEffectivePlan } from "@/lib/entitlements/server";
+import type { CommercialPlanCode } from "@/lib/entitlements/types";
+
+export type HeaderBillingPlan = CommercialPlanCode | null;
 
 export async function getHeaderBillingPlan(
   authenticated: boolean
@@ -9,11 +11,8 @@ export async function getHeaderBillingPlan(
   if (!authenticated) return null;
 
   try {
-    const { plan } = await getBillingAccess();
-
-    if (plan === "plus") return "PLUS";
-    if (plan === "pro") return "PRO";
-    return null;
+    const plan = await getEffectivePlan();
+    return plan === "free" ? null : plan;
   } catch {
     return null;
   }

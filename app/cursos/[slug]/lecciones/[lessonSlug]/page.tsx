@@ -386,27 +386,27 @@ export default async function LessonPage({
 
                 {canTrackProgress && !regularAccess && (
                   <section
-                    aria-labelledby="plus-heading"
+                    aria-labelledby="starter-heading"
                     className="order-4 mt-8 rounded-2xl border border-red-400/20 bg-red-500/[0.035] p-6 sm:p-8 lg:order-none"
                   >
                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-red-200/70">
-                      FILMATTA Plus
+                      FILMATTA Starter
                     </p>
-                    <h2 id="plus-heading" className="mt-3 text-2xl font-semibold">
-                      {`Accede a este y todos los cursos de FILMATTA por solo $${FILMATTA_PLAN_PRICES.plus}/mes`}
+                    <h2 id="starter-heading" className="mt-3 text-2xl font-semibold">
+                      {`Accede a este y todos los cursos de FILMATTA por solo $${FILMATTA_PLAN_PRICES.starter}/mes`}
                     </h2>
                     <p className="mt-3 max-w-2xl leading-7 text-white/50">
-                      FILMATTA Plus incluye todos los cursos regulares de Learn y
+                      FILMATTA Starter incluye todos los cursos regulares de Learn y
                       herramientas premium para tu perfil profesional.
                     </p>
                     <p className="mt-3 text-sm text-white/35">
                       Las especialidades se venden por separado.
                     </p>
                     <Link
-                      href="/planes#plus"
+                      href="/planes#starter"
                       className="mt-6 inline-flex rounded-full bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
                     >
-                      Ver FILMATTA Plus
+                      Ver FILMATTA Starter
                     </Link>
                   </section>
                 )}
@@ -446,7 +446,7 @@ export default async function LessonPage({
                   </h2>
                   <p className="mt-3 max-w-2xl leading-7 text-white/45">
                     {isQuickGuide
-                      ? "Las guías rápidas regulares estarán disponibles con FILMATTA Plus. La inscripción a un curso no concede acceso a esta guía."
+                      ? "Las guías rápidas regulares estarán disponibles con FILMATTA Starter. La inscripción a un curso no concede acceso a esta guía."
                       : requiresEnrollment
                         ? "Inscríbete al curso para ver esta lección gratuita y guardar tu progreso."
                         : "Esta es una lección premium. La inscripción guarda el curso en tu cuenta, pero no concede acceso de pago. Podrás abrirla cuando FILMATTA active los accesos y pagos."}
@@ -467,10 +467,10 @@ export default async function LessonPage({
                     ) : null}
                     {!requiresEnrollment && (
                       <Link
-                        href="/planes#plus"
+                        href="/planes#starter"
                         className="rounded-full border border-white/15 px-5 py-3 text-sm font-medium text-white/75 transition hover:bg-white/[0.06] hover:text-white"
                       >
-                        Ver FILMATTA Plus
+                        Ver FILMATTA Starter
                       </Link>
                     )}
                     <Link
@@ -828,12 +828,12 @@ function getContextNextAction({
 
   if (!canOpenLesson && !isAdmin) {
     return {
-      title: isQuickGuide ? "Continúa con Plus" : "Contenido premium",
+      title: isQuickGuide ? "Continúa con Starter" : "Contenido premium",
       description: isQuickGuide
-        ? "Las guías rápidas regulares forman parte de FILMATTA Plus."
-        : "La reproducción de esta lección forma parte de FILMATTA Plus.",
-      href: "/planes#plus",
-      label: "Ver FILMATTA Plus",
+        ? "Las guías rápidas regulares forman parte de FILMATTA Starter."
+        : "La reproducción de esta lección forma parte de FILMATTA Starter.",
+      href: "/planes#starter",
+      label: "Ver FILMATTA Starter",
       commercial: true,
     };
   }
@@ -884,7 +884,7 @@ function getContextNextAction({
   if (resumeAction?.kind === "plus") {
     return {
       title: "Ya terminaste las lecciones gratuitas",
-      description: "Continúa el curso completo con FILMATTA Plus.",
+      description: "Continúa el curso completo con FILMATTA Starter.",
       href: resumeAction.href,
       label: resumeAction.label,
       commercial: true,

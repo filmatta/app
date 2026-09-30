@@ -32,7 +32,7 @@ export type ResumeAction = {
   href: string;
   label:
     | "Continuar curso"
-    | "Ver FILMATTA Plus"
+    | "Ver FILMATTA Starter"
     | "Revisar curso"
     | "Ver curso";
 };
@@ -157,8 +157,8 @@ export async function getResumeActions(
     } else if (courseLessons.some((lesson) => !lesson.is_preview)) {
       actions.set(course.id, {
         kind: "plus",
-        href: "/planes#plus",
-        label: "Ver FILMATTA Plus",
+        href: "/planes#starter",
+        label: "Ver FILMATTA Starter",
       });
     } else {
       actions.set(course.id, getCourseFallbackAction(course.slug));
