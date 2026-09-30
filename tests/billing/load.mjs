@@ -18,9 +18,17 @@ export default function load(file, mocks = {}, env = {}) {
     require(name) {
       if (Object.hasOwn(mocks, name)) return mocks[name];
       if (name === 'server-only') return {};
-      if (name.startsWith('.')) return load(path.join(path.dirname(absolute), `${name}.ts`), mocks, env);
+      if (name.startsWith('.')) return load(resolveSource(path.join(path.dirname(absolute), name)), mocks, env);
+      if (name.startsWith('@/')) return load(resolveSource(path.resolve(name.slice(2))), mocks, env);
       return importCommonJS(name);
     },
   }, { filename: absolute });
   return evaluatedModule.exports;
 };
+
+function resolveSource(candidate) {
+  for (const file of [candidate, `${candidate}.ts`, `${candidate}.tsx`, `${candidate}.js`, `${candidate}.mjs`]) {
+    if (fs.existsSync(file)) return file;
+  }
+  return `${candidate}.ts`;
+}

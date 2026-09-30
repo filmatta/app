@@ -248,9 +248,9 @@ export default async function CursoPage({
     href: viewer
       ? viewer.role === "admin" || regularAccess
         ? firstLessonPath
-        : "/planes#plus"
+        : "/planes#starter"
       : `/acceso?next=${encodeURIComponent(firstLessonPath)}`,
-    label: viewer && viewer.role !== "admin" && !regularAccess ? "Ver FILMATTA Plus" : "Abrir guía",
+    label: viewer && viewer.role !== "admin" && !regularAccess ? "Ver FILMATTA Starter" : "Abrir guía",
   };
   const progressByLesson = new Map(
     lessonProgress.map((progress) => [progress.lesson_id, progress])
@@ -478,7 +478,7 @@ export default async function CursoPage({
                     {viewer?.role === "admin"
                       ? "Vista administrativa de la guía."
                       : viewer
-                        ? "Las guías rápidas regulares estarán disponibles con FILMATTA Plus."
+                        ? "Las guías rápidas regulares estarán disponibles con FILMATTA Starter."
                         : "Inicia sesión o crea una cuenta para continuar."}
                   </p>
                 ) : (!isEnrolled ||
@@ -486,7 +486,7 @@ export default async function CursoPage({
                       resumeAction.kind !== "fallback")) && (
                   <p className="mt-4 text-center text-xs leading-5 text-white/35">
                     {resumeAction.kind === "plus"
-                      ? `Ya terminaste las lecciones gratuitas. Accede al curso completo desde $${FILMATTA_PLAN_PRICES.plus}/mes.`
+                      ? `Ya terminaste las lecciones gratuitas. Accede al curso completo desde $${FILMATTA_PLAN_PRICES.starter}/mes.`
                       : isEnrolled
                         ? "Este curso ya está en Mis cursos."
                         : enrollmentNeedsReview
@@ -700,7 +700,7 @@ export default async function CursoPage({
                                     }`}
                                   >
                                     {isQuickGuide
-                                      ? "FILMATTA Plus"
+                                      ? "FILMATTA Starter"
                                       : lesson.is_preview
                                         ? "Lección gratuita"
                                         : "Lección premium"}
@@ -722,7 +722,7 @@ export default async function CursoPage({
                     {isQuickGuide ? (
                       <>
                         <p className="mt-2 text-lg font-semibold text-white/85">
-                          Accede a esta guía con FILMATTA Plus
+                          Accede a esta guía con FILMATTA Starter
                         </p>
                         <p className="mt-2 max-w-xl text-sm leading-6 text-white/45">
                           Tutoriales breves para resolver tareas concretas de tu trabajo creativo.
@@ -734,7 +734,7 @@ export default async function CursoPage({
                           Ya terminaste las lecciones gratuitas.
                         </p>
                         <p className="mt-2 max-w-xl text-sm leading-6 text-white/45">
-                          {`Continúa este curso y accede a todos los cursos regulares desde $${FILMATTA_PLAN_PRICES.plus}/mes.`}
+                          {`Continúa este curso y accede a todos los cursos regulares desde $${FILMATTA_PLAN_PRICES.starter}/mes.`}
                         </p>
                       </>
                     ) : (

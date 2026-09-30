@@ -12,6 +12,7 @@ import AuthenticatedHeader from "@/components/student/AuthenticatedHeader";
 import AccountNavigationSidebar from "@/components/student/AccountNavigationSidebar";
 import AuthenticatedWorkspaceLayout from "@/components/student/AuthenticatedWorkspaceLayout";
 import LoadingButton from "@/components/ui/LoadingButton";
+import { PlanBadge } from "@/components/entitlements/PlanBadge";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getLearnContentType } from "@/lib/learn/content-type";
 import { getResumeActions, type ResumeAction } from "@/lib/learn/resume";
@@ -324,14 +325,20 @@ export default async function CuentaPage({
             <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
               <div>
                 <p className="text-sm text-white/35">Plan actual</p>
-                <p className="mt-2 text-xl font-semibold">FILMATTA {billing.plan === "pro" ? "Pro" : billing.plan === "plus" ? "Plus" : "Free"}</p>
+                <div className="mt-2">
+                  {billing.plan ? (
+                    <PlanBadge plan={billing.plan} size="card" />
+                  ) : (
+                    <p className="text-xl font-semibold">FILMATTA Baseline</p>
+                  )}
+                </div>
                 {billingEnabled() && <Link href="/cuenta/suscripcion" className="mt-3 inline-block text-sm text-white/70 underline">Administrar suscripción de prueba</Link>}
               </div>
               <Link
-                href="/planes#plus"
+                href="/planes#starter"
                 className="w-fit rounded-full border border-white/15 px-5 py-3 text-sm font-medium text-white/70 transition hover:bg-white/[0.06] hover:text-white"
               >
-                Ver FILMATTA Plus
+                Ver FILMATTA Starter
               </Link>
             </div>
           </div>
@@ -694,7 +701,7 @@ function CourseGroup({
                 )}
                 {resumeAction.kind === "plus" && (
                   <p className="mt-4 text-sm leading-6 text-emerald-100/55">
-                    {`Ya terminaste las lecciones gratuitas. Accede a todos los cursos regulares desde $${FILMATTA_PLAN_PRICES.plus}/mes.`}
+                    {`Ya terminaste las lecciones gratuitas. Accede a todos los cursos regulares desde $${FILMATTA_PLAN_PRICES.starter}/mes.`}
                   </p>
                 )}
                 <Link

@@ -1,163 +1,60 @@
 import Link from "next/link";
-import { billingEnabled, billingMode } from "@/lib/billing/config";
 import SiteHeader from "@/components/SiteHeader";
-import { FILMATTA_PLAN_PRICES } from "@/lib/plans";
+import { PlanBadge } from "@/components/entitlements/PlanBadge";
+import { PlanPageViewEvent } from "@/components/entitlements/PlanPageViewEvent";
+import { UpgradeGate } from "@/components/entitlements/UpgradeGate";
 import { getViewer } from "@/lib/auth/get-viewer";
-import { getBillingAccess } from "@/lib/billing/access";
+import { COMMERCIAL_PLAN_CODES } from "@/lib/entitlements/catalog";
 import {
-  getPlanCardAction,
-  type PlanCardAction,
-} from "@/lib/billing/plan-presentation";
-import {
-  keepSubscription,
-  openBillingPortal,
-  startCheckout,
-  undoDowngradeToPlus,
-  upgradeToPro,
-} from "@/app/cuenta/suscripcion/actions";
-import LoadingButton from "@/components/ui/LoadingButton";
-import { planVisuals } from "@/lib/plan-visuals";
+  checkEntitlement,
+  getEntitlementContext,
+  getPlanCatalog,
+} from "@/lib/entitlements/server";
+import type {
+  EntitlementCheck,
+  PlanCode,
+  PlanDefinition,
+} from "@/lib/entitlements/types";
+import { resolveEntitlementCheck } from "@/lib/entitlements/resolver";
+import { getPlanVisual } from "@/lib/plan-visuals";
 import {
   PAGE_CONTAINER_CLASS_NAME,
   WIDE_PAGE_CONTAINER_CLASS_NAME,
 } from "@/lib/page-container";
-import { formatBillingEffectiveDate } from "@/lib/billing/return-presentation";
-import { getProToPlusDowngradeState } from "@/lib/billing/subscription-schedule";
-import { getMyScheduledCancellation } from "@/lib/billing/cancellation";
 
 export const dynamic = "force-dynamic";
 
-const plans = [
-  {
-    id: "free",
-    name: "FILMATTA Free",
-    tagline: "Empieza en FILMATTA",
-    description:
-      "Para crear tu cuenta, conocer la plataforma y probar FILMATTA Learn.",
-    price: FILMATTA_PLAN_PRICES.free,
-    badgeClass: planVisuals.free.badgeClassName,
-    features: [
-      "Cuenta y perfil básicos",
-      "Acceso al temario de Learn",
-      "Lecciones gratuitas al registrarte e inscribirte",
-      "Progreso básico en esas lecciones",
-      "Acceso básico a oportunidades",
-    ],
-  },
-  {
-    id: "plus",
-    name: "FILMATTA Plus",
-    tagline: "Aprende y mejora tu presencia profesional",
-    description:
-      "Para aprender continuamente y presentar tu trabajo con una presencia profesional premium.",
-    price: FILMATTA_PLAN_PRICES.plus,
-    badgeClass: planVisuals.plus.badgeClassName,
-    recommended: true,
-    features: [
-      "Todo lo incluido en FILMATTA Free",
-      "Todos los cursos regulares de Learn",
-      "Perfil premium y mayor personalización",
-      "Generador de CV y portfolio en PDF",
-      "Certificados de finalización",
-      "Analíticas personales",
-      "Más herramientas para tu presencia profesional",
-      "Especialidades disponibles por separado",
-    ],
-  },
-  {
-    id: "pro",
-    name: "FILMATTA Pro",
-    tagline: "Haz crecer tu carrera profesional",
-    description:
-      "Para profesionales que buscan más alcance, mejores herramientas y nuevas oportunidades.",
-    price: FILMATTA_PLAN_PRICES.pro,
-    badgeClass: planVisuals.pro.badgeClassName,
-    features: [
-      "Todo lo incluido en FILMATTA Plus",
-      "Mayor capacidad de portfolio y reels",
-      "Analíticas profesionales avanzadas",
-      "Filtros avanzados de oportunidades",
-      "Alertas y búsquedas guardadas",
-      "Más créditos y contactos profesionales",
-      "Mayor visibilidad para ser descubierto",
-      "Prioridad y boosts de visibilidad",
-      "Más oportunidades de ser visto por equipos que contratan",
-    ],
-  },
-  {
-    id: "business",
-    name: "FILMATTA Business",
-    tagline: "Encuentra, contrata y coordina talento",
-    description:
-      "Para organizaciones y equipos que necesitan buscar talento y coordinar su operación audiovisual.",
-    price: FILMATTA_PLAN_PRICES.business,
-    badgeClass: planVisuals.business.badgeClassName,
-    features: [
-      "Organización y workspace",
-      "Seats para miembros del equipo",
-      "Talent Finder",
-      "Hiring avanzado",
-      "Scouter avanzado",
-      "Shortlists y gestión de candidatos",
-      "Coordinación de equipo y proyectos",
-      "Herramientas de contacto y reclutamiento",
-      "Analíticas para la organización",
-      "Pensado para productoras, agencias, estudios y equipos",
-    ],
-  },
-] as const;
-
-export default async function PlanesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ subscription?: string; error?: string }>;
-}) {
-  const query = await searchParams;
+export default async function PlanesPage() {
   const viewer = await getViewer();
-  const billingAvailable = billingEnabled();
-  const mode = billingMode();
-  const billing = viewer
-    ? await getBillingAccess()
-    : {
-        regularAccess: false,
-        plan: null,
-        stripePlan: null,
-        adminGrantPlan: null,
-        adminGrantExpiresAt: null,
-        source: null,
-      };
-  const currentPlan = viewer ? billing.plan : null;
-  let scheduledDowngradeAt: string | null = null;
-  let downgradeUnavailable = false;
-  let cancellationEffectiveAt: string | null = null;
-  if (viewer && billing.stripePlan && billingAvailable) {
-    try {
-      const cancellation = await getMyScheduledCancellation(viewer.id);
-      if (cancellation.plan === billing.stripePlan && cancellation.isCancellationScheduled) {
-        cancellationEffectiveAt = cancellation.cancellationEffectiveAt;
-      }
-    } catch (error) {
-      console.error("Unable to read the scheduled cancellation", error);
-    }
-  }
-  if (
-    viewer &&
-    currentPlan === "pro" &&
-    billing.stripePlan === "pro" &&
-    billingAvailable &&
-    !cancellationEffectiveAt
-  ) {
-    try {
-      const downgrade = await getProToPlusDowngradeState(viewer.id);
-      scheduledDowngradeAt = downgrade.scheduled ? downgrade.effectiveAt : null;
-    } catch (error) {
-      console.error("Unable to read the Pro to Plus schedule", error);
-      downgradeUnavailable = true;
-    }
-  }
+  const [catalog, entitlementContext] = await Promise.all([
+    getPlanCatalog(),
+    viewer ? getEntitlementContext() : Promise.resolve(null),
+  ]);
+  const currentPlan = entitlementContext?.plan ?? "free";
+  const featureExamples = await Promise.all(
+    [
+      "search.advanced_filters",
+      "production.assistant",
+      "services.business_profile",
+    ].map((entitlement) =>
+      viewer
+        ? checkEntitlement(entitlement)
+        : Promise.resolve(
+            resolveEntitlementCheck({
+              plan: "free",
+              entitlement,
+            })
+          )
+    )
+  );
+  const baseline = catalog.find((plan) => plan.code === "free");
+  const commercialPlans = COMMERCIAL_PLAN_CODES.map(
+    (code) => catalog.find((plan) => plan.code === code)
+  ).filter((plan): plan is PlanDefinition => Boolean(plan));
 
   return (
     <main className="min-h-screen bg-[#080808] text-white">
+      <PlanPageViewEvent currentPlan={currentPlan} />
       <SiteHeader contextLink={{ href: "/cursos", label: "← Aprender" }} />
 
       <section className="pb-24 pt-16 lg:pb-32 lg:pt-24">
@@ -167,314 +64,203 @@ export default async function PlanesPage({
               Planes FILMATTA
             </p>
             <h1 className="mt-5 text-5xl font-semibold tracking-[-0.045em] sm:text-7xl">
-              Elige cómo crecer en FILMATTA.
+              Más capacidad cuando la necesitas.
             </h1>
             <p className="mt-7 max-w-2xl text-lg leading-8 text-white/50">
-              Empieza con lo esencial y avanza cuando necesites más aprendizaje,
-              presencia profesional o herramientas para tu organización.
+              Pagar mejora aprendizaje, capacidad, inteligencia, almacenamiento
+              y herramientas. Tu derecho básico a participar profesionalmente
+              no depende de un plan.
             </p>
-            {currentPlan && (
-              <p className="mt-6 inline-flex rounded-full border border-white/15 bg-white/[0.04] px-4 py-2 text-sm text-white/70">
-                Tu plan actual: FILMATTA {currentPlan === "plus" ? "Plus" : "Pro"}
-              </p>
-            )}
-            {billing.source === "admin_grant" && currentPlan && (
-              <div className="mt-4 max-w-2xl rounded-xl border border-white/10 bg-white/[0.025] px-4 py-3 text-sm leading-6 text-white/60">
-                <p className="font-semibold text-white/75">
-                  Acceso otorgado por FILMATTA
-                </p>
-                {billing.adminGrantExpiresAt && (
-                  <p>
-                    Disponible hasta el {formatBillingEffectiveDate(billing.adminGrantExpiresAt)}.
-                  </p>
-                )}
-              </div>
-            )}
-            {billing.stripePlan && cancellationEffectiveAt && (
-              <p
-                role="status"
-                className="mt-4 max-w-2xl rounded-xl border border-amber-300/25 bg-amber-300/[0.06] px-4 py-3 text-sm leading-6 text-amber-100/80"
-              >
-                Tu suscripción FILMATTA {billing.stripePlan === "plus" ? "Plus" : "Pro"} se cancelará el {formatBillingEffectiveDate(cancellationEffectiveAt)}.
-              </p>
-            )}
-          </div>
 
-          <nav
-            aria-label="Niveles de FILMATTA"
-            className="mt-10 flex flex-wrap gap-2"
-          >
-            {plans.map((plan) => (
-              <Link
-                key={plan.id}
-                href={`#${plan.id}`}
-                className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/50 transition hover:border-white/20 hover:text-white"
-              >
-                {plan.name.replace("FILMATTA ", "")}
-              </Link>
-            ))}
-          </nav>
+            <div className="mt-7 flex flex-wrap items-center gap-3">
+              <span className="text-sm text-white/45">Tu plan actual</span>
+              {currentPlan === "free" ? (
+                <span className="text-sm font-semibold text-white/75">
+                  Baseline
+                </span>
+              ) : (
+                <PlanBadge plan={currentPlan} size="card" />
+              )}
+              {entitlementContext?.status === "unavailable" && (
+                <span className="text-xs text-white/35">
+                  No pudimos verificar un plan premium.
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className={`${WIDE_PAGE_CONTAINER_CLASS_NAME} mt-16`}>
+        <div className={`${WIDE_PAGE_CONTAINER_CLASS_NAME} mt-14`}>
           <div className="-mx-6 flex snap-x snap-mandatory gap-4 overflow-x-auto px-6 pb-5 lg:mx-0 lg:grid lg:grid-cols-4 lg:gap-5 lg:overflow-visible lg:px-0 lg:pb-0">
-            {plans.map((plan) => {
-              const isCurrent = plan.id === currentPlan;
-              const action = getPlanCardAction({
-                planId: plan.id,
-                currentPlan,
-                stripePlan: billing.stripePlan,
-                authenticated: Boolean(viewer),
-                billingAvailable,
-                scheduledDowngradeAt,
-                downgradeUnavailable,
-                cancellationEffectiveAt:
-                  billing.stripePlan === currentPlan ? cancellationEffectiveAt : null,
-                keepSubscriptionFeedback:
-                  query.subscription === "kept"
-                    ? "success"
-                    : query.error === "keep-subscription"
-                      ? "error"
-                      : null,
-              });
-
-              return (
-                <article
-                  key={plan.id}
-                  id={plan.id}
-                  className={`flex min-h-[39rem] w-[85vw] max-w-[22rem] shrink-0 snap-center scroll-mt-8 flex-col rounded-2xl border p-7 sm:w-[23rem] lg:w-auto lg:max-w-none 2xl:max-w-[26rem] 2xl:justify-self-center ${
-                    isCurrent
-                      ? "border-white/30 bg-white/[0.045]"
-                      : "recommended" in plan && plan.recommended
-                        ? "border-emerald-400/35 bg-emerald-400/[0.035]"
-                        : "border-white/10 bg-white/[0.02]"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <span
-                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${plan.badgeClass}`}
-                    >
-                      {plan.name.replace("FILMATTA ", "")}
-                    </span>
-                    {isCurrent ? (
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/65">
-                        Tu plan actual
-                      </span>
-                    ) : "recommended" in plan && plan.recommended ? (
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200/70">
-                        Recomendado
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <h2 className="mt-6 text-2xl font-semibold tracking-[-0.03em]">
-                    {plan.tagline}
-                  </h2>
-                  <p className="mt-4 text-sm leading-6 text-white/45">
-                    {plan.description}
-                  </p>
-
-                  <p className="mt-7 flex items-baseline gap-1.5">
-                    <span className="text-4xl font-semibold tracking-[-0.04em]">
-                      ${plan.price}
-                    </span>
-                    {plan.price > 0 && (
-                      <span className="text-sm text-white/35">/mes</span>
-                    )}
-                  </p>
-
-                  <ul className="mt-7 flex-1 space-y-3 border-t border-white/10 pt-7">
-                    {plan.features.map((feature) => (
-                      <li
-                        key={feature}
-                        className="flex items-start gap-3 text-sm leading-6 text-white/65"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                          className="mt-1 size-4 shrink-0 fill-none stroke-current text-white/35"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="m5 12 4 4L19 6" />
-                        </svg>
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <PlanAction action={action} />
-                </article>
-              );
-            })}
+            {commercialPlans.map((plan) => (
+              <PlanCard
+                key={plan.code}
+                plan={plan}
+                currentPlan={currentPlan}
+              />
+            ))}
           </div>
         </div>
 
         <div className={PAGE_CONTAINER_CLASS_NAME}>
-          <section className="mt-8 rounded-2xl border border-white/10 bg-white/[0.02] p-7 sm:p-9">
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/30">
-              Especialidades
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold">
-              Formación específica, cuando la necesites.
-            </h2>
-            <p className="mt-4 leading-7 text-white/50">
-              Las especialidades se venden por separado. No están incluidas
-              automáticamente en Plus, Pro ni Business.
-            </p>
+          <section
+            id="como-funcionan-los-planes"
+            className="mt-14 grid gap-8 border-y border-white/10 py-10 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16"
+          >
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/30">
+                Baseline protegido
+              </p>
+              <h2 className="mt-3 text-3xl font-semibold">
+                El perfil gratuito no se reduce.
+              </h2>
+            </div>
+            <div>
+              <p className="leading-7 text-white/50">
+                {baseline?.description ??
+                  "La participación profesional básica permanece disponible sin suscripción."}
+              </p>
+              <ul className="mt-6 grid gap-3 text-sm text-white/65 sm:grid-cols-2">
+                {(baseline?.features ?? []).map((feature) => (
+                  <li key={feature} className="flex items-start gap-3">
+                    <CheckIcon />
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </section>
 
-          <p className="mt-8 text-center text-sm text-white/30">
-            {mode === "test"
-              ? "Stripe Test Mode. Usa únicamente tarjetas de prueba."
-              : billingAvailable
-                ? "Suscripciones disponibles en México. Precios con IVA incluido."
-                : "Los planes premium estarán disponibles próximamente."}
-          </p>
+          <section className="mt-14 rounded-2xl border border-white/10 bg-white/[0.025] p-7 sm:p-9">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/30">
+              Ejemplos de valor premium
+            </p>
+            <div className="mt-6 grid gap-px overflow-hidden rounded-xl border border-white/10 bg-white/10 sm:grid-cols-3">
+              <FeatureExample label="Filtros avanzados" access={featureExamples[0]} />
+              <FeatureExample label="Production Assistant" access={featureExamples[1]} />
+              <FeatureExample label="Perfil de negocio" access={featureExamples[2]} />
+            </div>
+          </section>
+
+          <div className="mt-10 flex flex-col items-center gap-4 text-center">
+            <p className="max-w-2xl text-sm leading-6 text-white/40">
+              Esta fase no incluye checkout ni cobros. Los precios son una
+              referencia configurable y los planes se asignan de forma segura
+              para pruebas internas.
+            </p>
+            {viewer?.role === "admin" && (
+              <Link
+                href="/admin/planes"
+                className="rounded-full border border-white/15 px-5 py-3 text-sm font-semibold text-white/75 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                Simular planes en Admin
+              </Link>
+            )}
+          </div>
         </div>
       </section>
     </main>
   );
 }
 
-function PlanAction({ action }: { action: PlanCardAction }) {
-  const interactiveClass =
-    "mt-8 inline-flex w-full justify-center rounded-full border border-white/15 px-5 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/[0.05] hover:text-white";
-
-  if (action.kind === "link") {
-    return (
-      <Link href={action.href} className={interactiveClass}>
-        {action.label}
-      </Link>
-    );
-  }
-
-  if (action.kind === "checkout") {
-    return (
-      <form action={startCheckout} className="mt-8">
-        <input type="hidden" name="plan" value={action.plan} />
-        <input type="hidden" name="country" value="MX" />
-        <LoadingButton
-          type="submit"
-          loadingText="Abriendo…"
-          className={interactiveClass.replace("mt-8 ", "")}
-        >
-          {action.label}
-        </LoadingButton>
-      </form>
-    );
-  }
-
-  if (action.kind === "pro-upgrade") {
-    return (
-      <div className="mt-8">
-        <form action={upgradeToPro}>
-          <LoadingButton
-            type="submit"
-            loadingText="Abriendo…"
-            className={interactiveClass.replace("mt-8 ", "")}
-          >
-            {action.label}
-          </LoadingButton>
-        </form>
-        <p className="mt-3 text-center text-xs leading-5 text-white/35">
-          Se abrirá Stripe para confirmar el cambio y el prorrateo.
-        </p>
-      </div>
-    );
-  }
-
-  if (action.kind === "downgrade") {
-    return (
-      <Link href={action.href} className={interactiveClass}>
-        {action.label}
-      </Link>
-    );
-  }
-
-  if (action.kind === "scheduled-downgrade") {
-    return (
-      <div className="mt-8">
-        <p className="text-center text-sm font-semibold text-emerald-200/85">
-          Cambio a Plus programado
-        </p>
-        <p className="mt-2 text-center text-xs leading-5 text-white/40">
-          Cambiará el {formatBillingEffectiveDate(action.effectiveAt)}.
-        </p>
-        <form action={undoDowngradeToPlus} className="mt-4">
-          <LoadingButton
-            type="submit"
-            loadingText="Deshaciendo…"
-            className={interactiveClass.replace("mt-8 ", "")}
-          >
-            {action.label}
-          </LoadingButton>
-        </form>
-      </div>
-    );
-  }
-
-  if (action.kind === "keep-subscription") {
-    return (
-      <div className="mt-8">
-        <p className="text-center text-sm font-semibold text-amber-100/85">
-          Cancelación programada
-        </p>
-        <p className="mt-2 text-center text-xs leading-5 text-white/40">
-          Se cancelará el {formatBillingEffectiveDate(action.effectiveAt)}.
-        </p>
-        <form action={keepSubscription} className="mt-4">
-          <LoadingButton
-            type="submit"
-            loadingText="Manteniendo suscripción…"
-            className={interactiveClass.replace("mt-8 ", "")}
-          >
-            {action.label}
-          </LoadingButton>
-        </form>
-        {action.error && (
-          <p
-            role="alert"
-            className="mt-3 text-center text-xs leading-5 text-red-200/80"
-          >
-            {action.error}
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  if (action.kind === "portal") {
-    return (
-      <form action={openBillingPortal} className="mt-8">
-        <LoadingButton
-          type="submit"
-          loadingText="Abriendo…"
-          className={interactiveClass.replace("mt-8 ", "")}
-        >
-          {action.label}
-        </LoadingButton>
-      </form>
-    );
-  }
+function PlanCard({
+  plan,
+  currentPlan,
+}: {
+  plan: PlanDefinition;
+  currentPlan: PlanCode;
+}) {
+  const isCurrent = plan.code === currentPlan;
+  const visual = getPlanVisual(plan.code);
 
   return (
-    <div className="mt-8">
-      <span
-        aria-current={action.label === "Tu plan actual" ? "true" : undefined}
-        className="inline-flex w-full justify-center rounded-full border border-white/10 px-5 py-3 text-sm font-semibold text-white/35"
+    <article
+      id={plan.code}
+      className={`flex min-h-[36rem] w-[85vw] max-w-[22rem] shrink-0 snap-center scroll-mt-8 flex-col rounded-2xl border p-7 sm:w-[23rem] lg:w-auto lg:max-w-none ${
+        isCurrent
+          ? `${visual.panelClassName} ring-1 ring-white/15`
+          : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PlanBadge plan={plan.code} size="card" />
+        {isCurrent && (
+          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/65">
+            Tu plan actual
+          </span>
+        )}
+      </div>
+
+      <p className={`mt-6 text-sm font-semibold ${visual.accentClassName}`}>
+        {plan.audience}
+      </p>
+      <h2 className="mt-3 text-2xl font-semibold tracking-[-0.03em]">
+        FILMATTA {plan.label}
+      </h2>
+      <p className="mt-4 min-h-24 text-sm leading-6 text-white/45">
+        {plan.description}
+      </p>
+
+      <p className="mt-5 flex items-baseline gap-1.5">
+        <span className="text-4xl font-semibold tracking-[-0.04em]">
+          ${plan.currentPriceMxn.toLocaleString("es-MX")}
+        </span>
+        <span className="text-sm text-white/35">MXN / mes</span>
+      </p>
+
+      <ul className="mt-7 flex-1 space-y-3 border-t border-white/10 pt-7">
+        {plan.features.map((feature) => (
+          <li
+            key={feature}
+            className="flex items-start gap-3 text-sm leading-6 text-white/65"
+          >
+            <CheckIcon />
+            <span>{feature}</span>
+          </li>
+        ))}
+      </ul>
+
+      <a
+        href="#como-funcionan-los-planes"
+        className="mt-8 inline-flex w-full justify-center rounded-full border border-white/15 px-5 py-3 text-sm font-semibold text-white/75 transition hover:bg-white/[0.05] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
       >
-        {action.label}
-      </span>
-      {action.kind === "status" && action.feedback && (
-        <p
-          role="status"
-          className="mt-3 text-center text-xs leading-5 text-emerald-200/80"
-        >
-          {action.feedback}
-        </p>
-      )}
+        Conocer plan
+      </a>
+    </article>
+  );
+}
+
+function FeatureExample({
+  label,
+  access,
+}: {
+  label: string;
+  access: EntitlementCheck;
+}) {
+  return (
+    <div className="bg-[#0b0b0b] p-5">
+      <UpgradeGate
+        access={access}
+        context="plans_feature_example"
+        className="w-full justify-between text-sm text-white/70"
+      >
+        {label}
+      </UpgradeGate>
     </div>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="mt-1 size-4 shrink-0 fill-none stroke-current text-white/35"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m5 12 4 4L19 6" />
+    </svg>
   );
 }

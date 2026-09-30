@@ -1,5 +1,5 @@
-import type { BillingPlan } from "./policy";
-import { isBillingPlan } from "./policy";
+import type { PlanCode } from "@/lib/entitlements/types";
+import { isPlanCode } from "@/lib/entitlements/resolver";
 
 export type AdminGrantDuration = "7d" | "30d" | "90d" | "none";
 
@@ -9,8 +9,8 @@ const durationDays: Record<Exclude<AdminGrantDuration, "none">, number> = {
   "90d": 90,
 };
 
-export function parseAdminGrantPlan(value: FormDataEntryValue | null): BillingPlan {
-  if (!isBillingPlan(value)) throw new Error("Plan de acceso no válido");
+export function parseAdminGrantPlan(value: FormDataEntryValue | null): PlanCode {
+  if (!isPlanCode(value)) throw new Error("Plan de acceso no válido");
   return value;
 }
 
