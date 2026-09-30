@@ -56,7 +56,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       sourceHash: body.value.sourceHash,
       operationId: body.value.operationId,
       signal: request.signal,
-    });
+    }, { readDb: session.supabase });
     return writerJson(result, result.pending ? 202 : 200);
   } catch (cause) {
     if (cause instanceof WriterSceneAssistantError) return writerJson({ error: cause.message, code: cause.code }, cause.status);

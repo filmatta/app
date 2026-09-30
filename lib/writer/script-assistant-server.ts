@@ -59,10 +59,11 @@ export class WriterSceneAssistantError extends Error {
 export async function executeWriterSceneAnalysis(
   userId: string,
   request: { scriptId: string; sceneId: string; sourceHash: string; operationId?: string; signal?: AbortSignal },
-  dependencies: { db?: Database; provider?: WriterSceneAnalysisProvider } = {},
+  dependencies: { db?: Database; readDb?: Database; provider?: WriterSceneAnalysisProvider } = {},
 ) {
   const db = dependencies.db ?? createAdminClient();
-  const scriptResult = await db.from("writer_scripts").select("document").eq("id", request.scriptId).eq("owner_id", userId).maybeSingle();
+  const readDb = dependencies.readDb ?? db;
+  const scriptResult = await readDb.from("writer_scripts").select("document").eq("id", request.scriptId).eq("owner_id", userId).maybeSingle();
   if (scriptResult.error || !scriptResult.data) throw new WriterSceneAssistantError("not_found", "Guion no encontrado.", 404);
   const validated = validateWriterDocument(scriptResult.data.document);
   if (!validated.ok) throw new WriterSceneAssistantError("invalid_document", "El guion guardado no es compatible.", 409);
@@ -103,7 +104,7 @@ export async function executeWriterSceneAnalysis(
   });
 
   if (reserved.status === "fresh") {
-    const analysis = await loadAnalysis(db, userId, request.scriptId, request.sceneId, sourceHash);
+    const analysis = await loadAnalysis(readDb, userId, request.scriptId, request.sceneId, sourceHash);
     return { analysis, cached: true, providerCalls: 0, costMicrousd: 0, latencyMs: 0 };
   }
   if (reserved.status === "analyzing") return { analysis: null, cached: false, pending: true, providerCalls: 0, costMicrousd: 0, latencyMs: 0 };
@@ -141,7 +142,7 @@ export async function executeWriterSceneAnalysis(
 
   const actualCost = calculateWriterSceneAnalysisCost(providerResponse.usage);
   await settle(db, userId, operationId, "completed", payload, null, providerResponse.usage, actualCost);
-  const analysis = await loadAnalysis(db, userId, request.scriptId, request.sceneId, sourceHash);
+  const analysis = await loadAnalysis(readDb, userId, request.scriptId, request.sceneId, sourceHash);
   console.info("writer_scene_analysis", {
     operationId,
     sceneId: request.sceneId,

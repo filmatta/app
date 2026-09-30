@@ -23,6 +23,7 @@ test("authenticated route validates ownership and saved scene before any provide
   assert.match(server, /\.eq\("owner_id", userId\)/u);
   assert.match(server, /validateWriterDocument/u);
   assert.match(server, /sourceHash !== request\.sourceHash/u);
+  assert.match(route, /\{ readDb: session\.supabase \}/u);
 });
 
 test("automatic trigger is ACK/idle gated, coalesced, and disabled in Focus or when Assistant is OFF", () => {
