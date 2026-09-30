@@ -56,3 +56,14 @@ test("search migration is indexed, deterministic and public-only", () => {
   assert.match(sql, /to anon, authenticated/i);
   assert.doesNotMatch(sql, /email|phone|whatsapp|instagram/i);
 });
+
+test("staging follow-up keeps the editor alias narrow and public-only", () => {
+  const sql = fs.readFileSync(
+    "supabase/migrations/20260930041000_profiles_search_editor_alias.sql",
+    "utf8",
+  );
+  assert.match(sql, /editor\|editora/);
+  assert.match(sql, /websearch_to_tsquery/i);
+  assert.match(sql, /where profile\.is_public/i);
+  assert.doesNotMatch(sql, /email|phone|whatsapp|instagram/i);
+});
