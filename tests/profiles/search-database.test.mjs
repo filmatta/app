@@ -48,6 +48,12 @@ before(async () => {
       "utf8",
     ),
   );
+  await db.exec(
+    fs.readFileSync(
+      "supabase/migrations/20260930041000_profiles_search_editor_alias.sql",
+      "utf8",
+    ),
+  );
 
   const presentation = (name) =>
     JSON.stringify({
@@ -63,7 +69,7 @@ before(async () => {
       (user_id, slug, display_name, disciplines, city, bio, availability, skills, is_public, updated_at, presentation)
      values
       ('11111111-1111-4111-8111-111111111111','ana-foto','Ana F.',array['Dirección de fotografía'],'Guadalajara','Bio','available',array['Iluminación natural'],true,'2026-09-03',$1),
-      ('22222222-2222-4222-8222-222222222222','luis-sonido','Luis S.',array['Sonido'],'Ciudad de México','Bio','limited',array['Mezcla de campo'],true,'2026-09-02',$2),
+      ('22222222-2222-4222-8222-222222222222','luis-sonido','Luis S.',array['Sonido','Edición'],'Ciudad de México','Bio','limited',array['Mezcla de campo'],true,'2026-09-02',$2),
       ('33333333-3333-4333-8333-333333333333','draft-secret','Secreto D.',array['Dirección'],'Mérida','Bio','available',array['Casting'],false,'2026-09-04',$3)`,
     [presentation("Ana Torres"), presentation("Luis Sonido"), presentation("Secreto Privado")],
   );
@@ -95,6 +101,11 @@ test("indexed RPC searches public name, discipline and skills with stable totals
     "select * from search_public_professional_profiles('sonidista',1,'','','','')",
   );
   assert.equal(bySoundAlias.rows[0].slug, "luis-sonido");
+
+  const byEditorAlias = await db.query(
+    "select * from search_public_professional_profiles('editor',1,'','','','')",
+  );
+  assert.equal(byEditorAlias.rows[0].slug, "luis-sonido");
 
   const draft = await db.query(
     "select * from search_public_professional_profiles('Secreto',1,'','','','')",
