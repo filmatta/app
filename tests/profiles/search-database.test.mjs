@@ -44,7 +44,7 @@ before(async () => {
   `);
   await db.exec(
     fs.readFileSync(
-      "supabase/migrations/20260930010000_profiles_search_v1.sql",
+      "supabase/migrations/20260930040000_profiles_search_v1.sql",
       "utf8",
     ),
   );

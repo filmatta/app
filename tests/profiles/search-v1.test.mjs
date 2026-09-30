@@ -46,7 +46,7 @@ test("profile return paths accept only the public catalog and known params", () 
 
 test("search migration is indexed, deterministic and public-only", () => {
   const sql = fs.readFileSync(
-    "supabase/migrations/20260930010000_profiles_search_v1.sql",
+    "supabase/migrations/20260930040000_profiles_search_v1.sql",
     "utf8",
   );
   assert.match(sql, /using gin \(search_document\)/i);

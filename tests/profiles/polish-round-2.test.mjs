@@ -31,7 +31,7 @@ test("reels use a curated cover while preserving the signed player", () => {
 test("search catalog receives one bounded visual selected by the public database projection", () => {
   const card = read("components/profiles/ProfileCard.tsx");
   const migration = read(
-    "supabase/migrations/20260930010000_profiles_search_v1.sql",
+    "supabase/migrations/20260930040000_profiles_search_v1.sql",
   );
   assert.match(card, /profile\.visual_media_id/);
   assert.doesNotMatch(card, /leadReel|reelSource|portfolio_items|p\.book/);
