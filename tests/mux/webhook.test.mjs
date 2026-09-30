@@ -60,6 +60,12 @@ function loadRoute({ event, signatureError = null }) {
         syncPortfolioUpload: async () => { calls.portfolio++; },
         markPortfolioAssetDeleted: async () => { calls.portfolio++; },
       },
+      "@/lib/locations/mux-tours": {
+        parseLocationTourPassthrough: () => null,
+        syncLocationTourAsset: async () => ({ outcome: "ignored" }),
+        syncLocationTourUpload: async () => ({ outcome: "ignored" }),
+        markLocationTourAssetDeleted: async () => {},
+      },
       "@/lib/supabase/admin": { createAdminClient: () => ({}) },
     },
     { MUX_WEBHOOK_SECRET: "webhook-secret-fixture" },
