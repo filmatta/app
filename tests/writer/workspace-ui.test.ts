@@ -26,6 +26,11 @@ test("Writer responsive controls keep actions reachable and native scrollbars sc
   assert.match(css, /\.writer-import-source textarea\s*\{[^}]*min-height/u);
   assert.match(css, /scrollbar-width:\s*thin/u);
   assert.match(css, /@media \(forced-colors: active\)/u);
+  assert.match(css, /\.writer-mobile-app-bar/u);
+  assert.match(css, /\.writer-toolbar select\s*\{[^}]*min-width:\s*0/u);
+  assert.match(css, /\.writer-context-menu--touch/u);
+  assert.match(css, /\.writer-drag-preview/u);
+  assert.doesNotMatch(css, /\.writer-toolbar\s*\{[^}]*overflow-x:\s*auto/u);
   assert.doesNotMatch(css, /scrollbar-width:\s*none/u);
 });
 

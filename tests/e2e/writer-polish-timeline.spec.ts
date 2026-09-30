@@ -396,7 +396,10 @@ test("embedded Timeline reads saved revisions and navigates by stable scene id",
 test("Timeline drawer closes after direct scene navigation on a narrow viewport", async ({ page, context }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openWriter(page, context);
-  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
+  const notice = page.getByRole("dialog", { name: "Writer en móvil" });
+  if (await notice.isVisible()) await notice.getByRole("button", { name: "Entendido" }).click();
+  await page.getByRole("button", { name: "Navegar", exact: true }).click();
+  await page.getByRole("dialog", { name: "Navegar por el guion" }).getByRole("button", { name: "Timeline" }).click();
   const panel = page.getByRole("region", { name: "Timeline del guion" });
   await expect(panel).toBeVisible();
   await panel.locator('[data-timeline-scene-id$="08"]').click();
@@ -518,6 +521,26 @@ test("Exportar stays discoverable without duplicating handlers at desktop, table
   for (const viewport of evidenceViewports) {
     await page.setViewportSize(viewport);
     await page.waitForTimeout(250);
+    if (viewport.width <= 600) {
+      const notice = page.getByRole("dialog", { name: "Writer en móvil" });
+      if (await notice.isVisible()) await notice.getByRole("button", { name: "Entendido" }).click();
+      await page.getByRole("button", { name: "Más acciones de Writer" }).click();
+      const mobileMenu = page.getByRole("dialog", { name: "Más acciones de Writer" });
+      await expect(mobileMenu.getByRole("button", { name: "Exportar PDF" })).toBeVisible();
+      await expect(mobileMenu.getByRole("button", { name: "Exportar JSON" })).toBeVisible();
+      await expect(mobileMenu.getByRole("button", { name: "Exportar FDX" })).toBeVisible();
+      const menuBox = await mobileMenu.boundingBox();
+      expect(menuBox).not.toBeNull();
+      expect(menuBox!.x).toBeGreaterThanOrEqual(0);
+      expect(menuBox!.y).toBeGreaterThanOrEqual(0);
+      expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(viewport.width);
+      expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(viewport.height);
+      fs.mkdirSync(evidence, { recursive: true });
+      await page.screenshot({ path: `${evidence}/export-${viewport.width}x${viewport.height}.png` });
+      await page.keyboard.press("Escape");
+      await expect(mobileMenu).toBeHidden();
+      continue;
+    }
     const exportButton = page.locator(".writer-header").getByRole("button", { name: "Exportar", exact: true });
     await expect(exportButton).toHaveCount(1);
     await expect(exportButton).toBeVisible();
@@ -591,12 +614,17 @@ test("visual evidence keeps page bounds at desktop, tablet, and mobile", async (
   await page.getByRole("region", { name: "Timeline del guion" }).getByRole("button", { name: "Cerrar", exact: true }).click();
 
   await page.setViewportSize({ width: 390, height: 844 });
+  const notice = page.getByRole("dialog", { name: "Writer en móvil" });
+  if (await notice.isVisible()) await notice.getByRole("button", { name: "Entendido" }).click();
   await page.screenshot({ path: `${evidence}/writing-390x844.png` });
-  await page.getByRole("button", { name: "Focus" }).click();
+  await page.getByRole("button", { name: "Más acciones de Writer" }).click();
+  await page.getByRole("dialog", { name: "Más acciones de Writer" }).getByRole("button", { name: "Focus" }).click();
   await page.screenshot({ path: `${evidence}/focus-390x844.png` });
   records.push({ browserName, viewport: { width: 390, height: 844 }, scale: 1, fullscreen: "fallback" });
-  await page.getByRole("button", { name: "Salir de Focus" }).click();
-  await page.locator(".writer-header").getByRole("button", { name: "Timeline" }).click();
+  await page.getByRole("button", { name: "Más acciones de Writer" }).click();
+  await page.getByRole("dialog", { name: "Más acciones de Writer" }).getByRole("button", { name: "Salir de Focus" }).click();
+  await page.getByRole("button", { name: "Navegar", exact: true }).click();
+  await page.getByRole("dialog", { name: "Navegar por el guion" }).getByRole("button", { name: "Timeline" }).click();
   await page.screenshot({ path: `${evidence}/timeline-drawer-390x844.png` });
   fs.writeFileSync(`${evidence}/capture-metadata.json`, JSON.stringify(records, null, 2));
 });

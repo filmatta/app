@@ -162,10 +162,20 @@ test("paste import requires review, creates a new canonical document, and export
   await expect(page.locator(".writer-character-suggestions")).toHaveCount(0);
   for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 900 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
-    await expect(page.locator(".writer-header").getByRole("button", { name: "Importar borrador" })).toBeVisible();
+    if (viewport.width <= 600) {
+      const notice = page.getByRole("dialog", { name: "Writer en móvil" });
+      if (await notice.isVisible()) await notice.getByRole("button", { name: "Entendido" }).click();
+      await page.getByRole("button", { name: "Más acciones de Writer" }).click();
+      const mobileMenu = page.getByRole("dialog", { name: "Más acciones de Writer" });
+      await expect(mobileMenu.getByRole("button", { name: "Importar borrador" })).toBeVisible();
+      await page.keyboard.press("Escape");
+    } else {
+      await expect(page.locator(".writer-header").getByRole("button", { name: "Importar borrador" })).toBeVisible();
+    }
   }
 
-  await page.locator(".writer-header").getByRole("button", { name: "Importar borrador" }).click();
+  await page.getByRole("button", { name: "Más acciones de Writer" }).click();
+  await page.getByRole("dialog", { name: "Más acciones de Writer" }).getByRole("button", { name: "Importar borrador" }).click();
   const dialog = page.getByRole("dialog", { name: "Importar borrador" });
   await expect(dialog.getByText("Se creará un guion nuevo. Tu documento actual no se modificará.")).toBeHidden();
   await dialog.getByLabel("Texto del borrador").fill("EXT. PRUEBA - DÍA\n\nTexto que sólo vive en staging.");
@@ -175,7 +185,8 @@ test("paste import requires review, creates a new canonical document, and export
   await expect(dialog).toBeHidden();
   expect((await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json()).creates).toBe(0);
 
-  await page.locator(".writer-header").getByRole("button", { name: "Importar borrador" }).click();
+  await page.getByRole("button", { name: "Más acciones de Writer" }).click();
+  await page.getByRole("dialog", { name: "Más acciones de Writer" }).getByRole("button", { name: "Importar borrador" }).click();
   await dialog.getByRole("tab", { name: "Archivo TXT o FDX" }).click();
   const fileInput = dialog.getByLabel("Selecciona un archivo");
   await fileInput.setInputFiles({
@@ -237,8 +248,8 @@ MISTERIO`);
   await expect(editor).toContainText("MISTERIO");
   await expect(page.getByRole("status")).toContainText("Importación completada");
 
-  await page.getByRole("button", { name: "Exportar" }).click();
-  await page.getByRole("button", { name: "PDF de guion" }).click();
+  await page.getByRole("button", { name: "Más acciones de Writer" }).click();
+  await page.getByRole("dialog", { name: "Más acciones de Writer" }).getByRole("button", { name: "Exportar PDF" }).click();
   const pdfDialog = page.getByRole("dialog", { name: "Generar PDF de guion" });
   await pdfDialog.getByRole("button", { name: "Generar PDF" }).click();
   await expect(pdfDialog.getByText("PDF listo.", { exact: false })).toBeVisible({ timeout: 20_000 });

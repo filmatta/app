@@ -248,27 +248,83 @@ test("a late save acknowledgement cannot discard edits made while integration pa
   await expect(page.getByLabel("Editor de guion")).toContainText("PANEL_ACK_A PANEL_ACK_B");
 });
 
-test("writing presentation remains usable at desktop, tablet and phone widths", async ({ page }) => {
+test("writing presentation uses a stable mobile shell without toolbar overflow", async ({ page }) => {
   fs.mkdirSync(evidence, { recursive: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/writer/${scriptId}`);
-  for (const width of [1440, 1024, 768, 390]) {
+  for (const width of [1440, 1024, 768, 430, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.getByLabel("Editor de guion")).toBeVisible();
     await expect(page.getByRole("button", { name: "Insertar en el guion" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Deshacer" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Rehacer" })).toBeVisible();
-    if (width <= 900) {
-      await expect(page.getByRole("button", { name: "Escenas", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Personajes", exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Personajes", exact: true }).click();
+    if (width > 600) {
+      await expect(page.getByRole("button", { name: "Deshacer" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Rehacer" })).toBeVisible();
+    }
+    if (width <= 600) {
+      await expect(page.getByRole("navigation", { name: "Navegación de Writer" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Volver a Mis guiones" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "FILMATTA Writer" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Más acciones de Writer" })).toBeVisible();
+      await expect(page.getByRole("button", { name: /Navegar/ })).toBeVisible();
+      const toolbar = page.getByRole("toolbar", { name: "Formato del guion" });
+      expect(await toolbar.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+      expect(await page.locator(".writer-workspace").evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+      await expect(page.getByRole("button", { name: "Formato de texto" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Acciones Writer en el cursor" })).toBeVisible();
+
+      if (width === 430) {
+        const notice = page.getByRole("dialog", { name: "Writer en móvil" });
+        await expect(notice).toBeVisible();
+        await notice.getByRole("button", { name: "Entendido" }).click();
+      } else {
+        await expect(page.getByRole("dialog", { name: "Writer en móvil" })).toHaveCount(0);
+      }
+
+      await page.getByRole("button", { name: /Navegar/ }).click();
+      const navigation = page.getByRole("dialog", { name: "Navegar por el guion" });
+      await expect(navigation).toBeVisible();
+      await navigation.getByRole("button", { name: "Personajes" }).click();
       await expect(page.getByText("Personajes", { exact: true }).first()).toBeVisible();
-      await page.getByRole("button", { name: "Cerrar" }).click();
+      await page.locator(".writer-sidebar").getByRole("button", { name: "Cerrar" }).click();
       await expect(page.locator(".writer-sidebar")).not.toHaveClass(/writer-sidebar--open/);
-      await page.waitForTimeout(250);
+
+      await page.getByRole("button", { name: "Más acciones de Writer" }).click();
+      const more = page.getByRole("dialog", { name: "Más acciones de Writer" });
+      await expect(more.getByRole("button", { name: "Importar borrador" })).toBeVisible();
+      await expect(more.getByRole("button", { name: "Exportar PDF" })).toBeVisible();
+      await expect(more.getByRole("button", { name: "Focus" })).toBeVisible();
+      await more.getByRole("button", { name: "Cerrar" }).click();
+
+      const editor = page.getByLabel("Editor de guion");
+      await editor.locator('[data-block-id$="02"]').click();
+      await page.getByRole("button", { name: "Acciones Writer en el cursor" }).click();
+      const writerActions = page.getByRole("menu", { name: "Acciones del bloque" });
+      await expect(writerActions).toBeVisible();
+      await expect(writerActions.getByRole("menuitem", { name: /Cortar|Copiar|Pegar/ })).toHaveCount(0);
+      await writerActions.getByRole("button", { name: "Cerrar" }).click();
+
+      const appBarBefore = await page.getByRole("navigation", { name: "Navegación de Writer" }).boundingBox();
+      await page.locator(".writer-paper").evaluate((element) => { element.scrollTop = 500; });
+      const appBarAfter = await page.getByRole("navigation", { name: "Navegación de Writer" }).boundingBox();
+      expect(appBarAfter?.y).toBe(appBarBefore?.y);
     }
     await page.screenshot({ path: `${evidence}/writer-${width}.png`, fullPage: true });
   }
+});
+
+test("touch pointer keeps native context behavior while dedicated Writer actions use the active caret", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => localStorage.setItem(`filmatta.writer.mobile-notice.v1:${"11111111-1111-4111-8111-111111111111"}`, "dismissed"));
+  await page.goto(`/writer/${scriptId}`);
+  const block = page.getByLabel("Editor de guion").locator('[data-block-id$="02"]');
+  await block.click();
+  await block.dispatchEvent("pointerdown", { pointerType: "touch", button: 0 });
+  await block.dispatchEvent("contextmenu", { button: 0 });
+  await expect(page.getByRole("menu", { name: "Acciones del bloque" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Acciones Writer en el cursor" }).click();
+  const menu = page.getByRole("menu", { name: "Acciones del bloque" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitemradio", { name: /Acción — actual/ })).toHaveAttribute("aria-checked", "true");
 });
 
 test("assisted import shows immediate indeterminate progress, blocks duplicates, and preserves source on error", async ({ page }) => {
@@ -434,8 +490,7 @@ test("observations aggregate format review in one detail and desktop workspace s
   await expect(timeline).toBeHidden();
   await observations.getByRole("button", { name: "Cerrar", exact: true }).click();
   await expect(page.getByLabel("Editor de guion")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Escenas", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Personajes", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Navegar/ })).toBeVisible();
 });
 
 function textHash(value: string) {

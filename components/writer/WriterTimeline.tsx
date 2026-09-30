@@ -15,6 +15,7 @@ import {
   type TimelineScene,
   type WriterTimeline,
 } from "@/lib/writer/timeline";
+import { setWriterDragPreview } from "@/lib/writer/drag-preview";
 import type { WriterSceneMovePosition } from "@/lib/writer/editor-actions";
 
 const ZOOM_LEVELS = [76, 112, 156] as const;
@@ -441,7 +442,7 @@ export default function WriterTimelineView({
                     <div
                       key={scene.key}
                       data-timeline-scene-id={scene.sourceId ?? undefined}
-                      className={`${sceneClasses(scene, selectedSceneKey, matchingSceneKeys)}${dropTarget?.sceneId === scene.sourceId ? ` is-drop-${dropTarget.position}` : ""}`}
+                      className={`${sceneClasses(scene, selectedSceneKey, matchingSceneKeys)}${draggedSceneId === scene.sourceId ? " is-dragging" : ""}${dropTarget?.sceneId === scene.sourceId ? ` is-drop-${dropTarget.position}` : ""}`}
                       aria-pressed={selectedSceneKey === scene.key}
                       title={`Extensión: ${scene.extensionWordCount} palabras`}
                       onDragOver={(event) => {
@@ -487,6 +488,7 @@ export default function WriterTimelineView({
                               if (reorderFiltered) return event.preventDefault();
                               event.dataTransfer.effectAllowed = "move";
                               event.dataTransfer.setData("text/plain", scene.sourceId!);
+                              setWriterDragPreview(event.nativeEvent, event.currentTarget.closest(".timeline-scene-cell") as HTMLElement);
                               setDraggedSceneId(scene.sourceId!);
                             }}
                             onDragEnd={() => { setDraggedSceneId(null); setDropTarget(null); }}

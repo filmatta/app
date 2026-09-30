@@ -37,6 +37,7 @@ export type WriterContextMenuState = {
   y: number;
   sceneId: string | null;
   timelineReason: string | null;
+  touch?: boolean;
 };
 
 export type WriterInsertState = {
@@ -83,13 +84,17 @@ export function WriterContextMenu({
   useLayoutEffect(() => {
     const menu = menuRef.current;
     if (!menu) return;
+    if (state.touch) {
+      menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+      return;
+    }
     const rect = menu.getBoundingClientRect();
     setPosition({
       left: Math.max(8, Math.min(state.x, window.innerWidth - rect.width - 8)),
       top: Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8)),
     });
     menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
-  }, [state.x, state.y]);
+  }, [state.touch, state.x, state.y]);
 
   useEffect(() => {
     const closeOnPointer = (event: PointerEvent) => {
@@ -187,24 +192,27 @@ export function WriterContextMenu({
   return (
     <div
       ref={menuRef}
-      className="writer-context-menu"
+      className={`writer-context-menu${state.touch ? " writer-context-menu--touch" : ""}`}
       role="menu"
       aria-label="Acciones del bloque"
-      style={position}
+      style={state.touch ? undefined : position}
       onKeyDown={handleKeyDown}
     >
+      {state.touch && <div className="writer-touch-menu-head"><strong>Acciones Writer</strong><button type="button" onClick={onClose}>Cerrar</button></div>}
       <p className="writer-context-menu-label">En el cursor actual</p>
       {!target && <p className="writer-context-menu-help">Coloca el cursor en el guion para insertar.</p>}
-      <p className="writer-context-menu-label">Edición</p>
-      <button type="button" role="menuitem" disabled={!hasValidTarget || !hasSelection || clipboardBusy} title={!hasSelection ? "Selecciona texto para cortar." : undefined} onClick={() => void runClipboard("cut")}>
-        <span>Cortar</span><kbd>Ctrl/⌘ X</kbd>
-      </button>
-      <button type="button" role="menuitem" disabled={!hasValidTarget || !hasSelection || clipboardBusy} title={!hasSelection ? "Selecciona texto para copiar." : undefined} onClick={() => void runClipboard("copy")}>
-        <span>Copiar</span><kbd>Ctrl/⌘ C</kbd>
-      </button>
-      <button type="button" role="menuitem" disabled={!hasValidTarget || clipboardBusy} onClick={() => void runClipboard("paste")}>
-        <span>Pegar<small>Desde el menú: texto plano</small></span><kbd>Ctrl/⌘ V</kbd>
-      </button>
+      {!state.touch && <>
+        <p className="writer-context-menu-label">Edición</p>
+        <button type="button" role="menuitem" disabled={!hasValidTarget || !hasSelection || clipboardBusy} title={!hasSelection ? "Selecciona texto para cortar." : undefined} onClick={() => void runClipboard("cut")}>
+          <span>Cortar</span><kbd>Ctrl/⌘ X</kbd>
+        </button>
+        <button type="button" role="menuitem" disabled={!hasValidTarget || !hasSelection || clipboardBusy} title={!hasSelection ? "Selecciona texto para copiar." : undefined} onClick={() => void runClipboard("copy")}>
+          <span>Copiar</span><kbd>Ctrl/⌘ C</kbd>
+        </button>
+        <button type="button" role="menuitem" disabled={!hasValidTarget || clipboardBusy} onClick={() => void runClipboard("paste")}>
+          <span>Pegar<small>Desde el menú: texto plano</small></span><kbd>Ctrl/⌘ V</kbd>
+        </button>
+      </>}
       <p className="writer-context-menu-label">Historial</p>
       <button type="button" role="menuitem" disabled={!hasValidTarget || !canUndo} onMouseDown={(event) => event.preventDefault()} onClick={() => { if (!contextIsCurrent()) return staleContext(); editor.chain().focus().undo().run(); onClose(); }}>
         <span>Deshacer</span><kbd>Ctrl/⌘ Z</kbd>

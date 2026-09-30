@@ -117,6 +117,7 @@ import {
   saveWriterStructuralMetadata,
   type WriterStructuralMetadata,
 } from "@/lib/writer/structural-metadata-storage";
+import { setWriterDragPreview } from "@/lib/writer/drag-preview";
 
 type ScriptInput = {
   id: string;
@@ -172,6 +173,9 @@ export default function WriterWorkspace({
   const [focusMode, setFocusMode] = useState(false);
   const [focusScale, setFocusScale] = useState(1);
   const [mobileSidebar, setMobileSidebar] = useState<"scenes" | "characters" | null>(null);
+  const [mobileNavigateOpen, setMobileNavigateOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [mobileNoticeOpen, setMobileNoticeOpen] = useState(false);
   const [activeScene, setActiveScene] = useState<string | null>(null);
   const [structuralMetadata, setStructuralMetadata] = useState<WriterStructuralMetadata>(() => emptyWriterStructuralMetadata());
   const [structuralMetadataPersistent, setStructuralMetadataPersistent] = useState(true);
@@ -482,6 +486,17 @@ export default function WriterWorkspace({
     setTimelineMounted(shouldOpen);
     setTimelineOpen(shouldOpen);
   }, [initialTimeline, script.id]);
+
+  useEffect(() => {
+    const phone = window.matchMedia("(max-width: 600px)");
+    const noticeKey = `filmatta.writer.mobile-notice.v1:${userId}`;
+    const updateNotice = () => {
+      if (phone.matches && window.localStorage.getItem(noticeKey) !== "dismissed") setMobileNoticeOpen(true);
+    };
+    updateNotice();
+    phone.addEventListener("change", updateNotice);
+    return () => phone.removeEventListener("change", updateNotice);
+  }, [userId]);
 
   useEffect(() => {
     const desktop = window.matchMedia(WRITER_TIMELINE_DESKTOP_QUERY);
@@ -1059,6 +1074,8 @@ export default function WriterWorkspace({
       }
       if (contextMenu) return setContextMenu(null);
       if (insertState) return setInsertState(null);
+      if (mobileMoreOpen) return setMobileMoreOpen(false);
+      if (mobileNavigateOpen) return setMobileNavigateOpen(false);
       if (exportMenu) return setExportMenu(false);
       if (pdfExportOpen) return setPdfExportOpen(false);
       if (timelineOpen) {
@@ -1074,7 +1091,7 @@ export default function WriterWorkspace({
     };
     window.addEventListener("keydown", closeSurfaceOrFocus);
     return () => window.removeEventListener("keydown", closeSurfaceOrFocus);
-  }, [contextMenu, exportMenu, focusMode, importOpen, insertState, observationsOpen, pdfExportOpen, restoreTimelineAfterFocus, timelineOpen]);
+  }, [contextMenu, exportMenu, focusMode, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pdfExportOpen, restoreTimelineAfterFocus, timelineOpen]);
 
   useEffect(() => {
     if (!editor || !ready || deepLinkHandledRef.current) return;
@@ -1229,6 +1246,8 @@ export default function WriterWorkspace({
     setContextMenu(null);
     setInsertState(null);
     setMobileSidebar(null);
+    setMobileNavigateOpen(false);
+    setMobileMoreOpen(false);
     setTimelineRequestedScene(sceneId);
     setTimelineMounted(true);
     timelineRequestedRevisionRef.current = confirmedTimelineRevisionRef.current;
@@ -1239,6 +1258,46 @@ export default function WriterWorkspace({
       timelineBeforeFocusRef.current = true;
       void exitFocus();
     }
+  }
+
+  function openImportFlow() {
+    setExportMenu(false);
+    setMobileMoreOpen(false);
+    setContextMenu(null);
+    setInsertState(null);
+    closeTimeline();
+    setObservationsOpen(false);
+    setImportOpen(true);
+  }
+
+  function openTouchWriterActions() {
+    if (!editor) return;
+    const target = activeWriterSelectionRef.current
+      && writerSelectionTargetIsCurrent(editor.state, activeWriterSelectionRef.current)
+      ? activeWriterSelectionRef.current
+      : captureWriterSelectionTarget(editor.state);
+    const scene = target ? writerSceneForSelection(editor.state) : {
+      sceneId: null,
+      reason: "Coloca el cursor en el guion para abrir una escena en Timeline.",
+    };
+    setMobileMoreOpen(false);
+    setContextMenu({
+      target,
+      x: 8,
+      y: window.innerHeight - 420,
+      sceneId: scene.sceneId,
+      timelineReason: scene.reason,
+      touch: true,
+    });
+  }
+
+  function dismissMobileNotice() {
+    try {
+      window.localStorage.setItem(`filmatta.writer.mobile-notice.v1:${userId}`, "dismissed");
+    } catch {
+      // The notice remains dismissible for this render when storage is unavailable.
+    }
+    setMobileNoticeOpen(false);
   }
 
   function closeTimeline() {
@@ -1523,6 +1582,8 @@ export default function WriterWorkspace({
     setObservationsOpen(false);
     setSelectedObservationBlockId(null);
     setMobileSidebar(null);
+    setMobileNavigateOpen(false);
+    setMobileMoreOpen(false);
     setExportMenu(false);
     setContextMenu(null);
     setInsertState(null);
@@ -1564,21 +1625,13 @@ export default function WriterWorkspace({
           <span aria-hidden="true" />
           <Link href="/writer">Writer</Link>
         </div>
-        <button className="writer-mobile-scenes" type="button" onClick={() => setMobileSidebar("scenes")} aria-expanded={mobileSidebar === "scenes"}>
-          Escenas
-        </button>
-        <button className="writer-mobile-characters" type="button" onClick={() => setMobileSidebar("characters")} aria-expanded={mobileSidebar === "characters"}>
-          Personajes
-        </button>
-        <button
-          ref={mobileObservationsButtonRef}
-          className="writer-mobile-observations"
-          type="button"
-          onClick={() => { setSelectedObservationBlockId(null); setObservationsOpen(true); }}
-          aria-expanded={observationsOpen}
-        >
-          Observaciones{pendingObservationCount ? ` ${pendingObservationCount}` : ""}
-        </button>
+        <nav className="writer-mobile-app-bar" aria-label="Navegación de Writer">
+          <Link className="writer-mobile-back" href="/writer" aria-label="Volver a Mis guiones">←</Link>
+          <Link className="writer-mobile-brand" href="/writer" aria-label="FILMATTA Writer">FILMATTA</Link>
+          <span className="writer-mobile-title" title={title || "Guion sin título"}>{title || "Guion sin título"}</span>
+          <MobileSaveStatus state={saveState} />
+          <button className="writer-mobile-more" type="button" aria-label="Más acciones de Writer" aria-expanded={mobileMoreOpen} onClick={() => { setMobileNavigateOpen(false); setMobileMoreOpen((open) => !open); }}>⋯</button>
+        </nav>
         <input
           className="writer-title-input"
           value={title}
@@ -1587,6 +1640,7 @@ export default function WriterWorkspace({
             if (!title.trim()) updateTitle("Guion sin título");
           }}
           maxLength={160}
+          title={title || "Guion sin título"}
           aria-label="Título del guion"
           disabled={!ready || saveState.status === "tabBlocked"}
         />
@@ -1595,14 +1649,7 @@ export default function WriterWorkspace({
           <button
             className="writer-import-open-button"
             type="button"
-            onClick={() => {
-              setExportMenu(false);
-              setContextMenu(null);
-              setInsertState(null);
-              closeTimeline();
-              setObservationsOpen(false);
-              setImportOpen(true);
-            }}
+            onClick={openImportFlow}
             disabled={!ready}
           >Importar borrador</button>
           <button
@@ -1650,6 +1697,31 @@ export default function WriterWorkspace({
             {focusMode ? "Salir de Focus" : "Focus"}
           </button>
         </div>
+        <button className="writer-mobile-navigate" type="button" aria-expanded={mobileNavigateOpen} aria-controls="writer-mobile-navigation" onClick={() => { setMobileMoreOpen(false); setMobileNavigateOpen((open) => !open); }}>
+          Navegar{pendingObservationCount ? ` · ${pendingObservationCount}` : ""}
+        </button>
+        {mobileNavigateOpen && (
+          <div id="writer-mobile-navigation" className="writer-mobile-sheet writer-mobile-nav-sheet" role="dialog" aria-label="Navegar por el guion">
+            <div className="writer-mobile-sheet-head"><strong>Navegar</strong><button type="button" onClick={() => setMobileNavigateOpen(false)}>Cerrar</button></div>
+            <div className="writer-mobile-nav-tabs" role="group" aria-label="Secciones de Writer">
+              <button type="button" onClick={() => { setMobileSidebar("scenes"); setMobileNavigateOpen(false); }}>Escenas</button>
+              <button type="button" onClick={() => { setMobileSidebar("characters"); setMobileNavigateOpen(false); }}>Personajes</button>
+              <button ref={mobileObservationsButtonRef} type="button" onClick={() => { setSelectedObservationBlockId(null); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
+              <button type="button" disabled={!initialTimeline.ok} onClick={() => openTimeline()}>Timeline</button>
+            </div>
+          </div>
+        )}
+        {mobileMoreOpen && (
+          <div className="writer-mobile-sheet writer-mobile-more-sheet" role="dialog" aria-label="Más acciones de Writer">
+            <div className="writer-mobile-sheet-head"><strong>Writer</strong><button type="button" onClick={() => setMobileMoreOpen(false)}>Cerrar</button></div>
+            <button type="button" onClick={openImportFlow}>Importar borrador</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setPdfExportOpen(true); }}>Exportar PDF</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); downloadBackup("json"); }}>Exportar JSON</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); downloadBackup("fdx"); }}>Exportar FDX</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); void (focusMode ? exitFocus() : enterFocus()); }}>{focusMode ? "Salir de Focus" : "Focus"}</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setMobileNoticeOpen(true); }}>Información de uso móvil</button>
+          </div>
+        )}
       </header>
 
       <aside className={`writer-sidebar ${mobileSidebar ? "writer-sidebar--open" : ""} writer-sidebar--mobile-${mobileSidebar ?? "closed"}`}>
@@ -1668,7 +1740,7 @@ export default function WriterWorkspace({
               {scenes.map((scene, index) => (
                 <li
                   key={scene.id}
-                  className={`${activeScene === scene.id ? "is-active" : ""}${sceneDropTarget?.sceneId === scene.id ? ` is-drop-${sceneDropTarget.position}` : ""}`}
+                  className={`${activeScene === scene.id ? "is-active" : ""}${draggedSceneId === scene.id ? " is-dragging" : ""}${sceneDropTarget?.sceneId === scene.id ? ` is-drop-${sceneDropTarget.position}` : ""}`}
                   onDragOver={(event) => {
                     if (!draggedSceneId || draggedSceneId === scene.id) return;
                     event.preventDefault();
@@ -1692,6 +1764,7 @@ export default function WriterWorkspace({
                     onDragStart={(event) => {
                       event.dataTransfer.effectAllowed = "move";
                       event.dataTransfer.setData("text/plain", scene.id);
+                      setWriterDragPreview(event.nativeEvent, event.currentTarget.closest("li") as HTMLElement);
                       setDraggedSceneId(scene.id);
                     }}
                     onDragEnd={() => { setDraggedSceneId(null); setSceneDropTarget(null); }}
@@ -1790,6 +1863,7 @@ export default function WriterWorkspace({
         <WriterToolbar
           editor={editor}
           words={words}
+          onWriterActions={openTouchWriterActions}
           onInsert={(next) => {
             setExportMenu(false);
             setContextMenu(null);
@@ -1959,6 +2033,14 @@ export default function WriterWorkspace({
         />
       )}
 
+      {mobileNoticeOpen && !focusMode && (
+        <div className="writer-mobile-notice" role="dialog" aria-labelledby="writer-mobile-notice-title">
+          <strong id="writer-mobile-notice-title">Writer en móvil</strong>
+          <p>Writer funciona mejor en una pantalla grande. Puedes escribir y revisar desde el teléfono, pero Timeline, reorganización de escenas y algunas herramientas avanzadas son más cómodas en tablet o desktop.</p>
+          <button type="button" onClick={dismissMobileNotice}>Entendido</button>
+        </div>
+      )}
+
       <WriterObservationsPanel
         hidden={!observationsOpen || focusMode}
         observations={combinedCharacterObservations}
@@ -2080,14 +2162,17 @@ function WriterAutocompleteMenu({
 function WriterToolbar({
   editor,
   words,
+  onWriterActions,
   onInsert,
   onConvertSceneHeading,
 }: {
   editor: Editor | null;
   words: number;
+  onWriterActions: () => void;
   onInsert: (state: WriterInsertState) => void;
   onConvertSceneHeading: (state: WriterInsertState) => void;
 }) {
+  const [formatOpen, setFormatOpen] = useState(false);
   const state = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
@@ -2156,13 +2241,26 @@ function WriterToolbar({
         }}
         aria-label="Insertar en el guion"
       >Insertar</button>
-      <span className="writer-toolbar-divider" aria-hidden="true" />
-      <button type="button" aria-label="Negrita" aria-pressed={state.bold} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleBold().run()}><strong>B</strong></button>
-      <button type="button" aria-label="Cursiva" aria-pressed={state.italic} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleItalic().run()}><em>I</em></button>
-      <button type="button" aria-label="Subrayado" aria-pressed={state.underline} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleUnderline().run()}><u>U</u></button>
-      <span className="writer-toolbar-divider" aria-hidden="true" />
-      <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().undo().run()} disabled={!state.canUndo} aria-label="Deshacer">↶</button>
-      <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().redo().run()} disabled={!state.canRedo} aria-label="Rehacer">↷</button>
+      <div className="writer-toolbar-desktop-actions">
+        <span className="writer-toolbar-divider" aria-hidden="true" />
+        <button type="button" aria-label="Negrita" aria-pressed={state.bold} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleBold().run()}><strong>B</strong></button>
+        <button type="button" aria-label="Cursiva" aria-pressed={state.italic} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleItalic().run()}><em>I</em></button>
+        <button type="button" aria-label="Subrayado" aria-pressed={state.underline} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleUnderline().run()}><u>U</u></button>
+        <span className="writer-toolbar-divider" aria-hidden="true" />
+        <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().undo().run()} disabled={!state.canUndo} aria-label="Deshacer">↶</button>
+        <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().redo().run()} disabled={!state.canRedo} aria-label="Rehacer">↷</button>
+      </div>
+      <div className="writer-format-wrap">
+        <button className="writer-format-button" type="button" aria-label="Formato de texto" aria-expanded={formatOpen} onMouseDown={preserveSelection} onClick={() => setFormatOpen((open) => !open)}>Aa</button>
+        {formatOpen && <div className="writer-format-menu" role="menu" aria-label="Formato de texto">
+          <button type="button" role="menuitemcheckbox" aria-checked={state.bold} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleBold().run()}>Negrita</button>
+          <button type="button" role="menuitemcheckbox" aria-checked={state.italic} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleItalic().run()}>Cursiva</button>
+          <button type="button" role="menuitemcheckbox" aria-checked={state.underline} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleUnderline().run()}>Subrayado</button>
+          <button type="button" role="menuitem" disabled={!state.canUndo} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().undo().run()}>Deshacer</button>
+          <button type="button" role="menuitem" disabled={!state.canRedo} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().redo().run()}>Rehacer</button>
+        </div>}
+      </div>
+      <button className="writer-touch-actions" type="button" aria-label="Acciones Writer en el cursor" onMouseDown={preserveSelection} onClick={onWriterActions}>⋯ Writer</button>
       <span className="writer-word-count">{words.toLocaleString("es-MX")} palabras</span>
     </div>
   );
@@ -2179,7 +2277,21 @@ function SaveStatus({ state }: { state: WriterPersistenceState }) {
     deleted: "Eliminado en la nube; copia local protegida",
     tabBlocked: "Edición pausada en esta pestaña",
   };
-  return <span className={`writer-save-status writer-save-status--${state.status}`} title={state.message}>{labels[state.status]}</span>;
+  return <span className={`writer-save-status writer-save-status--${state.status}`} title={state.message ?? labels[state.status]}>{labels[state.status]}</span>;
+}
+
+function MobileSaveStatus({ state }: { state: WriterPersistenceState }) {
+  const shortLabels: Record<WriterPersistenceState["status"], string> = {
+    cloud: "Guardado",
+    saving: "Guardando…",
+    local: "Local",
+    error: "Error",
+    conflict: "Conflicto",
+    sessionExpired: "Sesión",
+    deleted: "Eliminado",
+    tabBlocked: "Pausado",
+  };
+  return <span className={`writer-mobile-save-status writer-save-status--${state.status}`} title={state.message}>{shortLabels[state.status]}</span>;
 }
 
 async function saveRemote(request: RemoteSaveRequest): Promise<RemoteSaveResult> {

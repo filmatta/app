@@ -10,9 +10,9 @@ test("Timeline access targets the current Writer document", () => {
   assert.equal(writerDocumentHref(documentId, "scene/id"), `/writer/${documentId}?scene=scene%2Fid`);
 });
 
-test("Editor exposes one integrated Timeline control without opening another tab", async () => {
+test("Editor exposes responsive integrated Timeline controls without opening another tab", async () => {
   const workspace = await readFile("components/writer/WriterWorkspace.tsx", "utf8");
-  assert.equal(workspace.match(/>Timeline<\/button>/g)?.length, 1);
+  assert.equal(workspace.match(/>Timeline<\/button>/g)?.length, 2);
   assert.match(workspace, /<WriterTimelineView/);
   assert.doesNotMatch(workspace, /writer-timeline-(?:button|panel)[^>]+target=/);
 });
