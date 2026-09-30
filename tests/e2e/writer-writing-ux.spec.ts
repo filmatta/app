@@ -73,6 +73,144 @@ test("context actions, assisted insertion, live metrics and reload use the canon
   await expect(page.getByLabel("Editor de guion").getByText("INT. COCINA - NOCHE")).toBeVisible();
 });
 
+test("structural scene actions reorder, synchronize, navigate back and duplicate with real undo", async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/writer/${scriptId}`);
+  const editor = page.getByLabel("Editor de guion");
+  await expect(editor).toBeVisible();
+
+  await editor.locator('[data-block-id$="02"]').click();
+  await page.getByRole("button", { name: "Acciones de escena 1" }).click();
+  await page.getByRole("menuitem", { name: "Mover abajo" }).click();
+  await expect.poll(async () => editor.locator('[data-screenplay-kind="sceneHeading"]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-block-id")))).toEqual([
+    "11111111-1111-4111-8111-111111111108",
+    "11111111-1111-4111-8111-111111111101",
+  ]);
+  await expect(page.getByText("Escena movida", { exact: true })).toBeVisible();
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 10_000 });
+  const saved = await (await request.get("http://127.0.0.1:54329/__writer_state")).json();
+  expect(saved.saves).toBe(1);
+  expect(saved.document.content.filter((block: { attrs: { kind: string } }) => block.attrs.kind === "sceneHeading").map((block: { attrs: { id: string } }) => block.attrs.id)).toEqual([
+    "11111111-1111-4111-8111-111111111108",
+    "11111111-1111-4111-8111-111111111101",
+  ]);
+  const timelineScenes = page.locator(".writer-timeline-panel [data-timeline-scene-id]");
+  await expect(timelineScenes.first()).toHaveAttribute("data-timeline-scene-id", "11111111-1111-4111-8111-111111111108", { timeout: 10_000 });
+
+  await page.locator(".writer-structural-toast").getByRole("button", { name: "Deshacer" }).click();
+  await expect.poll(async () => editor.locator('[data-screenplay-kind="sceneHeading"]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-block-id")))).toEqual([
+    "11111111-1111-4111-8111-111111111101",
+    "11111111-1111-4111-8111-111111111108",
+  ]);
+  await page.getByRole("button", { name: "Rehacer" }).click();
+  await expect(editor.locator('[data-screenplay-kind="sceneHeading"]').first()).toHaveAttribute("data-block-id", "11111111-1111-4111-8111-111111111108");
+
+  await page.getByRole("button", { name: "Acciones de escena 1" }).click();
+  await page.getByRole("menuitem", { name: "Duplicar escena" }).click();
+  await expect(editor.locator('[data-screenplay-kind="sceneHeading"]')).toHaveCount(3);
+  const ids = await editor.locator("[data-block-id]").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-block-id")));
+  expect(new Set(ids).size).toBe(ids.length);
+  await page.locator(".writer-structural-toast").getByRole("button", { name: "Deshacer" }).click();
+  await expect(editor.locator('[data-screenplay-kind="sceneHeading"]')).toHaveCount(2);
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 10_000 });
+  await page.reload();
+  await expect(editor.locator('[data-screenplay-kind="sceneHeading"]')).toHaveCount(2);
+  await expect(editor.locator('[data-screenplay-kind="sceneHeading"]').first()).toHaveAttribute("data-block-id", "11111111-1111-4111-8111-111111111108");
+
+  await editor.locator('[data-block-id$="09"]').click();
+  await page.locator(".writer-scene-link").filter({ hasText: "INT. ESTUDIO - DÍA" }).last().click();
+  await expect(page.getByRole("button", { name: "← Volver" })).toBeVisible();
+  await page.getByRole("button", { name: "← Volver" }).click();
+  await expect(page.locator(".writer-scene-list > li").first()).toHaveClass(/is-active/);
+
+  const characterFilter = page.locator(".writer-timeline-panel .timeline-filter-characters").getByRole("button", { name: "ANA", exact: true });
+  await characterFilter.click();
+  await expect(page.locator(".writer-timeline-panel").getByText("Quita los filtros para reordenar escenas.")).toBeVisible();
+  await expect(page.locator(".writer-timeline-panel .timeline-scene-drag-handle").first()).toBeDisabled();
+});
+
+test("desktop drag handles reorder from Sidebar and Timeline without hover mutations", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/writer/${scriptId}`);
+  const editor = page.getByLabel("Editor de guion");
+  const headings = editor.locator('[data-screenplay-kind="sceneHeading"]');
+  const sidebarLinks = page.locator(".writer-scene-link");
+
+  await page.locator(".writer-scene-drag-handle").nth(1).dragTo(sidebarLinks.first(), { targetPosition: { x: 80, y: 2 } });
+  await expect(headings.first()).toHaveAttribute("data-block-id", "11111111-1111-4111-8111-111111111108");
+  await page.locator(".writer-structural-toast").getByRole("button", { name: "Deshacer" }).click();
+  await expect(headings.first()).toHaveAttribute("data-block-id", "11111111-1111-4111-8111-111111111101");
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 10_000 });
+
+  const timeline = page.locator(".writer-timeline-panel");
+  const timelineHandles = timeline.locator(".timeline-scene-drag-handle");
+  const timelineTargets = timeline.locator(".timeline-scene-activate");
+  const targetBox = await timelineTargets.nth(1).boundingBox();
+  expect(targetBox).not.toBeNull();
+  await timelineHandles.first().dragTo(timelineTargets.nth(1), { targetPosition: { x: Math.max(4, targetBox!.width - 4), y: 30 } });
+  await expect(headings.first()).toHaveAttribute("data-block-id", "11111111-1111-4111-8111-111111111108");
+});
+
+test("explicit navigation and Back stay UI-only and synchronize the active scene", async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/writer/${scriptId}`);
+  const editor = page.getByLabel("Editor de guion");
+  await editor.locator('[data-block-id$="02"]').click();
+  await page.locator(".writer-scene-link").nth(1).click();
+  await expect(page.locator(".writer-scene-list > li").nth(1)).toHaveClass(/is-active/);
+  await expect(page.locator(".writer-timeline-panel [data-timeline-scene-id$='08']")).toHaveClass(/is-selected/);
+  await page.getByRole("button", { name: "← Volver" }).click();
+  await expect(page.locator(".writer-scene-list > li").first()).toHaveClass(/is-active/);
+  await expect(page.locator(".writer-timeline-panel [data-timeline-scene-id$='01']")).toHaveClass(/is-selected/);
+  await page.waitForTimeout(1_800);
+  const state = await (await request.get("http://127.0.0.1:54329/__writer_state")).json();
+  expect(state.saves).toBe(0);
+});
+
+test("identity-safe character rename and local scene nicknames survive reload without entering exports", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/writer/${scriptId}`);
+  const editor = page.getByLabel("Editor de guion");
+
+  await page.getByRole("button", { name: "Renombrar ANA", exact: true }).click();
+  const rename = page.locator(".writer-character-rename-input");
+  await rename.fill("ANA MARÍA");
+  await rename.press("Enter");
+  await expect(page.getByText("Ya existe un personaje llamado ANA MARÍA.")).toBeVisible();
+  await rename.fill("ÁNGELA-2");
+  await rename.press("Enter");
+  await expect(editor.locator('[data-block-id$="03"]')).toContainText("ÁNGELA-2");
+  await expect(editor.locator('[data-block-id$="02"]')).toContainText("ÁNGELA-2 observa la VENTANA.");
+  await expect(editor.locator('[data-block-id$="04"]')).toContainText("Hola, ANA MARÍA.");
+  await expect(page.locator(".writer-character-section").getByRole("button", { name: /ÁNGELA-2 \d evidencia/ })).toBeVisible();
+  await expect(page.getByText("Personaje renombrado", { exact: true })).toBeVisible();
+  await page.locator(".writer-structural-toast").getByRole("button", { name: "Deshacer" }).click();
+  await expect(editor.locator('[data-block-id$="03"]')).toContainText("ANA");
+  await page.getByRole("button", { name: "Rehacer" }).click();
+  await expect(editor.locator('[data-block-id$="03"]')).toContainText("ÁNGELA-2");
+
+  await page.getByRole("button", { name: "Renombrar escena 1" }).click();
+  const nickname = page.getByLabel("Nombre interno de la escena 1");
+  await nickname.fill("LA LLAMADA");
+  await nickname.press("Enter");
+  await expect(page.locator(".writer-sidebar").getByText("LA LLAMADA", { exact: true })).toBeVisible();
+  await expect(page.locator(".writer-timeline-panel").getByText("LA LLAMADA", { exact: true })).toBeVisible();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Exportar" }).click();
+  await page.getByRole("button", { name: "Respaldo JSON" }).click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  let backup = "";
+  for await (const chunk of stream) backup += chunk.toString();
+  expect(backup).not.toContain("LA LLAMADA");
+  expect(JSON.parse(backup).document.content.every((block: { attrs: Record<string, unknown> }) => !("sceneNickname" in block.attrs))).toBe(true);
+
+  await page.reload();
+  await expect(page.locator(".writer-sidebar").getByText("LA LLAMADA", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Editor de guion").locator('[data-block-id$="03"]')).toContainText("ÁNGELA-2");
+});
+
 test("a late save acknowledgement cannot discard edits made while integration panels open", async ({ page, request }) => {
   await request.get("http://127.0.0.1:54329/__scenario?value=writer-ux&writerSaveDelay=2400");
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -261,6 +399,12 @@ test("observations aggregate format review in one detail and desktop workspace s
   await expect(observations).toBeVisible();
   await expect(timeline).toBeVisible();
   await expect(highlights).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Acciones de escena 2" }).click();
+  await page.getByRole("menuitem", { name: "Mover arriba" }).click();
+  await expect(page.locator('[data-writer-import-review-id="format-action-2"]')).toHaveCount(1);
+  await page.locator(".writer-structural-toast").getByRole("button", { name: "Deshacer" }).click();
+  await expect(page.locator('[data-writer-import-review-id="format-action-2"]')).toHaveCount(1);
 
   const remainingBlock = page.getByLabel("Editor de guion").locator('p[data-block-id$="09"]');
   await remainingBlock.click();

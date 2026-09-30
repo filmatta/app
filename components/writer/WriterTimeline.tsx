@@ -15,6 +15,7 @@ import {
   type TimelineScene,
   type WriterTimeline,
 } from "@/lib/writer/timeline";
+import type { WriterSceneMovePosition } from "@/lib/writer/editor-actions";
 
 const ZOOM_LEVELS = [76, 112, 156] as const;
 const INITIAL_CHARACTER_TRACKS = 8;
@@ -39,6 +40,9 @@ type WriterTimelineViewProps = {
   refreshToken?: number;
   onClose?: () => void;
   onGoToWriter?: (sceneId: string) => void;
+  activeSceneId?: string | null;
+  sceneNicknames?: Readonly<Record<string, string>>;
+  onMoveScene?: (sceneId: string, targetSceneId: string, position: WriterSceneMovePosition) => void;
 };
 
 export default function WriterTimelineView({
@@ -51,6 +55,9 @@ export default function WriterTimelineView({
   refreshToken = 0,
   onClose,
   onGoToWriter,
+  activeSceneId = null,
+  sceneNicknames = {},
+  onMoveScene,
 }: WriterTimelineViewProps) {
   const [timeline, setTimeline] = useState<WriterTimeline | null>(initialTimeline);
   const [selectedSceneKey, setSelectedSceneKey] = useState<string | null>(null);
@@ -69,6 +76,8 @@ export default function WriterTimelineView({
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
+  const [draggedSceneId, setDraggedSceneId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ sceneId: string; position: WriterSceneMovePosition } | null>(null);
   const rootRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const requestSequenceRef = useRef(0);
@@ -221,6 +230,12 @@ export default function WriterTimelineView({
     return () => cancelAnimationFrame(frame);
   }, [requestedSceneId, timeline]);
 
+  useEffect(() => {
+    if (!timeline || !activeSceneId) return;
+    const scene = timeline.scenes.find((candidate) => candidate.sourceId === activeSceneId);
+    if (scene && scene.key !== selectedSceneKeyRef.current) setSelectedSceneKey(scene.key);
+  }, [activeSceneId, timeline]);
+
   if (!timeline) {
     return (
       <Root className={`timeline-private-state${variant === "embedded" ? " timeline-private-state--embedded" : ""}`}>
@@ -243,6 +258,7 @@ export default function WriterTimelineView({
   const visibleLocationTracks = timeline.locations.filter((item) => visibleLocations.has(item.key));
   const columnWidth = ZOOM_LEVELS[zoomIndex];
   const maxExtensionWords = Math.max(0, ...timeline.scenes.map((scene) => scene.extensionWordCount));
+  const reorderFiltered = selectedCharacters.size > 0 || environment !== "all" || moment !== "all";
   const gridStyle = {
     "--timeline-scene-width": `${columnWidth}px`,
     "--timeline-scene-count": Math.max(timeline.scenes.length, 1),
@@ -378,6 +394,9 @@ export default function WriterTimelineView({
       )}
 
       {notice && <p className="timeline-notice" role="status">{notice}</p>}
+      {reorderFiltered && onMoveScene && (
+        <p className="timeline-reorder-notice" role="status">Quita los filtros para reordenar escenas.</p>
+      )}
 
       {timeline.scenes.length === 0 ? (
         <section className="timeline-no-scenes">
@@ -418,23 +437,71 @@ export default function WriterTimelineView({
                     <span>Escenas</span>
                     <small>ORDEN</small>
                   </div>
-                  {timeline.scenes.map((scene) => (
-                    <button
+                  {timeline.scenes.map((scene, index) => (
+                    <div
                       key={scene.key}
-                      type="button"
                       data-timeline-scene-id={scene.sourceId ?? undefined}
-                      className={sceneClasses(scene, selectedSceneKey, matchingSceneKeys)}
-                      onClick={() => activateScene(scene)}
+                      className={`${sceneClasses(scene, selectedSceneKey, matchingSceneKeys)}${dropTarget?.sceneId === scene.sourceId ? ` is-drop-${dropTarget.position}` : ""}`}
                       aria-pressed={selectedSceneKey === scene.key}
-                      aria-label={`Escena ${scene.order}: ${scene.heading}, ${scene.wordCount} palabras`}
                       title={`Extensión: ${scene.extensionWordCount} palabras`}
+                      onDragOver={(event) => {
+                        if (reorderFiltered || !onMoveScene || !draggedSceneId || !scene.sourceId || draggedSceneId === scene.sourceId) return;
+                        event.preventDefault();
+                        const bounds = event.currentTarget.getBoundingClientRect();
+                        setDropTarget({ sceneId: scene.sourceId, position: event.clientX < bounds.left + bounds.width / 2 ? "before" : "after" });
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        if (draggedSceneId && dropTarget && onMoveScene && !reorderFiltered) {
+                          onMoveScene(draggedSceneId, dropTarget.sceneId, dropTarget.position);
+                        }
+                        setDraggedSceneId(null);
+                        setDropTarget(null);
+                      }}
                     >
-                      <strong>{scene.order}</strong>
-                      <span>{scene.heading}</span>
-                      <i className="timeline-extension" aria-hidden="true">
-                        <i style={{ width: `${timelineExtensionWidth(scene.extensionWordCount, maxExtensionWords)}%` }} />
-                      </i>
-                    </button>
+                      <button
+                        type="button"
+                        className="timeline-scene-activate"
+                        onClick={() => activateScene(scene)}
+                        aria-pressed={selectedSceneKey === scene.key}
+                        aria-label={`Escena ${scene.order}: ${sceneNicknames[scene.sourceId ?? ""] || scene.heading}, ${scene.wordCount} palabras`}
+                        title={`Extensión: ${scene.extensionWordCount} palabras`}
+                      >
+                        <strong>{scene.order}</strong>
+                        <span>{sceneNicknames[scene.sourceId ?? ""] || scene.heading}</span>
+                        {sceneNicknames[scene.sourceId ?? ""] && <small>{scene.heading}</small>}
+                        <i className="timeline-extension" aria-hidden="true">
+                          <i style={{ width: `${timelineExtensionWidth(scene.extensionWordCount, maxExtensionWords)}%` }} />
+                        </i>
+                      </button>
+                      {onMoveScene && scene.sourceId && (
+                        <div className="timeline-scene-structural-actions">
+                          <button
+                            type="button"
+                            className="timeline-scene-drag-handle"
+                            draggable={!reorderFiltered}
+                            disabled={reorderFiltered}
+                            aria-label={`Mover escena ${scene.order}`}
+                            title={reorderFiltered ? "Quita los filtros para reordenar escenas." : "Arrastrar para reordenar"}
+                            onDragStart={(event) => {
+                              if (reorderFiltered) return event.preventDefault();
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData("text/plain", scene.sourceId!);
+                              setDraggedSceneId(scene.sourceId!);
+                            }}
+                            onDragEnd={() => { setDraggedSceneId(null); setDropTarget(null); }}
+                          >⋮⋮</button>
+                          <button type="button" disabled={reorderFiltered || index === 0} aria-label={`Mover escena ${scene.order} arriba`} onClick={() => {
+                            const previous = timeline.scenes[index - 1];
+                            if (previous?.sourceId) onMoveScene(scene.sourceId!, previous.sourceId, "before");
+                          }}>←</button>
+                          <button type="button" disabled={reorderFiltered || index === timeline.scenes.length - 1} aria-label={`Mover escena ${scene.order} abajo`} onClick={() => {
+                            const next = timeline.scenes[index + 1];
+                            if (next?.sourceId) onMoveScene(scene.sourceId!, next.sourceId, "after");
+                          }}>→</button>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
 

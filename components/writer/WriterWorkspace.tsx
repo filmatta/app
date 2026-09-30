@@ -12,6 +12,7 @@ import {
   SCREENPLAY_KINDS,
   WRITER_SCHEMA_VERSION,
   blockText,
+  canonicalWriterDocument,
   countDocumentWords,
   deriveCharacters,
   deriveScenes,
@@ -64,6 +65,13 @@ import {
   selectionSpansWriterBlocks,
   writerSelectionTargetIsCurrent,
   writerSceneForSelection,
+  duplicateWriterScene,
+  moveWriterScene,
+  renameWriterCharacter,
+  renameWriterSceneNickname,
+  writerSceneIds,
+  type WriterCharacterReference,
+  type WriterSceneMovePosition,
   type WriterSelectionTarget,
 } from "@/lib/writer/editor-actions";
 import {
@@ -77,6 +85,7 @@ import {
   analyzeWriterCharacterObservations,
   deriveWriterKnownCharacterIdentities,
   normalizeWriterCharacterIdentity,
+  writerCharacterIdentityKey,
   writerObservationTextHash,
   type WriterCharacterAnalysisCache,
   type WriterCharacterObservation,
@@ -100,6 +109,14 @@ import {
   saveWriterImportReviewState,
 } from "@/lib/writer/import-review-storage";
 import { deriveAcceptedCharacterActivity } from "@/lib/writer/writing-ux";
+import {
+  emptyWriterStructuralMetadata,
+  loadWriterStructuralMetadata,
+  normalizeWriterSceneNickname,
+  normalizeWriterStructuralName,
+  saveWriterStructuralMetadata,
+  type WriterStructuralMetadata,
+} from "@/lib/writer/structural-metadata-storage";
 
 type ScriptInput = {
   id: string;
@@ -116,6 +133,18 @@ type WriterAutocompleteState = {
   explicitlySelected: boolean;
   x: number;
   y: number;
+};
+
+type WriterNavigationEntry = {
+  sceneId: string;
+  blockId: string;
+  fromOffset: number;
+  toOffset: number;
+};
+
+type WriterStructuralToast = {
+  message: string;
+  token: number;
 };
 
 const initialSaveState: WriterPersistenceState = {
@@ -144,6 +173,17 @@ export default function WriterWorkspace({
   const [focusScale, setFocusScale] = useState(1);
   const [mobileSidebar, setMobileSidebar] = useState<"scenes" | "characters" | null>(null);
   const [activeScene, setActiveScene] = useState<string | null>(null);
+  const [structuralMetadata, setStructuralMetadata] = useState<WriterStructuralMetadata>(() => emptyWriterStructuralMetadata());
+  const [structuralMetadataPersistent, setStructuralMetadataPersistent] = useState(true);
+  const [editingSceneNickname, setEditingSceneNickname] = useState<string | null>(null);
+  const [sceneNicknameDraft, setSceneNicknameDraft] = useState("");
+  const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
+  const [characterNameDraft, setCharacterNameDraft] = useState("");
+  const [sceneActionsOpen, setSceneActionsOpen] = useState<string | null>(null);
+  const [draggedSceneId, setDraggedSceneId] = useState<string | null>(null);
+  const [sceneDropTarget, setSceneDropTarget] = useState<{ sceneId: string; position: WriterSceneMovePosition } | null>(null);
+  const [navigationDepth, setNavigationDepth] = useState(0);
+  const [structuralToast, setStructuralToast] = useState<WriterStructuralToast | null>(null);
   const [exportMenu, setExportMenu] = useState(false);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -168,6 +208,10 @@ export default function WriterWorkspace({
   const [conflictBusy, setConflictBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const controllerRef = useRef<WriterPersistenceController | null>(null);
+  const documentRef = useRef(script.document);
+  const structuralMetadataRef = useRef(structuralMetadata);
+  const navigationHistoryRef = useRef<WriterNavigationEntry[]>([]);
+  const toastTimeoutRef = useRef<number | null>(null);
   const leaseRef = useRef<WriterTabLease | null>(null);
   const exportButtonRef = useRef<HTMLButtonElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -386,15 +430,34 @@ export default function WriterWorkspace({
       },
     },
     onUpdate: ({ editor: current }) => {
-      const validated = validateWriterDocument(current.getJSON());
+      const rawDocument = current.getJSON() as unknown as WriterDocument;
+      const editorNicknames = extractWriterSceneNicknames(rawDocument);
+      if (!sameStringRecord(editorNicknames, structuralMetadataRef.current.sceneNicknames)) {
+        const nextMetadata = { ...structuralMetadataRef.current, sceneNicknames: editorNicknames };
+        structuralMetadataRef.current = nextMetadata;
+        setStructuralMetadata(nextMetadata);
+        try {
+          saveWriterStructuralMetadata(location.origin, userId, script.id, nextMetadata);
+          setStructuralMetadataPersistent(true);
+        } catch {
+          setStructuralMetadataPersistent(false);
+        }
+      }
+      const validated = validateWriterDocument(rawDocument);
       if (!validated.ok) {
         setFeedback(validated.reason);
         return;
       }
-      setDocument(validated.document);
+      const canonical = canonicalWriterDocument(validated.document);
+      if (JSON.stringify(canonical) === JSON.stringify(documentRef.current)) {
+        syncAutocomplete(current);
+        return;
+      }
+      documentRef.current = canonical;
+      setDocument(canonical);
       controllerRef.current?.markChanged({
         title: titleRef.current,
-        document: validated.document,
+        document: canonical,
         schemaVersion: WRITER_SCHEMA_VERSION,
       });
       syncAutocomplete(current);
@@ -460,22 +523,27 @@ export default function WriterWorkspace({
   }, [editor]);
 
   const scenes = useMemo(() => deriveScenes(document), [document]);
-  const knownCharacterIdentities = useMemo(() => deriveWriterKnownCharacterIdentities(
-    document,
-    [
-      ...characterDecisions.identities.map((identity) => ({
-        name: identity.name,
-        source: identity.source,
-      })),
-      ...(persistedImportAnalysis?.identities.map((identity) => ({
-        name: identity.name,
-        source: identity.source,
-      })) ?? []),
-    ],
-  ), [characterDecisions.identities, document, persistedImportAnalysis?.identities]);
-  localAutocompleteCharactersRef.current = knownCharacterIdentities
-    .filter((identity) => identity.source !== "characterBlock")
-    .map((identity) => identity.name);
+  const sceneMetadata = useMemo(() => deriveWriterSceneMetadata(document), [document]);
+  const knownCharacterIdentities = useMemo(() => {
+    const retiredKeys = new Set(Object.entries(structuralMetadata.characterAliases)
+      .filter(([key, alias]) => !writerAliasUsesPreviousName(document, key, alias.previousName, alias.blockIds))
+      .map(([key]) => key));
+    return deriveWriterKnownCharacterIdentities(
+      document,
+      [
+        ...characterDecisions.identities.map((identity) => ({
+          name: identity.name,
+          source: identity.source,
+        })),
+        ...(persistedImportAnalysis?.identities
+          .filter((identity) => !retiredKeys.has(identity.key))
+          .map((identity) => ({
+            name: identity.name,
+            source: identity.source,
+          })) ?? []),
+      ],
+    );
+  }, [characterDecisions.identities, document, persistedImportAnalysis?.identities, structuralMetadata.characterAliases]);
   const words = useMemo(() => countDocumentWords(document), [document]);
   const activeDecisionFingerprints = useMemo(
     () => new Set(characterDecisions.decisions.map((decision) => decision.fingerprint)),
@@ -497,6 +565,21 @@ export default function WriterWorkspace({
     () => deriveAcceptedCharacterActivity(document, knownCharacterIdentities, combinedCharacterObservations),
     [combinedCharacterObservations, document, knownCharacterIdentities],
   );
+  const characterRows = useMemo(() => characterActivity.map((activity) => {
+    const local = characterDecisions.identities.find((identity) => writerCharacterIdentityKey(identity.name) === activity.key);
+    const explicit = document.content.find((block) => block.attrs.kind === "character"
+      && writerCharacterIdentityKey(blockText(block)) === activity.key);
+    return {
+      ...activity,
+      identityId: local?.id ?? explicit?.attrs.id ?? activity.firstBlockId ?? `identity:${activity.key}`,
+    };
+  }), [characterActivity, characterDecisions.identities, document]);
+  localAutocompleteCharactersRef.current = [...new Set([
+    ...characterRows.map((identity) => identity.name),
+    ...knownCharacterIdentities
+      .filter((identity) => identity.source !== "characterBlock")
+      .map((identity) => identity.name),
+  ])];
   const formatObservations = useMemo(() => (persistedImportAnalysis?.formatObservations ?? []).filter((observation) => {
     const block = currentBlocksById.get(observation.blockId);
     return Boolean(block && block.attrs.kind === observation.kind && writerObservationTextHash(blockText(block)) === observation.blockHash);
@@ -551,6 +634,47 @@ export default function WriterWorkspace({
   }, [script.id, userId]);
 
   useEffect(() => {
+    if (!editor || !ready) return;
+    const timer = window.setTimeout(() => {
+      let loaded = emptyWriterStructuralMetadata();
+      try {
+        loaded = loadWriterStructuralMetadata(location.origin, userId, script.id);
+        setStructuralMetadataPersistent(true);
+      } catch {
+        setStructuralMetadataPersistent(false);
+      }
+      structuralMetadataRef.current = loaded;
+      setStructuralMetadata(loaded);
+      const transaction = editor.state.tr.setMeta("addToHistory", false);
+      let changed = false;
+      editor.state.doc.descendants((node, position) => {
+        if (node.type.name !== "screenplayBlock" || node.attrs.kind !== "sceneHeading") return;
+        const nickname = loaded.sceneNicknames[String(node.attrs.id)] ?? null;
+        if ((node.attrs.sceneNickname ?? null) === nickname) return;
+        transaction.setNodeMarkup(position, undefined, { ...node.attrs, sceneNickname: nickname });
+        changed = true;
+        return false;
+      });
+      if (changed) editor.view.dispatch(transaction);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [editor, ready, script.id, userId]);
+
+  const updateStructuralMetadata = useCallback((
+    updater: (current: WriterStructuralMetadata) => WriterStructuralMetadata,
+  ) => {
+    const next = updater(structuralMetadataRef.current);
+    structuralMetadataRef.current = next;
+    setStructuralMetadata(next);
+    try {
+      saveWriterStructuralMetadata(location.origin, userId, script.id, next);
+      setStructuralMetadataPersistent(true);
+    } catch {
+      setStructuralMetadataPersistent(false);
+    }
+  }, [script.id, userId]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
         const loaded = loadWriterImportReviewState(location.origin, userId, script.id);
@@ -577,6 +701,21 @@ export default function WriterWorkspace({
       setCharacterStoragePersistent(false);
     }
   }, [script.id, userId]);
+
+  useEffect(() => {
+    for (const [previousKey, alias] of Object.entries(structuralMetadata.characterAliases)) {
+      const previousActive = writerAliasUsesPreviousName(document, previousKey, alias.previousName, alias.blockIds);
+      const desiredName = previousActive ? (alias.previousName ?? previousKey) : alias.name;
+      const identity = characterDecisionsRef.current.identities.find((candidate) => candidate.id === alias.identityId);
+      if (!identity || identity.name === desiredName) continue;
+      updateCharacterDecisions((current) => ({
+        ...current,
+        identities: current.identities.map((candidate) => candidate.id === alias.identityId
+          ? { ...candidate, name: desiredName }
+          : candidate),
+      }));
+    }
+  }, [document, structuralMetadata.characterAliases, updateCharacterDecisions]);
 
   useEffect(() => {
     let active = true;
@@ -665,6 +804,30 @@ export default function WriterWorkspace({
     highlightTimeoutRef.current = null;
     if (editor && !editor.isDestroyed) setWriterSceneHighlight(editor, null);
   }, [editor]);
+  const recordCurrentNavigation = useCallback(() => {
+    if (!editor) return;
+    const block = currentWriterBlock(editor);
+    if (!block) return;
+    const sceneId = findSceneForPosition(editor.getJSON() as unknown as WriterDocument, block.id);
+    if (!sceneId) return;
+    const entry: WriterNavigationEntry = {
+      sceneId,
+      blockId: block.id,
+      fromOffset: Math.max(0, editor.state.selection.from - block.position - 1),
+      toOffset: Math.max(0, editor.state.selection.to - block.position - 1),
+    };
+    const previous = navigationHistoryRef.current.at(-1);
+    if (previous && previous.blockId === entry.blockId
+      && previous.fromOffset === entry.fromOffset && previous.toOffset === entry.toOffset) return;
+    navigationHistoryRef.current = [...navigationHistoryRef.current.slice(-19), entry];
+    setNavigationDepth(navigationHistoryRef.current.length);
+  }, [editor]);
+  const showStructuralUndo = useCallback((message: string) => {
+    if (toastTimeoutRef.current !== null) window.clearTimeout(toastTimeoutRef.current);
+    const token = Date.now();
+    setStructuralToast({ message, token });
+    toastTimeoutRef.current = window.setTimeout(() => setStructuralToast((current) => current?.token === token ? null : current), 5_500);
+  }, []);
   const openFormatObservation = useCallback((observation: WriterFormatObservation) => {
     if (!editor) return;
     const target = findWriterBlockById(editor, observation.blockId);
@@ -675,13 +838,14 @@ export default function WriterWorkspace({
     setActiveFormatObservationId(observation.id);
     setSelectedObservationBlockId(observation.blockId);
     setObservationsOpen(true);
+    recordCurrentNavigation();
     editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, target.position + 1)).scrollIntoView());
     editor.view.focus();
     setActiveScene(findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId));
     clearSceneHighlight();
     setWriterSceneHighlight(editor, observation.blockId);
     highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
-  }, [clearSceneHighlight, editor]);
+  }, [clearSceneHighlight, editor, recordCurrentNavigation]);
 
   useEffect(() => {
     if (!editor || editor.isDestroyed || !ready || focusMode || !showImportReviewHighlights) {
@@ -697,10 +861,15 @@ export default function WriterWorkspace({
       if (!editor.isDestroyed) setWriterImportReviewDecorations(editor, [], () => undefined);
     };
   }, [editor, focusMode, importReviewDecorationSignature, openFormatObservation, ready, showImportReviewHighlights]);
-  const navigateToScene = useCallback((id: string, requireSceneHeading = false, highlight = false) => {
+  const navigateToScene = useCallback((id: string, requireSceneHeading = false, highlight = false, record = true) => {
     if (!editor) return false;
     const target = findWriterBlockById(editor, id);
     if (target && (!requireSceneHeading || target.kind === "sceneHeading")) {
+      const current = currentWriterBlock(editor);
+      const currentScene = current
+        ? findSceneForPosition(editor.getJSON() as unknown as WriterDocument, current.id)
+        : null;
+      if (record && currentScene && currentScene !== id) recordCurrentNavigation();
       editor.view.dispatch(
         editor.state.tr
           .setSelection(TextSelection.create(editor.state.doc, target.position + 1))
@@ -717,9 +886,31 @@ export default function WriterWorkspace({
       return true;
     }
     return false;
-  }, [clearSceneHighlight, editor]);
+  }, [clearSceneHighlight, editor, recordCurrentNavigation]);
+
+  const navigateBack = useCallback(() => {
+    if (!editor) return;
+    while (navigationHistoryRef.current.length) {
+      const entry = navigationHistoryRef.current.pop()!;
+      const target = findWriterBlockById(editor, entry.blockId);
+      if (!target || findSceneForPosition(editor.getJSON() as unknown as WriterDocument, entry.blockId) !== entry.sceneId) continue;
+      const node = editor.state.doc.nodeAt(target.position);
+      if (!node) continue;
+      const from = target.position + 1 + Math.min(entry.fromOffset, node.content.size);
+      const to = target.position + 1 + Math.min(entry.toOffset, node.content.size);
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, Math.max(from, to))).scrollIntoView());
+      editor.view.focus();
+      setActiveScene(entry.sceneId);
+      setNavigationDepth(navigationHistoryRef.current.length);
+      return;
+    }
+    setNavigationDepth(0);
+  }, [editor]);
 
   useEffect(() => clearSceneHighlight, [clearSceneHighlight, script.id]);
+  useEffect(() => () => {
+    if (toastTimeoutRef.current !== null) window.clearTimeout(toastTimeoutRef.current);
+  }, []);
 
   useEffect(() => {
     timelineOpenRef.current = timelineOpen;
@@ -753,6 +944,7 @@ export default function WriterWorkspace({
             editor!.commands.setContent(snapshot.document, { emitUpdate: false });
             titleRef.current = snapshot.title;
             setTitle(snapshot.title);
+            documentRef.current = snapshot.document;
             setDocument(snapshot.document);
           }
         }
@@ -991,6 +1183,7 @@ export default function WriterWorkspace({
       editor.commands.setContent(remote.snapshot.document, { emitUpdate: false });
       titleRef.current = remote.snapshot.title;
       setTitle(remote.snapshot.title);
+      documentRef.current = remote.snapshot.document;
       setDocument(remote.snapshot.document);
       await controllerRef.current?.acceptRemote(remote.snapshot, remote.revision);
       setFeedback("Versión de la nube cargada.");
@@ -1140,6 +1333,7 @@ export default function WriterWorkspace({
       setAnalysisEpoch((value) => value + 1);
       return;
     }
+    recordCurrentNavigation();
     editor.view.dispatch(
       editor.state.tr
         .setSelection(TextSelection.create(editor.state.doc, target.position + 1 + observation.start, target.position + 1 + observation.end))
@@ -1188,6 +1382,139 @@ export default function WriterWorkspace({
     setFeedback(`Formato actualizado a ${WRITER_KIND_LABELS[kind]}. Puedes deshacer el cambio desde Writer.`);
   }
 
+  function handleMoveScene(sceneId: string, targetSceneId: string, position: WriterSceneMovePosition) {
+    if (!editor) return;
+    const result = moveWriterScene(editor, sceneId, targetSceneId, position);
+    setDraggedSceneId(null);
+    setSceneDropTarget(null);
+    setSceneActionsOpen(null);
+    if (result === "applied") {
+      setActiveScene(sceneId);
+      setTimelineRequestedScene(sceneId);
+      showStructuralUndo("Escena movida");
+    } else if (result !== "unchanged") {
+      setFeedback("No se pudo mover la escena porque el orden del documento cambió.");
+    }
+  }
+
+  function moveSceneByOffset(sceneId: string, offset: -1 | 1) {
+    if (!editor) return;
+    const ids = writerSceneIds(editor.state.doc);
+    const index = ids.indexOf(sceneId);
+    const target = ids[index + offset];
+    if (!target) return;
+    handleMoveScene(sceneId, target, offset < 0 ? "before" : "after");
+  }
+
+  function handleDuplicateScene(sceneId: string) {
+    if (!editor) return;
+    const nickname = structuralMetadataRef.current.sceneNicknames[sceneId];
+    const copiedNickname = nickname ? `${nickname} (copia)`.slice(0, 80) : "";
+    const result = duplicateWriterScene(editor, sceneId, copiedNickname);
+    setSceneActionsOpen(null);
+    if (result.status !== "applied" || !result.sceneId) {
+      setFeedback("No se pudo duplicar la escena.");
+      return;
+    }
+    setActiveScene(result.sceneId);
+    setTimelineRequestedScene(result.sceneId);
+    showStructuralUndo("Escena duplicada");
+  }
+
+  function beginSceneNicknameEdit(sceneId: string) {
+    setSceneActionsOpen(null);
+    setEditingSceneNickname(sceneId);
+    setSceneNicknameDraft(structuralMetadataRef.current.sceneNicknames[sceneId] ?? "");
+  }
+
+  function commitSceneNickname(sceneId: string) {
+    if (!editor) return;
+    const nickname = normalizeWriterSceneNickname(sceneNicknameDraft);
+    const result = renameWriterSceneNickname(editor, sceneId, nickname);
+    setEditingSceneNickname(null);
+    if (result === "missing") setFeedback("La escena ya no existe.");
+  }
+
+  function beginCharacterRename(identityId: string, name: string) {
+    setEditingCharacterId(identityId);
+    setCharacterNameDraft(name);
+  }
+
+  function commitCharacterRename(identityId: string) {
+    if (!editor) return;
+    const character = characterRows.find((candidate) => candidate.identityId === identityId);
+    if (!character) return setEditingCharacterId(null);
+    const name = normalizeWriterStructuralName(characterNameDraft);
+    if (!name || !/^[\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N}\s.'’\-]*$/u.test(name)) {
+      setFeedback("Usa un nombre de personaje válido.");
+      return;
+    }
+    const nextKey = writerCharacterIdentityKey(name);
+    const collision = characterRows.find((candidate) => candidate.identityId !== identityId && candidate.key === nextKey);
+    if (collision) {
+      setFeedback(`Ya existe un personaje llamado ${collision.name}.`);
+      return;
+    }
+    if (nextKey === character.key && name === character.name) return setEditingCharacterId(null);
+    const renameObservations = [
+      ...combinedCharacterObservations,
+      ...analyzeWriterCharacterObservations(document, knownCharacterIdentities, new Map()).observations,
+    ];
+    const references: WriterCharacterReference[] = renameObservations
+      .filter((observation) => observation.identityKey === character.key
+        && (observation.evidence === "actionReference" || observation.evidence === "intervention")
+        && observation.presence !== "absent")
+      .map((observation) => ({
+        blockId: observation.blockId,
+        start: observation.start,
+        end: observation.end,
+        text: observation.identity,
+      }))
+      .filter((reference, index, all) => all.findIndex((candidate) => candidate.blockId === reference.blockId
+        && candidate.start === reference.start && candidate.end === reference.end) === index);
+    const explicitBlockIds = document.content
+      .filter((block) => block.attrs.kind === "character" && writerCharacterIdentityKey(blockText(block)) === character.key)
+      .map((block) => block.attrs.id);
+    const result = renameWriterCharacter(editor, {
+      identityId,
+      sourceKey: character.key,
+      newName: name,
+      references,
+    });
+    if (result !== "applied") {
+      setFeedback("No se encontraron referencias seguras para renombrar.");
+      return;
+    }
+    updateCharacterDecisions((current) => {
+      const matching = current.identities.some((identity) => identity.id === identityId
+        || writerCharacterIdentityKey(identity.name) === character.key);
+      return {
+        ...current,
+        identities: matching
+          ? current.identities.map((identity) => identity.id === identityId
+            || writerCharacterIdentityKey(identity.name) === character.key ? { ...identity, name } : identity)
+          : [...current.identities, { id: identityId, name, source: "confirmedAction", createdAt: Date.now() }],
+        decisions: current.decisions.map((decision) => decision.identityKey === character.key
+          ? { ...decision, identityKey: nextKey, identityId }
+          : decision),
+      };
+    });
+    updateStructuralMetadata((current) => ({
+      ...current,
+      characterAliases: {
+        ...current.characterAliases,
+        [character.key]: {
+          identityId,
+          name,
+          previousName: character.name,
+          blockIds: [...new Set([...explicitBlockIds, ...references.map((reference) => reference.blockId)])],
+        },
+      },
+    }));
+    setEditingCharacterId(null);
+    showStructuralUndo("Personaje renombrado");
+  }
+
   async function enterFocus() {
     timelineBeforeFocusRef.current = timelineOpenRef.current;
     observationsBeforeFocusRef.current = observationsOpen;
@@ -1228,6 +1555,7 @@ export default function WriterWorkspace({
       ref={workspaceRef}
       className={`writer-workspace${focusMode ? " writer-workspace--focus" : ""}${timelineOpen ? " writer-workspace--timeline" : ""}${observationsOpen && !focusMode ? " writer-workspace--observations" : ""}`}
       data-focus-scale={focusScale.toFixed(3)}
+      data-structural-metadata-persistent={structuralMetadataPersistent ? "true" : "false"}
       style={{ "--writer-focus-scale": focusScale } as CSSProperties}
     >
       <header className="writer-header">
@@ -1337,29 +1665,121 @@ export default function WriterWorkspace({
           <p className="writer-sidebar-heading">Escenas <span>{scenes.length}</span></p>
           {scenes.length ? (
             <ol className="writer-scene-list">
-              {scenes.map((scene) => (
-                <li key={scene.id}>
-                  <button type="button" className={activeScene === scene.id ? "is-active" : ""} onClick={() => navigateToScene(scene.id)}>
-                    <span>{scene.order}</span>{scene.title}
-                  </button>
+              {scenes.map((scene, index) => (
+                <li
+                  key={scene.id}
+                  className={`${activeScene === scene.id ? "is-active" : ""}${sceneDropTarget?.sceneId === scene.id ? ` is-drop-${sceneDropTarget.position}` : ""}`}
+                  onDragOver={(event) => {
+                    if (!draggedSceneId || draggedSceneId === scene.id) return;
+                    event.preventDefault();
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    setSceneDropTarget({ sceneId: scene.id, position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after" });
+                    event.currentTarget.parentElement?.scrollBy({
+                      top: event.clientY < bounds.top + 12 ? -24 : event.clientY > bounds.bottom - 12 ? 24 : 0,
+                    });
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (draggedSceneId && sceneDropTarget) handleMoveScene(draggedSceneId, sceneDropTarget.sceneId, sceneDropTarget.position);
+                  }}
+                >
+                  <button
+                    className="writer-scene-drag-handle"
+                    type="button"
+                    draggable
+                    aria-label={`Mover escena ${scene.order}`}
+                    title="Arrastrar para reordenar"
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", scene.id);
+                      setDraggedSceneId(scene.id);
+                    }}
+                    onDragEnd={() => { setDraggedSceneId(null); setSceneDropTarget(null); }}
+                  >⋮⋮</button>
+                  {editingSceneNickname === scene.id ? (
+                    <input
+                      className="writer-scene-nickname-input"
+                      value={sceneNicknameDraft}
+                      onChange={(event) => setSceneNicknameDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") { event.preventDefault(); commitSceneNickname(scene.id); }
+                        if (event.key === "Escape") { event.preventDefault(); setEditingSceneNickname(null); }
+                      }}
+                      onBlur={() => commitSceneNickname(scene.id)}
+                      aria-label={`Nombre interno de la escena ${scene.order}`}
+                      autoFocus
+                    />
+                  ) : (
+                    <button type="button" className="writer-scene-link" onClick={() => navigateToScene(scene.id)} onDoubleClick={() => beginSceneNicknameEdit(scene.id)}>
+                      <span>{scene.order}</span>
+                      <span className="writer-scene-labels">
+                        {structuralMetadata.sceneNicknames[scene.id] && <strong>{structuralMetadata.sceneNicknames[scene.id]}</strong>}
+                        <b>{scene.title}</b>
+                        <small>{sceneMetadata[scene.id]?.blockCount ?? 1} bloques · {sceneMetadata[scene.id]?.wordCount ?? 0} palabras</small>
+                      </span>
+                    </button>
+                  )}
+                  <button type="button" className="writer-scene-pencil" aria-label={`Renombrar escena ${scene.order}`} onClick={() => beginSceneNicknameEdit(scene.id)}>✎</button>
+                  <button type="button" className="writer-scene-more" aria-label={`Acciones de escena ${scene.order}`} aria-expanded={sceneActionsOpen === scene.id} onClick={() => setSceneActionsOpen((current) => current === scene.id ? null : scene.id)}>•••</button>
+                  {sceneActionsOpen === scene.id && (
+                    <div className="writer-scene-actions" role="menu">
+                      <button type="button" role="menuitem" disabled={index === 0} onClick={() => moveSceneByOffset(scene.id, -1)}>Mover arriba</button>
+                      <button type="button" role="menuitem" disabled={index === scenes.length - 1} onClick={() => moveSceneByOffset(scene.id, 1)}>Mover abajo</button>
+                      <button type="button" role="menuitem" onClick={() => beginSceneNicknameEdit(scene.id)}>Renombrar</button>
+                      <button type="button" role="menuitem" onClick={() => handleDuplicateScene(scene.id)}>Duplicar escena</button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ol>
           ) : <p className="writer-sidebar-empty">Añade un encabezado para crear una escena.</p>}
         </nav>
         <section className="writer-character-section" aria-labelledby="writer-character-heading">
-          <p id="writer-character-heading" className="writer-sidebar-heading">Personajes <span>{characterActivity.length}</span></p>
-          {characterActivity.length ? (
-            <ul>{characterActivity.map((character) => (
-              <li key={character.key}>
-                <button type="button" onClick={() => {
+          <p id="writer-character-heading" className="writer-sidebar-heading">Personajes <span>{characterRows.length}</span></p>
+          {characterRows.length ? (
+            <ul>{characterRows.map((character) => (
+              <li key={character.identityId} className="writer-character-item">
+                {editingCharacterId === character.identityId ? (
+                  <input
+                    className="writer-character-rename-input"
+                    value={characterNameDraft}
+                    onChange={(event) => setCharacterNameDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") { event.preventDefault(); commitCharacterRename(character.identityId); }
+                      if (event.key === "Escape") { event.preventDefault(); setEditingCharacterId(null); }
+                    }}
+                    onBlur={() => commitCharacterRename(character.identityId)}
+                    aria-label={`Renombrar ${character.name}`}
+                    autoFocus
+                  />
+                ) : <button type="button" onDoubleClick={() => beginCharacterRename(character.identityId, character.name)} onClick={() => {
                   setSelectedObservationBlockId(character.firstBlockId);
                   setObservationsOpen(true);
                   setMobileSidebar(null);
+                  const evidence = combinedCharacterObservations.find((observation) => observation.identityKey === character.key
+                    && observation.blockId === character.firstBlockId);
+                  if (evidence) viewCharacterObservation(evidence);
+                  else if (editor && character.firstBlockId) {
+                    const target = findWriterBlockById(editor, character.firstBlockId);
+                    if (target) {
+                      recordCurrentNavigation();
+                      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, target.position + 1)).scrollIntoView());
+                      editor.view.focus();
+                      setActiveScene(findSceneForPosition(editor.getJSON() as unknown as WriterDocument, character.firstBlockId));
+                    }
+                  }
                 }}>
                   <strong>{character.name}</strong>
                   <span>{character.evidenceCount} {character.evidenceCount === 1 ? "evidencia" : "evidencias"}</span>
-                </button>
+                </button>}
+                <button type="button" className="writer-character-pencil" aria-label={`Renombrar ${character.name}`} onClick={() => beginCharacterRename(character.identityId, character.name)}>✎</button>
+                <div className="writer-character-hover" role="tooltip">
+                  <strong>{character.name}</strong>
+                  <span>Evidencias: {character.evidenceCount}</span>
+                  <span>Escenas: {character.sceneCount}</span>
+                  <span>Primera aparición: {character.firstSceneOrder ? `Escena ${character.firstSceneOrder}` : "Sin escena"}</span>
+                  <span>Última aparición: {character.lastSceneOrder ? `Escena ${character.lastSceneOrder}` : "Sin escena"}</span>
+                </div>
               </li>
             ))}</ul>
           ) : <p className="writer-sidebar-empty">Los personajes aceptados aparecerán aquí.</p>}
@@ -1381,7 +1801,10 @@ export default function WriterWorkspace({
             setInsertState(next);
           }}
         />
-        {feedback && <div className="writer-editor-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback(null)}>Cerrar</button></div>}
+        <div className="writer-editor-notices">
+          {!focusMode && navigationDepth > 0 && <button className="writer-navigation-back" type="button" onClick={navigateBack}>← Volver</button>}
+          {feedback && <div className="writer-editor-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback(null)}>Cerrar</button></div>}
+        </div>
         <div
           ref={paperRef}
           className="writer-paper"
@@ -1492,6 +1915,9 @@ export default function WriterWorkspace({
             active={timelineOpen}
             requestedSceneId={timelineRequestedScene}
             refreshToken={timelineRefreshToken}
+            activeSceneId={activeScene}
+            sceneNicknames={structuralMetadata.sceneNicknames}
+            onMoveScene={handleMoveScene}
             onClose={closeTimeline}
             onGoToWriter={(sceneId) => {
               if (!editor) {
@@ -1579,6 +2005,16 @@ export default function WriterWorkspace({
         onChangeFormat={changeFormatObservation}
         onToggleHighlights={setShowImportReviewHighlights}
       />
+
+      {structuralToast && !focusMode && (
+        <div className="writer-structural-toast" role="status" aria-live="polite">
+          <span>{structuralToast.message}</span>
+          <button type="button" onClick={() => {
+            editor?.chain().focus().undo().run();
+            setStructuralToast(null);
+          }}>Deshacer</button>
+        </div>
+      )}
 
       {["conflict", "deleted", "sessionExpired"].includes(saveState.status) && (
         <div className="writer-modal-backdrop">
@@ -1773,6 +2209,61 @@ function findSceneForPosition(document: WriterDocument, blockId: unknown) {
     if (block.attrs.id === blockId) return scene;
   }
   return scene;
+}
+
+function deriveWriterSceneMetadata(document: WriterDocument) {
+  const result: Record<string, { blockCount: number; wordCount: number }> = {};
+  let sceneId: string | null = null;
+  for (const block of document.content) {
+    if (block.attrs.kind === "sceneHeading") {
+      sceneId = block.attrs.id;
+      result[sceneId] = { blockCount: 1, wordCount: 0 };
+      continue;
+    }
+    if (!sceneId) continue;
+    result[sceneId].blockCount += 1;
+    if (block.attrs.kind === "authorNote") continue;
+    const text = blockText(block).trim();
+    if (text) result[sceneId].wordCount += text.split(/\s+/u).length;
+  }
+  return result;
+}
+
+function extractWriterSceneNicknames(document: WriterDocument) {
+  const result: Record<string, string> = {};
+  for (const block of document.content) {
+    if (block.attrs.kind !== "sceneHeading") continue;
+    const nickname = normalizeWriterSceneNickname(String((block.attrs as Record<string, unknown>).sceneNickname ?? ""));
+    if (nickname) result[block.attrs.id] = nickname;
+  }
+  return result;
+}
+
+function sameStringRecord(left: Readonly<Record<string, string>>, right: Readonly<Record<string, string>>) {
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+  return leftEntries.length === rightEntries.length
+    && leftEntries.every(([key, value]) => right[key] === value);
+}
+
+function writerAliasUsesPreviousName(
+  document: WriterDocument,
+  previousKey: string,
+  previousName?: string,
+  blockIds: readonly string[] = [],
+) {
+  const ids = new Set(blockIds);
+  const matcher = previousName
+    ? new RegExp(`(?<![\\p{L}\\p{N}_])${escapeWriterRegExp(previousName)}(?![\\p{L}\\p{N}_])`, "iu")
+    : null;
+  return document.content.some((block) => ids.has(block.attrs.id) && (
+    (block.attrs.kind === "character" && writerCharacterIdentityKey(blockText(block)) === previousKey)
+    || Boolean(matcher?.test(blockText(block)))
+  ));
+}
+
+function escapeWriterRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 function downloadText(contents: string, filename: string, type: string) {
