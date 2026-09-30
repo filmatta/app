@@ -1,54 +1,58 @@
-import StatusBadge from "@/components/ui/StatusBadge";
-import { MetaChips } from "@/components/ui/MetaChip";
 import Link from "next/link";
 import type { ProfileSummary } from "@/lib/profiles/catalog";
 import { AVAILABILITY_LABELS } from "@/lib/profiles/constants";
-import ProfileAvatar from "./ProfileAvatar";
+import ProfileCardVisual from "./ProfileCardVisual";
 import "./profile-card.css";
+
 export default function ProfileCard({
   profile,
+  returnTo,
 }: {
   profile: ProfileSummary;
-  talent?: boolean;
+  returnTo: string;
 }) {
-  const p = profile.presentation,
-    name = p.stage_name || profile.display_name;
+  const presentation = profile.presentation;
+  const name = presentation.stage_name || profile.display_name;
+  const [primaryDiscipline, ...secondaryDisciplines] = profile.disciplines;
+  const href = `/perfiles/${profile.slug}?returnTo=${encodeURIComponent(returnTo)}`;
+
   return (
-    <Link href={`/perfiles/${profile.slug}`} className="profile-card">
-      <div className="profile-card-identity">
-        <div className="profile-card-avatar">
-          <ProfileAvatar
-            id={p.portrait_media_id}
-            fallbackUrl={p.portrait_url}
-            name={name}
-          />
-        </div>
+    <Link href={href} className="profile-card" aria-label={`Ver perfil de ${name}`}>
+      <ProfileCardVisual
+        mediaId={profile.visual_media_id}
+        fallbackUrl={profile.visual_url || presentation.portrait_url}
+        name={name}
+      />
+      <div className="profile-card-body">
         <div className="profile-card-name">
-          <h2>{name}</h2>
-          <p className="profile-card-disciplines">{profile.disciplines[0]}</p>
-          <StatusBadge
-            tone={
-              profile.availability === "available"
-                ? "success"
-                : profile.availability === "limited"
-                  ? "warning"
-                  : "neutral"
-            }
+          <div>
+            <h2>{name}</h2>
+            <p className="profile-card-disciplines">
+              {primaryDiscipline || "Profesional audiovisual"}
+              {secondaryDisciplines.length > 0 && (
+                <span> +{secondaryDisciplines.length}</span>
+              )}
+            </p>
+          </div>
+          <span className="profile-card-open" aria-hidden="true">↗</span>
+        </div>
+        <div className="profile-card-meta">
+          <p>{profile.city || "Ciudad por confirmar"}</p>
+          <p
+            className="profile-availability"
+            data-available={profile.availability === "available"}
           >
             {AVAILABILITY_LABELS[profile.availability]}
-          </StatusBadge>
+          </p>
         </div>
+        {profile.skills.length > 0 && (
+          <ul className="profile-card-skills" aria-label="Especialidades">
+            {profile.skills.slice(0, 3).map((skill) => (
+              <li key={skill}>{skill}</li>
+            ))}
+          </ul>
+        )}
       </div>
-      <p className="profile-card-city">
-        {[profile.city, p.work_area].filter(Boolean).join(" · ") ||
-          "Ciudad por confirmar"}
-      </p>
-      <div className="profile-card-details">
-        <MetaChips labels={profile.disciplines} limit={3} />
-      </div>
-      <span className="profile-card-cta">
-        Ver perfil <span aria-hidden="true">↗</span>
-      </span>
     </Link>
   );
 }

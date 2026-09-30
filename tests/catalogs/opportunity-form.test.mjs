@@ -6,7 +6,6 @@ function form(overrides = {}) {
   const f = new FormData();
   for (const [k, v] of Object.entries({
     title: "Convocatoria",
-    project_title: "Cortometraje",
     category: "crew",
     work_mode: "remote",
     compensation_type: "unspecified",
@@ -33,6 +32,7 @@ test("draft default and explicit publication completeness", () => {
 test("reject forged IDs, invalid money, impossible dates and reversed ranges", () => {
   for (const invalid of [
     { id: "other-user" },
+    { project_id: "other-project" },
     { status: "admin" },
     {
       compensation_type: "paid",
@@ -54,6 +54,21 @@ test("reject forged IDs, invalid money, impossible dates and reversed ranges", (
       false,
       JSON.stringify(invalid),
     );
+});
+
+test("an Opportunity can be independent or point to a valid Project UUID", () => {
+  const independent = parseOpportunityForm(form());
+  assert.equal(independent.ok, true);
+  assert.equal(independent.values.project_id, null);
+
+  const linked = parseOpportunityForm(
+    form({ project_id: "11111111-1111-4111-8111-111111111111" }),
+  );
+  assert.equal(linked.ok, true);
+  assert.equal(
+    linked.values.project_id,
+    "11111111-1111-4111-8111-111111111111",
+  );
 });
 
 test("budgets use decimal input, preserve cents and identify the currency", () => {

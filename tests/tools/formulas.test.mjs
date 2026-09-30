@@ -95,7 +95,10 @@ test("typed Tools registry exposes four implemented utilities and honest product
     assert.equal(t.access, "public");
     if (t.utility) assert.ok(getUtility(t.slug));
     else {
-      assert.equal(t.status, "in-development");
+      assert.equal(
+        t.status,
+        t.slug === "writer" ? "beta" : "in-development",
+      );
       assert.ok(fs.existsSync(`app${t.href}/page.tsx`));
     }
   }

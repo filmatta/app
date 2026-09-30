@@ -4,7 +4,9 @@ export type CatalogFilters = {
   page: number;
   q: string;
   city: string;
+  skill: string;
   category: string;
+  compensation: string;
   discipline: string;
   availability: string;
   environment: string;
@@ -31,7 +33,13 @@ export function parseCatalogFilters(params: SearchParams): CatalogFilters {
     page: /^\d+$/.test(page) ? Math.max(1, Math.min(1000, Number(page))) : 1,
     q: text("q"),
     city: text("city"),
+    skill: text("skill"),
     category: text("category"),
+    compensation: choice("compensation", [
+      "paid",
+      "collaboration",
+      "unspecified",
+    ]),
     discipline: text("discipline"),
     availability: choice("availability", [
       "available",

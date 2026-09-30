@@ -1,10 +1,21 @@
-export type PlanVisualId = "free" | "plus" | "pro" | "business";
+export type PlanVisualId =
+  | "free"
+  | "starter"
+  | "plus"
+  | "pro"
+  | "pro_plus"
+  | "business";
 
-export const planVisuals = {
+const baseVisuals = {
   free: {
     badgeClassName: "border-white/10 bg-white/10 text-white/60",
     panelClassName: "border-white/10 bg-white/[0.035]",
     accentClassName: "text-white/55",
+  },
+  starter: {
+    badgeClassName: "border-slate-300/20 bg-slate-300/10 text-slate-200",
+    panelClassName: "border-slate-300/20 bg-slate-300/[0.035]",
+    accentClassName: "text-slate-200",
   },
   plus: {
     badgeClassName:
@@ -17,19 +28,18 @@ export const planVisuals = {
     panelClassName: "border-amber-400/25 bg-amber-400/[0.055]",
     accentClassName: "text-amber-200",
   },
-  business: {
+  pro_plus: {
     badgeClassName: "border-blue-400/25 bg-blue-400/15 text-blue-200",
     panelClassName: "border-blue-400/25 bg-blue-400/[0.055]",
     accentClassName: "text-blue-200",
   },
-} as const satisfies Record<
-  PlanVisualId,
-  {
-    badgeClassName: string;
-    panelClassName: string;
-    accentClassName: string;
-  }
->;
+} as const;
+
+export const planVisuals = {
+  ...baseVisuals,
+  // Presentation-only compatibility. Historical Business UI maps to PRO+.
+  business: baseVisuals.pro_plus,
+} as const;
 
 export function getPlanVisual(plan: PlanVisualId) {
   return planVisuals[plan];

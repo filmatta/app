@@ -5,6 +5,7 @@ import { OPPORTUNITY_CATEGORIES } from "@/lib/opportunities/form";
 
 export type EditableOpportunity = {
   id: string;
+  project_id: string | null;
   opportunity_type?: string;
   deliverables?: string | null;
   title: string;
@@ -26,9 +27,15 @@ export type EditableOpportunity = {
 export default function OpportunityForm({
   opportunity,
   job = false,
+  projects = [],
+  initialProjectId = "",
+  prefill = {},
 }: {
   opportunity?: EditableOpportunity;
   job?: boolean;
+  projects?: { id: string; title: string }[];
+  initialProjectId?: string;
+  prefill?: Partial<Record<"city" | "starts_on" | "ends_on", string>>;
 }) {
   const isJob = opportunity?.opportunity_type === "job" || job;
   const [state, action, pending] = useActionState(saveOpportunity, {
@@ -39,7 +46,7 @@ export default function OpportunityForm({
   const [values, setValues] = useState<Record<string, string>>({});
   const fieldValue = (name: string, fallback = "") =>
     values[name] ??
-    String(opportunity?.[name as keyof EditableOpportunity] ?? fallback);
+    String(opportunity?.[name as keyof EditableOpportunity] ?? prefill[name as keyof typeof prefill] ?? fallback);
   const changeValue = (
     event: ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
@@ -50,11 +57,13 @@ export default function OpportunityForm({
   };
   const fields = [
     { name: "title", label: "Título", max: 160, required: true },
-    { name: "summary", label: "Resumen", max: 500 },
-    { name: "discipline", label: "Disciplina requerida", max: 120 },
+    { name: "summary", label: "Qué o quién se busca", max: 500 },
+    { name: "discipline", label: "Disciplina, talento o recurso", max: 120 },
     { name: "city", label: "Ciudad", max: 120 },
-    { name: "compensation_min", label: "Presupuesto mínimo", type: "number" },
-    { name: "compensation_max", label: "Presupuesto máximo", type: "number" },
+    ...(isJob ? [
+      { name: "compensation_min", label: "Presupuesto mínimo", type: "number" },
+      { name: "compensation_max", label: "Presupuesto máximo", type: "number" },
+    ] : []),
     { name: "starts_on", label: "Fecha de inicio", type: "date" },
     { name: "ends_on", label: "Fecha de fin", type: "date" },
     {
@@ -85,9 +94,9 @@ export default function OpportunityForm({
       label: "Compensación",
       options: [
         { value: "unspecified", label: "Por definir" },
-        { value: "paid", label: "Remunerado" },
+        { value: "paid", label: "Pagado" },
+        { value: "unpaid", label: "Colaboración" },
         { value: "expenses", label: "Gastos cubiertos" },
-        { value: "unpaid", label: "No remunerado" },
       ],
       initial: "unspecified",
     },
@@ -133,29 +142,21 @@ export default function OpportunityForm({
       )}
       {opportunity && <input type="hidden" name="id" value={opportunity.id} />}
       <p className="mb-8 max-w-2xl leading-7 text-white/65">
-        Al publicar se hacen visibles la convocatoria y el título del proyecto.
+        Al publicar se hace visible la convocatoria. Vincular un Project es opcional
+        y no publica ni modifica ese Project.
         No incluyas teléfonos, correos ni datos privados.{" "}
         {isJob
           ? "Los interesados con perfil publicado pueden presentar su interés por consulta privada. No es un proceso de contratación."
           : "Las postulaciones de estas convocatorias aún no están disponibles."}
       </p>
-      {!opportunity && (
-        <label className="mb-6 block">
-          Título público del proyecto
-          <input
-            required
-            name="project_title"
-            value={fieldValue("project_title")}
-            onChange={changeValue}
-            minLength={3}
-            maxLength={160}
-            className="catalog-input mt-2"
-          />
-          <span className="mt-2 block text-sm text-white/60">
-            Se crea una ficha mínima para dar contexto a esta convocatoria.
-          </span>
-        </label>
-      )}
+      <label className="mb-6 block">
+        Project vinculado (opcional)
+        <select name="project_id" value={fieldValue("project_id", opportunity?.project_id ?? initialProjectId)} onChange={changeValue} className="catalog-input mt-2">
+          <option value="">Opportunity independiente</option>
+          {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
+        </select>
+        <span className="mt-2 block text-sm text-white/60">Puedes vincularla ahora o convertirla en Project más adelante.</span>
+      </label>
       <div className="grid gap-6 sm:grid-cols-2">
         {fields.map((field) => {
           const value = fieldValue(field.name);
@@ -186,7 +187,8 @@ export default function OpportunityForm({
         {selects
           .filter(
             (field) =>
-              !isJob || !["category", "compensation_type"].includes(field.name),
+              (!isJob || !["category", "compensation_type"].includes(field.name)) &&
+              (isJob || field.name !== "compensation_currency"),
           )
           .map((field) => (
             <div className="text-sm" key={field.name}>
@@ -208,11 +210,11 @@ export default function OpportunityForm({
           ))}
       </div>
       <label className="mt-6 block text-sm">
-        Brief y requisitos (máximo 20 000 caracteres)
+        Descripción corta y requisitos (máximo 20 000 caracteres)
         <textarea
           name="description"
           maxLength={20000}
-          rows={9}
+          rows={6}
           value={fieldValue("description")}
           onChange={changeValue}
           className="catalog-input mt-2"

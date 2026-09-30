@@ -29,6 +29,7 @@ export async function grantPlanToUser(formData: FormData) {
       expiresAt: getAdminGrantExpiresAt(duration),
       reason,
       grantedBy,
+      source: isSimulationEnvironment() ? "test" : "admin",
     });
     destination = `/admin/planes?q=${encodeURIComponent(user.id)}&success=granted`;
     revalidateGrantViews();
@@ -38,6 +39,13 @@ export async function grantPlanToUser(formData: FormData) {
   }
 
   redirect(destination);
+}
+
+function isSimulationEnvironment() {
+  return (
+    process.env.NODE_ENV === "development" ||
+    process.env.VERCEL_ENV === "preview"
+  );
 }
 
 export async function revokePlanGrant(formData: FormData) {

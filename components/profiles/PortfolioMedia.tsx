@@ -10,88 +10,9 @@ import {
   FREE_PROFILE_MEDIA_LIMITS,
   getProfileMediaCounts,
 } from "@/lib/profiles/media-limits";
+import { useProfileMediaResource } from "./ProfileMediaResource";
 import "./portfolio-editor.css";
 
-type Resource = {
-  resourceId?: string;
-  image?: string;
-  expiresAt?: number;
-  playbackId?: string;
-  tokens?: { playback: string; thumbnail: string };
-};
-export function useResource(id: string | null) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [resource, setResource] = useState<Resource | null>(null);
-  const [errorId, setErrorId] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    if (!id || !ref.current) return;
-    let live = true;
-    const controller = new AbortController();
-    let refresh: ReturnType<typeof setTimeout> | undefined;
-    let expiresAt = 0;
-    const resume = () => {
-      if (
-        document.visibilityState === "visible" &&
-        expiresAt &&
-        Date.now() > expiresAt - 15000
-      )
-        setAttempt((a) => a + 1);
-    };
-    document.addEventListener("visibilitychange", resume);
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((e) => e.isIntersecting)) return;
-        observer.disconnect();
-        fetch(`/api/portfolio/media/${id}/resource`, {
-          cache: "no-store",
-          signal: AbortSignal.any([
-            controller.signal,
-            AbortSignal.timeout(15000),
-          ]),
-        })
-          .then(async (r) => {
-            if (!r.ok) throw new Error();
-            const result = await r.json();
-            if (live) {
-              setResource({ ...result, resourceId: id });
-              setErrorId(null);
-              expiresAt = result.expiresAt ?? 0;
-              if (result.expiresAt)
-                refresh = setTimeout(
-                  () => {
-                    if (document.visibilityState === "visible")
-                      setAttempt((a) => a + 1);
-                  },
-                  Math.max(1000, result.expiresAt - Date.now() - 15000),
-                );
-            }
-          })
-          .catch(() => {
-            if (live) setErrorId(id);
-          });
-      },
-      { rootMargin: "250px" },
-    );
-    observer.observe(ref.current);
-    return () => {
-      live = false;
-      controller.abort();
-      clearTimeout(refresh);
-      document.removeEventListener("visibilitychange", resume);
-      observer.disconnect();
-    };
-  }, [id, attempt]);
-  return {
-    ref,
-    resource: resource?.resourceId === id ? resource : null,
-    error: Boolean(id && errorId === id),
-    retry: () => {
-      setErrorId(null);
-      setAttempt((a) => a + 1);
-    },
-  };
-}
 export function MediaVisual({
   item,
   override,
@@ -107,7 +28,7 @@ export function MediaVisual({
   const external = reelSource(item.url);
   const needsResource =
     stored || (item.category === "work" && external?.provider === "Vimeo");
-  const { ref, resource, error, retry } = useResource(
+  const { ref, resource, error, retry } = useProfileMediaResource(
     needsResource ? item.id : null,
   );
   const [playing, setPlaying] = useState(false);
@@ -118,14 +39,14 @@ export function MediaVisual({
     ref: customRef,
     resource: customResource,
     error: customError,
-  } = useResource(
+  } = useProfileMediaResource(
     item.category === "reel" && customCover ? customCover.id : null,
   );
   const {
     ref: thumbRef,
     resource: thumbnailResource,
     error: thumbnailError,
-  } = useResource(override?.source === "storage" ? override.id : null);
+  } = useProfileMediaResource(override?.source === "storage" ? override.id : null);
   const poster =
     thumbnailResource?.image ||
     (override?.source === "external" ? override.url : undefined);
@@ -607,7 +528,7 @@ function BookLightbox({
   const dialog = useRef<HTMLDialogElement>(null);
   const index = items.findIndex((i) => i.id === id);
   const item = items[index];
-  const { ref, resource, error, retry } = useResource(
+  const { ref, resource, error, retry } = useProfileMediaResource(
     item?.source === "storage" ? item.id : null,
   );
   const move = (delta: number) =>

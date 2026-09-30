@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 const read=p=>fs.readFileSync(p,'utf8');
-test('project create and edit redirect after save; archive remains separate',()=>{
-  const code=read('components/networking/ProjectForm.tsx');
-  assert.ok(code.indexOf('if (!value.roles.length)')<code.indexOf('await saveNetworkingProject'));
-  assert.match(code,/Selecciona al menos una opción/);
-  assert.match(code,/router.push\(initial \? "\/mis-proyectos\?saved=1" : "\/mis-proyectos\?created=1"\)/);
-  assert.match(code,/setSaved\(n => n \+ 1\)/);
-  assert.match(read('app/proyectos/page.tsx'),/Proyecto creado/);
+test('Project V1.5 create and edit redirect after save; archive remains separate',()=>{
+  const form=read('components/projects/ProjectEditorForm.tsx');
+  const actions=read('app/mis-proyectos/actions.ts');
+  assert.match(form,/await saveProject\(project\?\.id \?\? null, formData\)/);
+  assert.match(form,/if \(result\.redirectTo\) router\.push\(result\.redirectTo\)/);
+  assert.match(form,/value="archive"/);
+  assert.match(actions,/projectId === null[\s\S]*`\/mis-proyectos\/\$\{project\.id\}\/editar\?created=1`/);
+  assert.match(actions,/parsed\.value\.intent === "archive"[\s\S]*"\/mis-proyectos\?archived=1"/);
 });
 test('accepted process and open contacts share the accepted query but preserve distinct presentation',()=>{
   const code=read('app/cuenta/contactos/page.tsx');

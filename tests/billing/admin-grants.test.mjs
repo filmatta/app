@@ -24,7 +24,7 @@ const active = (plan, overrides = {}) => ({
   ...overrides,
 });
 
-test('effective Admin Grants resolve Plus and Pro independently from Stripe', () => {
+test('effective Admin Grants override Billing with one explicit plan', () => {
   assert.deepEqual(
     JSON.parse(JSON.stringify(effective.resolveEffectiveBillingAccess({
       stripePlan: null, grants: [active('plus')], now,
@@ -48,7 +48,8 @@ test('effective Admin Grants resolve Plus and Pro independently from Stripe', ()
   );
   assert.equal(
     effective.resolveEffectiveBillingAccess({ stripePlan: 'pro', grants: [active('plus')], now }).plan,
-    'pro'
+    'plus',
+    'An explicit grant wins even when the historical Billing plan ranks higher'
   );
   assert.equal(
     effective.resolveEffectiveBillingAccess({ stripePlan: 'plus', grants: [active('pro')], now }).source,
@@ -140,21 +141,15 @@ test('Admin Grants migration is additive, audited and inaccessible directly to u
   assert.match(migration, /create or replace function public\.get_my_billing_plan/);
 });
 
-test('billing access reads grant origin and falls back before the migration is applied', async () => {
+test('legacy Billing access delegates to the central entitlement context', async () => {
   const detailed = load('lib/billing/access.ts', {
     react: { cache: (fn) => fn },
-    '@/lib/supabase/server': {
-      createClient: async () => ({
-        rpc: async (name) => {
-          assert.equal(name, 'get_my_billing_access');
-          return { data: [{
-            effective_plan: 'pro', stripe_plan: 'plus', admin_grant_plan: 'pro',
-            admin_grant_expires_at: '2026-10-14T12:00:00.000Z', access_source: 'both',
-          }], error: null };
-        },
+    '@/lib/entitlements/server': {
+      getEntitlementContext: async () => ({
+        plan: 'pro', status: 'resolved', source: 'admin', billingPlan: 'plus',
+        grantPlan: 'pro', grantExpiresAt: '2026-10-14T12:00:00.000Z',
       }),
     },
-    './config': { billingEnabled: () => true, billingAccessConfig: () => ({}) },
   });
   assert.deepEqual(JSON.parse(JSON.stringify(await detailed.getBillingAccess())), {
     regularAccess: true,
@@ -165,26 +160,19 @@ test('billing access reads grant origin and falls back before the migration is a
     source: 'both',
   });
 
-  const calls = [];
-  const fallback = load('lib/billing/access.ts', {
+  const unavailable = load('lib/billing/access.ts', {
     react: { cache: (fn) => fn },
-    '@/lib/supabase/server': {
-      createClient: async () => ({
-        rpc: async (name) => {
-          calls.push(name);
-          return name === 'get_my_billing_access'
-            ? { data: null, error: { code: 'PGRST202', message: 'missing function' } }
-            : { data: 'plus', error: null };
-        },
+    '@/lib/entitlements/server': {
+      getEntitlementContext: async () => ({
+        plan: 'free', status: 'unavailable', source: 'fail_safe', billingPlan: null,
+        grantPlan: null, grantExpiresAt: null,
       }),
     },
-    './config': { billingEnabled: () => true, billingAccessConfig: () => ({}) },
   });
-  const legacy = await fallback.getBillingAccess();
-  assert.equal(legacy.plan, 'plus');
-  assert.equal(legacy.stripePlan, 'plus');
-  assert.equal(legacy.source, 'stripe');
-  assert.deepEqual(calls, ['get_my_billing_access', 'get_my_billing_plan']);
+  const failSafe = await unavailable.getBillingAccess();
+  assert.equal(failSafe.plan, null);
+  assert.equal(failSafe.regularAccess, false);
+  assert.equal(failSafe.source, null);
 });
 
 test('normal users cannot invoke grant actions and admins record granted_by server-side', async () => {
@@ -224,6 +212,7 @@ test('normal users cannot invoke grant actions and admins record granted_by serv
   assert.equal(inserted.targetIdentifier, 'target-uid');
   assert.equal(inserted.grantedBy, 'admin-uid');
   assert.equal(inserted.plan, 'pro');
+  assert.equal(inserted.source, 'admin');
 });
 
 test('revoking a grant has no Stripe or paid-entitlement mutation path', () => {
@@ -232,7 +221,7 @@ test('revoking a grant has no Stripe or paid-entitlement mutation path', () => {
   assert.match(adminActionsSource, /revokeAdminPlanGrant/);
 });
 
-test('grant-only presentation shows origin and avoids a useless Customer Portal', () => {
+test('grant-only presentation avoids a useless Customer Portal or Checkout', () => {
   const presentation = load('lib/billing/plan-presentation.ts');
   assert.deepEqual(
     JSON.parse(JSON.stringify(presentation.getPlanCardAction({
@@ -248,13 +237,14 @@ test('grant-only presentation shows origin and avoids a useless Customer Portal'
     }))),
     { kind: 'status', label: 'Incluido en tu acceso' }
   );
-  assert.match(plansPage, /Acceso otorgado por FILMATTA/);
-  assert.match(plansPage, /billing\.source === "admin_grant"/);
+  assert.match(plansPage, /getEntitlementContext/);
+  assert.doesNotMatch(plansPage, /startCheckout|openBillingPortal/);
   assert.match(subscriptionPage, /Acceso otorgado por FILMATTA/);
   assert.match(subscriptionPage, /enabled && hasStripeSubscription && <form action=\{openBillingPortal\}/,
     'Portal is rendered only for a real Stripe subscription');
   assert.match(subscriptionPage, /!hasStripeSubscription && <div/,
-    'A grant alone never suppresses the safe first-subscription Checkout');
+    'A grant alone presents plan comparison without Checkout');
+  assert.doesNotMatch(subscriptionPage, /startCheckout|Comprar Plus|Comprar Pro/);
   assert.match(billingReturnPage, /initialPlan=\{access\.stripePlan\}/,
     'Administrative access cannot trigger a Stripe/Matti return welcome');
   assert.match(billingStatusRoute, /plan: access\.stripePlan/,

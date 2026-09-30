@@ -75,7 +75,7 @@ export const CONTEXTUAL_TIPS: readonly ContextualTip[] = [
     id: "learn-preview-completed",
     vertical: "learn",
     states: ["previewCompleted"],
-    text: "Ya terminaste las lecciones gratuitas. El resto del curso continúa con FILMATTA Plus.",
+    text: "Ya terminaste las lecciones gratuitas. El resto del curso continúa con FILMATTA Starter.",
     mattiPose: "thinking",
   },
   {

@@ -28,13 +28,16 @@ test("reels use a curated cover while preserving the signed player", () => {
   assert.match(migration, /cover\.visibility = 'visible'/);
 });
 
-test("catalog identity order never promotes a reel frame", () => {
+test("search catalog receives one bounded visual selected by the public database projection", () => {
   const card = read("components/profiles/ProfileCard.tsx");
-  assert.match(card, /p\.portrait_media_id/);
-  assert.doesNotMatch(card, /reel_cover_media_id|cover_media_id/);
+  const migration = read(
+    "supabase/migrations/20260930040000_profiles_search_v1.sql",
+  );
+  assert.match(card, /profile\.visual_media_id/);
   assert.doesNotMatch(card, /leadReel|reelSource|portfolio_items|p\.book/);
-  assert.doesNotMatch(card, /reelSource/);
-  assert.doesNotMatch(card, /p\.book\[0\]/);
+  assert.match(migration, /1 as priority[\s\S]*cover_media_id/);
+  assert.match(migration, /2,[\s\S]*media\.category = 'book'/);
+  assert.match(migration, /4,[\s\S]*reel\.category = 'reel'/);
 });
 
 test("profile DOM order preserves bio then contact then media on mobile", () => {

@@ -2,6 +2,7 @@
 // No production credentials or remote database access.
 import http from "node:http";
 import {profileFixture,resetProfileFixture} from "./profiles-fixture.mjs";
+const port = Number.parseInt(process.env.MOCK_SUPABASE_PORT ?? "54329", 10);
 const id = "11111111-1111-4111-8111-111111111111";
 let scenario = "empty";
 let profileDelayMs = 0;
@@ -65,7 +66,7 @@ const location = {
 };
 http
   .createServer(async (req, res) => {
-    const url = new URL(req.url, "http://127.0.0.1:54329");
+    const url = new URL(req.url, `http://127.0.0.1:${port}`);
     const token = (req.headers.authorization ?? "").replace("Bearer ", "");
     let role = "user";
     try {
@@ -125,7 +126,12 @@ http
       res.statusCode = 405;
       return res.end("{}");
     }
-    if (profileDelayMs && url.pathname.endsWith("/list_public_professional_portfolios")) await new Promise(resolve => setTimeout(resolve, profileDelayMs));
+    if (
+      profileDelayMs &&
+      (url.pathname.endsWith("/list_public_professional_portfolios") ||
+        url.pathname.endsWith("/search_public_professional_profiles"))
+    )
+      await new Promise((resolve) => setTimeout(resolve, profileDelayMs));
     if (scenario === "profiles-polish" && await profileFixture(req,res,url,token)) return;
     if (scenario === "writer-ux") {
       if (url.pathname === "/rest/v1/writer_scripts" && req.method === "GET") {
@@ -188,9 +194,45 @@ http
         return res.end(
           JSON.stringify(body.p_city === "Sin resultados" ? [] : [profile]),
         );
+      if (url.pathname.endsWith("search_public_professional_profiles"))
+        return res.end(
+          JSON.stringify(
+            body.p_city === "Sin resultados"
+              ? []
+              : [
+                  {
+                    ...profile,
+                    total_count: 1,
+                    visual_media_id: null,
+                    visual_url: null,
+                  },
+                ],
+          ),
+        );
+      if (url.pathname.endsWith("get_public_profile_search_facets"))
+        return res.end(
+          JSON.stringify({ cities: ["México"], skills: ["Actuación"] }),
+        );
       if (url.pathname.endsWith("get_public_professional_portfolio"))
         return res.end(
           JSON.stringify(body.p_slug === profile.slug ? [profile] : []),
+        );
+      if (url.pathname.endsWith("list_public_opportunities"))
+        return res.end(
+          JSON.stringify(
+            body.p_q === "sin-resultados" ||
+              body.p_city === "Sin resultados"
+              ? []
+              : [
+                  {
+                    ...opportunity,
+                    project_title: project.title,
+                    project_slug: project.slug,
+                    description_excerpt: opportunity.description,
+                    application_deadline: null,
+                  },
+                ],
+          ),
         );
       if (url.searchParams.get("slug") === "eq.draft-only")
         return res.end("[]");
@@ -219,8 +261,8 @@ http
     }
     res.end("[]");
   })
-  .listen(54329, "127.0.0.1", () =>
-    console.log("Local fixture listening on 54329"),
+  .listen(port, "127.0.0.1", () =>
+    console.log(`Local fixture listening on ${port}`),
   );
 
 async function readJson(req) {

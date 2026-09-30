@@ -5,6 +5,8 @@ import {
   type AdminPlanGrant,
 } from "@/lib/billing/admin-grants";
 import { isAdminGrantActive } from "@/lib/billing/effective-plan";
+import type { PlanCode } from "@/lib/entitlements/types";
+import { PLAN_DEFINITIONS } from "@/lib/entitlements/catalog";
 import { grantPlanToUser, revokePlanGrant } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +42,9 @@ export default async function AdminPlansPage({
           Accesos otorgados
         </h1>
         <p className="mt-5 max-w-2xl leading-7 text-white/50">
-          Otorga Plus o Pro sin crear suscripciones, facturas ni pagos en Stripe.
+          Asigna el plan efectivo de una cuenta sin crear suscripciones,
+          facturas ni pagos. El grant explícito reemplaza temporalmente cualquier
+          plan de Billing y queda auditado.
         </p>
 
         <form method="get" className="mt-10 flex flex-col gap-3 sm:flex-row">
@@ -117,13 +121,26 @@ export default async function AdminPlansPage({
                   <textarea name="reason" maxLength={500} rows={3} className="rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-white outline-none focus:border-white/35" />
                 </label>
                 <div className="flex flex-wrap gap-3">
+                  <button name="plan" value="free" className="rounded-full border border-white/15 px-5 py-3 font-semibold text-white/65 transition hover:bg-white/[0.06]">
+                    Simular Baseline
+                  </button>
+                  <button name="plan" value="starter" className="rounded-full border border-slate-300/25 px-5 py-3 font-semibold text-slate-100 transition hover:bg-slate-300/10">
+                    Otorgar Starter
+                  </button>
                   <button name="plan" value="plus" className="rounded-full border border-emerald-300/30 px-5 py-3 font-semibold text-emerald-100 transition hover:bg-emerald-300/10">
                     Otorgar Plus
                   </button>
                   <button name="plan" value="pro" className="rounded-full border border-amber-300/30 px-5 py-3 font-semibold text-amber-100 transition hover:bg-amber-300/10">
                     Otorgar Pro
                   </button>
+                  <button name="plan" value="pro_plus" className="rounded-full border border-blue-300/30 px-5 py-3 font-semibold text-blue-100 transition hover:bg-blue-300/10">
+                    Otorgar Pro+
+                  </button>
                 </div>
+                <p className="text-xs leading-5 text-white/35">
+                  La asignación revoca los grants explícitos anteriores. No modifica
+                  suscripciones ni historial de Billing.
+                </p>
               </form>
             </section>
 
@@ -152,7 +169,7 @@ export default async function AdminPlansPage({
   );
 }
 
-function PlanDatum({ label, plan }: { label: string; plan: "plus" | "pro" | null }) {
+function PlanDatum({ label, plan }: { label: string; plan: PlanCode | null }) {
   return (
     <div>
       <dt className="text-xs uppercase tracking-[0.16em] text-white/35">{label}</dt>
@@ -176,6 +193,9 @@ function GrantRow({ grant, target, evaluatedAt }: {
         <div>
           <p className="font-semibold">FILMATTA {planLabel(grant.plan)}</p>
           <p className="mt-1 text-sm text-white/45">{grantStatus(grant, active, now)}</p>
+          <p className="mt-1 text-xs uppercase tracking-[0.14em] text-white/30">
+            Fuente: {grant.source}
+          </p>
           {grant.expiresAt && <p className="mt-1 text-sm text-white/45">Disponible hasta {formatDate(grant.expiresAt)}</p>}
           {grant.reason && <p className="mt-3 text-sm leading-6 text-white/60">{grant.reason}</p>}
           <p className="mt-3 text-xs text-white/25">Otorgado el {formatDate(grant.createdAt)}</p>
@@ -201,8 +221,8 @@ function grantStatus(grant: AdminPlanGrant, active: boolean, now: Date) {
   return active ? "Activo" : "Inactivo";
 }
 
-function planLabel(plan: "plus" | "pro" | null) {
-  return plan === "pro" ? "Pro" : plan === "plus" ? "Plus" : "Free";
+function planLabel(plan: PlanCode | null) {
+  return plan ? PLAN_DEFINITIONS[plan].label : "Baseline";
 }
 
 function sourceLabel(source: "stripe" | "admin_grant" | "both" | null) {

@@ -2,22 +2,25 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import {
   catalogErrorKind,
-  escapeLike,
   PAGE_SIZE,
   parseCatalogFilters,
   type CatalogFilters,
 } from "@/lib/catalogs/filters";
 
 export type OpportunityCategory =
-  "casting" | "crew" | "paid_work" | "collaboration" | "internship";
+  | "casting"
+  | "crew"
+  | "paid_work"
+  | "collaboration"
+  | "internship";
 
 export type PublicOpportunity = {
   id: string;
   opportunityType: "opportunity" | "job";
   deliverables: string | null;
-  projectId: string;
-  projectTitle: string;
-  projectSlug: string;
+  projectId: string | null;
+  projectTitle: string | null;
+  projectSlug: string | null;
   title: string;
   slug: string;
   summary: string | null;
@@ -38,7 +41,7 @@ export type PublicOpportunity = {
 
 export type PublicOpportunitySummary = Omit<
   PublicOpportunity,
-  "description" | "startsOn" | "endsOn" | "applicationDeadline"
+  "deliverables" | "projectId" | "startsOn" | "endsOn"
 >;
 
 export type PublicOpportunitiesResult =
@@ -54,7 +57,7 @@ type OpportunityRow = {
   id: string;
   opportunity_type: "opportunity" | "job";
   deliverables: string | null;
-  project_id: string;
+  project_id: string | null;
   title: string;
   slug: string;
   summary: string | null;
@@ -73,19 +76,32 @@ type OpportunityRow = {
   published_at: string;
 };
 
-type OpportunitySummaryRow = Omit<
-  OpportunityRow,
-  "description" | "starts_on" | "ends_on" | "application_deadline"
->;
+type OpportunitySearchRow = {
+  id: string;
+  opportunity_type: "opportunity" | "job";
+  project_title: string | null;
+  project_slug: string | null;
+  title: string;
+  slug: string;
+  summary: string | null;
+  description_excerpt: string | null;
+  category: OpportunityCategory;
+  discipline: string | null;
+  city: string | null;
+  work_mode: PublicOpportunity["workMode"];
+  compensation_type: PublicOpportunity["compensationType"];
+  compensation_min: number | null;
+  compensation_max: number | null;
+  compensation_currency: string | null;
+  application_deadline: string | null;
+  published_at: string;
+};
 
 type ProjectRow = {
   id: string;
   title: string;
   slug: string;
 };
-
-const OPPORTUNITY_SUMMARY_FIELDS =
-  "opportunity_type, deliverables, id, project_id, title, slug, summary, category, discipline, city, work_mode, compensation_type, compensation_min, compensation_max, compensation_currency, published_at";
 
 const OPPORTUNITY_DETAIL_FIELDS =
   "opportunity_type, deliverables, id, project_id, title, slug, summary, description, category, discipline, city, work_mode, compensation_type, compensation_min, compensation_max, compensation_currency, starts_on, ends_on, application_deadline, published_at";
@@ -117,19 +133,17 @@ const getPublishedProjects = async (projectIds: string[]) => {
 };
 
 function mapOpportunitySummary(
-  row: OpportunitySummaryRow,
-  project: ProjectRow,
+  row: OpportunitySearchRow,
 ): PublicOpportunitySummary {
   return {
     id: row.id,
     opportunityType: row.opportunity_type,
-    deliverables: row.deliverables,
-    projectId: row.project_id,
-    projectTitle: project.title,
-    projectSlug: project.slug,
+    projectTitle: row.project_title,
+    projectSlug: row.project_slug,
     title: row.title,
     slug: row.slug,
     summary: row.summary,
+    description: row.description_excerpt,
     category: row.category,
     discipline: row.discipline,
     city: row.city,
@@ -138,20 +152,38 @@ function mapOpportunitySummary(
     compensationMin: row.compensation_min,
     compensationMax: row.compensation_max,
     compensationCurrency: row.compensation_currency,
+    applicationDeadline: row.application_deadline,
     publishedAt: row.published_at,
   };
 }
 
 function mapOpportunity(
   row: OpportunityRow,
-  project: ProjectRow,
+  project?: ProjectRow,
 ): PublicOpportunity {
   return {
-    ...mapOpportunitySummary(row, project),
+    id: row.id,
+    opportunityType: row.opportunity_type,
+    deliverables: row.deliverables,
+    projectId: row.project_id,
+    projectTitle: project?.title ?? null,
+    projectSlug: project?.slug ?? null,
+    title: row.title,
+    slug: row.slug,
+    summary: row.summary,
     description: row.description,
+    category: row.category,
+    discipline: row.discipline,
+    city: row.city,
+    workMode: row.work_mode,
+    compensationType: row.compensation_type,
+    compensationMin: row.compensation_min,
+    compensationMax: row.compensation_max,
+    compensationCurrency: row.compensation_currency,
     startsOn: row.starts_on,
     endsOn: row.ends_on,
     applicationDeadline: row.application_deadline,
+    publishedAt: row.published_at,
   };
 }
 
@@ -161,55 +193,36 @@ export const getPublishedOpportunities = cache(
     jobsOnly = false,
   ): Promise<PublicOpportunitiesResult> => {
     const supabase = await createClient();
-    let query = supabase
-      .from("opportunities")
-      .select(`${OPPORTUNITY_SUMMARY_FIELDS}, projects!inner(id,title,slug)`)
-      .eq("status", "published")
-      .eq("projects.status", "published")
-      .order("published_at", { ascending: false })
-      .order("id", { ascending: true });
-    if (jobsOnly) {
-      query = query
-        .eq("opportunity_type", "job")
-        .eq("compensation_type", "paid");
-      if (filters.currency)
-        query = query.eq("compensation_currency", filters.currency);
-      if (filters.budgetMin && filters.currency)
-        query = query.gte("compensation_min", Number(filters.budgetMin));
-      if (filters.deadlineFrom)
-        query = query.gte(
-          "application_deadline",
-          filters.deadlineFrom + "T00:00:00Z",
-        );
-    }
-    if (filters.discipline)
-      query = query.ilike(
-        "discipline",
-        "%" + escapeLike(filters.discipline) + "%",
-      );
-    if (filters.category) query = query.eq("category", filters.category);
-    if (filters.city)
-      query = query.ilike("city", `%${escapeLike(filters.city)}%`);
-    if (filters.q) query = query.ilike("title", `%${escapeLike(filters.q)}%`);
-    if (filters.workMode) query = query.eq("work_mode", filters.workMode);
     const offset = (filters.page - 1) * PAGE_SIZE;
-    const { data, error } = await query.range(offset, offset + PAGE_SIZE);
+    const { data, error } = await supabase.rpc("list_public_opportunities", {
+      p_q: filters.q || null,
+      p_category: filters.category || null,
+      p_city: filters.city || null,
+      p_compensation: jobsOnly ? null : filters.compensation || null,
+      p_work_mode: filters.workMode || null,
+      p_offset: offset,
+      p_limit: PAGE_SIZE + 1,
+      p_jobs_only: jobsOnly,
+      p_currency: jobsOnly && filters.currency ? filters.currency : null,
+      p_budget_min:
+        jobsOnly && filters.currency && filters.budgetMin
+          ? Number(filters.budgetMin)
+          : null,
+      p_deadline_from:
+        jobsOnly && filters.deadlineFrom ? filters.deadlineFrom : null,
+    });
 
     if (error) {
       console.error("Error loading public opportunities:", error);
       return { ok: false, opportunities: [], kind: catalogErrorKind(error) };
     }
 
-    const rows = (data ?? []) as unknown as (OpportunitySummaryRow & {
-      projects: ProjectRow;
-    })[];
+    const rows = (data ?? []) as OpportunitySearchRow[];
 
     return {
       ok: true,
       hasNext: rows.length > PAGE_SIZE,
-      opportunities: rows
-        .slice(0, PAGE_SIZE)
-        .map((row) => mapOpportunitySummary(row, row.projects)),
+      opportunities: rows.slice(0, PAGE_SIZE).map(mapOpportunitySummary),
     };
   },
 );
@@ -234,15 +247,18 @@ export const getPublishedOpportunity = cache(
     }
 
     const row = data as OpportunityRow;
-    const projects = await getPublishedProjects([row.project_id]);
-    const project = projects.projectsById.get(row.project_id);
+    if (
+      row.application_deadline &&
+      new Date(row.application_deadline).getTime() <= Date.now()
+    ) {
+      return { kind: "not-found" };
+    }
+
+    const projects = await getPublishedProjects(row.project_id ? [row.project_id] : []);
+    const project = row.project_id ? projects.projectsById.get(row.project_id) : undefined;
 
     if (projects.error) {
       return { kind: "error" };
-    }
-
-    if (!project) {
-      return { kind: "not-found" };
     }
 
     return { kind: "found", opportunity: mapOpportunity(row, project) };

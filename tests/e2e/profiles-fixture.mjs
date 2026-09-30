@@ -261,5 +261,53 @@ export async function profileFixture(req, res, url, token) {
     );
     return true;
   }
+  if (url.pathname.endsWith("search_public_professional_profiles")) {
+    const terms = String(body.p_query || "")
+      .toLocaleLowerCase("es")
+      .split(/\s+/)
+      .filter(Boolean);
+    const filtered = rows.filter((p) => {
+      const haystack = [
+        p.display_name,
+        p.presentation?.stage_name,
+        p.city,
+        ...(p.disciplines || []),
+        ...(p.skills || []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("es");
+      return (
+        p.is_public &&
+        terms.every((term) => haystack.includes(term)) &&
+        (!body.p_discipline || p.disciplines.includes(body.p_discipline)) &&
+        (!body.p_city || p.city === body.p_city) &&
+        (!body.p_availability || p.availability === body.p_availability) &&
+        (!body.p_skill || p.skills.includes(body.p_skill))
+      );
+    });
+    const page = body.p_page || 1;
+    res.end(
+      JSON.stringify(
+        filtered.slice((page - 1) * 24, page * 24 + 1).map((profile) => ({
+          ...profile,
+          total_count: filtered.length,
+          visual_media_id: null,
+          visual_url: profile.presentation?.book?.[0]?.url || null,
+        })),
+      ),
+    );
+    return true;
+  }
+  if (url.pathname.endsWith("get_public_profile_search_facets")) {
+    const published = rows.filter((profile) => profile.is_public);
+    res.end(
+      JSON.stringify({
+        cities: [...new Set(published.map((profile) => profile.city))].sort(),
+        skills: [...new Set(published.flatMap((profile) => profile.skills))].sort(),
+      }),
+    );
+    return true;
+  }
   return false;
 }

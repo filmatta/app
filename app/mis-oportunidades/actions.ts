@@ -34,6 +34,8 @@ export async function saveOpportunity(
   revalidatePath("/oportunidades");
   revalidatePath("/oportunidades/[slug]", "page");
   revalidatePath("/mis-oportunidades");
+  revalidatePath("/mis-proyectos");
+  revalidatePath("/mis-proyectos/[id]/editar", "page");
   redirect("/mis-oportunidades?saved=1");
 }
 

@@ -27,6 +27,7 @@ const billingReturnPage = fs.readFileSync('app/billing/return/page.tsx', 'utf8')
 const billingReturnClient = fs.readFileSync('app/billing/return/BillingReturnClient.tsx', 'utf8');
 const billingStatusRoute = fs.readFileSync('app/api/billing/status/route.ts', 'utf8');
 const billingPlanBadge = fs.readFileSync('components/BillingPlanBadge.tsx', 'utf8');
+const planBadge = fs.readFileSync('components/entitlements/PlanBadge.tsx', 'utf8');
 const billingPortalReturnPage = fs.readFileSync('app/billing/portal-return/page.tsx', 'utf8');
 const scheduledCancellationSql = fs.readFileSync(
   'supabase/migrations/20260914010000_persist_scheduled_cancellation.sql', 'utf8');
@@ -37,14 +38,14 @@ const billingLiveFoundationSql = fs.readFileSync(
 const downgradeConfirmationPage = fs.readFileSync(
   'app/cuenta/suscripcion/cambiar-a-plus/page.tsx', 'utf8');
 
-function loadHeaderPlan(getBillingAccess) {
+function loadHeaderPlan(getEffectivePlan) {
   return load('lib/billing/header-plan.ts', {
-    '@/lib/billing/access': { getBillingAccess },
+    '@/lib/entitlements/server': { getEffectivePlan },
   }).getHeaderBillingPlan;
 }
 
 function hasRegularAccess(plan, billingAccess) {
-  return (plan === 'plus' || plan === 'pro') && billingAccess === 'regular';
+  return ['starter', 'plus', 'pro', 'pro_plus'].includes(plan) && billingAccess === 'regular';
 }
 
 function canTrackLesson({ plan = null, billingAccess = 'regular', enrolled = true,
@@ -69,17 +70,20 @@ function courseCompletes({ plan = null, billingAccess = 'regular', lessons }) {
     publishedLessons.every((lesson) => lesson.completed);
 }
 
-test('header badge is limited to authenticated Plus and Pro access', async () => {
+test('header badge reflects authenticated commercial plans and hides baseline', async () => {
   let reads = 0;
   const unauthenticated = loadHeaderPlan(async () => {
     reads++;
-    return { regularAccess: true, plan: 'plus' };
+    return 'plus';
   });
   assert.equal(await unauthenticated(false), null);
   assert.equal(reads, 0, 'Unauthenticated headers do not query Billing');
 
-  for (const [plan, expected] of [[null, null], ['plus', 'PLUS'], ['pro', 'PRO']]) {
-    const resolve = loadHeaderPlan(async () => ({ regularAccess: plan !== null, plan }));
+  for (const [plan, expected] of [
+    ['free', null], ['starter', 'starter'], ['plus', 'plus'],
+    ['pro', 'pro'], ['pro_plus', 'pro_plus'],
+  ]) {
+    const resolve = loadHeaderPlan(async () => plan);
     assert.equal(await resolve(true), expected);
   }
 
@@ -87,17 +91,24 @@ test('header badge is limited to authenticated Plus and Pro access', async () =>
   assert.equal(await failed(true), null);
 });
 
-test('plan visuals keep Plus, Pro and future Business badges consistent', () => {
+test('plan visuals keep Starter, Plus, Pro and Pro+ badges consistent', () => {
+  const starter = planVisuals.getPlanVisual('starter');
   const plus = planVisuals.getPlanVisual('plus');
   const pro = planVisuals.getPlanVisual('pro');
+  const proPlus = planVisuals.getPlanVisual('pro_plus');
   const business = planVisuals.getPlanVisual('business');
 
+  assert.match(starter.badgeClassName, /slate/);
   assert.match(plus.badgeClassName, /emerald/);
   assert.match(pro.badgeClassName, /amber/);
+  assert.match(proPlus.badgeClassName, /blue/);
   assert.match(business.badgeClassName, /blue/);
+  assert.deepEqual(JSON.parse(JSON.stringify(business)), JSON.parse(JSON.stringify(proPlus)),
+    'Legacy Business presentation aliases PRO+');
   assert.notEqual(plus.badgeClassName, pro.badgeClassName);
   assert.notEqual(pro.badgeClassName, business.badgeClassName);
-  assert.match(billingPlanBadge, /getPlanVisual/);
+  assert.match(planBadge, /getPlanVisual/);
+  assert.match(planBadge, /normalized === "free" && !showBaseline/);
   assert.match(billingPlanBadge, /"BUSINESS"/);
   assert.match(billingPlanBadge, /if \(!plan\) return null/,
     'Free and unauthenticated viewers render no badge');
@@ -198,7 +209,7 @@ test('billing return is authenticated, bounded, read-only and refreshes plans wi
     'The downgrade form sends no Billing identifiers');
 });
 
-test('plans page presents Checkout, current plan and controlled plan actions safely', () => {
+test('legacy Billing actions remain safe while the plan page is non-transactional', () => {
   const action = (planId, currentPlan, authenticated = true, billingAvailable = true,
     scheduledDowngradeAt = null, downgradeUnavailable = false, cancellationEffectiveAt = null,
     keepSubscriptionFeedback = null) =>
@@ -249,7 +260,12 @@ test('plans page presents Checkout, current plan and controlled plan actions saf
     kind: 'keep-subscription', label: 'Mantener mi suscripción', effectiveAt: cancellationAt,
     error: 'No pudimos mantener tu suscripción. Intenta nuevamente.',
   }, 'Failure preserves the scheduled cancellation and offers another attempt');
-  assert.match(plansPage, /loadingText="Manteniendo suscripción…"/);
+  assert.match(plansPage, /getPlanCatalog/);
+  assert.match(plansPage, /COMMERCIAL_PLAN_CODES/);
+  assert.match(plansPage, /<UpgradeGate/);
+  assert.match(plansPage, /Esta fase no incluye checkout ni cobros/);
+  assert.doesNotMatch(plansPage, /startCheckout|upgradeToPro|openBillingPortal/);
+  assert.doesNotMatch(subscriptionPage, /startCheckout|Comprar (?:Plus|Pro)/);
   assert.match(loadingButton, /disabled=\{disabled \|\| isLoading\}/,
     'Pending Server Actions disable their submit button');
 
@@ -281,8 +297,10 @@ test('free access, enrollment, premium, unpublished and admin boundaries', () =>
 test('lesson progress access matrix covers plans, separate courses, enrollment and publication', () => {
   assert.equal(canTrackLesson({ preview: true }), true, 'Free + preview');
   assert.equal(canTrackLesson({}), false, 'Free + premium regular');
+  assert.equal(canTrackLesson({ plan: 'starter' }), true, 'Starter + premium regular');
   assert.equal(canTrackLesson({ plan: 'plus' }), true, 'Plus + premium regular');
   assert.equal(canTrackLesson({ plan: 'pro' }), true, 'Pro + premium regular');
+  assert.equal(canTrackLesson({ plan: 'pro_plus' }), true, 'Pro+ + premium regular');
   assert.equal(canTrackLesson({ plan: 'plus', billingAccess: 'separate' }), false, 'Plus + premium separate');
   assert.equal(canTrackLesson({ plan: 'pro', billingAccess: 'separate' }), false, 'Pro + premium separate');
   assert.equal(canTrackLesson({ plan: 'plus', enrolled: false }), false, 'No enrollment');
@@ -299,6 +317,8 @@ test('course completion requires access to and completion of every published les
   const allComplete = previewsCompletePremiumPending.map((lesson) => ({ ...lesson, completed: true }));
   assert.equal(courseCompletes({ lessons: previewsCompletePremiumPending }), false,
     'Free previews cannot complete a regular course with premium pending');
+  assert.equal(courseCompletes({ plan: 'starter', lessons: allComplete }), true,
+    'Starter can complete a regular course');
   assert.equal(courseCompletes({ plan: 'plus', lessons: allComplete }), true, 'Plus can complete a regular course');
   assert.equal(courseCompletes({ plan: 'pro', lessons: allComplete }), true, 'Pro can complete a regular course');
   assert.equal(courseCompletes({ plan: 'plus', billingAccess: 'separate', lessons: allComplete }), false,
@@ -927,14 +947,11 @@ test('checkout authenticates and rejects forged plan/country before contacting S
   assert.equal(keepCalls, 2);
 });
 
-test('checkout forms submit canonical MX while displaying Mexico to the user', () => {
-  assert.match(subscriptionPage,
-    /<select name="country" required[^>]*><option value="MX">México<\/option><\/select>/);
-  assert.match(plansPage, /<input type="hidden" name="country" value="MX" \/>/);
-  assert.match(subscriptionPage, /feedback\.error === "country"/);
-  assert.match(subscriptionPage, /feedback\.error === "checkout"/);
-  assert.doesNotMatch(subscriptionPage,
-    /Revisa tu suscripción existente o intenta más tarde\. Las suscripciones están limitadas a México\./);
+test('Entitlements surfaces expose no Checkout forms or fake purchase actions', () => {
+  assert.doesNotMatch(subscriptionPage, /startCheckout|name="country"|Comprar Plus|Comprar Pro/);
+  assert.doesNotMatch(plansPage, /startCheckout|name="country"|Comprar Plus|Comprar Pro/);
+  assert.match(subscriptionPage, /Esta fase no inicia checkout ni pagos/);
+  assert.match(plansPage, /Esta fase no incluye checkout ni cobros/);
 });
 
 test('portal button depends on server configuration instead of the visual subscription list', () => {

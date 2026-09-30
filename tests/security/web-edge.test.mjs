@@ -42,6 +42,7 @@ test("Mux verifies exact signed bytes; rejects oversize/signature and preserves 
     },
     "@/lib/mux/sync-asset": {},
     "@/lib/profiles/mux-media": {},
+    "@/lib/locations/mux-tours": {},
     "@/lib/supabase/admin": { createAdminClient: () => { privileged++; throw Error("Unexpected DB"); } },
   }, { MUX_WEBHOOK_SECRET: secret });
   const body = JSON.stringify({ id: "test", type: "video.upload.created", environment: { id: "env-test" }, data: { id: "test" } });

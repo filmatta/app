@@ -71,7 +71,7 @@ export default async function Home() {
       title: "¿Tienes un proyecto?",
       text: "Organiza la información básica y conecta con profesionales.",
       cta: "Crear proyecto",
-      href: viewer ? "/proyectos/nuevo" : "/registro?next=%2Fproyectos%2Fnuevo",
+      href: viewer ? "/mis-proyectos/nuevo" : "/registro?next=%2Fmis-proyectos%2Fnuevo",
       image: "camera.webp",
       tag: "PROYECTOS",
     },

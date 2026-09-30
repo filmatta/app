@@ -19,6 +19,7 @@ import { getPublishedOpportunity } from "@/lib/opportunities/public";
 
 type OpportunityPageProps = {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ from?: string | string[] }>;
 };
 
 export async function generateMetadata({
@@ -43,6 +44,7 @@ export async function generateMetadata({
   return {
     title: opportunity.title,
     description,
+    alternates: { canonical: `/oportunidades/${slug}` },
     openGraph: {
       title: opportunity.title,
       description,
@@ -53,8 +55,9 @@ export async function generateMetadata({
 
 export default async function OpportunityPage({
   params,
+  searchParams,
 }: OpportunityPageProps) {
-  const { slug } = await params;
+  const [{ slug }, query] = await Promise.all([params, searchParams]);
   const result = await getPublishedOpportunity(slug);
 
   if (result.kind === "not-found") {
@@ -72,6 +75,7 @@ export default async function OpportunityPage({
   }
 
   const { opportunity } = result;
+  const backHref = safeOpportunityReturnPath(query.from);
   const isJob = opportunity.opportunityType === "job";
   const viewer = isJob ? await getViewer() : null;
   const db = isJob && viewer ? await createClient() : null;
@@ -95,7 +99,7 @@ export default async function OpportunityPage({
   const expired = isJob && deadlineClosed(opportunity.applicationDeadline);
   const dateRange = formatDateRange(opportunity.startsOn, opportunity.endsOn);
   const details = [
-    { label: "Proyecto", value: opportunity.projectTitle },
+    opportunity.projectTitle && { label: "Proyecto", value: opportunity.projectTitle },
     {
       label: "Modalidad",
       value: getOpportunityWorkModeLabel(opportunity.workMode),
@@ -122,7 +126,7 @@ export default async function OpportunityPage({
     <main className="min-h-screen bg-[#080808] text-white">
       <SiteHeader
         contextLink={{
-          href: isJob ? "/jobs" : "/oportunidades",
+          href: isJob ? "/jobs" : backHref,
           label: "← Todas las oportunidades",
         }}
       />
@@ -136,9 +140,17 @@ export default async function OpportunityPage({
             <h1 className="mt-5 max-w-4xl text-5xl font-semibold tracking-[-0.04em] sm:text-7xl">
               {opportunity.title}
             </h1>
-            <p className="mt-6 text-sm font-medium text-white/65">
-              Proyecto · {opportunity.projectTitle}
-            </p>
+            {opportunity.projectTitle && (
+              <p className="mt-6 text-sm font-medium text-white/65">
+                {opportunity.projectSlug ? (
+                  <Link href={`/proyectos/${opportunity.projectSlug}`}>
+                    Proyecto: {opportunity.projectTitle} ↗
+                  </Link>
+                ) : (
+                  <>Proyecto: {opportunity.projectTitle}</>
+                )}
+              </p>
+            )}
             {opportunity.summary && (
               <p className="mt-8 max-w-3xl text-xl leading-8 text-white/60 sm:text-2xl sm:leading-9">
                 {opportunity.summary}
@@ -241,4 +253,16 @@ function formatDateRange(startsOn: string | null, endsOn: string | null) {
 
 function deadlineClosed(deadline: string | null) {
   return Boolean(deadline && Date.parse(deadline) <= Date.now());
+}
+
+function safeOpportunityReturnPath(value: string | string[] | undefined) {
+  if (
+    typeof value === "string" &&
+    (value === "/oportunidades" || value.startsWith("/oportunidades?")) &&
+    !/[\r\n]/.test(value)
+  ) {
+    return value;
+  }
+
+  return "/oportunidades";
 }

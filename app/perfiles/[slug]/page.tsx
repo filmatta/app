@@ -13,7 +13,12 @@ import { createClient } from "@/lib/supabase/server";
 import type { MediaItem } from "@/lib/profiles/media";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getPublicProfessionalProfile } from "@/lib/profiles/data";
-type Props = { params: Promise<{ slug: string }> };
+import { safeProfileReturnPath } from "@/lib/profiles/search";
+import Link from "next/link";
+type Props = {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ returnTo?: string | string[] }>;
+};
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const profile = await getPublicProfessionalProfile((await params).slug);
   if (!profile)
@@ -23,10 +28,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description:
       profile.bio?.slice(0, 155) ||
       `${professionalName(profile)} — ${profile.disciplines.join(" · ")} en FILMATTA.`,
+    alternates: { canonical: `/perfiles/${profile.slug}` },
   };
 }
-export default async function PublicProfilePage({ params }: Props) {
+export default async function PublicProfilePage({ params, searchParams }: Props) {
   const { slug } = await params;
+  const query = await searchParams;
+  const returnTo = safeProfileReturnPath(query.returnTo);
   const [profile, viewer] = await Promise.all([
     getPublicProfessionalProfile(slug),
     getViewer(),
@@ -57,6 +65,11 @@ export default async function PublicProfilePage({ params }: Props) {
     <div className="editorial-page profiles-page">
       <SiteHeader />
       <main className="editorial-container">
+        {returnTo && (
+          <Link className="profile-search-back" href={returnTo}>
+            ← Volver a resultados
+          </Link>
+        )}
         <ProfilePortfolio
           profile={profile}
           signedIn={Boolean(viewer)}
