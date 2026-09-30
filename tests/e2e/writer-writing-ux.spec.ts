@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 
 const scriptId = "11111111-1111-4111-8111-111111111111";
 const evidence = "output/writer-polish-timeline-v1/legacy-regression";
@@ -501,3 +502,99 @@ function textHash(value: string) {
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
+
+test("Script Assistant stays incremental, opens markers in one click, survives Focus, and uses a mobile drawer", async ({ page }) => {
+  const sceneId = "11111111-1111-4111-8111-111111111101";
+  const actionId = "11111111-1111-4111-8111-111111111102";
+  const sourceHash = createHash("sha256").update(JSON.stringify({
+    sceneId,
+    blocks: [
+      { id: sceneId, kind: "sceneHeading", text: "INT. ESTUDIO - DÍA" },
+      { id: actionId, kind: "action", text: "ANA observa la VENTANA." },
+      { id: "11111111-1111-4111-8111-111111111103", kind: "character", text: "ANA" },
+      { id: "11111111-1111-4111-8111-111111111104", kind: "dialogue", text: "Hola, ANA MARÍA." },
+      { id: "11111111-1111-4111-8111-111111111105", kind: "character", text: "ANA MARÍA" },
+      { id: "11111111-1111-4111-8111-111111111106", kind: "parenthetical", text: "(sonríe)" },
+      { id: "11111111-1111-4111-8111-111111111107", kind: "dialogue", text: "Hola, Ana." },
+    ],
+  })).digest("hex");
+  let posts = 0;
+  await page.route(`**/api/writer/scripts/${scriptId}/assistant`, async (route) => {
+    if (route.request().method() === "GET") return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        enabled: true,
+        overrides: [],
+        dismissals: [],
+        analyses: [{
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", scriptId, sceneId, sourceHash,
+          analysisVersion: "assistant-core-v1", model: "gpt-5.6-terra", status: "fresh", updatedAt: "2026-09-30T12:00:00Z",
+          payload: {
+            objective: { value: "Observar la reacción de Ana María.", confidence: "medium", evidence: [{ blockId: actionId }] },
+            obstacle: { value: null, confidence: "low", evidence: [] },
+            change: { value: "Ana María responde a la observación.", confidence: "medium", evidence: [{ blockId: actionId }] },
+            observations: [{ id: `${sourceHash.slice(0, 16)}:1`, category: "obstacle", state: "QUESTION", title: "Obstáculo de la escena", question: "¿Qué dificulta lo que Ana busca aquí?", observation: null, evidence: [{ blockId: actionId }] }],
+          },
+        }],
+      }),
+    });
+    if (route.request().method() === "POST") posts += 1;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ saved: true }) });
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/writer/${scriptId}`);
+  const marker = page.getByRole("button", { name: "Abrir observación narrativa" });
+  await expect(marker).toHaveCount(1);
+  expect(posts).toBe(0);
+  await marker.click();
+  const panel = page.locator(".writer-observations-panel");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("button", { name: /Assistant Narrativa/ })).toHaveAttribute("aria-current", "page");
+  await expect(panel.getByText("¿Qué dificulta lo que Ana busca aquí?")).toBeVisible();
+  await expect(page.locator('[data-block-id$="02"]')).toHaveClass(/writer-scene-target-highlight/);
+
+  await page.getByRole("button", { name: "Focus" }).click();
+  await expect(marker).toBeHidden();
+  await expect(panel).toBeHidden();
+  await page.getByRole("button", { name: "Salir de Focus" }).click();
+  await expect(marker).toBeVisible();
+  await expect(panel).toBeVisible();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Exportar" }).click();
+  await page.getByRole("button", { name: "Respaldo JSON" }).click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  let backup = "";
+  for await (const chunk of stream) backup += chunk.toString();
+  expect(backup).not.toContain("assistant-core-v1");
+  expect(backup).not.toContain("Observar la reacción");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const box = await panel.boundingBox();
+  expect(box?.width).toBeGreaterThanOrEqual(389);
+});
+
+test("Assistant OFF never auto-calls and a provider error leaves Writer usable", async ({ page }) => {
+  let posts = 0;
+  await page.route(`**/api/writer/scripts/${scriptId}/assistant`, async (route) => {
+    if (route.request().method() === "GET") return route.fulfill({
+      status: 200, contentType: "application/json", body: JSON.stringify({ enabled: false, analyses: [], overrides: [], dismissals: [] }),
+    });
+    if (route.request().method() === "POST") {
+      posts += 1;
+      return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "No pudimos analizar esta escena ahora.", code: "provider" }) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ saved: true }) });
+  });
+  await page.goto(`/writer/${scriptId}`);
+  await page.locator('[data-block-id$="02"]').click();
+  await page.waitForTimeout(3_800);
+  expect(posts).toBe(0);
+  await page.getByLabel("Editor de guion").press("Shift+F10");
+  await page.getByRole("menuitem", { name: /Analizar escena/ }).click();
+  await expect(page.getByText("No pudimos analizar esta escena ahora.").first()).toBeVisible();
+  await expect(page.getByLabel("Editor de guion")).toBeEditable();
+  expect(posts).toBe(1);
+});
