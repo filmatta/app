@@ -73,7 +73,7 @@ test("anonymous global create is not rendered; authenticated actions stay intact
     /authenticated\s*&&\s*<Disclosure key=\{pathname\s*\+\s*"-create"\}/,
   );
   for (const route of [
-    "/proyectos/nuevo",
+    "/mis-proyectos/nuevo",
     "/mis-locaciones/nueva",
     "/mis-servicios/nuevo",
   ])

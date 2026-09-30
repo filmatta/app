@@ -1,3 +1,4 @@
+-- Opportunities Search V1 integrated after the current Supabase Test history.
 begin;
 
 -- Keep the public table boundary aligned with the catalog predicate. Owners

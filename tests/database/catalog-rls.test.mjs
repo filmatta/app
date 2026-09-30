@@ -42,8 +42,34 @@ before(async () => {
     "20260916030000_services_directory.sql",
     "20260916040000_jobs_specialization.sql",
     "20260928010000_locations_beta_v1.sql",
-    "20260930020000_opportunities_search_v1.sql",
+    "20260930100000_projects_v1_5_schema.sql",
+    "20260930102000_projects_opportunities_v1_5_functions.sql",
+    "20260930103000_independent_job_opportunities.sql",
+    "20260930111000_opportunities_search_v1.sql",
   ]) {
+    if (file === "20260930100000_projects_v1_5_schema.sql") {
+      // The focused catalog fixture predates the networking Project extension;
+      // reproduce that already-applied remote prerequisite before V1.5.
+      await db.exec(`
+        alter table public.projects
+          add column networking_private boolean not null default false,
+          add column project_type text not null default 'Otro',
+          add column client_name text not null default '',
+          add column share_client_name boolean not null default false,
+          add column client_type text not null default 'Otro',
+          add column city text not null default '',
+          add column work_area text not null default '',
+          add column shooting_schedule text not null default 'day',
+          add column economic_mode text not null default 'undecided',
+          add column date_window text not null default '',
+          add column roles text[] not null default '{}',
+          add column requirements jsonb not null default '{"themes":[],"participation":[],"conditions":[]}',
+          add column operational_status text not null default 'active',
+          add constraint projects_v0_fields check (cardinality(roles) <= 16);
+        create function private.project_requirements_valid(jsonb)
+        returns boolean language sql immutable as $$ select true $$;
+      `);
+    }
     await db.exec(fs.readFileSync(`supabase/migrations/${file}`, "utf8"));
   }
   await db.query(
@@ -182,7 +208,7 @@ test("Locations public projection exposes only published, explicit fields and co
   assert.equal(visible.contact.email, "locacion@example.com");
   assert.equal((await db.query("select * from list_public_locations()")).rows.length, 1);
 });
-test("opportunities require a published project and retain compound ownership", async () => {
+test("linked Opportunities require a public Project and retain compound ownership", async () => {
   await as("authenticated", owner);
   const project = (
     await db.query(
@@ -242,6 +268,50 @@ test("Opportunities Search returns only active public rows with safe fields and 
     (
       await db.query(
         "select * from list_public_opportunities('casting',null,null,null,null,0,25,false,null,null,null)",
+      )
+    ).rows.length,
+    0,
+  );
+
+  await as("authenticated", owner);
+  const privateProjectId = (
+    await db.query(
+      "insert into projects(owner_id,title,slug) values($1,'Proyecto privado','private-project') returning id",
+      [owner],
+    )
+  ).rows[0].id;
+  await db.query(
+    `insert into opportunities(
+      owner_id,project_id,title,slug,summary,description,category,discipline,
+      city,work_mode,compensation_type,application_deadline,status
+    ) values
+      ($1,null,'Sonidista independiente','sonidista-independent','Cortometraje','Buscamos sonido directo para un cortometraje independiente.','crew','Sonido','Guadalajara','on_site','paid','2099-01-01','published'),
+      ($1,null,'Gaffer sin fecha límite','gaffer-open','Rodaje nocturno','Buscamos iluminación para una producción independiente.','crew','Iluminación','Guadalajara','on_site','paid',null,'published'),
+      ($1,null,'Sonidista vencido','sonidista-expired','Cortometraje','Convocatoria independiente que ya venció.','crew','Sonido','Guadalajara','on_site','paid','2020-01-01','published'),
+      ($1,$2,'Sonidista oculto','sonidista-private-project','Proyecto privado','Esta publicación no debe filtrar un proyecto privado.','crew','Sonido','Guadalajara','on_site','paid','2099-01-01','published')`,
+    [owner, privateProjectId],
+  );
+  await as("anon");
+  const independent = (
+    await db.query(
+      "select * from list_public_opportunities('sonidista','crew','guadalajara','paid','on_site',0,25,false,null,null,null)",
+    )
+  ).rows;
+  assert.deepEqual(independent.map((row) => row.slug), ["sonidista-independent"]);
+  assert.equal(independent[0].project_title, null);
+  assert.equal(independent[0].project_slug, null);
+  assert.equal(
+    (
+      await db.query(
+        "select * from list_public_opportunities('gaffer',null,null,null,null,0,25,false,null,null,null)",
+      )
+    ).rows.length,
+    1,
+  );
+  assert.equal(
+    (
+      await db.query(
+        "select * from list_public_opportunities('oculto',null,null,null,null,0,25,false,null,null,null)",
       )
     ).rows.length,
     0,
@@ -399,6 +469,11 @@ test("jobs are constrained Opportunities with the shared private inbox",async()=
  await assert.rejects(db.query('select send_job_inquiry($1,$2)',[slug,'Me interesa el encargo y presento mi experiencia audiovisual.']),/unique/);
  assert.equal((await db.query("update catalog_inquiries set status='accepted' where id=$1 returning id",[inquiry])).rows.length,0);
  await as("authenticated",owner);await db.query("update catalog_inquiries set status='accepted' where id=$1",[inquiry]);
+ await as("authenticated",stranger);
+ const activeInboxRow=(await db.query('select * from list_my_catalog_inquiries() where id=$1',[inquiry])).rows[0];
+ assert.equal(activeInboxRow.target_title,"Edición de un corto");
+ assert.equal(activeInboxRow.target_href,`/oportunidades/${slug}`);
+ await as("authenticated",owner);
  await db.query("select save_my_opportunity($1,$2,null,'closed')",[id,data]);
  await as("authenticated",stranger);const row=(await db.query('select * from list_my_catalog_inquiries() where id=$1',[inquiry])).rows[0];assert.equal(row.target_href,null);assert.equal(row.status,'accepted');
  await assert.rejects(db.query('select send_job_inquiry($1,$2)',[slug,'Una segunda presentación para el mismo encargo.']));

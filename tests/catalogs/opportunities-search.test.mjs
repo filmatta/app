@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const migration = readFileSync(
-  "supabase/migrations/20260930104000_opportunities_search_v1.sql",
+  "supabase/migrations/20260930111000_opportunities_search_v1.sql",
   "utf8",
 );
 const publicData = readFileSync("lib/opportunities/public.ts", "utf8");
@@ -26,6 +26,9 @@ test("search migration uses native FTS with a partial GIN index", () => {
 test("public search keeps RLS and returns an explicit safe projection", () => {
   const functionSql = migration.slice(
     migration.indexOf("create function public.list_public_opportunities"),
+    migration.indexOf(
+      "-- Historical Job inbox entries must not require a Project",
+    ),
   );
   const projection = functionSql.slice(
     functionSql.indexOf("returns table"),
