@@ -31,6 +31,7 @@ test("recognized characters use accepted identities including action-only partic
         { key: "ANA", name: "ANA", source: "explicit", accepted: true },
         { key: "ROLE:SCENE:NIÑA", name: "niña", source: "rule", accepted: true },
         { key: "ESPERANZA", name: "esperanza", source: "ai", accepted: false },
+        { key: "LEGACY_ESPERANZA", name: "esperanza antigua", source: "ai" },
         { key: "MARTA", name: "MARTA", source: "ai", accepted: true },
         { key: "DESCARTADA", name: "DESCARTADA", source: "ai", accepted: false },
       ],
@@ -38,6 +39,7 @@ test("recognized characters use accepted identities including action-only partic
         persistedEvidence(explicit.attrs.id, "ANA", "ANA", "ANA", "high", 0, 3, "intervention", "unknown", "explicit"),
         persistedEvidence(girl.attrs.id, "Una niña entra al bosque.", "ROLE:SCENE:NIÑA", "niña", "medium", 4, 8, "action", "present", "rule"),
         persistedEvidence(concept.attrs.id, "La esperanza desaparece.", "ESPERANZA", "esperanza", "medium", 3, 12),
+        persistedEvidence(concept.attrs.id, "La esperanza desaparece.", "LEGACY_ESPERANZA", "esperanza antigua", "medium", 3, 12),
         persistedEvidence(mention.attrs.id, "El mural recuerda a MARTA.", "MARTA", "MARTA", "medium", 20, 25, "mention", "unknown"),
       ],
       observations: [],
@@ -49,6 +51,7 @@ test("recognized characters use accepted identities including action-only partic
   assert.ok(parsed);
   assert.deepEqual(parsed.identities.map((identity) => identity.name).sort(), ["ANA", "niña"]);
   assert.equal(parsed.identities.some((identity) => identity.name === "esperanza"), false);
+  assert.equal(parsed.identities.some((identity) => identity.name === "esperanza antigua"), false);
   assert.equal(parsed.identities.some((identity) => identity.name === "MARTA"), false);
   assert.equal(parsed.identities.some((identity) => identity.name === "DESCARTADA"), false);
 });

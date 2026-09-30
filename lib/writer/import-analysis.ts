@@ -134,21 +134,10 @@ export function parsePersistedWriterImportAnalysis(value: unknown, document: Wri
       decidedAt: Date.parse(String(candidate.decided_at)) || Date.now(),
     }];
   });
-  // New analyses persist an explicit accepted/reconciled bit. Older analyses
-  // can be reconstructed conservatively from final evidence: explicit
-  // character structure, accepted AI action evidence, or a reconciled role
-  // participant. Mentions, unknown presence and review-only evidence never
-  // become identities through this compatibility path.
-  const legacyAcceptedIdentityKeys = new Set(observations
-    .filter((observation) => (observation.source === "explicit"
-      && observation.confidence === "high"
-      && blocks.get(observation.blockId)?.attrs.kind === "character")
-      || (observation.presence === "present"
-        && observation.confidence !== "review"
-        && observation.evidence !== "mention"
-        && (observation.source === "ai"
-          || (observation.source === "rule" && observation.identityKey.startsWith("ROLE:")))))
-    .map((observation) => observation.identityKey));
+  // New analyses persist an explicit accepted/reconciled bit. Historical
+  // catalogues did not distinguish a final identity from an audit candidate,
+  // so their non-explicit entries must remain reviewable instead of being
+  // inferred as accepted. Human decisions below remain authoritative.
   const supportedAcceptedIdentityKeys = new Set(observations
     .filter((observation) => (observation.source === "explicit"
       && blocks.get(observation.blockId)?.attrs.kind === "character")
@@ -160,7 +149,8 @@ export function parsePersistedWriterImportAnalysis(value: unknown, document: Wri
     parsedIdentities
       .filter((identity) => (identity.accepted === true && supportedAcceptedIdentityKeys.has(identity.key))
         || (identity.accepted === undefined
-          && (identity.importedSource === "explicit" || legacyAcceptedIdentityKeys.has(identity.key))))
+          && identity.importedSource === "explicit"
+          && supportedAcceptedIdentityKeys.has(identity.key)))
       .map((identity) => [identity.key, identity]),
   );
   for (const decision of decisions) {
