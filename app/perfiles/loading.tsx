@@ -1,5 +1,11 @@
-import FilmattaLoader from "@/components/FilmattaLoader";
+import SiteHeader from "@/components/SiteHeader";
+import ProfileCatalogLoading from "@/components/profiles/ProfileCatalogLoading";
 
 export default function Loading() {
-  return <FilmattaLoader />;
+  return (
+    <div className="editorial-page profiles-page">
+      <SiteHeader />
+      <ProfileCatalogLoading />
+    </div>
+  );
 }

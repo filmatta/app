@@ -125,7 +125,12 @@ http
       res.statusCode = 405;
       return res.end("{}");
     }
-    if (profileDelayMs && url.pathname.endsWith("/list_public_professional_portfolios")) await new Promise(resolve => setTimeout(resolve, profileDelayMs));
+    if (
+      profileDelayMs &&
+      (url.pathname.endsWith("/list_public_professional_portfolios") ||
+        url.pathname.endsWith("/search_public_professional_profiles"))
+    )
+      await new Promise((resolve) => setTimeout(resolve, profileDelayMs));
     if (scenario === "profiles-polish" && await profileFixture(req,res,url,token)) return;
     if (scenario === "writer-ux") {
       if (url.pathname === "/rest/v1/writer_scripts" && req.method === "GET") {
@@ -187,6 +192,25 @@ http
       if (url.pathname.endsWith("list_public_professional_portfolios"))
         return res.end(
           JSON.stringify(body.p_city === "Sin resultados" ? [] : [profile]),
+        );
+      if (url.pathname.endsWith("search_public_professional_profiles"))
+        return res.end(
+          JSON.stringify(
+            body.p_city === "Sin resultados"
+              ? []
+              : [
+                  {
+                    ...profile,
+                    total_count: 1,
+                    visual_media_id: null,
+                    visual_url: null,
+                  },
+                ],
+          ),
+        );
+      if (url.pathname.endsWith("get_public_profile_search_facets"))
+        return res.end(
+          JSON.stringify({ cities: ["México"], skills: ["Actuación"] }),
         );
       if (url.pathname.endsWith("get_public_professional_portfolio"))
         return res.end(

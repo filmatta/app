@@ -79,14 +79,16 @@ test("anonymous global create is not rendered; authenticated actions stay intact
   ])
     assert.ok(ui.includes(route));
 });
-test("compact catalog uses only identity, bounded tags and explicit profile link", () => {
+test("search catalog uses the selected public visual, bounded skills and an explicit profile link", () => {
   const ui = read("components/profiles/ProfileCard.tsx");
-  assert.match(ui, /ProfileAvatar/);
+  assert.match(ui, /ProfileCardVisual/);
+  assert.match(ui, /profile\.visual_media_id/);
+  assert.match(ui, /profile\.visual_url \|\| presentation\.portrait_url/);
   assert.doesNotMatch(
     ui,
     /leadReel|reelSource|cover_media_id|portfolio_items|p\.book/,
   );
-  assert.match(ui, /limit=\{3\}/);
+  assert.match(ui, /profile\.skills\.slice\(0, 3\)/);
   assert.match(ui, /Ver perfil/);
   assert.match(
     read("components/profiles/profile-card.css"),

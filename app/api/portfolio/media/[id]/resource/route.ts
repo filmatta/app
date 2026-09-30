@@ -59,6 +59,8 @@ export async function GET(
       );
     }
     const video = reelSource(resource.url);
+    if (video?.provider === "YouTube" && video.thumbnail)
+      return Response.json({ image: video.thumbnail }, { headers });
     if (video?.provider === "Vimeo") {
       const response = await fetch(`https://vimeo.com/api/oembed.json?url=${encodeURIComponent(resource.url)}`, { signal: AbortSignal.timeout(8000), next: { revalidate: 3600 } });
       if (!response.ok) throw new Error("Unavailable");

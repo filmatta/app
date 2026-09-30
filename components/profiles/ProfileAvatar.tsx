@@ -1,10 +1,10 @@
 "use client";
 import { useCallback, useState } from "react";
-import { useResource } from "./PortfolioMedia";
+import { useProfileMediaResource } from "./ProfileMediaResource";
 import ProfileImage from "./ProfileImage";
 type Props = { id?: string | null; fallbackUrl?: string | null; name: string };
 function Avatar({ id, fallbackUrl, name }: Props) {
-  const { ref, resource, error } = useResource(id ?? null);
+  const { ref, resource, error } = useProfileMediaResource(id ?? null);
   const [failed,setFailed] = useState(false);
   const fail = useCallback(() => setFailed(true), []);
   const src = id ? resource?.image : fallbackUrl;

@@ -120,7 +120,13 @@ export function CatalogPagination({
   );
 }
 
-export function CatalogFailure({ kind }: { kind: "unconfigured" | "error" }) {
+export function CatalogFailure({
+  kind,
+  retryHref,
+}: {
+  kind: "unconfigured" | "error";
+  retryHref?: string;
+}) {
   return (
     <div role="status" className="my-12 border-y border-white/15 py-10">
       <h2 className="text-xl font-semibold">
@@ -133,6 +139,11 @@ export function CatalogFailure({ kind }: { kind: "unconfigured" | "error" }) {
           ? "Estamos preparando su disponibilidad. Vuelve a intentarlo más adelante."
           : "Inténtalo de nuevo en unos minutos. Tus filtros se conservarán en la dirección de esta página."}
       </p>
+      {retryHref && (
+        <Link className="editorial-secondary mt-6 inline-flex" href={retryHref}>
+          Reintentar
+        </Link>
+      )}
     </div>
   );
 }

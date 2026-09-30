@@ -66,6 +66,7 @@ test("location filters and stable pagination use the explicit public projection"
     "@/lib/catalogs/filters": filters,
     "@/lib/locations/characteristics": load("lib/locations/characteristics.ts"),
     "@/lib/locations/conditions": load("lib/locations/conditions.ts"),
+    "@/lib/locations/pricing": load("lib/locations/pricing.ts"),
     "@/lib/supabase/server": { createClient: async () => f.client },
   });
   const result = await mod.getPublishedLocations(
@@ -127,6 +128,44 @@ test("missing schema is distinguished from network failure and empty catalog", a
     assert.equal(f.calls[0][2].p_talent, true);
     assert.equal(Object.hasOwn(f.calls[0][2], "user_id"), false);
   }
+});
+
+test("Profiles Search V1 sends bounded URL filters to the public search RPC", async () => {
+  const f = clientFixture([
+    {
+      slug: "ana",
+      display_name: "Ana",
+      disciplines: ["Dirección"],
+      skills: ["Casting"],
+      availability: "available",
+      total_count: 1,
+    },
+  ]);
+  const mod = load("lib/profiles/catalog.ts", {
+    "@/lib/catalogs/filters": filters,
+    "@/lib/supabase/server": { createClient: async () => f.client },
+  });
+  const result = await mod.getProfileCatalog(
+    filters.parseCatalogFilters({
+      q: "Ana",
+      city: "Guadalajara",
+      discipline: "Dirección",
+      availability: "available",
+      skill: "Casting",
+      page: "2",
+    }),
+  );
+  const call = f.calls.find((item) => item[0] === "rpc");
+  assert.equal(call[1], "search_public_professional_profiles");
+  assert.deepEqual(JSON.parse(JSON.stringify(call[2])), {
+    p_query: "Ana",
+    p_page: 2,
+    p_discipline: "Dirección",
+    p_city: "Guadalajara",
+    p_availability: "available",
+    p_skill: "Casting",
+  });
+  assert.equal(result.total, 1);
 });
 
 test("Jobs filters keep paid subset, currency semantics and pagination on Opportunities", async () => {
