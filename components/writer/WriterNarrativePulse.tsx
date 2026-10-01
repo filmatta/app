@@ -1,0 +1,115 @@
+"use client";
+
+import { useEffect, useMemo, useState, type RefObject } from "react";
+import { WRITER_NARRATIVE_PULSE_MIN_SCENES, writerPulseMilestoneLabel, writerPulsePath, type WriterPulseMilestone, type WriterPulseMilestoneType } from "@/lib/writer/narrative-pulse";
+import { useWriterNarrativePulse } from "@/lib/writer/narrative-pulse-client";
+import type { TimelineScene } from "@/lib/writer/timeline";
+
+const TYPES: WriterPulseMilestoneType[] = ["inciting_incident", "first_turning_point", "midpoint", "crisis", "climax", "resolution", "custom"];
+
+export default function WriterNarrativePulse({ scriptId, scenes, active, selectedSceneId, columnWidth, scrollRef, onSelectScene, onMilestonesChange }: {
+  scriptId: string; scenes: TimelineScene[]; active: boolean; selectedSceneId: string | null; columnWidth: number;
+  scrollRef: RefObject<HTMLDivElement | null>; onSelectScene: (scene: TimelineScene) => void; onMilestonesChange?: (milestones: WriterPulseMilestone[]) => void;
+}) {
+  const pulse = useWriterNarrativePulse({ scriptId, enabled: active });
+  const [expanded, setExpanded] = useState(false);
+  const [selectedMilestoneId, setSelectedMilestoneId] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualScene, setManualScene] = useState(selectedSceneId ?? scenes[0]?.sourceId ?? "");
+  const [manualType, setManualType] = useState<WriterPulseMilestoneType>("custom");
+  const [manualLabel, setManualLabel] = useState("");
+  const [moveScene, setMoveScene] = useState("");
+  const [renameLabel, setRenameLabel] = useState("");
+  const orderedPoints = useMemo(() => scenes.flatMap((scene) => {
+    const point = pulse.points.find((item) => item.sceneId === scene.sourceId);
+    return point ? [{ scene, point }] : [];
+  }), [pulse.points, scenes]);
+  const selected = scenes.find((scene) => scene.sourceId === selectedSceneId) ?? null;
+  const selectedPoint = pulse.points.find((point) => point.sceneId === selected?.sourceId) ?? null;
+  const visibleMilestones = pulse.milestones.filter((item) => item.status !== "dismissed");
+  const selectedMilestone = visibleMilestones.find((item) => item.id === selectedMilestoneId) ?? null;
+  const current = Boolean(pulse.analysis && pulse.currentSourceHash === pulse.analysis.sourceHash && pulse.analysis.status === "fresh");
+  const graphWidth = Math.max(320, scenes.length * columnWidth);
+  const graphHeight = 230;
+  const path = writerPulsePath(orderedPoints.map((item) => item.point), graphWidth, graphHeight, 24);
+
+  useEffect(() => { onMilestonesChange?.(pulse.milestones); }, [onMilestonesChange, pulse.milestones]);
+  useEffect(() => {
+    if (!active || !selectedSceneId) return;
+    const frame = requestAnimationFrame(() => {
+      const container = scrollRef.current;
+      const target = container?.querySelector<HTMLElement>(`[data-pulse-scene-id="${CSS.escape(selectedSceneId)}"]`);
+      if (container && target) container.scrollTo({ left: Math.max(0, target.offsetLeft - container.clientWidth / 2), behavior: "auto" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [active, scrollRef, selectedSceneId]);
+
+  async function createManual() {
+    if (!manualScene || !manualLabel.trim()) return;
+    if (await pulse.create(manualScene, manualType, manualLabel.trim())) { setManualLabel(""); setManualOpen(false); }
+  }
+
+  function selectMilestone(milestone: WriterPulseMilestone) {
+    setSelectedMilestoneId(milestone.id);
+    setRenameLabel(milestone.label);
+  }
+
+  return <div className={`writer-pulse${expanded ? " is-expanded" : ""}`} aria-busy={pulse.analyzing}>
+    <section className="writer-pulse-intro">
+      <div><p className="timeline-eyebrow">Lectura descriptiva</p><h1>Intensidad narrativa</h1><p>Compara cambios dentro de este guion. No es una puntuación de calidad, ritmo ni estructura.</p></div>
+      <div className="writer-pulse-actions">
+        <button type="button" onClick={() => setExpanded((value) => !value)}>{expanded ? "Reducir" : "Expandir"}</button>
+        {pulse.analyzing ? <button type="button" onClick={pulse.cancel}>Cancelar</button> : <button type="button" disabled={!pulse.currentSourceHash || scenes.length < WRITER_NARRATIVE_PULSE_MIN_SCENES} onClick={() => void pulse.analyze()}>{pulse.analysis ? "Actualizar Narrative Pulse" : "Analizar Narrative Pulse"}</button>}
+      </div>
+    </section>
+    {scenes.length < WRITER_NARRATIVE_PULSE_MIN_SCENES && <p className="writer-pulse-empty">Narrative Pulse necesita más escenas para producir una lectura útil.</p>}
+    {pulse.analysis && !current && <p className="writer-pulse-stale">El guion cambió desde este análisis. Los hitos humanos se conservan.</p>}
+    {pulse.analyzing && <p className="writer-pulse-loading" role="status">Analizando estructura narrativa… Puedes seguir escribiendo.</p>}
+    {pulse.feedback && <p className="timeline-notice" role="status">{pulse.feedback}</p>}
+    {!pulse.analysis && scenes.length >= WRITER_NARRATIVE_PULSE_MIN_SCENES && pulse.loaded && <div className="writer-pulse-empty"><strong>Todavía no hay lectura narrativa.</strong><span>El análisis sólo se ejecuta cuando eliges “Analizar Narrative Pulse”.</span></div>}
+    {pulse.analysis && <>
+      <div ref={scrollRef} className="writer-pulse-scroll" tabIndex={0} aria-label="Narrative Pulse con desplazamiento horizontal">
+        <div className="writer-pulse-canvas" style={{ width: graphWidth, height: graphHeight }} onClick={(event) => {
+          if (!orderedPoints.length || event.target instanceof HTMLButtonElement) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left - 24) / Math.max(1, rect.width - 48)));
+          const item = orderedPoints[Math.round(ratio * Math.max(0, orderedPoints.length - 1))];
+          if (item) onSelectScene(item.scene);
+        }}>
+          <svg viewBox={`0 0 ${graphWidth} ${graphHeight}`} role="img" aria-label="Curva comparativa de intensidad narrativa por escena" preserveAspectRatio="none">
+            <path className="writer-pulse-baseline" d={`M0,${graphHeight - 24} L${graphWidth},${graphHeight - 24}`} />
+            <path className="writer-pulse-curve" d={path} />
+          </svg>
+          {orderedPoints.map(({ scene, point }, index) => {
+            const x = 24 + (index / Math.max(1, orderedPoints.length - 1)) * Math.max(0, graphWidth - 48);
+            const y = 24 + (1 - point.intensity / 100) * Math.max(0, graphHeight - 48);
+            return <button key={scene.key} type="button" data-pulse-scene-id={scene.sourceId ?? undefined} className={`writer-pulse-point${selectedSceneId === scene.sourceId ? " is-selected" : ""}`} style={{ left: x, top: y }} onClick={() => onSelectScene(scene)} aria-label={`Escena ${scene.order}: ${scene.heading}. ${point.note}`}><span aria-hidden="true" /></button>;
+          })}
+          {visibleMilestones.map((milestone) => {
+            const index = scenes.findIndex((scene) => scene.sourceId === milestone.sceneId); if (index < 0) return null;
+            const x = 24 + (index / Math.max(1, scenes.length - 1)) * Math.max(0, graphWidth - 48);
+            return <button key={milestone.id} type="button" className={`writer-pulse-milestone${milestone.status === "needs_review" ? " needs-review" : ""}`} style={{ left: x }} onClick={() => { selectMilestone(milestone); const scene = scenes[index]; if (scene) onSelectScene(scene); }} title={`${milestone.label} · Escena ${index + 1}`}><span aria-hidden="true" />{milestone.label}</button>;
+          })}
+          <div className="writer-pulse-scene-axis" style={{ gridTemplateColumns: `repeat(${Math.max(1, scenes.length)}, ${columnWidth}px)` }}>{scenes.map((scene) => <button key={scene.key} type="button" onClick={() => onSelectScene(scene)} aria-current={selectedSceneId === scene.sourceId ? "true" : undefined}>{scene.order}</button>)}</div>
+        </div>
+      </div>
+      <div className="writer-pulse-lower">
+        <section className="writer-pulse-detail" aria-live="polite">
+          {selected && selectedPoint ? <><p className="timeline-eyebrow">Escena {selected.order}</p><h2>{selected.heading}</h2><p>{selectedPoint.note}</p><div className="writer-pulse-signals" aria-label="Señales narrativas">{selectedPoint.signals.map((signal) => <span key={signal}>{signalLabel(signal)}</span>)}</div><button type="button" onClick={() => onSelectScene(selected)}>Ir a escena</button></> : <p>Selecciona un punto para ver su contexto narrativo.</p>}
+        </section>
+        <section className="writer-pulse-milestone-list" aria-labelledby="writer-pulse-milestones">
+          <div><h2 id="writer-pulse-milestones">Hitos</h2><button type="button" onClick={() => { setManualScene(selectedSceneId ?? scenes[0]?.sourceId ?? ""); setManualOpen((value) => !value); }}>+ Añadir hito</button></div>
+          {manualOpen && <div className="writer-pulse-form"><label>Escena<select value={manualScene} onChange={(event) => setManualScene(event.target.value)}>{scenes.map((scene) => <option key={scene.key} value={scene.sourceId ?? ""}>Escena {scene.order} · {scene.heading}</option>)}</select></label><label>Tipo<select value={manualType} onChange={(event) => setManualType(event.target.value as WriterPulseMilestoneType)}>{TYPES.map((type) => <option key={type} value={type}>{writerPulseMilestoneLabel(type)}</option>)}</select></label><label>Nombre<input value={manualLabel} maxLength={100} onChange={(event) => setManualLabel(event.target.value)} /></label><button type="button" onClick={() => void createManual()} disabled={!manualLabel.trim() || !manualScene}>Guardar hito</button></div>}
+          <ul>{visibleMilestones.map((milestone) => <li key={milestone.id}><button type="button" onClick={() => selectMilestone(milestone)} aria-pressed={selectedMilestoneId === milestone.id}><span>{milestone.status === "confirmed" || milestone.status === "manual" ? "✓" : milestone.status === "needs_review" ? "!" : "?"}</span><strong>{milestone.label}</strong><small>{sceneName(scenes, milestone.sceneId)}</small></button></li>)}</ul>
+        </section>
+      </div>
+      {pulse.zones.length > 0 && <section className="writer-pulse-zones" aria-labelledby="writer-pulse-zones-title"><h2 id="writer-pulse-zones-title">Tramos narrativos</h2><ul>{pulse.zones.map((zone) => <li key={zone.id}><strong>{zoneLabel(zone.type)}</strong><span>{sceneName(scenes, zone.startSceneId)} → {sceneName(scenes, zone.endSceneId)}</span><p>{zone.note}</p></li>)}</ul></section>}
+      {selectedMilestone && <aside className="writer-pulse-milestone-detail"><div><p className="timeline-eyebrow">{writerPulseMilestoneLabel(selectedMilestone.type)}</p><h2>{selectedMilestone.label}</h2><span>{sceneName(scenes, selectedMilestone.sceneId)}</span></div>{selectedMilestone.explanation && <p>{selectedMilestone.explanation}</p>}{selectedMilestone.status === "needs_review" && <p>La escena vinculada ya no existe o cambió de forma relevante. El hito no se movió automáticamente.</p>}<div>{selectedMilestone.status === "suggested" && <button type="button" onClick={() => void pulse.setStatus(selectedMilestone.id, "confirmed")}>Confirmar</button>}<button type="button" onClick={() => void pulse.setStatus(selectedMilestone.id, "dismissed")}>Descartar</button><label>Título revisado<input value={renameLabel} maxLength={100} onChange={(event) => setRenameLabel(event.target.value)} /></label><button type="button" disabled={!renameLabel.trim() || renameLabel.trim() === selectedMilestone.label} onClick={() => void pulse.rename(selectedMilestone.id, renameLabel.trim())}>Renombrar</button><label>Mover a<select value={moveScene} onChange={(event) => setMoveScene(event.target.value)}><option value="">Selecciona escena…</option>{scenes.map((scene) => <option key={scene.key} value={scene.sourceId ?? ""}>Escena {scene.order} · {scene.heading}</option>)}</select></label><button type="button" disabled={!moveScene} onClick={() => void pulse.move(selectedMilestone.id, moveScene)}>Mover</button></div></aside>}
+      <details className="writer-pulse-accessible"><summary>Lista accesible de escenas y zonas</summary><ol>{orderedPoints.map(({ scene, point }) => <li key={scene.key}><button type="button" onClick={() => onSelectScene(scene)}><strong>Escena {scene.order}: {scene.heading}</strong><span>{point.note}</span></button></li>)}</ol>{pulse.zones.length > 0 && <ul>{pulse.zones.map((zone) => <li key={zone.id}><strong>{zoneLabel(zone.type)}</strong>: {zone.note}</li>)}</ul>}</details>
+    </>}
+  </div>;
+}
+
+function sceneName(scenes: TimelineScene[], sceneId: string) { const scene = scenes.find((item) => item.sourceId === sceneId); return scene ? `Escena ${scene.order} · ${scene.heading}` : "Escena eliminada"; }
+function signalLabel(value: string) { return ({ conflict: "Conflicto", change: "Cambio", pressure: "Presión", turn: "Giro", risk: "Riesgo", revelation: "Revelación", consequence: "Consecuencia", activity: "Actividad narrativa" } as Record<string, string>)[value] ?? value; }
+function zoneLabel(value: string) { return ({ stable: "Tramo relativamente estable", build: "Construcción", release: "Descenso relativo", peak: "Pico local" } as Record<string, string>)[value] ?? value; }

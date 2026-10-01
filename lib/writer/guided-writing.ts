@@ -13,12 +13,13 @@ import {
   type WriterNarrativeElement,
   type WriterNarrativeLink,
 } from "./setup-payoff.ts";
+import type { WriterPulseMilestone, WriterPulseZone } from "./narrative-pulse.ts";
 
 export const WRITER_GUIDED_WRITING_VERSION = "guided-writing-v1" as const;
 export const WRITER_GUIDED_WRITING_MODEL = "gpt-5.6-terra" as const;
 
 export type WriterGuidedWritingScope = "scene" | "document";
-export type WriterGuidedReferenceType = "scene" | "observation" | "ooc" | "setup" | "payoff";
+export type WriterGuidedReferenceType = "scene" | "observation" | "ooc" | "setup" | "payoff" | "pulse";
 
 export type WriterGuidedReference = {
   referenceId: string;
@@ -113,6 +114,10 @@ export type WriterGuidedWritingContext = {
     status: string;
     authority: "user" | "confirmed" | "suggestion";
   }>;
+  pulse: {
+    milestones: Array<{ id: string; sceneId: string; label: string; type: string; status: string; referenceId: string }>;
+    zones: Array<{ startSceneId: string; endSceneId: string; type: string; note: string }>;
+  };
   references: WriterGuidedReference[];
 };
 
@@ -125,6 +130,8 @@ export type WriterGuidedContextInput = {
   dismissals?: Array<{ sceneId: string; sourceHash: string; analysisVersion: string; observationId: string }>;
   elements?: WriterNarrativeElement[];
   links?: WriterNarrativeLink[];
+  pulseMilestones?: WriterPulseMilestone[];
+  pulseZones?: WriterPulseZone[];
 };
 
 export async function buildGuidedWritingContext(input: WriterGuidedContextInput): Promise<WriterGuidedWritingContext> {
@@ -229,6 +236,15 @@ export async function buildGuidedWritingContext(input: WriterGuidedContextInput)
     status: link.status,
     authority: link.source === "user" ? "user" as const : link.status === "confirmed" ? "confirmed" as const : "suggestion" as const,
   }));
+  const pulseMilestones = (input.pulseMilestones ?? []).filter((milestone) => milestone.status !== "dismissed"
+    && (input.scope === "document" || includedSceneIds.has(milestone.sceneId))).slice(0, 24).map((milestone) => ({
+      id: milestone.id, sceneId: milestone.sceneId, label: milestone.label, type: milestone.type, status: milestone.status,
+      referenceId: `pulse:${milestone.id}`,
+    }));
+  const pulseZones = (input.pulseZones ?? []).filter((zone) => input.scope === "document"
+    || includedSceneIds.has(zone.startSceneId) || includedSceneIds.has(zone.endSceneId)).slice(0, 16).map((zone) => ({
+      startSceneId: zone.startSceneId, endSceneId: zone.endSceneId, type: zone.type, note: zone.note,
+    }));
 
   const references: WriterGuidedReference[] = [
     ...contextScenes.map((scene) => ({
@@ -267,6 +283,15 @@ export async function buildGuidedWritingContext(input: WriterGuidedContextInput)
       label: `${item.type === "setup" ? "Setup" : "Payoff"} · ${item.label}`,
       status: item.status,
     })),
+    ...pulseMilestones.map((item) => ({
+      referenceId: item.referenceId,
+      type: "pulse" as const,
+      targetId: item.id,
+      sceneId: item.sceneId,
+      blockId: item.sceneId,
+      label: `Narrative Pulse · ${item.label}`,
+      status: item.status,
+    })),
   ];
 
   return {
@@ -278,6 +303,7 @@ export async function buildGuidedWritingContext(input: WriterGuidedContextInput)
     observations,
     narrativeElements,
     narrativeLinks,
+    pulse: { milestones: pulseMilestones, zones: pulseZones },
     references,
   };
 }

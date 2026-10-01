@@ -17,6 +17,8 @@ import {
 } from "@/lib/writer/timeline";
 import { setWriterDragPreview } from "@/lib/writer/drag-preview";
 import type { WriterSceneMovePosition } from "@/lib/writer/editor-actions";
+import type { WriterPulseMilestone } from "@/lib/writer/narrative-pulse";
+import WriterNarrativePulse from "./WriterNarrativePulse";
 
 const ZOOM_LEVELS = [76, 112, 156] as const;
 const INITIAL_CHARACTER_TRACKS = 8;
@@ -44,6 +46,7 @@ type WriterTimelineViewProps = {
   activeSceneId?: string | null;
   sceneNicknames?: Readonly<Record<string, string>>;
   onMoveScene?: (sceneId: string, targetSceneId: string, position: WriterSceneMovePosition) => void;
+  requestedView?: "timeline" | "pulse" | null;
 };
 
 export default function WriterTimelineView({
@@ -59,6 +62,7 @@ export default function WriterTimelineView({
   activeSceneId = null,
   sceneNicknames = {},
   onMoveScene,
+  requestedView = null,
 }: WriterTimelineViewProps) {
   const [timeline, setTimeline] = useState<WriterTimeline | null>(initialTimeline);
   const [selectedSceneKey, setSelectedSceneKey] = useState<string | null>(null);
@@ -66,6 +70,8 @@ export default function WriterTimelineView({
   const [environment, setEnvironment] = useState<"all" | TimelineEnvironment>("all");
   const [moment, setMoment] = useState<"all" | TimelineMomentCategory>("all");
   const [zoomIndex, setZoomIndex] = useState(1);
+  const [panelView, setPanelView] = useState<"timeline" | "pulse">("timeline");
+  const [pulseMilestones, setPulseMilestones] = useState<WriterPulseMilestone[]>([]);
   const [visibleCharacters, setVisibleCharacters] = useState<Set<string>>(
     () => new Set(initialTimeline.characters.slice(0, INITIAL_CHARACTER_TRACKS).map((item) => item.key)),
   );
@@ -81,6 +87,7 @@ export default function WriterTimelineView({
   const [dropTarget, setDropTarget] = useState<{ sceneId: string; position: WriterSceneMovePosition } | null>(null);
   const rootRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const pulseScrollRef = useRef<HTMLDivElement>(null);
   const requestSequenceRef = useRef(0);
   const activeRef = useRef(active);
   const abortRef = useRef<AbortController | null>(null);
@@ -237,6 +244,12 @@ export default function WriterTimelineView({
     if (scene && scene.key !== selectedSceneKeyRef.current) setSelectedSceneKey(scene.key);
   }, [activeSceneId, timeline]);
 
+  useEffect(() => {
+    if (!requestedView) return;
+    const frame = requestAnimationFrame(() => setPanelView(requestedView));
+    return () => cancelAnimationFrame(frame);
+  }, [requestedView]);
+
   if (!timeline) {
     return (
       <Root className={`timeline-private-state${variant === "embedded" ? " timeline-private-state--embedded" : ""}`}>
@@ -282,6 +295,16 @@ export default function WriterTimelineView({
     if (onGoToWriter && scene.sourceId && scene.canDeepLink) onGoToWriter(scene.sourceId);
   }
 
+  function changePanelView(next: "timeline" | "pulse") {
+    const source = panelView === "timeline" ? scrollRef.current : pulseScrollRef.current;
+    const center = source ? sceneNearestHorizontalCenter(source) : null;
+    if (center) {
+      const scene = timeline?.scenes.find((item) => item.sourceId === center);
+      if (scene) setSelectedSceneKey(scene.key);
+    }
+    setPanelView(next);
+  }
+
   return (
     <Root ref={setRootRef} className={`timeline-page${variant === "embedded" ? " timeline-page--embedded" : ""}`}>
       <header className="timeline-header">
@@ -289,20 +312,25 @@ export default function WriterTimelineView({
           <Link href="/" aria-label="FILMATTA — Inicio">FILMATTA</Link>
           <span aria-hidden="true" />
           <Link href="/writer">Writer</Link>
-          <b>Timeline</b>
+          <b>{panelView === "timeline" ? "Timeline" : "Narrative Pulse"}</b>
         </div>
         <div className="timeline-title">
           <p>{timeline.title}</p>
           <span>Versión guardada · revisión {timeline.revision} · {formatDate(timeline.updatedAt)}</span>
         </div>
         <div className="timeline-header-actions">
-          <button className="timeline-refresh" type="button" onClick={() => void refreshTimeline()} disabled={refreshing}>
+          <div className="timeline-view-switch" role="group" aria-label="Vista del panel estructural">
+            <button type="button" aria-pressed={panelView === "timeline"} onClick={() => changePanelView("timeline")}>Timeline</button>
+            <button type="button" aria-pressed={panelView === "pulse"} onClick={() => changePanelView("pulse")}>Narrative Pulse</button>
+          </div>
+          {panelView === "timeline" && <button className="timeline-refresh" type="button" onClick={() => void refreshTimeline()} disabled={refreshing}>
             {refreshing ? "Actualizando…" : "Actualizar Timeline"}
-          </button>
+          </button>}
           {onClose && <button className="timeline-close" type="button" onClick={onClose}>Cerrar</button>}
         </div>
       </header>
 
+      <div className="timeline-view-content" hidden={panelView !== "timeline"}>
       <section className="timeline-intro" aria-labelledby="timeline-heading">
         <div>
           <p className="timeline-eyebrow">Orden de escenas</p>
@@ -503,6 +531,9 @@ export default function WriterTimelineView({
                           }}>→</button>
                         </div>
                       )}
+                      {pulseMilestones.filter((milestone) => milestone.sceneId === scene.sourceId && milestone.status !== "dismissed").map((milestone) => (
+                        <i key={milestone.id} className="timeline-pulse-marker" title={`${milestone.label} · ${milestone.status === "suggested" ? "Sugerido" : milestone.status === "needs_review" ? "Necesita revisión" : "Confirmado"}`} aria-label={`Hito: ${milestone.label}`} />
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -551,8 +582,35 @@ export default function WriterTimelineView({
           </ol>
         </details>
       )}
+      </div>
+      <div className="timeline-pulse-view" hidden={panelView !== "pulse"}>
+        <WriterNarrativePulse
+          scriptId={timeline.scriptId}
+          scenes={timeline.scenes}
+          active={active}
+          selectedSceneId={selectedScene?.sourceId ?? activeSceneId}
+          columnWidth={columnWidth}
+          scrollRef={pulseScrollRef}
+          onSelectScene={activateScene}
+          onMilestonesChange={setPulseMilestones}
+        />
+      </div>
     </Root>
   );
+}
+
+function sceneNearestHorizontalCenter(container: HTMLElement) {
+  const bounds = container.getBoundingClientRect();
+  const center = bounds.left + bounds.width / 2;
+  let closest: { id: string; distance: number } | null = null;
+  for (const element of container.querySelectorAll<HTMLElement>("[data-timeline-scene-id],[data-pulse-scene-id]")) {
+    const id = element.dataset.timelineSceneId ?? element.dataset.pulseSceneId;
+    if (!id) continue;
+    const rect = element.getBoundingClientRect();
+    const distance = Math.abs(rect.left + rect.width / 2 - center);
+    if (!closest || distance < closest.distance) closest = { id, distance };
+  }
+  return closest?.id ?? null;
 }
 
 function Summary({ value, label }: { value: number; label: string }) {
