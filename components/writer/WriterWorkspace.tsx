@@ -210,7 +210,7 @@ export default function WriterWorkspace({
   const [exportMenu, setExportMenu] = useState(false);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [observationsOpen, setObservationsOpen] = useState(false);
+  const [observationsOpen, setObservationsOpen] = useState(true);
   const [panelLayout, setPanelLayout] = useState<WriterPanelLayout>(WRITER_PANEL_LAYOUT_DEFAULTS);
   const [observationsSection, setObservationsSection] = useState<WriterObservationsSection>("review");
   const [selectedObservationBlockId, setSelectedObservationBlockId] = useState<string | null>(null);
@@ -258,6 +258,7 @@ export default function WriterWorkspace({
   const timelineInitialOpenHandledRef = useRef<string | null>(null);
   const timelineBeforeFocusRef = useRef(false);
   const observationsBeforeFocusRef = useRef(false);
+  const observationsExplicitRef = useRef(false);
   const observationsInitialOpenHandledRef = useRef<string | null>(null);
   const saveStateRef = useRef(saveState);
   const characterDecisionsRef = useRef(characterDecisions);
@@ -560,6 +561,16 @@ export default function WriterWorkspace({
     setTimelineMounted(shouldOpen);
     setTimelineOpen(shouldOpen);
   }, [initialTimeline, script.id]);
+
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 900px)");
+    const keepMobileDrawerClosed = () => {
+      if (mobile.matches && !observationsExplicitRef.current) setObservationsOpen(false);
+    };
+    keepMobileDrawerClosed();
+    mobile.addEventListener("change", keepMobileDrawerClosed);
+    return () => mobile.removeEventListener("change", keepMobileDrawerClosed);
+  }, [script.id]);
 
   useEffect(() => {
     const phone = window.matchMedia("(max-width: 600px)");
@@ -880,6 +891,7 @@ export default function WriterWorkspace({
       counts.set(observation.blockId, (counts.get(observation.blockId) ?? 0) + 1);
     }
     setWriterObservationMarkers(editor, counts, (blockId) => {
+      observationsExplicitRef.current = true;
       setSelectedObservationBlockId(blockId);
       setObservationsOpen(true);
     });
@@ -894,6 +906,7 @@ export default function WriterWorkspace({
       return;
     }
     setWriterAssistantMarkers(editor, assistant.markers, (item) => {
+      observationsExplicitRef.current = true;
       setActiveScene(item.sceneId);
       setSelectedAssistantObservationId(item.observationId);
       setObservationsSection("assistant");
@@ -945,6 +958,7 @@ export default function WriterWorkspace({
       setFeedback("Este fragmento cambió y la observación de importación quedó desactualizada.");
       return;
     }
+    observationsExplicitRef.current = true;
     setActiveFormatObservationId(observation.id);
     setSelectedObservationBlockId(observation.blockId);
     setObservationsOpen(true);
@@ -1162,17 +1176,18 @@ export default function WriterWorkspace({
     const closeSurfaceOrFocus = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (importOpen) return;
-      if (observationsOpen) {
-        setObservationsOpen(false);
-        focusObservationsTrigger();
-        return;
-      }
       if (contextMenu) return setContextMenu(null);
       if (insertState) return setInsertState(null);
       if (mobileMoreOpen) return setMobileMoreOpen(false);
       if (mobileNavigateOpen) return setMobileNavigateOpen(false);
       if (exportMenu) return setExportMenu(false);
       if (pdfExportOpen) return setPdfExportOpen(false);
+      if (feedback) return setFeedback(null);
+      if (observationsOpen) {
+        setObservationsOpen(false);
+        focusObservationsTrigger();
+        return;
+      }
       if (timelineOpen) {
         timelineOpenRef.current = false;
         setTimelineOpen(false);
@@ -1186,7 +1201,7 @@ export default function WriterWorkspace({
     };
     window.addEventListener("keydown", closeSurfaceOrFocus);
     return () => window.removeEventListener("keydown", closeSurfaceOrFocus);
-  }, [contextMenu, exportMenu, focusMode, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pdfExportOpen, restoreTimelineAfterFocus, timelineOpen]);
+  }, [contextMenu, exportMenu, feedback, focusMode, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pdfExportOpen, restoreTimelineAfterFocus, timelineOpen]);
 
   useEffect(() => {
     if (!editor || !ready || deepLinkHandledRef.current) return;
@@ -1566,7 +1581,6 @@ export default function WriterWorkspace({
   function viewGuidedReference(reference: WriterGuidedReference) {
     if (!editor) return;
     if (reference.type === "pulse") {
-      setObservationsOpen(false);
       openTimeline(reference.sceneId, "pulse");
       return;
     }
@@ -1878,7 +1892,7 @@ export default function WriterWorkspace({
             ref={observationsButtonRef}
             className="writer-observations-open-button"
             type="button"
-            onClick={() => { setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen((open) => !open); }}
+            onClick={() => { observationsExplicitRef.current = true; setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen(true); }}
             aria-expanded={observationsOpen}
           >Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
           <button
@@ -1928,10 +1942,10 @@ export default function WriterWorkspace({
             <div className="writer-mobile-nav-tabs" role="group" aria-label="Secciones de Writer">
               <button type="button" onClick={() => { setMobileSidebar("scenes"); setMobileNavigateOpen(false); }}>Escenas</button>
               <button type="button" onClick={() => { setMobileSidebar("characters"); setMobileNavigateOpen(false); }}>Personajes</button>
-              <button ref={mobileObservationsButtonRef} type="button" onClick={() => { setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
-              <button type="button" onClick={() => { setObservationsSection("assistant"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Assistant</button>
-              <button type="button" onClick={() => { setObservationsSection("setupPayoff"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Setup / Payoff</button>
-              <button type="button" onClick={() => { setObservationsSection("guided"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Guided Writing</button>
+              <button ref={mobileObservationsButtonRef} type="button" onClick={() => { observationsExplicitRef.current = true; setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
+              <button type="button" onClick={() => { observationsExplicitRef.current = true; setObservationsSection("assistant"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Assistant</button>
+              <button type="button" onClick={() => { observationsExplicitRef.current = true; setObservationsSection("setupPayoff"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Setup / Payoff</button>
+              <button type="button" onClick={() => { observationsExplicitRef.current = true; setObservationsSection("guided"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Guided Writing</button>
               <button type="button" disabled={!initialTimeline.ok} onClick={() => openTimeline()}>Timeline</button>
             </div>
           </div>
@@ -2294,7 +2308,10 @@ export default function WriterWorkspace({
       <WriterObservationsPanel
         hidden={!observationsOpen || focusMode}
         section={observationsSection}
-        onSectionChange={setObservationsSection}
+        onSectionChange={(section) => {
+          observationsExplicitRef.current = true;
+          setObservationsSection(section);
+        }}
         assistantPanel={(
           <WriterAssistantNarrative
             enabled={assistant.enabled}
@@ -2332,7 +2349,7 @@ export default function WriterWorkspace({
             feedback={setupPayoff.feedback}
             onAnalyze={() => void analyzeSetupPayoff()}
             onView={viewSetupPayoffElement}
-            onViewPulse={(sceneId) => { setObservationsOpen(false); openTimeline(sceneId, "pulse"); }}
+            onViewPulse={(sceneId) => openTimeline(sceneId, "pulse")}
             onElementStatus={(element, status) => void setupPayoff.setElementStatus(element.id, status)}
             onLinkStatus={(link, status) => void setupPayoff.setLinkStatus(link.id, status)}
             onCreateElement={setupPayoff.createElement}

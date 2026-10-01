@@ -10,6 +10,48 @@ async function mockPulse(page: Page) { const data=state(); let posts=0; await pa
 
 test.beforeEach(async({request,context})=>{await request.get("http://127.0.0.1:54329/__scenario?value=writer-ux");await session(context);});
 
-test("desktop switches views, shares scene selection and preserves human milestone actions",async({page})=>{await page.setViewportSize({width:1440,height:900});const posts=await mockPulse(page);await page.goto(`/writer/${scriptId}`);const panel=page.locator("#writer-timeline-panel");await expect(panel).toBeVisible();await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();await expect(panel.locator(".writer-pulse-point")).toHaveCount(2);await expect.poll(posts).toBe(0);await panel.getByRole("button",{name:/Escena 2: INT\. ESTUDIO/}).press("Enter");await expect(page.locator(`[data-block-id="${sceneB}"]`)).toHaveClass(/writer-scene-target-highlight/);await panel.getByRole("button",{name:"Timeline",exact:true}).click();await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await panel.getByRole("button",{name:/Revelación central/}).last().click();await panel.getByRole("button",{name:"Confirmar"}).click();await expect(panel.getByRole("button",{name:/Revelación central/}).last()).toBeVisible();await panel.getByRole("button",{name:"+ Añadir hito"}).click();await panel.getByLabel("Nombre").fill("Primera decisión irreversible");await panel.getByRole("button",{name:"Guardar hito"}).click();await expect(panel.locator(".writer-pulse-milestone-list").getByRole("button",{name:/Primera decisión irreversible/})).toBeVisible();});
+test("desktop keeps Observations active while splitters and Timeline Pulse switch work together",async({page})=>{
+  await page.setViewportSize({width:1440,height:900});
+  const posts=await mockPulse(page);
+  await page.goto(`/writer/${scriptId}`);
 
-test("mobile Pulse fits, exposes accessible detail and navigates by tap",async({page})=>{await page.setViewportSize({width:390,height:844});await page.addInitScript(()=>localStorage.setItem("filmatta.writer.mobile-notice.v1:11111111-1111-4111-8111-111111111111","dismissed"));await mockPulse(page);await page.goto(`/writer/${scriptId}`);await page.getByRole("button",{name:/Navegar/}).click();await page.getByRole("dialog",{name:"Navegar por el guion"}).getByRole("button",{name:"Timeline"}).click();const panel=page.locator("#writer-timeline-panel");await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();await expect.poll(()=>panel.evaluate((element)=>element.scrollWidth<=element.clientWidth+1)).toBe(true);await panel.getByRole("button",{name:/Escena 1: INT\. ESTUDIO/}).press("Enter");await expect(page.locator(`[data-block-id="${sceneA}"]`)).toHaveClass(/writer-scene-target-highlight/);});
+  const observationsButton=page.getByRole("button",{name:/Observaciones/});
+  const observations=page.getByRole("complementary",{name:"Observaciones"});
+  const reviewTab=page.getByRole("navigation",{name:"Secciones de Observaciones"}).getByRole("button",{name:/Revisión/});
+  await expect(observationsButton).toHaveAttribute("aria-expanded","true");
+  await expect(observations).toBeVisible();
+  await expect(reviewTab).toHaveAttribute("aria-current","page");
+
+  const rightSplitter=page.getByRole("separator",{name:"Cambiar ancho del panel de observaciones"});
+  await expect(rightSplitter).toHaveAttribute("aria-valuenow","360");
+  await rightSplitter.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(rightSplitter).toHaveAttribute("aria-valuenow","376");
+
+  const panel=page.locator("#writer-timeline-panel");
+  await expect(panel).toBeVisible();
+  await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();
+  await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();
+  await expect(panel.locator(".writer-pulse-point")).toHaveCount(2);
+  await expect(observations).toBeVisible();
+  await expect(reviewTab).toHaveAttribute("aria-current","page");
+  await expect(rightSplitter).toHaveAttribute("aria-valuenow","376");
+  await expect.poll(posts).toBe(0);
+
+  await panel.getByRole("button",{name:"Timeline",exact:true}).click();
+  await expect(observations).toBeVisible();
+  await expect(reviewTab).toHaveAttribute("aria-current","page");
+  await expect(rightSplitter).toHaveAttribute("aria-valuenow","376");
+  await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();
+  await panel.getByRole("button",{name:/Escena 2: INT\. ESTUDIO/}).press("Enter");
+  await expect(page.locator(`[data-block-id="${sceneB}"]`)).toHaveClass(/writer-scene-target-highlight/);
+  await panel.getByRole("button",{name:/Revelación central/}).last().click();
+  await panel.getByRole("button",{name:"Confirmar"}).click();
+  await expect(panel.getByRole("button",{name:/Revelación central/}).last()).toBeVisible();
+  await panel.getByRole("button",{name:"+ Añadir hito"}).click();
+  await panel.getByLabel("Nombre").fill("Primera decisión irreversible");
+  await panel.getByRole("button",{name:"Guardar hito"}).click();
+  await expect(panel.locator(".writer-pulse-milestone-list").getByRole("button",{name:/Primera decisión irreversible/})).toBeVisible();
+});
+
+test("mobile Pulse fits, keeps drawer behavior and navigates by tap",async({page})=>{await page.setViewportSize({width:390,height:844});await page.addInitScript(()=>localStorage.setItem("filmatta.writer.mobile-notice.v1:11111111-1111-4111-8111-111111111111","dismissed"));await mockPulse(page);await page.goto(`/writer/${scriptId}`);const observations=page.getByRole("complementary",{name:"Observaciones"});await expect(observations).toBeHidden();await expect(page.getByRole("separator").first()).toBeHidden();await page.getByRole("button",{name:/Navegar/}).click();let navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:/Observaciones/}).click();await expect(observations).toBeVisible();await observations.getByRole("button",{name:"Cerrar",exact:true}).click();await page.getByRole("button",{name:/Navegar/}).click();navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:"Timeline"}).click();const panel=page.locator("#writer-timeline-panel");await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();await expect.poll(()=>panel.evaluate((element)=>element.scrollWidth<=element.clientWidth+1)).toBe(true);await panel.getByRole("button",{name:/Escena 1: INT\. ESTUDIO/}).press("Enter");await expect(page.locator(`[data-block-id="${sceneA}"]`)).toHaveClass(/writer-scene-target-highlight/);});

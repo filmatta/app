@@ -166,6 +166,8 @@ export function WriterContextMenu({
         : action === "cut"
           ? "No se pudo copiar al portapapeles; el texto no se eliminó."
           : "No se pudo copiar al portapapeles.");
+      editor.commands.focus();
+      onClose();
     } finally {
       setClipboardBusy(false);
     }
