@@ -3,6 +3,16 @@ import { expect, test } from "@playwright/test";
 const fixtureOrigin =
   process.env.PROFILES_FIXTURE_ORIGIN ?? "http://127.0.0.1:54329";
 
+async function expectNoHorizontalOverflow(page: import("@playwright/test").Page) {
+  const dimensions = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.scrollWidth, JSON.stringify(dimensions)).toBeLessThanOrEqual(
+    dimensions.clientWidth + 1,
+  );
+}
+
 test.beforeEach(async ({ request }) => {
   await request.get(`${fixtureOrigin}/__scenario?value=profiles-polish`);
 });
@@ -57,6 +67,22 @@ test("desktop filters and mobile sheet remain usable", async ({ page }) => {
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBe(true);
+});
+
+test("profiles catalog stays within the viewport across supported widths", async ({ page }) => {
+  for (const width of [390, 768, 1024, 1280, 1440, 1680, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/perfiles");
+    await expect(page.getByRole("heading", { name: "Encuentra a la persona indicada." })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    if (width === 390) {
+      await page.getByRole("button", { name: /^Filtros/ }).click();
+      await expect(page.getByRole("dialog", { name: "Filtros" })).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+      await page.getByRole("button", { name: "Cerrar filtros" }).click();
+    }
+  }
 });
 
 test("no-result searches have a specific recovery state", async ({ page }) => {

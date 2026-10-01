@@ -1,4 +1,7 @@
 .profile-catalog {
+  width: 100%;
+  min-width: 0;
+  max-width: 1600px;
   padding-block: 48px 32px;
 }
 
@@ -8,6 +11,11 @@
   justify-content: space-between;
   gap: 32px;
   flex-wrap: wrap;
+}
+
+.profile-catalog-heading > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .profile-catalog-heading h1 {
@@ -28,6 +36,9 @@
 }
 
 .profile-search {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 48px;
 }
 
@@ -43,6 +54,8 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   min-height: 62px;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid #ffffff2e;
   border-radius: 8px;
   background: #0e1011;
@@ -126,6 +139,9 @@
 
 .profile-search-layout {
   display: grid;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   grid-template-columns: minmax(0, 1fr);
   gap: 28px;
   margin-top: 38px;
@@ -133,6 +149,8 @@
 
 .profile-filter-sidebar {
   display: none;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .profile-filter-heading {
@@ -156,12 +174,15 @@
 
 .profile-filter-form {
   display: grid;
+  min-width: 0;
+  max-width: 100%;
   gap: 20px;
   padding-top: 20px;
 }
 
 .profile-filter-form label {
   display: grid;
+  min-width: 0;
   gap: 8px;
   color: #b9c0bd;
   font-size: 0.73rem;
@@ -275,6 +296,7 @@
 
 .profile-search-results {
   min-width: 0;
+  max-width: 100%;
 }
 
 .profile-results {

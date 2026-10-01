@@ -151,8 +151,8 @@ test("right-click uses the active caret across blocks and screenplay margins", a
     id: block.getAttribute("data-block-id"),
     text: block.textContent,
   })));
-  const indexA = order.findIndex((block) => block.id?.endsWith("02"));
-  const indexB = order.findIndex((block) => block.id?.endsWith("09"));
+  const indexA = order.findIndex((block) => block.id === "11111111-1111-4111-8111-111111111102");
+  const indexB = order.findIndex((block) => block.id === "11111111-1111-4111-8111-111111111109");
   const inserted = order.findIndex((block) => block.text === "INT. DESTINO CARET - NOCHE");
   expect(inserted).toBe(indexA + 1);
   expect(inserted).toBeLessThan(indexB);
@@ -586,6 +586,9 @@ test("visual evidence keeps page bounds at desktop, tablet, and mobile", async (
     await page.setViewportSize(viewport);
     await page.screenshot({ path: `${evidence}/normal-${viewport.width}x${viewport.height}.png` });
     if (viewport.width === 1440) {
+      await page.locator(".writer-scene-link").first().click();
+      await page.locator(".writer-scene-list > li").nth(1).hover();
+      await page.screenshot({ path: `${evidence}/scene-list-active-hover-1440x900.png` });
       const action = page.getByLabel("Editor de guion").locator('[data-block-id$="02"]');
       await action.selectText();
       await rightClick(page, action);
@@ -597,6 +600,11 @@ test("visual evidence keeps page bounds at desktop, tablet, and mobile", async (
     const scale = Number(await page.locator(".writer-workspace").getAttribute("data-focus-scale"));
     expect(scale).toBeGreaterThanOrEqual(1.14);
     expect(sheet?.width ?? viewport.width).toBeLessThan(viewport.width - 120);
+    const focusDimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }));
+    expect(focusDimensions.scrollWidth, `Writer Focus at ${viewport.width}px`).toBeLessThanOrEqual(focusDimensions.clientWidth + 1);
     await page.screenshot({ path: `${evidence}/focus-${viewport.width}x${viewport.height}.png` });
     if (viewport.width === 1440) {
       const action = page.getByLabel("Editor de guion").locator('[data-block-id$="02"]');
@@ -617,6 +625,12 @@ test("visual evidence keeps page bounds at desktop, tablet, and mobile", async (
   const notice = page.getByRole("dialog", { name: "Writer en móvil" });
   if (await notice.isVisible()) await notice.getByRole("button", { name: "Entendido" }).click();
   await page.screenshot({ path: `${evidence}/writing-390x844.png` });
+  await page.getByRole("button", { name: "Navegar", exact: true }).click();
+  await page.getByRole("dialog", { name: "Navegar por el guion" }).getByRole("button", { name: "Escenas" }).click();
+  await expect(page.locator(".writer-sidebar")).toHaveClass(/writer-sidebar--open/);
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: `${evidence}/scene-list-mobile-390x844.png` });
+  await page.locator(".writer-sidebar").getByRole("button", { name: "Cerrar" }).click();
   await page.getByRole("button", { name: "Más acciones de Writer" }).click();
   await page.getByRole("dialog", { name: "Más acciones de Writer" }).getByRole("button", { name: "Focus" }).click();
   await page.screenshot({ path: `${evidence}/focus-390x844.png` });
