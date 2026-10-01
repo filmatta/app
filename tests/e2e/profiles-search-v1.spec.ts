@@ -3,14 +3,96 @@ import { expect, test } from "@playwright/test";
 const fixtureOrigin =
   process.env.PROFILES_FIXTURE_ORIGIN ?? "http://127.0.0.1:54329";
 
-async function expectNoHorizontalOverflow(page: import("@playwright/test").Page) {
-  const dimensions = await page.evaluate(() => ({
-    clientWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-  }));
-  expect(dimensions.scrollWidth, JSON.stringify(dimensions)).toBeLessThanOrEqual(
-    dimensions.clientWidth + 1,
+async function expectContainedProfileCatalog(page: import("@playwright/test").Page) {
+  const geometry = await page.evaluate(() => {
+    const viewportWidth = window.innerWidth;
+    const describe = (element: Element) => {
+      const htmlElement = element as HTMLElement;
+      return `${element.tagName.toLowerCase()}${htmlElement.id ? `#${htmlElement.id}` : ""}${
+        typeof htmlElement.className === "string" && htmlElement.className.trim()
+          ? `.${htmlElement.className.trim().split(/\s+/).join(".")}`
+          : ""
+      }`;
+    };
+    const toRect = (rect: DOMRect) => ({
+      left: rect.left,
+      right: rect.right,
+      width: rect.width,
+    });
+    const visibleElements = [...document.querySelectorAll("body *")]
+      .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+      .filter(({ rect }) => rect.width > 0 && rect.height > 0);
+    const offenders = visibleElements
+      .filter(
+        ({ rect }) =>
+          rect.left < -1 ||
+          rect.right > viewportWidth + 1 ||
+          rect.width > viewportWidth + 1,
+      )
+      .map(({ element, rect }) => ({ element: describe(element), rect: toRect(rect) }));
+    const clipped = visibleElements.flatMap(({ element, rect }) => {
+      for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        const style = getComputedStyle(ancestor);
+        if (
+          ![style.overflow, style.overflowX].some((value) =>
+            ["hidden", "clip"].includes(value),
+          )
+        ) {
+          continue;
+        }
+        const ancestorRect = ancestor.getBoundingClientRect();
+        if (ancestorRect.left - rect.left > 1 || rect.right - ancestorRect.right > 1) {
+          return [{
+            element: describe(element),
+            ancestor: describe(ancestor),
+            rect: toRect(rect),
+            ancestorRect: toRect(ancestorRect),
+            overflow: style.overflow,
+            overflowX: style.overflowX,
+          }];
+        }
+      }
+      return [];
+    });
+    const mainBlocks = [
+      ".profile-catalog",
+      ".profile-search",
+      ".profile-search-layout",
+      ".profile-filter-sidebar",
+      ".profile-search-results",
+      ".profile-grid",
+      ".profile-catalog-footer",
+    ].flatMap((selector) => {
+      const element = document.querySelector(selector);
+      if (!element) return [];
+      const rect = element.getBoundingClientRect();
+      return [{ selector, rect: toRect(rect) }];
+    });
+
+    return {
+      viewportWidth,
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      offenders,
+      clipped,
+      mainBlocks,
+    };
+  });
+
+  expect(geometry.offenders, JSON.stringify(geometry, null, 2)).toEqual([]);
+  expect(geometry.clipped, JSON.stringify(geometry, null, 2)).toEqual([]);
+  expect(geometry.scrollWidth, JSON.stringify(geometry, null, 2)).toBeLessThanOrEqual(
+    geometry.clientWidth + 1,
   );
+  for (const block of geometry.mainBlocks) {
+    expect(block.rect.left, JSON.stringify(geometry, null, 2)).toBeGreaterThanOrEqual(-1);
+    expect(block.rect.right, JSON.stringify(geometry, null, 2)).toBeLessThanOrEqual(
+      geometry.viewportWidth + 1,
+    );
+    expect(block.rect.width, JSON.stringify(geometry, null, 2)).toBeLessThanOrEqual(
+      geometry.viewportWidth + 1,
+    );
+  }
 }
 
 test.beforeEach(async ({ request }) => {
@@ -74,12 +156,12 @@ test("profiles catalog stays within the viewport across supported widths", async
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/perfiles");
     await expect(page.getByRole("heading", { name: "Encuentra a la persona indicada." })).toBeVisible();
-    await expectNoHorizontalOverflow(page);
+    await expectContainedProfileCatalog(page);
 
     if (width === 390) {
       await page.getByRole("button", { name: /^Filtros/ }).click();
       await expect(page.getByRole("dialog", { name: "Filtros" })).toBeVisible();
-      await expectNoHorizontalOverflow(page);
+      await expectContainedProfileCatalog(page);
       await page.getByRole("button", { name: "Cerrar filtros" }).click();
     }
   }
