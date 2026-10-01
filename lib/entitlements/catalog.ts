@@ -252,6 +252,16 @@ export const ENTITLEMENT_DEFINITIONS = {
       pro_plus: { allowance: 1000, unit: "AI Credits", fairUse: true },
     },
   }),
+  "writer.setup_payoff": define({
+    key: "writer.setup_payoff",
+    name: "Setup / Payoff",
+    description: "Detecta y revisa relaciones narrativas entre preparaciones y resoluciones.",
+    minimumPlan: "free",
+    upgradeTitle: "Setup / Payoff en Writer",
+    upgradeDescription:
+      "La función queda preparada para Entitlements sin activar todavía un paywall comercial.",
+    values: { free: { access: true } },
+  }),
   "production.assistant": productionTool(
     "production.assistant",
     "Production Assistant"
