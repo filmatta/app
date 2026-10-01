@@ -262,6 +262,16 @@ export const ENTITLEMENT_DEFINITIONS = {
       "La función queda preparada para Entitlements sin activar todavía un paywall comercial.",
     values: { free: { access: true } },
   }),
+  "writer.guided_writing": define({
+    key: "writer.guided_writing",
+    name: "Guided Writing",
+    description: "Acompañamiento editorial contextual para pensar decisiones del guion sin escribirlo por el usuario.",
+    minimumPlan: "free",
+    upgradeTitle: "Guided Writing en Writer",
+    upgradeDescription:
+      "La función queda preparada para Entitlements sin activar todavía un paywall comercial.",
+    values: { free: { access: true } },
+  }),
   "production.assistant": productionTool(
     "production.assistant",
     "Production Assistant"
