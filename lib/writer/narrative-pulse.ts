@@ -1,0 +1,123 @@
+import type { WriterDocument } from "./document.ts";
+import { deriveWriterSceneSources, writerSceneCanonicalSource, type WriterSceneSource } from "./script-assistant.ts";
+
+export const WRITER_NARRATIVE_PULSE_VERSION = "narrative-pulse-v1" as const;
+export const WRITER_NARRATIVE_PULSE_MODEL = "gpt-5.6-terra" as const;
+export const WRITER_NARRATIVE_PULSE_MIN_SCENES = 4;
+
+export type WriterPulseSignal = "conflict" | "change" | "pressure" | "turn" | "risk" | "revelation" | "consequence" | "activity";
+export type WriterPulseZoneType = "stable" | "build" | "release" | "peak";
+export type WriterPulseMilestoneType = "inciting_incident" | "first_turning_point" | "midpoint" | "crisis" | "climax" | "resolution" | "custom";
+export type WriterPulseMilestoneStatus = "suggested" | "confirmed" | "manual" | "dismissed" | "needs_review";
+
+export type WriterPulsePointCandidate = { sceneId: string; intensity: number; signals: WriterPulseSignal[]; note: string };
+export type WriterPulseMilestoneCandidate = { sceneId: string; type: Exclude<WriterPulseMilestoneType, "custom">; label: string; explanation: string };
+export type WriterPulseZoneCandidate = { startSceneId: string; endSceneId: string; type: WriterPulseZoneType; note: string };
+export type WriterNarrativePulsePayload = { scenes: WriterPulsePointCandidate[]; milestones: WriterPulseMilestoneCandidate[]; zones: WriterPulseZoneCandidate[] };
+
+export type WriterPulseAnalysis = { id: string; sourceHash: string; analysisVersion: string; model: string; status: "analyzing" | "fresh" | "error" | "uncertain"; errorCode: string | null; updatedAt: string } | null;
+export type WriterPulsePoint = WriterPulsePointCandidate & { id: string; analysisId: string };
+export type WriterPulseMilestone = {
+  id: string; scriptId: string; sceneId: string; type: WriterPulseMilestoneType; label: string; explanation: string | null;
+  status: WriterPulseMilestoneStatus; source: "ai" | "user"; sourceHash: string | null; fingerprint: string; movedByUser: boolean; updatedAt: string;
+};
+export type WriterPulseZone = WriterPulseZoneCandidate & { id: string; analysisId: string };
+export type WriterNarrativePulseState = { analysis: WriterPulseAnalysis; points: WriterPulsePoint[]; milestones: WriterPulseMilestone[]; zones: WriterPulseZone[]; currentSourceHash: string | null };
+
+export type WriterPulseContext = {
+  scenes: Array<{ sceneId: string; sceneNumber: number; heading: string; characters: string[]; summary: string; setupPayoff: string[]; changes: string[] }>;
+};
+
+export async function writerNarrativePulseSourceHash(document: WriterDocument) {
+  const canonical = deriveWriterSceneSources(document).map(writerSceneCanonicalSource).join("\n");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+export function buildWriterPulseContext(
+  scenes: WriterSceneSource[],
+  options: { setupPayoff?: ReadonlyArray<{ sceneId: string; label: string; status: string }>; changes?: ReadonlyArray<{ sceneId: string; change: string }> } = {},
+): WriterPulseContext {
+  if (scenes.length > 160) throw new Error("narrative_pulse_too_many_scenes");
+  const relationships = groupByScene(options.setupPayoff ?? [], (item) => item.sceneId, (item) => item.label);
+  const changes = groupByScene(options.changes ?? [], (item) => item.sceneId, (item) => item.change);
+  return {
+    scenes: scenes.map((scene, index) => ({
+      sceneId: scene.sceneId,
+      sceneNumber: index + 1,
+      heading: cleanInline(scene.heading, 180),
+      characters: [...new Set(scene.blocks.filter((block) => block.kind === "character").map((block) => cleanInline(block.text, 64)).filter(Boolean))].slice(0, 12),
+      summary: cleanInline(scene.blocks.filter((block) => block.kind !== "sceneHeading").map((block) => block.text).join(" "), 700),
+      setupPayoff: (relationships.get(scene.sceneId) ?? []).slice(0, 8),
+      changes: (changes.get(scene.sceneId) ?? []).slice(0, 4),
+    })),
+  };
+}
+
+export function writerPulseProviderInput(context: WriterPulseContext) { return JSON.stringify(context); }
+
+export function validateWriterPulseOutput(value: unknown, scenes: WriterSceneSource[]): WriterNarrativePulsePayload {
+  if (!isRecord(value) || !hasExactKeys(value, ["scenes", "milestones", "zones"]) || !Array.isArray(value.scenes) || !Array.isArray(value.milestones) || !Array.isArray(value.zones)) {
+    throw new Error("narrative_pulse_invalid_schema");
+  }
+  if (value.scenes.length !== scenes.length || value.milestones.length > 18 || value.zones.length > 24) throw new Error("narrative_pulse_invalid_count");
+  const validSceneIds = new Set(scenes.map((scene) => scene.sceneId));
+  const sceneOrder = new Map(scenes.map((scene, index) => [scene.sceneId, index]));
+  const seen = new Set<string>();
+  const points = value.scenes.map((entry) => {
+    if (!isRecord(entry) || !hasExactKeys(entry, ["sceneId", "intensity", "signals", "note"]) || !validSceneIds.has(String(entry.sceneId)) || seen.has(String(entry.sceneId))) throw new Error("narrative_pulse_invalid_scene");
+    if (!Number.isInteger(entry.intensity) || Number(entry.intensity) < 0 || Number(entry.intensity) > 100 || !Array.isArray(entry.signals) || entry.signals.length > 5) throw new Error("narrative_pulse_invalid_point");
+    const signals = [...new Set(entry.signals.map(String))];
+    if (signals.some((signal) => !PULSE_SIGNALS.includes(signal as WriterPulseSignal))) throw new Error("narrative_pulse_invalid_signal");
+    seen.add(String(entry.sceneId));
+    return { sceneId: String(entry.sceneId), intensity: Number(entry.intensity), signals: signals as WriterPulseSignal[], note: cleanText(entry.note, 360) };
+  });
+  const milestones = value.milestones.map((entry) => {
+    if (!isRecord(entry) || !hasExactKeys(entry, ["sceneId", "type", "label", "explanation"]) || !validSceneIds.has(String(entry.sceneId)) || !STANDARD_MILESTONES.includes(entry.type as never)) throw new Error("narrative_pulse_invalid_milestone");
+    return { sceneId: String(entry.sceneId), type: entry.type as WriterPulseMilestoneCandidate["type"], label: cleanText(entry.label, 100), explanation: cleanText(entry.explanation, 360) };
+  });
+  const zones = value.zones.map((entry) => {
+    if (!isRecord(entry) || !hasExactKeys(entry, ["startSceneId", "endSceneId", "type", "note"]) || !validSceneIds.has(String(entry.startSceneId)) || !validSceneIds.has(String(entry.endSceneId)) || !ZONE_TYPES.includes(entry.type as never)) throw new Error("narrative_pulse_invalid_zone");
+    if ((sceneOrder.get(String(entry.startSceneId)) ?? 0) > (sceneOrder.get(String(entry.endSceneId)) ?? 0)) throw new Error("narrative_pulse_invalid_zone_order");
+    return { startSceneId: String(entry.startSceneId), endSceneId: String(entry.endSceneId), type: entry.type as WriterPulseZoneType, note: cleanText(entry.note, 360) };
+  });
+  return { scenes: points, milestones, zones };
+}
+
+export function writerPulseOutputSchema() {
+  return { type: "object", additionalProperties: false, required: ["scenes", "milestones", "zones"], properties: {
+    scenes: { type: "array", maxItems: 160, items: { type: "object", additionalProperties: false, required: ["sceneId", "intensity", "signals", "note"], properties: {
+      sceneId: { type: "string" }, intensity: { type: "integer", minimum: 0, maximum: 100 }, signals: { type: "array", maxItems: 5, items: { type: "string", enum: PULSE_SIGNALS } }, note: { type: "string", maxLength: 360 },
+    } } },
+    milestones: { type: "array", maxItems: 18, items: { type: "object", additionalProperties: false, required: ["sceneId", "type", "label", "explanation"], properties: {
+      sceneId: { type: "string" }, type: { type: "string", enum: STANDARD_MILESTONES }, label: { type: "string", maxLength: 100 }, explanation: { type: "string", maxLength: 360 },
+    } } },
+    zones: { type: "array", maxItems: 24, items: { type: "object", additionalProperties: false, required: ["startSceneId", "endSceneId", "type", "note"], properties: {
+      startSceneId: { type: "string" }, endSceneId: { type: "string" }, type: { type: "string", enum: ZONE_TYPES }, note: { type: "string", maxLength: 360 },
+    } } },
+  } } as const;
+}
+
+export function writerPulsePath(points: ReadonlyArray<{ intensity: number }>, width: number, height: number, inset = 20) {
+  if (!points.length) return "";
+  const span = Math.max(1, points.length - 1);
+  return points.map((point, index) => {
+    const x = inset + (index / span) * Math.max(0, width - inset * 2);
+    const y = inset + (1 - point.intensity / 100) * Math.max(0, height - inset * 2);
+    return `${index ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" ");
+}
+
+export function writerPulseMilestoneLabel(type: WriterPulseMilestoneType) {
+  return ({ inciting_incident: "Incidente incitador", first_turning_point: "Primer giro", midpoint: "Midpoint", crisis: "Crisis / punto bajo", climax: "Clímax", resolution: "Resolución", custom: "Hito personalizado" } as const)[type];
+}
+
+const PULSE_SIGNALS: WriterPulseSignal[] = ["conflict", "change", "pressure", "turn", "risk", "revelation", "consequence", "activity"];
+const ZONE_TYPES: WriterPulseZoneType[] = ["stable", "build", "release", "peak"];
+const STANDARD_MILESTONES: Array<Exclude<WriterPulseMilestoneType, "custom">> = ["inciting_incident", "first_turning_point", "midpoint", "crisis", "climax", "resolution"];
+
+function cleanText(value: unknown, limit: number) { if (typeof value !== "string") throw new Error("narrative_pulse_invalid_text"); const text = value.trim().replace(/\s+/gu, " "); if (!text || text.length > limit) throw new Error("narrative_pulse_invalid_text"); return text; }
+function cleanInline(value: string, limit: number) { return value.trim().replace(/\s+/gu, " ").slice(0, limit); }
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]) { const actual = Object.keys(value).sort(); return actual.length === keys.length && [...keys].sort().every((key, index) => key === actual[index]); }
+function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
+function groupByScene<T>(items: ReadonlyArray<T>, scene: (item: T) => string, value: (item: T) => string) { const result = new Map<string, string[]>(); for (const item of items) result.set(scene(item), [...(result.get(scene(item)) ?? []), cleanInline(value(item), 180)]); return result; }

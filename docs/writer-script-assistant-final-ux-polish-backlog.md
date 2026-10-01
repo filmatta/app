@@ -7,5 +7,7 @@ Esta lista registra decisiones deliberadamente aplazadas. No cambia el comportam
 - **Navegación transversal:** evaluar una indicación más explícita de “volver a la relación” cuando se navega desde Setup / Payoff en móvil. V1 conserva la selección al reabrir Observaciones y reutiliza el historial del editor.
 - **Guided Writing · sesiones:** V1 recupera la conversación más reciente por documento/scope/escena. Evaluar más adelante si realmente aporta valor exponer “Nueva conversación” o un historial; evitar añadir gestión de chats sin evidencia.
 - **Acciones redundantes:** revisar conjuntamente `Analizar escena`, `Analizar Setup / Payoff` y `Pensarlo juntos` para que sus diferencias sigan siendo evidentes cuando el ecosistema del Assistant crezca.
-- **Timeline V1.1:** estudiar marcadores discretos únicamente después de validar densidad y legibilidad; Setup / Payoff V1 no rediseña Timeline.
+- **Narrative Pulse · densidad de hitos:** V1 incorpora marcadores discretos en Timeline. Validar con guiones reales cuándo agrupar labels coincidentes sin convertir la pista en un resumen saturado.
+- **Narrative Pulse · preferencia de vista:** Timeline sigue siendo el default. Evaluar si recordar Timeline/Pulse aporta valor y, en ese caso, si la preferencia debe sincronizarse entre dispositivos.
+- **Narrative Pulse · zonas superpuestas:** V1 conserva todas las zonas estructuradas en la lista accesible. Una futura iteración puede definir cómo visualizar solapamientos complejos sin implicar una fórmula dramática.
 - **Cross-device de decisiones de personajes:** algunas decisiones históricas ajenas a Setup / Payoff todavía pueden depender del mecanismo local existente.

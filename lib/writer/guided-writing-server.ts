@@ -24,6 +24,7 @@ import {
 import { mapAnalysisRow } from "./script-assistant-server";
 import { WRITER_SCRIPT_ASSISTANT_VERSION, deriveWriterSceneSources, type WriterSceneAnalysisRecord } from "./script-assistant";
 import { loadSetupPayoffState } from "./setup-payoff-server";
+import { loadWriterNarrativePulseState } from "./narrative-pulse-server";
 import { writerSetupPayoffSourceHash } from "./setup-payoff";
 
 const MAX_OUTPUT_TOKENS = 2_200;
@@ -98,6 +99,8 @@ export async function executeWriterGuidedWriting(
     dismissals: support.dismissals,
     elements: support.elements,
     links: support.links,
+    pulseMilestones: support.pulseMilestones,
+    pulseZones: support.pulseZones,
   });
   const providerInput = writerGuidedWritingProviderInput(context, existingConversation.messages, question, selection);
   const maximumCharacters = request.scope === "scene" ? MAX_SCENE_CONTEXT_CHARACTERS : MAX_DOCUMENT_CONTEXT_CHARACTERS;
@@ -215,7 +218,7 @@ export async function loadGuidedWritingConversation(
 }
 
 async function loadGuidedWritingSupport(db: Database, userId: string, scriptId: string) {
-  const [analyses, overrides, dismissals, setupPayoff] = await Promise.all([
+  const [analyses, overrides, dismissals, setupPayoff, pulse] = await Promise.all([
     db.from("writer_scene_analyses")
       .select("id,script_id,scene_id,source_hash,analysis_version,model,status,analysis_payload,error_code,updated_at")
       .eq("owner_id", userId).eq("script_id", scriptId).eq("analysis_version", WRITER_SCRIPT_ASSISTANT_VERSION)
@@ -225,6 +228,7 @@ async function loadGuidedWritingSupport(db: Database, userId: string, scriptId: 
     db.from("writer_scene_observation_dismissals").select("scene_id,source_hash,analysis_version,observation_id")
       .eq("owner_id", userId).eq("script_id", scriptId),
     loadSetupPayoffState(db, userId, scriptId),
+    loadWriterNarrativePulseState(db, userId, scriptId),
   ]);
   if (analyses.error || overrides.error || dismissals.error) throw new WriterGuidedWritingError("storage", "No pudimos construir el contexto narrativo.", 500);
   const latest = new Map<string, Record<string, unknown>>();
@@ -240,6 +244,8 @@ async function loadGuidedWritingSupport(db: Database, userId: string, scriptId: 
     })),
     elements: setupPayoff.elements,
     links: setupPayoff.links,
+    pulseMilestones: pulse.milestones,
+    pulseZones: pulse.zones,
   };
 }
 

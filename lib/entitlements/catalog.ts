@@ -272,6 +272,16 @@ export const ENTITLEMENT_DEFINITIONS = {
       "La función queda preparada para Entitlements sin activar todavía un paywall comercial.",
     values: { free: { access: true } },
   }),
+  "writer.narrative_pulse": define({
+    key: "writer.narrative_pulse",
+    name: "Narrative Pulse",
+    description: "Vista descriptiva de intensidad narrativa, zonas e hitos del guion.",
+    minimumPlan: "free",
+    upgradeTitle: "Narrative Pulse en Writer",
+    upgradeDescription:
+      "La función queda preparada para Entitlements sin activar todavía un paywall comercial.",
+    values: { free: { access: true } },
+  }),
   "production.assistant": productionTool(
     "production.assistant",
     "Production Assistant"

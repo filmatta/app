@@ -230,6 +230,7 @@ export default function WriterWorkspace({
   const [timelineMounted, setTimelineMounted] = useState(false);
   const [timelineRefreshToken, setTimelineRefreshToken] = useState(0);
   const [timelineRequestedScene, setTimelineRequestedScene] = useState<string | null>(null);
+  const [timelineRequestedView, setTimelineRequestedView] = useState<"timeline" | "pulse" | null>(null);
   const [autocomplete, setAutocomplete] = useState<WriterAutocompleteState | null>(null);
   const [conflictBusy, setConflictBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -1335,7 +1336,7 @@ export default function WriterWorkspace({
     router.push(`/writer/${data.script.id}`);
   }
 
-  function openTimeline(sceneId: string | null = null) {
+  function openTimeline(sceneId: string | null = null, view: "timeline" | "pulse" | null = null) {
     setExportMenu(false);
     setContextMenu(null);
     setInsertState(null);
@@ -1343,6 +1344,7 @@ export default function WriterWorkspace({
     setMobileNavigateOpen(false);
     setMobileMoreOpen(false);
     setTimelineRequestedScene(sceneId);
+    setTimelineRequestedView(view);
     setTimelineMounted(true);
     timelineRequestedRevisionRef.current = confirmedTimelineRevisionRef.current;
     setTimelineRefreshToken((value) => value + 1);
@@ -1563,6 +1565,11 @@ export default function WriterWorkspace({
 
   function viewGuidedReference(reference: WriterGuidedReference) {
     if (!editor) return;
+    if (reference.type === "pulse") {
+      setObservationsOpen(false);
+      openTimeline(reference.sceneId, "pulse");
+      return;
+    }
     if (reference.type === "setup" || reference.type === "payoff") {
       const element = setupPayoff.elements.find((item) => item.id === reference.targetId);
       if (!element) {
@@ -2230,6 +2237,7 @@ export default function WriterWorkspace({
             confirmedRevision={saveState.revision}
             active={timelineOpen}
             requestedSceneId={timelineRequestedScene}
+            requestedView={timelineRequestedView}
             refreshToken={timelineRefreshToken}
             activeSceneId={activeScene}
             sceneNicknames={structuralMetadata.sceneNicknames}
@@ -2324,6 +2332,7 @@ export default function WriterWorkspace({
             feedback={setupPayoff.feedback}
             onAnalyze={() => void analyzeSetupPayoff()}
             onView={viewSetupPayoffElement}
+            onViewPulse={(sceneId) => { setObservationsOpen(false); openTimeline(sceneId, "pulse"); }}
             onElementStatus={(element, status) => void setupPayoff.setElementStatus(element.id, status)}
             onLinkStatus={(link, status) => void setupPayoff.setLinkStatus(link.id, status)}
             onCreateElement={setupPayoff.createElement}
