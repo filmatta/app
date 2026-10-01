@@ -1,7 +1,15 @@
+.profiles-page {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .profile-catalog {
   width: 100%;
   min-width: 0;
   max-width: 1600px;
+  box-sizing: border-box;
   padding-block: 48px 32px;
 }
 
@@ -295,6 +303,13 @@
 }
 
 .profile-search-results {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.profile-search-results .profile-grid {
+  width: 100%;
   min-width: 0;
   max-width: 100%;
 }
