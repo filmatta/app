@@ -106,7 +106,7 @@ test("context menu preserves selection, uses the real clipboard, and fails close
   menu = await rightClick(page, action);
   await menu.getByRole("menuitem", { name: /^Cortar/ }).click();
   await expect(action).toHaveText(beforeFailedCut ?? "");
-  await expect(page.getByRole("status")).toContainText("el texto no se eliminó");
+  await expect(page.locator(".writer-editor-feedback")).toContainText("el texto no se eliminó");
 
   await action.click();
   await page.keyboard.press("Shift+F10");

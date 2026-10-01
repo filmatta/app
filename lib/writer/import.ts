@@ -321,10 +321,11 @@ function classifyPlainTextLine(input: {
 
   const short = [...trimmed].length <= 42;
   const uppercase = hasLetters(trimmed) && trimmed === normalizedUpper;
+  const hasTerminalSentencePunctuation = /[.!?…,:;]$/u.test(trimmed);
   const nextCanBeDialogue = Boolean(nextText)
     && !SCENE_HEADING.test(nextText)
     && !TRANSITIONS.has(nextText.normalize("NFKC").toLocaleUpperCase("es-MX"));
-  if (short && uppercase && previousBlank && nextCanBeDialogue) {
+  if (short && uppercase && !hasTerminalSentencePunctuation && previousBlank && nextCanBeDialogue) {
     return {
       proposedKind: "character",
       confidence: "medium",

@@ -366,7 +366,7 @@ test("assisted import shows immediate indeterminate progress, blocks duplicates,
   await expect(dialog.getByRole("button", { name: /Detener|Cancelar procesamiento/ })).toHaveCount(0);
 });
 
-test("observations aggregate format review in one detail and desktop workspace spans Timeline below both columns", async ({ page }) => {
+test("observations aggregate format review while Timeline stays below center and the right sidebar stays full-height", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
       configurable: true,
@@ -446,12 +446,17 @@ test("observations aggregate format review in one detail and desktop workspace s
 
   const timeline = page.locator(".writer-timeline-panel");
   await expect(timeline).toBeVisible();
-  const [timelineBox, observationsBox] = await Promise.all([timeline.boundingBox(), observations.boundingBox()]);
+  const workspace = page.locator(".writer-workspace");
+  const [timelineBox, observationsBox, workspaceBox] = await Promise.all([
+    timeline.boundingBox(), observations.boundingBox(), workspace.boundingBox(),
+  ]);
   expect(timelineBox).not.toBeNull();
   expect(observationsBox).not.toBeNull();
+  expect(workspaceBox).not.toBeNull();
   expect(timelineBox!.x).toBeLessThan(observationsBox!.x);
-  expect(timelineBox!.x + timelineBox!.width).toBeGreaterThanOrEqual(observationsBox!.x + observationsBox!.width - 1);
-  expect(timelineBox!.y).toBeGreaterThanOrEqual(observationsBox!.y + observationsBox!.height - 1);
+  expect(timelineBox!.x + timelineBox!.width).toBeLessThanOrEqual(observationsBox!.x + 1);
+  expect(Math.abs(observationsBox!.y + observationsBox!.height - workspaceBox!.y - workspaceBox!.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(timelineBox!.y + timelineBox!.height - workspaceBox!.y - workspaceBox!.height)).toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "Focus" }).click();
   await expect(observations).toBeHidden();

@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState, type RefObject } from "react";
 import { WRITER_NARRATIVE_PULSE_MIN_SCENES, writerPulseMilestoneLabel, writerPulsePath, type WriterPulseMilestone, type WriterPulseMilestoneType } from "@/lib/writer/narrative-pulse";
 import { useWriterNarrativePulse } from "@/lib/writer/narrative-pulse-client";
 import type { TimelineScene } from "@/lib/writer/timeline";
+import { SmartFeatureIndicator } from "./WriterSmartFormatting";
 
 const TYPES: WriterPulseMilestoneType[] = ["inciting_incident", "first_turning_point", "midpoint", "crisis", "climax", "resolution", "custom"];
 
-export default function WriterNarrativePulse({ scriptId, scenes, active, selectedSceneId, columnWidth, scrollRef, onSelectScene, onMilestonesChange }: {
-  scriptId: string; scenes: TimelineScene[]; active: boolean; selectedSceneId: string | null; columnWidth: number;
+export default function WriterNarrativePulse({ scriptId, scenes, active, analysisEnabled = true, selectedSceneId, columnWidth, scrollRef, onSelectScene, onMilestonesChange }: {
+  scriptId: string; scenes: TimelineScene[]; active: boolean; analysisEnabled?: boolean; selectedSceneId: string | null; columnWidth: number;
   scrollRef: RefObject<HTMLDivElement | null>; onSelectScene: (scene: TimelineScene) => void; onMilestonesChange?: (milestones: WriterPulseMilestone[]) => void;
 }) {
   const pulse = useWriterNarrativePulse({ scriptId, enabled: active });
@@ -59,7 +60,7 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, selecte
       <div><p className="timeline-eyebrow">Lectura descriptiva</p><h1>Intensidad narrativa</h1><p>Compara cambios dentro de este guion. No es una puntuación de calidad, ritmo ni estructura.</p></div>
       <div className="writer-pulse-actions">
         <button type="button" onClick={() => setExpanded((value) => !value)}>{expanded ? "Reducir" : "Expandir"}</button>
-        {pulse.analyzing ? <button type="button" onClick={pulse.cancel}>Cancelar</button> : <button type="button" disabled={!pulse.currentSourceHash || scenes.length < WRITER_NARRATIVE_PULSE_MIN_SCENES} onClick={() => void pulse.analyze()}>{pulse.analysis ? "Actualizar Narrative Pulse" : "Analizar Narrative Pulse"}</button>}
+        {pulse.analyzing ? <button type="button" onClick={pulse.cancel}>Cancelar</button> : <button type="button" disabled={!analysisEnabled || !pulse.currentSourceHash || scenes.length < WRITER_NARRATIVE_PULSE_MIN_SCENES} onClick={() => void pulse.analyze()}><SmartFeatureIndicator label={pulse.analysis ? "Actualizar Narrative Pulse" : "Analizar Narrative Pulse"} /></button>}
       </div>
     </section>
     {scenes.length < WRITER_NARRATIVE_PULSE_MIN_SCENES && <p className="writer-pulse-empty">Narrative Pulse necesita más escenas para producir una lectura útil.</p>}

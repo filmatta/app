@@ -64,6 +64,11 @@ import WriterSetupPayoff from "./WriterSetupPayoff";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
 import WriterTimelineView from "./WriterTimeline";
 import {
+  SmartFeatureIndicator,
+  WriterAutoFormatFlow,
+  WriterReadinessNotice,
+} from "./WriterSmartFormatting";
+import {
   WriterContextMenu,
   WriterInsertPanel,
   WRITER_KIND_LABELS,
@@ -73,6 +78,7 @@ import {
 import {
   currentWriterBlock,
   captureWriterSelectionTarget,
+  applyWriterAutoFormat,
   changeWriterBlockKind,
   findWriterBlockById,
   selectionSpansWriterBlocks,
@@ -94,6 +100,15 @@ import {
   writerAutocompleteSuggestions,
   type WriterAutocompleteSuggestion,
 } from "@/lib/writer/autocomplete";
+import {
+  assessWriterPaste,
+  canUseStructuredFeature,
+  createWriterAutoFormatPlan,
+  getWriterDocumentReadiness,
+  resolveWriterAutoFormatChanges,
+  type WriterAutoFormatPlan,
+  type WriterStructuredFeature,
+} from "@/lib/writer/smart-format";
 import {
   analyzeWriterCharacterObservations,
   deriveWriterKnownCharacterIdentities,
@@ -167,6 +182,11 @@ type WriterStructuralToast = {
   token: number;
 };
 
+type WriterPasteAssistState = {
+  step: "offer" | "consequence";
+  blockIds: string[];
+};
+
 const initialSaveState: WriterPersistenceState = {
   status: "cloud",
   revision: 1,
@@ -210,6 +230,9 @@ export default function WriterWorkspace({
   const [exportMenu, setExportMenu] = useState(false);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [pasteAssist, setPasteAssist] = useState<WriterPasteAssistState | null>(null);
+  const [autoFormatPlan, setAutoFormatPlan] = useState<WriterAutoFormatPlan | null>(null);
+  const [dismissedReadiness, setDismissedReadiness] = useState<Set<WriterStructuredFeature>>(() => new Set());
   const [observationsOpen, setObservationsOpen] = useState(true);
   const [panelLayout, setPanelLayout] = useState<WriterPanelLayout>(WRITER_PANEL_LAYOUT_DEFAULTS);
   const [observationsSection, setObservationsSection] = useState<WriterObservationsSection>("review");
@@ -425,13 +448,21 @@ export default function WriterWorkspace({
           view.dispatch(view.state.tr.insertText(text));
           return true;
         }
-        const blocks = text.split(/\r?\n/).map((line) =>
+        const assessment = assessWriterPaste(text);
+        const blockIds: string[] = [];
+        const blocks = text.split(/\r?\n/).map((line) => {
+          const id = crypto.randomUUID();
+          blockIds.push(id);
+          return (
           view.state.schema.nodes.screenplayBlock.create(
-            { id: crypto.randomUUID(), kind: "action" },
+            { id, kind: "action" },
             line ? view.state.schema.text(line) : undefined,
-          ),
-        );
+          ));
+        });
         view.dispatch(view.state.tr.replaceSelection(new Slice(Fragment.fromArray(blocks), 0, 0)).scrollIntoView());
+        if (assessment.qualifies) {
+          window.queueMicrotask(() => setPasteAssist({ step: "offer", blockIds }));
+        }
         return true;
       },
       handleDOMEvents: {
@@ -623,6 +654,7 @@ export default function WriterWorkspace({
   }, [editor]);
 
   const scenes = useMemo(() => deriveScenes(document), [document]);
+  const readiness = useMemo(() => getWriterDocumentReadiness(document), [document]);
   const sceneMetadata = useMemo(() => deriveWriterSceneMetadata(document), [document]);
   const knownCharacterIdentities = useMemo(() => {
     const retiredKeys = new Set(Object.entries(structuralMetadata.characterAliases)
@@ -1012,6 +1044,34 @@ export default function WriterWorkspace({
     return false;
   }, [clearSceneHighlight, editor, recordCurrentNavigation]);
 
+  const navigateToWriterReference = useCallback((reference: {
+    sceneId: string;
+    blockId?: string | null;
+    fromOffset?: number;
+    toOffset?: number;
+  }) => {
+    if (!editor) return false;
+    const target = findWriterBlockById(editor, reference.blockId ?? reference.sceneId)
+      ?? findWriterBlockById(editor, reference.sceneId);
+    if (!target) return false;
+    recordCurrentNavigation();
+    const start = target.position + 1 + Math.max(0, reference.fromOffset ?? 0);
+    const maximum = target.position + 1 + target.text.length;
+    const from = Math.min(start, maximum);
+    const to = Math.min(maximum, Math.max(from, target.position + 1 + (reference.toOffset ?? reference.fromOffset ?? 0)));
+    editor.view.dispatch(editor.state.tr
+      .setSelection(TextSelection.create(editor.state.doc, from, to))
+      .scrollIntoView());
+    editor.view.focus();
+    setActiveScene(reference.sceneId);
+    setMobileSidebar(null);
+    clearSceneHighlight();
+    setWriterSceneHighlight(editor, target.id);
+    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
+    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
+    return true;
+  }, [clearSceneHighlight, editor, recordCurrentNavigation]);
+
   const navigateBack = useCallback(() => {
     if (!editor) return;
     while (navigationHistoryRef.current.length) {
@@ -1176,6 +1236,8 @@ export default function WriterWorkspace({
     const closeSurfaceOrFocus = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (importOpen) return;
+      if (autoFormatPlan) return setAutoFormatPlan(null);
+      if (pasteAssist) return setPasteAssist(null);
       if (contextMenu) return setContextMenu(null);
       if (insertState) return setInsertState(null);
       if (mobileMoreOpen) return setMobileMoreOpen(false);
@@ -1201,7 +1263,7 @@ export default function WriterWorkspace({
     };
     window.addEventListener("keydown", closeSurfaceOrFocus);
     return () => window.removeEventListener("keydown", closeSurfaceOrFocus);
-  }, [contextMenu, exportMenu, feedback, focusMode, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pdfExportOpen, restoreTimelineAfterFocus, timelineOpen]);
+  }, [autoFormatPlan, contextMenu, exportMenu, feedback, focusMode, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pasteAssist, pdfExportOpen, restoreTimelineAfterFocus, timelineOpen]);
 
   useEffect(() => {
     if (!editor || !ready || deepLinkHandledRef.current) return;
@@ -1544,38 +1606,19 @@ export default function WriterWorkspace({
   }
 
   function viewNarrativeObservation(observation: WriterNarrativeObservation) {
-    if (!editor || !activeScene) return;
+    if (!activeScene) return;
     const blockId = observation.evidence[0]?.blockId ?? activeScene;
-    const target = findWriterBlockById(editor, blockId);
-    if (!target) {
+    if (!navigateToWriterReference({ sceneId: activeScene, blockId })) {
       setFeedback("La evidencia ya no existe en la escena actual.");
       return;
     }
     setSelectedAssistantObservationId(observation.id);
-    recordCurrentNavigation();
-    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(target.position + 1))).scrollIntoView());
-    clearSceneHighlight();
-    setWriterSceneHighlight(editor, blockId);
-    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
-    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
   }
 
   function viewSetupPayoffElement(element: WriterNarrativeElement) {
-    if (!editor) return;
-    const target = findWriterBlockById(editor, element.blockId ?? element.sceneId)
-      ?? findWriterBlockById(editor, element.sceneId);
-    if (!target) {
+    if (!navigateToWriterReference({ sceneId: element.sceneId, blockId: element.blockId })) {
       setFeedback("La escena vinculada ya no existe. La relación se conserva para revisión.");
-      return;
     }
-    recordCurrentNavigation();
-    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, target.position + 1)).scrollIntoView());
-    editor.view.focus();
-    setActiveScene(element.sceneId);
-    clearSceneHighlight();
-    setWriterSceneHighlight(editor, target.id);
-    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
-    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
   }
 
   function viewGuidedReference(reference: WriterGuidedReference) {
@@ -1595,25 +1638,15 @@ export default function WriterWorkspace({
       return;
     }
     if (reference.type === "scene") {
-      if (!navigateToScene(reference.sceneId, true, true)) setFeedback("La escena referenciada ya no existe.");
+      if (!navigateToWriterReference({ sceneId: reference.sceneId })) setFeedback("La escena referenciada ya no existe.");
     } else {
-      const target = findWriterBlockById(editor, reference.blockId ?? reference.sceneId)
-        ?? findWriterBlockById(editor, reference.sceneId);
-      if (!target) {
+      if (!navigateToWriterReference({ sceneId: reference.sceneId, blockId: reference.blockId })) {
         setFeedback("La evidencia referenciada ya no existe.");
         return;
       }
-      recordCurrentNavigation();
-      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, target.position + 1)).scrollIntoView());
-      editor.view.focus();
-      setActiveScene(reference.sceneId);
       setObservationsSection("assistant");
       if (reference.type === "observation") setSelectedAssistantObservationId(reference.targetId);
-      clearSceneHighlight();
-      setWriterSceneHighlight(editor, target.id);
-      highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
     }
-    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
   }
 
   function viewCharacterObservation(observation: WriterCharacterObservation) {
@@ -1624,18 +1657,13 @@ export default function WriterWorkspace({
       setAnalysisEpoch((value) => value + 1);
       return;
     }
-    recordCurrentNavigation();
-    editor.view.dispatch(
-      editor.state.tr
-        .setSelection(TextSelection.create(editor.state.doc, target.position + 1 + observation.start, target.position + 1 + observation.end))
-        .scrollIntoView(),
-    );
-    editor.view.focus();
-    setActiveScene(findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId));
-    clearSceneHighlight();
-    setWriterSceneHighlight(editor, observation.blockId);
-    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
-    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
+    const sceneId = findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId);
+    if (!sceneId || !navigateToWriterReference({
+      sceneId,
+      blockId: observation.blockId,
+      fromOffset: observation.start,
+      toOffset: observation.end,
+    })) setFeedback("La evidencia ya no pertenece a una escena disponible.");
   }
 
   function viewFormatObservation(observation: WriterFormatObservation) {
@@ -1806,6 +1834,48 @@ export default function WriterWorkspace({
     showStructuralUndo("Personaje renombrado");
   }
 
+  function startAutoFormat(scope: "document" | "partial" | "paste", blockIds?: readonly string[]) {
+    if (!editor) return;
+    if (readiness.state === "EMPTY" && scope !== "paste") {
+      setFeedback("Añade contenido antes de aplicar Formato Automático.");
+      return;
+    }
+    try {
+      const ids = scope === "partial" ? readiness.suspiciousBlockIds : blockIds;
+      setAutoFormatPlan(createWriterAutoFormatPlan(
+        editor.getJSON() as unknown as WriterDocument,
+        { scope, ...(ids ? { blockIds: ids } : {}) },
+      ));
+      setPasteAssist(null);
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No se pudo detectar la estructura del texto.");
+    }
+  }
+
+  function applyAutoFormatPlan(choices: Readonly<Record<string, ScreenplayKind>>, reviewAll: boolean) {
+    if (!editor || !autoFormatPlan) return;
+    const mutations = resolveWriterAutoFormatChanges(autoFormatPlan, choices, reviewAll);
+    const result = applyWriterAutoFormat(editor, mutations);
+    setAutoFormatPlan(null);
+    setDismissedReadiness(new Set());
+    if (result === "applied") {
+      setFeedback("Formato aplicado. El texto se conservó y la estructura de Writer se actualizó.");
+      showStructuralUndo("Formato Automático aplicado");
+    } else {
+      setFeedback("Este documento ya parece estar correctamente formateado como guion.");
+    }
+  }
+
+  function readinessNotice(feature: WriterStructuredFeature) {
+    if (dismissedReadiness.has(feature)) return null;
+    return <WriterReadinessNotice
+      feature={feature}
+      readiness={readiness}
+      onFormat={(scope) => startAutoFormat(scope)}
+      onDismiss={() => setDismissedReadiness((current) => new Set(current).add(feature))}
+    />;
+  }
+
   async function enterFocus() {
     timelineBeforeFocusRef.current = timelineOpenRef.current;
     observationsBeforeFocusRef.current = observationsOpen;
@@ -1954,6 +2024,7 @@ export default function WriterWorkspace({
           <div className="writer-mobile-sheet writer-mobile-more-sheet" role="dialog" aria-label="Más acciones de Writer">
             <div className="writer-mobile-sheet-head"><strong>Writer</strong><button type="button" onClick={() => setMobileMoreOpen(false)}>Cerrar</button></div>
             <button type="button" onClick={openImportFlow}>Importar borrador</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document"); }}><SmartFeatureIndicator label="FORMATO AUTOMÁTICO" /></button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setPdfExportOpen(true); }}>Exportar PDF</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); downloadBackup("json"); }}>Exportar JSON</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); downloadBackup("fdx"); }}>Exportar FDX</button>
@@ -2113,6 +2184,7 @@ export default function WriterWorkspace({
         <WriterToolbar
           editor={editor}
           words={words}
+          onAutoFormat={() => startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document")}
           onWriterActions={openTouchWriterActions}
           onInsert={(next) => {
             setExportMenu(false);
@@ -2128,6 +2200,14 @@ export default function WriterWorkspace({
         <div className="writer-editor-notices">
           {!focusMode && navigationDepth > 0 && <button className="writer-navigation-back" type="button" onClick={navigateBack}>← Volver</button>}
           {feedback && <div className="writer-editor-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback(null)}>Cerrar</button></div>}
+          {pasteAssist?.step === "offer" && <aside className="writer-paste-assist" role="status">
+            <div><strong><span aria-hidden="true">✦</span> ¿Quieres aplicar Formato Automático?</strong><p>Podemos identificar escenas, acciones, personajes, diálogos y otros elementos del guion sin cambiar lo que escribiste.</p></div>
+            <div><button type="button" onClick={() => startAutoFormat("paste", pasteAssist.blockIds)}>Aplicar formato automático</button><button type="button" onClick={() => setPasteAssist((current) => current ? { ...current, step: "consequence" } : null)}>No, gracias</button></div>
+          </aside>}
+          {pasteAssist?.step === "consequence" && <aside className="writer-paste-assist is-consequence" role="status">
+            <div><strong>Continuar sin estructura limita el contexto disponible.</strong><p>Sin Formato Automático, FILMATTA no podrá identificar correctamente escenas, personajes, acciones, diálogos y otros elementos de este texto. Esto puede limitar Revisión, O-O-C, Setup/Payoff, Guided Writing, Timeline y Narrative Pulse.</p></div>
+            <div><button type="button" onClick={() => startAutoFormat("paste", pasteAssist.blockIds)}>Aplicar formato automático</button><button type="button" onClick={() => setPasteAssist(null)}>Continuar sin formato</button></div>
+          </aside>}
         </div>
         <div
           ref={paperRef}
@@ -2252,6 +2332,9 @@ export default function WriterWorkspace({
             active={timelineOpen}
             requestedSceneId={timelineRequestedScene}
             requestedView={timelineRequestedView}
+            timelineReadinessNotice={readinessNotice("timeline")}
+            pulseReadinessNotice={readinessNotice("pulse")}
+            pulseAvailable={canUseStructuredFeature(readiness, "pulse").available}
             refreshToken={timelineRefreshToken}
             activeSceneId={activeScene}
             sceneNicknames={structuralMetadata.sceneNicknames}
@@ -2263,7 +2346,7 @@ export default function WriterWorkspace({
                 return;
               }
               const target = findWriterBlockById(editor, sceneId);
-              if (!target || target.kind !== "sceneHeading" || !navigateToScene(sceneId, true, true)) {
+              if (!target || target.kind !== "sceneHeading" || !navigateToWriterReference({ sceneId })) {
                 setFeedback("Timeline está desactualizado: la escena ya no existe o dejó de ser un encabezado.");
                 return;
               }
@@ -2297,6 +2380,14 @@ export default function WriterWorkspace({
         />
       )}
 
+      {autoFormatPlan && (
+        <WriterAutoFormatFlow
+          plan={autoFormatPlan}
+          onApply={applyAutoFormatPlan}
+          onClose={() => setAutoFormatPlan(null)}
+        />
+      )}
+
       {mobileNoticeOpen && !focusMode && (
         <div className="writer-mobile-notice" role="dialog" aria-labelledby="writer-mobile-notice-title">
           <strong id="writer-mobile-notice-title">Writer en móvil</strong>
@@ -2308,6 +2399,11 @@ export default function WriterWorkspace({
       <WriterObservationsPanel
         hidden={!observationsOpen || focusMode}
         section={observationsSection}
+        readinessNotice={readinessNotice(observationsSection === "review"
+          ? "review"
+          : observationsSection === "assistant"
+            ? (readiness.sceneCount > 0 && !canUseStructuredFeature(readiness, "ooc").available ? "ooc" : "assistant")
+            : observationsSection === "setupPayoff" ? "setupPayoff" : "guided")}
         onSectionChange={(section) => {
           observationsExplicitRef.current = true;
           setObservationsSection(section);
@@ -2492,12 +2588,14 @@ function WriterAutocompleteMenu({
 function WriterToolbar({
   editor,
   words,
+  onAutoFormat,
   onWriterActions,
   onInsert,
   onConvertSceneHeading,
 }: {
   editor: Editor | null;
   words: number;
+  onAutoFormat: () => void;
   onWriterActions: () => void;
   onInsert: (state: WriterInsertState) => void;
   onConvertSceneHeading: (state: WriterInsertState) => void;
@@ -2571,6 +2669,9 @@ function WriterToolbar({
         }}
         aria-label="Insertar en el guion"
       >Insertar</button>
+      <button className="writer-auto-format-button" type="button" onMouseDown={preserveSelection} onClick={onAutoFormat}>
+        <SmartFeatureIndicator label="FORMATO AUTOMÁTICO" />
+      </button>
       <div className="writer-toolbar-desktop-actions">
         <span className="writer-toolbar-divider" aria-hidden="true" />
         <button type="button" aria-label="Negrita" aria-pressed={state.bold} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleBold().run()}><strong>B</strong></button>

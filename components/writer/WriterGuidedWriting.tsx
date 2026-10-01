@@ -6,6 +6,7 @@ import type {
   WriterGuidedWritingMessage,
   WriterGuidedWritingScope,
 } from "@/lib/writer/guided-writing";
+import { SmartFeatureIndicator } from "./WriterSmartFormatting";
 
 const QUICK_STARTS = [
   "Siento que esta escena no avanza.",
@@ -59,7 +60,7 @@ export default function WriterGuidedWriting({
     <div className="writer-guided-writing" aria-busy={sending}>
       <header className="writer-guided-heading">
         <p className="writer-eyebrow">Guided Writing</p>
-        <h3>¿Qué estás intentando resolver?</h3>
+        <h3><SmartFeatureIndicator label="¿Qué estás intentando resolver?" /></h3>
         <p>Puedo ayudarte a pensar escenas, personajes y estructura sin escribir el guion por ti.</p>
       </header>
 

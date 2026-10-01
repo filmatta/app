@@ -40,7 +40,7 @@ const FORMAT_LABELS: Record<ScreenplayKind, { plural: string; singular: string; 
 export default function WriterObservationsPanel({
   observations, knownIdentities, decisions, storagePersistent, importedAnalysisPersistent,
   formatObservations, reviewedFormatIds, activeFormatObservationId, showHighlights, formatReviewPersistent,
-  sceneCount, selectedBlockId, hidden, section, assistantPanel, setupPayoffPanel, guidedWritingPanel, onSectionChange, onClose, onConfirm, onLink, onIgnore,
+  sceneCount, selectedBlockId, hidden, section, readinessNotice, assistantPanel, setupPayoffPanel, guidedWritingPanel, onSectionChange, onClose, onConfirm, onLink, onIgnore,
   onRestore, onAddManual, onView, onViewFormat, onReviewFormat, onChangeFormat, onToggleHighlights,
 }: {
   observations: WriterCharacterObservation[];
@@ -57,6 +57,7 @@ export default function WriterObservationsPanel({
   selectedBlockId: string | null;
   hidden: boolean;
   section: WriterObservationsSection;
+  readinessNotice?: ReactNode;
   assistantPanel: ReactNode;
   setupPayoffPanel: ReactNode;
   guidedWritingPanel: ReactNode;
@@ -175,6 +176,7 @@ export default function WriterObservationsPanel({
       </nav>
 
       <div className="writer-observations-scroll">
+        {readinessNotice}
         {section === "assistant" ? assistantPanel : section === "setupPayoff" ? setupPayoffPanel : section === "guided" ? guidedWritingPanel : <>
         <p className="writer-observations-local-note">
           {importedAnalysisPersistent

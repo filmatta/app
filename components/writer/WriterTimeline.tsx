@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { writerDocumentHref } from "@/lib/writer/routes";
 import { TimelineRefreshCoordinator } from "@/lib/writer/timeline-refresh";
 import {
@@ -47,6 +47,9 @@ type WriterTimelineViewProps = {
   sceneNicknames?: Readonly<Record<string, string>>;
   onMoveScene?: (sceneId: string, targetSceneId: string, position: WriterSceneMovePosition) => void;
   requestedView?: "timeline" | "pulse" | null;
+  timelineReadinessNotice?: ReactNode;
+  pulseReadinessNotice?: ReactNode;
+  pulseAvailable?: boolean;
 };
 
 export default function WriterTimelineView({
@@ -63,6 +66,9 @@ export default function WriterTimelineView({
   sceneNicknames = {},
   onMoveScene,
   requestedView = null,
+  timelineReadinessNotice,
+  pulseReadinessNotice,
+  pulseAvailable = true,
 }: WriterTimelineViewProps) {
   const [timeline, setTimeline] = useState<WriterTimeline | null>(initialTimeline);
   const [selectedSceneKey, setSelectedSceneKey] = useState<string | null>(null);
@@ -330,6 +336,8 @@ export default function WriterTimelineView({
         </div>
       </header>
 
+      {panelView === "timeline" ? timelineReadinessNotice : pulseReadinessNotice}
+
       <div className="timeline-view-content" hidden={panelView !== "timeline"}>
       <section className="timeline-intro" aria-labelledby="timeline-heading">
         <div>
@@ -588,6 +596,7 @@ export default function WriterTimelineView({
           scriptId={timeline.scriptId}
           scenes={timeline.scenes}
           active={active}
+          analysisEnabled={pulseAvailable}
           selectedSceneId={selectedScene?.sourceId ?? activeSceneId}
           columnWidth={columnWidth}
           scrollRef={pulseScrollRef}

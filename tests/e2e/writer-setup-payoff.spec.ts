@@ -106,5 +106,6 @@ test("mobile exposes list, unresolved/orphan detail and manual linking without h
   await linkSelectors.nth(0).selectOption("66666666-6666-4666-8666-666666666663");
   await linkSelectors.nth(1).selectOption("66666666-6666-4666-8666-666666666664");
   await panel.getByRole("button", { name: "Vincular payoff" }).click();
-  await expect(panel.getByRole("button", { name: /✓ Promesa pendiente → Escena/ })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /^✓ Promesa pendiente/ })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /^→ Escena 2/ }).last()).toBeVisible();
 });

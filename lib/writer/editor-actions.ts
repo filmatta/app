@@ -1,6 +1,7 @@
 "use client";
 
 import type { Editor } from "@tiptap/core";
+import { closeHistory } from "@tiptap/pm/history";
 import { Fragment, Slice, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { TextSelection, type EditorState } from "@tiptap/pm/state";
 import type { ScreenplayKind } from "./document.ts";
@@ -42,6 +43,11 @@ export type WriterCharacterRenameInput = {
 };
 
 export type WriterStructuralCommandResult = "applied" | "unchanged" | "missing" | "invalid";
+
+export type WriterAutoFormatMutation = {
+  blockId: string;
+  kind: ScreenplayKind;
+};
 
 export function findWriterBlockAtPosition(doc: ProseMirrorNode, position: number): WriterBlockTarget | null {
   const safePosition = Math.max(0, Math.min(position, doc.content.size));
@@ -118,6 +124,30 @@ export function changeWriterBlockKind(editor: Editor, targetId: string, kind: Sc
   );
   editor.commands.focus();
   return true;
+}
+
+export function applyWriterAutoFormat(
+  editor: Editor,
+  changes: readonly WriterAutoFormatMutation[],
+): WriterStructuralCommandResult {
+  if (!changes.length) return "unchanged";
+  const requested = new Map(changes.map((change) => [change.blockId, change.kind]));
+  const transaction = closeHistory(
+    editor.state.tr.setMeta("writerStructuralOperation", "autoFormat"),
+  );
+  let changed = 0;
+  editor.state.doc.forEach((node, position) => {
+    const blockId = String(node.attrs.id ?? "");
+    const kind = requested.get(blockId);
+    if (!kind || node.attrs.kind !== "action" || node.attrs.kind === kind) return;
+    transaction.setNodeMarkup(position, undefined, { ...node.attrs, kind });
+    changed += 1;
+  });
+  if (!changed) return "unchanged";
+  transaction.setMeta("addToHistory", true).scrollIntoView();
+  editor.view.dispatch(transaction);
+  editor.view.focus();
+  return "applied";
 }
 
 export function writerSceneIds(doc: ProseMirrorNode) {
