@@ -112,6 +112,7 @@ test("saved revisions auto-refresh an open Timeline once, preserve state, and st
   await expect(panel.getByText(/revisión 1/)).toBeVisible();
   await panel.getByLabel("Entorno").selectOption("interior");
   await panel.locator('[data-timeline-scene-id$="01"]').click();
+  await page.waitForLoadState("networkidle");
 
   const before = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
   expect(before.saves).toBe(0);

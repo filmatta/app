@@ -56,7 +56,7 @@ export default function WriterAssistantNarrative({
   return (
     <div className="writer-assistant-narrative">
       <label className="writer-assistant-toggle">
-        <span><strong>Assistant narrativo</strong><small>Analiza sólo escenas elegibles, guardadas e inactivas.</small></span>
+        <span><strong>O-O-C · Por escena</strong><small>Objective, Obstacle y Change de la escena activa guardada.</small></span>
         <input type="checkbox" checked={enabled} onChange={(event) => onToggle(event.target.checked)} />
         <b>{enabled ? "ON" : "OFF"}</b>
       </label>

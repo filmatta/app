@@ -359,4 +359,3 @@ function logOperation(
     status, usage, costMicrousd, latencyMs,
   });
 }
-

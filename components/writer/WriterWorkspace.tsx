@@ -49,7 +49,8 @@ import {
 } from "@/lib/writer/workspace-ui";
 import WriterImportFlow from "./WriterImportFlow";
 import WriterAssistantNarrative from "./WriterAssistantNarrative";
-import WriterObservationsPanel from "./WriterObservationsPanel";
+import WriterGuidedWriting from "./WriterGuidedWriting";
+import WriterObservationsPanel, { type WriterObservationsSection } from "./WriterObservationsPanel";
 import WriterSetupPayoff from "./WriterSetupPayoff";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
 import WriterTimelineView from "./WriterTimeline";
@@ -125,6 +126,8 @@ import { useWriterScriptAssistant } from "@/lib/writer/script-assistant-client";
 import type { WriterNarrativeObservation } from "@/lib/writer/script-assistant";
 import { useWriterSetupPayoff } from "@/lib/writer/setup-payoff-client";
 import type { WriterNarrativeElement } from "@/lib/writer/setup-payoff";
+import { useWriterGuidedWriting } from "@/lib/writer/guided-writing-client";
+import type { WriterGuidedReference } from "@/lib/writer/guided-writing";
 
 type ScriptInput = {
   id: string;
@@ -199,7 +202,7 @@ export default function WriterWorkspace({
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [observationsOpen, setObservationsOpen] = useState(false);
-  const [observationsSection, setObservationsSection] = useState<"review" | "assistant" | "setupPayoff">("review");
+  const [observationsSection, setObservationsSection] = useState<WriterObservationsSection>("review");
   const [selectedObservationBlockId, setSelectedObservationBlockId] = useState<string | null>(null);
   const [selectedAssistantObservationId, setSelectedAssistantObservationId] = useState<string | null>(null);
   const [characterObservations, setCharacterObservations] = useState<WriterCharacterObservation[]>([]);
@@ -330,6 +333,12 @@ export default function WriterWorkspace({
     focusMode,
   });
   const setupPayoff = useWriterSetupPayoff({ scriptId: script.id, document, focusMode });
+  const guidedWriting = useWriterGuidedWriting({
+    scriptId: script.id,
+    document,
+    activeSceneId: activeScene,
+    enabled: observationsOpen && observationsSection === "guided" && !focusMode,
+  });
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -1330,6 +1339,22 @@ export default function WriterWorkspace({
     }
   }
 
+  async function sendGuidedWriting(question: string) {
+    try {
+      await ensureCurrentDocumentSaved();
+      let selection: { blockId: string; text: string } | null = null;
+      if (editor && !editor.state.selection.empty && !selectionSpansWriterBlocks(editor.state)) {
+        const target = currentWriterBlock(editor);
+        const text = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, " ").trim();
+        if (target && text) selection = { blockId: target.id, text: text.slice(0, 1_200) };
+      }
+      return await guidedWriting.send(question, selection);
+    } catch (cause) {
+      guidedWriting.setFeedback(cause instanceof Error ? cause.message : "No pudimos responder ahora.");
+      return false;
+    }
+  }
+
   function openImportFlow() {
     setExportMenu(false);
     setMobileMoreOpen(false);
@@ -1486,6 +1511,40 @@ export default function WriterWorkspace({
     clearSceneHighlight();
     setWriterSceneHighlight(editor, target.id);
     highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
+    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
+  }
+
+  function viewGuidedReference(reference: WriterGuidedReference) {
+    if (!editor) return;
+    if (reference.type === "setup" || reference.type === "payoff") {
+      const element = setupPayoff.elements.find((item) => item.id === reference.targetId);
+      if (!element) {
+        setFeedback("La relación narrativa ya no está disponible.");
+        return;
+      }
+      setObservationsSection("setupPayoff");
+      viewSetupPayoffElement(element);
+      return;
+    }
+    if (reference.type === "scene") {
+      if (!navigateToScene(reference.sceneId, true, true)) setFeedback("La escena referenciada ya no existe.");
+    } else {
+      const target = findWriterBlockById(editor, reference.blockId ?? reference.sceneId)
+        ?? findWriterBlockById(editor, reference.sceneId);
+      if (!target) {
+        setFeedback("La evidencia referenciada ya no existe.");
+        return;
+      }
+      recordCurrentNavigation();
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, target.position + 1)).scrollIntoView());
+      editor.view.focus();
+      setActiveScene(reference.sceneId);
+      setObservationsSection("assistant");
+      if (reference.type === "observation") setSelectedAssistantObservationId(reference.targetId);
+      clearSceneHighlight();
+      setWriterSceneHighlight(editor, target.id);
+      highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
+    }
     if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
   }
 
@@ -1814,6 +1873,7 @@ export default function WriterWorkspace({
               <button ref={mobileObservationsButtonRef} type="button" onClick={() => { setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
               <button type="button" onClick={() => { setObservationsSection("assistant"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Assistant</button>
               <button type="button" onClick={() => { setObservationsSection("setupPayoff"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Setup / Payoff</button>
+              <button type="button" onClick={() => { setObservationsSection("guided"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Guided Writing</button>
               <button type="button" disabled={!initialTimeline.ok} onClick={() => openTimeline()}>Timeline</button>
             </div>
           </div>
@@ -2195,6 +2255,23 @@ export default function WriterWorkspace({
             onLinkStatus={(link, status) => void setupPayoff.setLinkStatus(link.id, status)}
             onCreateElement={setupPayoff.createElement}
             onCreateLink={setupPayoff.createLink}
+          />
+        )}
+        guidedWritingPanel={(
+          <WriterGuidedWriting
+            scope={guidedWriting.scope}
+            sceneNumber={activeScene ? (scenes.find((scene) => scene.id === activeScene)?.order ?? null) : null}
+            sceneTitle={activeScene ? (structuralMetadata.sceneNicknames[activeScene]
+              || scenes.find((scene) => scene.id === activeScene)?.title || null) : null}
+            messages={guidedWriting.messages}
+            documentHash={guidedWriting.documentHash}
+            loaded={guidedWriting.loaded}
+            sending={guidedWriting.sending}
+            feedback={guidedWriting.feedback}
+            onScopeChange={guidedWriting.setScope}
+            onSend={sendGuidedWriting}
+            onCancel={guidedWriting.cancel}
+            onReference={viewGuidedReference}
           />
         )}
         observations={combinedCharacterObservations}
