@@ -207,6 +207,7 @@ test("identity-safe character rename and local scene nicknames survive reload wi
   expect(backup).not.toContain("LA LLAMADA");
   expect(JSON.parse(backup).document.content.every((block: { attrs: Record<string, unknown> }) => !("sceneNickname" in block.attrs))).toBe(true);
 
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 15_000 });
   await page.reload();
   await expect(page.locator(".writer-sidebar").getByText("LA LLAMADA", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Editor de guion").locator('[data-block-id$="03"]')).toContainText("ÁNGELA-2");
@@ -256,6 +257,11 @@ test("writing presentation uses a stable mobile shell without toolbar overflow",
   for (const width of [1440, 1024, 768, 430, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.getByLabel("Editor de guion")).toBeVisible();
+    const pageDimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }));
+    expect(pageDimensions.scrollWidth, `Writer page at ${width}px`).toBeLessThanOrEqual(pageDimensions.clientWidth + 1);
     await expect(page.getByRole("button", { name: "Insertar en el guion" })).toBeVisible();
     if (width > 600) {
       await expect(page.getByRole("button", { name: "Deshacer" })).toBeVisible();

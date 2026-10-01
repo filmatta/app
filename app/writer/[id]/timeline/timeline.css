@@ -15,7 +15,7 @@
 .timeline-page select,
 .timeline-private-state a {
   border: 1px solid var(--timeline-border);
-  border-radius: 7px;
+  border-radius: 3px;
   color: inherit;
   background: #0b0f13;
 }
@@ -191,7 +191,7 @@
 .timeline-scene-cell:focus-within .timeline-scene-structural-actions { opacity: 1; }
 .timeline-scene-cell:hover,
 .timeline-scene-cell:focus-within { border-color: rgba(255,255,255,.15); background: rgba(255,255,255,.035); }
-.timeline-scene-structural-actions button { min-width: 20px; min-height: 18px; padding: 1px 4px; border: 1px solid rgba(255,255,255,.12); border-radius: 4px; color: rgba(241,239,233,.68); background: rgba(6,8,10,.9); font-size: .56rem; }
+.timeline-scene-structural-actions button { min-width: 20px; min-height: 18px; padding: 1px 4px; border: 1px solid rgba(255,255,255,.12); border-radius: 2px; color: rgba(241,239,233,.68); background: rgba(6,8,10,.9); font-size: .56rem; }
 .timeline-scene-drag-handle { cursor: grab; letter-spacing: -2px; }
 .timeline-scene-drag-handle:active { cursor: grabbing; }
 .timeline-scene-cell.is-drop-before::before,
@@ -246,7 +246,7 @@
 .timeline-scene-issue { margin: 16px 0 0; color: #ffc0bd; font-size: .72rem; }
 .timeline-detail-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
 .timeline-detail-actions button,
-.timeline-detail-actions a { padding: 9px 12px; border: 1px solid rgba(237, 90, 85, .48); border-radius: 7px; color: #fff; background: rgba(237, 90, 85, .1); font-size: .72rem; text-decoration: none; }
+.timeline-detail-actions a { padding: 9px 12px; border: 1px solid rgba(237, 90, 85, .48); border-radius: 3px; color: #fff; background: rgba(237, 90, 85, .1); font-size: .72rem; text-decoration: none; }
 .timeline-detail-actions button:disabled { border-color: var(--timeline-border); color: var(--timeline-muted); background: transparent; }
 
 .timeline-accessible-list { margin-bottom: 80px; }
