@@ -38,7 +38,7 @@ const FORMAT_LABELS: Record<ScreenplayKind, { plural: string; singular: string; 
 export default function WriterObservationsPanel({
   observations, knownIdentities, decisions, storagePersistent, importedAnalysisPersistent,
   formatObservations, reviewedFormatIds, activeFormatObservationId, showHighlights, formatReviewPersistent,
-  sceneCount, selectedBlockId, hidden, section, assistantPanel, onSectionChange, onClose, onConfirm, onLink, onIgnore,
+  sceneCount, selectedBlockId, hidden, section, assistantPanel, setupPayoffPanel, onSectionChange, onClose, onConfirm, onLink, onIgnore,
   onRestore, onAddManual, onView, onViewFormat, onReviewFormat, onChangeFormat, onToggleHighlights,
 }: {
   observations: WriterCharacterObservation[];
@@ -54,9 +54,10 @@ export default function WriterObservationsPanel({
   sceneCount: number;
   selectedBlockId: string | null;
   hidden: boolean;
-  section: "review" | "assistant";
+  section: "review" | "assistant" | "setupPayoff";
   assistantPanel: ReactNode;
-  onSectionChange: (section: "review" | "assistant") => void;
+  setupPayoffPanel: ReactNode;
+  onSectionChange: (section: "review" | "assistant" | "setupPayoff") => void;
   onClose: () => void;
   onConfirm: (observation: WriterCharacterObservation, name: string) => void;
   onLink: (observation: WriterCharacterObservation, identityKey: string) => void;
@@ -166,10 +167,11 @@ export default function WriterObservationsPanel({
       <nav className="writer-observations-tabs" aria-label="Secciones de Observaciones">
         <button type="button" aria-current={section === "review" ? "page" : undefined} onClick={() => onSectionChange("review")}><small>Revisión</small><strong>Formato y personajes</strong></button>
         <button type="button" aria-current={section === "assistant" ? "page" : undefined} onClick={() => onSectionChange("assistant")}><small>Assistant</small><strong>Narrativa</strong></button>
+        <button type="button" aria-current={section === "setupPayoff" ? "page" : undefined} onClick={() => onSectionChange("setupPayoff")}><small>Relaciones</small><strong>Setup / Payoff</strong></button>
       </nav>
 
       <div className="writer-observations-scroll">
-        {section === "assistant" ? assistantPanel : <>
+        {section === "assistant" ? assistantPanel : section === "setupPayoff" ? setupPayoffPanel : <>
         <p className="writer-observations-local-note">
           {importedAnalysisPersistent
             ? "El análisis de importación se conserva con este guion. Revisar formato no ejecuta IA ni bloquea la escritura."

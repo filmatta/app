@@ -50,6 +50,7 @@ import {
 import WriterImportFlow from "./WriterImportFlow";
 import WriterAssistantNarrative from "./WriterAssistantNarrative";
 import WriterObservationsPanel from "./WriterObservationsPanel";
+import WriterSetupPayoff from "./WriterSetupPayoff";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
 import WriterTimelineView from "./WriterTimeline";
 import {
@@ -122,6 +123,8 @@ import {
 import { setWriterDragPreview } from "@/lib/writer/drag-preview";
 import { useWriterScriptAssistant } from "@/lib/writer/script-assistant-client";
 import type { WriterNarrativeObservation } from "@/lib/writer/script-assistant";
+import { useWriterSetupPayoff } from "@/lib/writer/setup-payoff-client";
+import type { WriterNarrativeElement } from "@/lib/writer/setup-payoff";
 
 type ScriptInput = {
   id: string;
@@ -196,7 +199,7 @@ export default function WriterWorkspace({
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [observationsOpen, setObservationsOpen] = useState(false);
-  const [observationsSection, setObservationsSection] = useState<"review" | "assistant">("review");
+  const [observationsSection, setObservationsSection] = useState<"review" | "assistant" | "setupPayoff">("review");
   const [selectedObservationBlockId, setSelectedObservationBlockId] = useState<string | null>(null);
   const [selectedAssistantObservationId, setSelectedAssistantObservationId] = useState<string | null>(null);
   const [characterObservations, setCharacterObservations] = useState<WriterCharacterObservation[]>([]);
@@ -326,6 +329,7 @@ export default function WriterWorkspace({
     saveStatus: saveState.status,
     focusMode,
   });
+  const setupPayoff = useWriterSetupPayoff({ scriptId: script.id, document, focusMode });
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -1314,6 +1318,18 @@ export default function WriterWorkspace({
     setObservationsOpen(true);
   }
 
+  async function analyzeSetupPayoff() {
+    setContextMenu(null);
+    setObservationsSection("setupPayoff");
+    setObservationsOpen(true);
+    try {
+      await ensureCurrentDocumentSaved();
+      await setupPayoff.analyze();
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No pudimos analizar Setup / Payoff ahora.");
+    }
+  }
+
   function openImportFlow() {
     setExportMenu(false);
     setMobileMoreOpen(false);
@@ -1451,6 +1467,24 @@ export default function WriterWorkspace({
     editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(target.position + 1))).scrollIntoView());
     clearSceneHighlight();
     setWriterSceneHighlight(editor, blockId);
+    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
+    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
+  }
+
+  function viewSetupPayoffElement(element: WriterNarrativeElement) {
+    if (!editor) return;
+    const target = findWriterBlockById(editor, element.blockId ?? element.sceneId)
+      ?? findWriterBlockById(editor, element.sceneId);
+    if (!target) {
+      setFeedback("La escena vinculada ya no existe. La relación se conserva para revisión.");
+      return;
+    }
+    recordCurrentNavigation();
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, target.position + 1)).scrollIntoView());
+    editor.view.focus();
+    setActiveScene(element.sceneId);
+    clearSceneHighlight();
+    setWriterSceneHighlight(editor, target.id);
     highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
     if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
   }
@@ -1779,6 +1813,7 @@ export default function WriterWorkspace({
               <button type="button" onClick={() => { setMobileSidebar("characters"); setMobileNavigateOpen(false); }}>Personajes</button>
               <button ref={mobileObservationsButtonRef} type="button" onClick={() => { setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
               <button type="button" onClick={() => { setObservationsSection("assistant"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Assistant</button>
+              <button type="button" onClick={() => { setObservationsSection("setupPayoff"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Setup / Payoff</button>
               <button type="button" disabled={!initialTimeline.ok} onClick={() => openTimeline()}>Timeline</button>
             </div>
           </div>
@@ -2138,6 +2173,28 @@ export default function WriterWorkspace({
               if (activeScene && assistant.activeHash) void assistant.dismissObservation(activeScene, assistant.activeHash, observation.id);
             }}
             onViewObservation={viewNarrativeObservation}
+          />
+        )}
+        setupPayoffPanel={(
+          <WriterSetupPayoff
+            elements={setupPayoff.elements}
+            links={setupPayoff.links}
+            scenes={scenes.map((scene) => ({
+              id: scene.id,
+              order: scene.order,
+              title: structuralMetadata.sceneNicknames[scene.id] || scene.title,
+            }))}
+            activeSceneId={activeScene}
+            current={setupPayoff.current}
+            loaded={setupPayoff.loaded}
+            analyzing={setupPayoff.analyzing}
+            feedback={setupPayoff.feedback}
+            onAnalyze={() => void analyzeSetupPayoff()}
+            onView={viewSetupPayoffElement}
+            onElementStatus={(element, status) => void setupPayoff.setElementStatus(element.id, status)}
+            onLinkStatus={(link, status) => void setupPayoff.setLinkStatus(link.id, status)}
+            onCreateElement={setupPayoff.createElement}
+            onCreateLink={setupPayoff.createLink}
           />
         )}
         observations={combinedCharacterObservations}
