@@ -47,10 +47,19 @@ import {
   writerTimelineRestoresAfterFocus,
   writerTimelineStartsOpen,
 } from "@/lib/writer/workspace-ui";
+import {
+  WRITER_PANEL_LAYOUT_DEFAULTS,
+  fitWriterPanelLayout,
+  parseWriterPanelLayout,
+  writerPanelStorageKey,
+  type WriterPanelLayout,
+  type WriterPanelSide,
+} from "@/lib/writer/panel-layout";
 import WriterImportFlow from "./WriterImportFlow";
 import WriterAssistantNarrative from "./WriterAssistantNarrative";
 import WriterGuidedWriting from "./WriterGuidedWriting";
 import WriterObservationsPanel, { type WriterObservationsSection } from "./WriterObservationsPanel";
+import WriterPanelResizeHandle from "./WriterPanelResizeHandle";
 import WriterSetupPayoff from "./WriterSetupPayoff";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
 import WriterTimelineView from "./WriterTimeline";
@@ -202,6 +211,7 @@ export default function WriterWorkspace({
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [observationsOpen, setObservationsOpen] = useState(false);
+  const [panelLayout, setPanelLayout] = useState<WriterPanelLayout>(WRITER_PANEL_LAYOUT_DEFAULTS);
   const [observationsSection, setObservationsSection] = useState<WriterObservationsSection>("review");
   const [selectedObservationBlockId, setSelectedObservationBlockId] = useState<string | null>(null);
   const [selectedAssistantObservationId, setSelectedAssistantObservationId] = useState<string | null>(null);
@@ -339,6 +349,43 @@ export default function WriterWorkspace({
     activeSceneId: activeScene,
     enabled: observationsOpen && observationsSection === "guided" && !focusMode,
   });
+
+  const panelLayoutStorageKey = useMemo(() => writerPanelStorageKey(userId), [userId]);
+  const commitPanelWidth = useCallback((side: WriterPanelSide, value: number) => {
+    setPanelLayout((current) => {
+      const next = { ...current, [side]: value };
+      try {
+        window.localStorage.setItem(panelLayoutStorageKey, JSON.stringify(next));
+      } catch {
+        // Layout preferences are best-effort and never block Writer.
+      }
+      return next;
+    });
+  }, [panelLayoutStorageKey]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      let restored = { ...WRITER_PANEL_LAYOUT_DEFAULTS };
+      try {
+        restored = parseWriterPanelLayout(window.localStorage.getItem(panelLayoutStorageKey));
+      } catch {
+        // Private browsing or disabled storage keeps the exact product defaults.
+      }
+      setPanelLayout(fitWriterPanelLayout(restored, window.innerWidth, observationsOpen));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [observationsOpen, panelLayoutStorageKey]);
+
+  useEffect(() => {
+    const fit = () => setPanelLayout((current) => fitWriterPanelLayout(
+      current,
+      workspaceRef.current?.clientWidth ?? window.innerWidth,
+      observationsOpen && !focusMode,
+    ));
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [focusMode, observationsOpen]);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -1781,7 +1828,11 @@ export default function WriterWorkspace({
       className={`writer-workspace${focusMode ? " writer-workspace--focus" : ""}${timelineOpen ? " writer-workspace--timeline" : ""}${observationsOpen && !focusMode ? " writer-workspace--observations" : ""}`}
       data-focus-scale={focusScale.toFixed(3)}
       data-structural-metadata-persistent={structuralMetadataPersistent ? "true" : "false"}
-      style={{ "--writer-focus-scale": focusScale } as CSSProperties}
+      style={{
+        "--writer-focus-scale": focusScale,
+        "--writer-left-panel-width": `${panelLayout.left}px`,
+        "--writer-right-panel-width": `${panelLayout.right}px`,
+      } as CSSProperties}
     >
       <header className="writer-header">
         <div className="writer-header-brand">
@@ -2026,6 +2077,17 @@ export default function WriterWorkspace({
         </section>
       </aside>
 
+      {!focusMode && (
+        <WriterPanelResizeHandle
+          side="left"
+          value={panelLayout.left}
+          otherValue={panelLayout.right}
+          otherVisible={observationsOpen}
+          workspaceRef={workspaceRef}
+          onCommit={(value) => commitPanelWidth("left", value)}
+        />
+      )}
+
       <main className="writer-editor-area">
         <WriterToolbar
           editor={editor}
@@ -2087,6 +2149,17 @@ export default function WriterWorkspace({
           />
         )}
       </main>
+
+      {observationsOpen && !focusMode && (
+        <WriterPanelResizeHandle
+          side="right"
+          value={panelLayout.right}
+          otherValue={panelLayout.left}
+          otherVisible
+          workspaceRef={workspaceRef}
+          onCommit={(value) => commitPanelWidth("right", value)}
+        />
+      )}
 
       {editor && contextMenu && (
         <WriterContextMenu
