@@ -18,10 +18,14 @@ export default function WriterLibrary({
   initialScripts,
   limit,
   userId,
+  initialImportOpen = false,
+  importDestination = "writer",
 }: {
   initialScripts: WriterListItem[];
   limit: number;
   userId: string;
+  initialImportOpen?: boolean;
+  importDestination?: "writer" | "shotlist";
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -29,7 +33,7 @@ export default function WriterLibrary({
   const [rename, setRename] = useState<WriterListItem | null>(null);
   const [deleting, setDeleting] = useState<WriterListItem | null>(null);
   const [pendingDeleteDraft, setPendingDeleteDraft] = useState<LocalWriterDraft | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(initialImportOpen);
 
   async function createScript() {
     setBusy("create");
@@ -238,7 +242,7 @@ export default function WriterLibrary({
         </div>
       )}
 
-      {importOpen && <WriterImportFlow onClose={() => setImportOpen(false)} />}
+      {importOpen && <WriterImportFlow destination={importDestination} onClose={() => setImportOpen(false)} />}
     </main>
   );
 }

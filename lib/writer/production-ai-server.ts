@@ -1,0 +1,139 @@
+import "server-only";
+
+import { createHash, randomUUID } from "node:crypto";
+import OpenAI from "openai";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { WRITER_SCRIPT_ASSISTANT_MODEL } from "./script-assistant.ts";
+import { calculateWriterSceneAnalysisCost, countWriterSceneAnalysisTokens, estimateWriterSceneAnalysisMaximumCost, type WriterSceneAnalysisUsage } from "./script-assistant-accounting.ts";
+import { assertOwnedWriterScript, loadWriterShotlist, WriterProductionError } from "./production-server.ts";
+import { validateWriterBreakdownCandidates } from "./production.ts";
+import { deriveWriterSceneSources } from "./script-assistant.ts";
+
+const MAX_OUTPUT_TOKENS = 2_200;
+const MAX_OPERATION_COST_MICRO_USD = 200_000;
+const VERSION = "writer-production-v1";
+
+export class WriterProductionAiError extends Error {
+  constructor(readonly code: string, message: string, readonly status: number) { super(message); }
+}
+
+export async function analyzeBreakdownWithAi(input: {
+  userId: string; scriptId: string; sceneIds?: string[]; operationId?: string; readDb: SupabaseClient; signal?: AbortSignal;
+}) {
+  assertEnabled();
+  const script = await assertOwnedWriterScript(input.readDb, input.userId, input.scriptId);
+  const allowed = input.sceneIds?.length ? new Set(input.sceneIds) : null;
+  const scenes = deriveWriterSceneSources(script.document).filter((scene) => !allowed || allowed.has(scene.sceneId));
+  if (!scenes.length) throw new WriterProductionAiError("empty", "No hay escenas válidas en este ámbito.", 400);
+  if (scenes.length > 12) throw new WriterProductionAiError("too_large", "La detección asistida procesa hasta 12 escenas por operación. Usa Escena actual o divide el ámbito.", 413);
+  const providerInput = JSON.stringify({ scenes: scenes.map((scene) => ({ sceneId: scene.sceneId, heading: scene.heading, blocks: scene.blocks })) });
+  if (providerInput.length > 70_000) throw new WriterProductionAiError("too_large", "Analiza menos escenas por operación.", 413);
+  const instructions = "Detecta sólo elementos de producción explícitamente sostenidos por el texto. No inventes. Devuelve referencias exactas a sceneId y blockId. Distingue present, used, mentioned e inferred. No propongas equipo de cámara.";
+  const output = await executeOperation({ userId: input.userId, scriptId: input.scriptId, kind: "breakdown_detect", scope: input.sceneIds?.length === 1 ? "scene" : "document", source: providerInput, instructions, schema: breakdownSchema(), operationId: input.operationId, signal: input.signal });
+  const candidates = validateWriterBreakdownCandidates((output.result as { candidates?: unknown }).candidates, script.document);
+  return { candidates, ...output.metrics };
+}
+
+export async function createShotlistProposals(input: {
+  userId: string; shotlistId: string; groupIds: string[]; mode: "assisted" | "suggested"; briefing?: string;
+  operationId?: string; readDb: SupabaseClient; signal?: AbortSignal;
+}) {
+  assertEnabled();
+  const state = await loadWriterShotlist(input.readDb, input.userId, input.shotlistId);
+  const selected = state.shotlist.groups.filter((group) => input.groupIds.includes(group.id)).slice(0, 12);
+  if (!selected.length) throw new WriterProductionAiError("empty", "Selecciona al menos una escena.", 400);
+  let scenes: ReturnType<typeof deriveWriterSceneSources> = [];
+  if (state.shotlist.scriptId) {
+    const script = await assertOwnedWriterScript(input.readDb, input.userId, state.shotlist.scriptId);
+    scenes = deriveWriterSceneSources(script.document);
+  }
+  const sceneById = new Map(scenes.map((scene) => [scene.sceneId, scene]));
+  const providerInput = JSON.stringify({ mode: input.mode, briefing: input.briefing?.slice(0, 2_000) || null, groups: selected.map((group) => ({ groupId: group.id, title: group.title, scene: group.sourceSceneId ? sceneById.get(group.sourceSceneId) ?? null : null, existingShots: group.shots.map((shot) => ({ shotType: shot.shotType, subject: shot.subject, angle: shot.angle, movement: shot.movement })) })) });
+  if (providerInput.length > 75_000) throw new WriterProductionAiError("too_large", "Reduce el ámbito de la propuesta.", 413);
+  const instructions = "Propón cobertura cinematográfica revisable. No cambies el guion. Usa sólo groupId y sourceBlockId proporcionados. Focal, movimiento y duración son sugerencias editables. No repitas planos existentes de forma obvia.";
+  const output = await executeOperation({ userId: input.userId, scriptId: state.shotlist.scriptId, shotlistId: input.shotlistId, kind: input.mode === "assisted" ? "shotlist_assisted" : "shotlist_suggested", scope: "selected", source: providerInput, instructions, schema: shotSchema(), operationId: input.operationId, signal: input.signal });
+  const validGroups = new Map(selected.map((group) => [group.id, group]));
+  const raw = Array.isArray((output.result as { shots?: unknown }).shots) ? (output.result as { shots: unknown[] }).shots : [];
+  const proposals = raw.flatMap((value) => {
+    if (!record(value) || typeof value.groupId !== "string" || !validGroups.has(value.groupId)
+      || typeof value.shotType !== "string" || typeof value.subject !== "string" || typeof value.angle !== "string" || typeof value.movement !== "string") return [];
+    const group = validGroups.get(value.groupId)!;
+    const sourceBlockId = typeof value.sourceBlockId === "string" && group.sourceSceneId && sceneById.get(group.sourceSceneId)?.blocks.some((block) => block.id === value.sourceBlockId) ? value.sourceBlockId : null;
+    const payload = {
+      shotType: clean(value.shotType, 80, "Plano general"), subject: clean(value.subject, 500, ""),
+      angle: clean(value.angle, 80, "A nivel"), movement: clean(value.movement, 80, "Fijo"),
+      lens: nullable(value.lens, 40), setup: nullable(value.setup, 40),
+      durationSeconds: typeof value.durationSeconds === "number" && value.durationSeconds >= 0 && value.durationSeconds <= 86_400 ? value.durationSeconds : null,
+      description: nullable(value.description, 4_000), intention: nullable(value.intention, 2_000), sourceBlockId,
+    };
+    return [{ groupId: value.groupId, sourceBlockId, payload, fingerprint: sha256(`${value.groupId}:${JSON.stringify(payload)}`).slice(0, 64) }];
+  });
+  const admin = createAdminClient();
+  for (const proposal of proposals) {
+    const saved = await admin.from("writer_shotlist_proposals").upsert({
+      owner_id: input.userId, shotlist_id: input.shotlistId, group_id: proposal.groupId,
+      operation_id: output.operationId, source_block_id: proposal.sourceBlockId,
+      fingerprint: proposal.fingerprint, payload: proposal.payload, status: "pending", updated_at: new Date().toISOString(),
+    }, { onConflict: "owner_id,shotlist_id,fingerprint" });
+    if (saved.error) throw new WriterProductionAiError("storage", "No pudimos guardar las propuestas.", 500);
+  }
+  return { proposals: await loadProposals(admin, input.userId, input.shotlistId), ...output.metrics };
+}
+
+export async function loadProposals(db: SupabaseClient, userId: string, shotlistId: string) {
+  const result = await db.from("writer_shotlist_proposals").select("id,group_id,source_block_id,payload,status,created_at")
+    .eq("owner_id", userId).eq("shotlist_id", shotlistId).order("created_at", { ascending: true });
+  if (result.error) throw new WriterProductionError("storage", "No pudimos cargar las propuestas.", 500);
+  return result.data ?? [];
+}
+
+async function executeOperation(input: { userId: string; scriptId?: string | null; shotlistId?: string; kind: string; scope: string; source: string; instructions: string; schema: Record<string, unknown>; operationId?: string; signal?: AbortSignal }) {
+  const sourceHash = sha256(input.source); const requestHash = sha256(`${VERSION}:${WRITER_SCRIPT_ASSISTANT_MODEL}:${input.instructions}:${input.source}`);
+  let operationId = input.operationId ?? randomUUID();
+  const estimated = estimateWriterSceneAnalysisMaximumCost(countWriterSceneAnalysisTokens(`${input.instructions}\n${input.source}`), MAX_OUTPUT_TOKENS);
+  if (estimated > MAX_OPERATION_COST_MICRO_USD) throw new WriterProductionAiError("budget", "La operación excede el límite técnico de US$0.20.", 413);
+  const admin = createAdminClient();
+  const existing = await admin.from("writer_production_operations").select("id,status,actual_cost_microusd,latency_ms")
+    .eq("owner_id", input.userId).eq("request_hash", requestHash).maybeSingle();
+  if (existing.data?.status === "completed") return { operationId: String(existing.data.id), result: { candidates: [], shots: [] }, metrics: { cached: true, costMicrousd: Number(existing.data.actual_cost_microusd), latencyMs: Number(existing.data.latency_ms ?? 0) } };
+  if (existing.data?.id) operationId = String(existing.data.id);
+  const reserved = await admin.from("writer_production_operations").upsert({
+    id: operationId, owner_id: input.userId, script_id: input.scriptId ?? null, shotlist_id: input.shotlistId ?? null,
+    kind: input.kind, scope: input.scope, source_revision: null, source_hash: sourceHash, request_hash: requestHash,
+    model: WRITER_SCRIPT_ASSISTANT_MODEL, status: "processing", reserved_cost_microusd: estimated, updated_at: new Date().toISOString(),
+  }, { onConflict: "id" });
+  if (reserved.error) throw new WriterProductionAiError("storage", "No pudimos reservar la operación.", 500);
+  const started = Date.now(); let usage = emptyUsage();
+  try {
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 90_000 });
+    const response = await client.responses.create({
+      model: WRITER_SCRIPT_ASSISTANT_MODEL, reasoning: { effort: "none" }, store: false,
+      max_output_tokens: MAX_OUTPUT_TOKENS, instructions: input.instructions, input: input.source,
+      text: { format: { type: "json_schema", name: "writer_production", strict: true, schema: input.schema } },
+    }, { headers: { "Idempotency-Key": `writer-production-${operationId}-${requestHash.slice(0, 16)}` }, signal: input.signal });
+    usage = readUsage(response.usage);
+    if (response.status !== "completed" || !response.output_text) throw new Error("invalid_response");
+    const result = JSON.parse(response.output_text) as unknown;
+    const cost = calculateWriterSceneAnalysisCost(usage); const latency = Date.now() - started;
+    await admin.from("writer_production_operations").update({ status: "completed", actual_cost_microusd: cost, input_tokens: usage.inputTokens, cached_input_tokens: usage.cachedInputTokens, output_tokens: usage.outputTokens, reasoning_tokens: usage.reasoningTokens, latency_ms: latency, settled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", operationId).eq("owner_id", input.userId);
+    console.info("writer_production_operation", { operationId, kind: input.kind, model: WRITER_SCRIPT_ASSISTANT_MODEL, status: "completed", costMicrousd: cost, latencyMs: latency });
+    return { operationId, result, metrics: { cached: false, costMicrousd: cost, latencyMs: latency } };
+  } catch {
+    const cost = calculateWriterSceneAnalysisCost(usage);
+    await admin.from("writer_production_operations").update({ status: "failed", actual_cost_microusd: cost, input_tokens: usage.inputTokens, cached_input_tokens: usage.cachedInputTokens, output_tokens: usage.outputTokens, reasoning_tokens: usage.reasoningTokens, latency_ms: Date.now() - started, error_code: "provider_failed", settled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", operationId).eq("owner_id", input.userId);
+    throw new WriterProductionAiError("provider", "No pudimos obtener una propuesta ahora.", 503);
+  }
+}
+
+function assertEnabled() {
+  if (process.env.WRITER_PRODUCTION_AI_ENABLED !== "enabled" || !process.env.OPENAI_API_KEY) throw new WriterProductionAiError("disabled", "La asistencia de producción no está habilitada en este entorno.", 503);
+}
+function sha256(value: string) { return createHash("sha256").update(value).digest("hex"); }
+function clean(value: unknown, max: number, fallback: string) { return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : fallback; }
+function nullable(value: unknown, max: number) { return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null; }
+function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
+function emptyUsage(): WriterSceneAnalysisUsage { return { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0 }; }
+function readUsage(value: unknown): WriterSceneAnalysisUsage { if (!record(value)) return emptyUsage(); const i = record(value.input_tokens_details) ? value.input_tokens_details : {}; const o = record(value.output_tokens_details) ? value.output_tokens_details : {}; return { inputTokens: Number(value.input_tokens ?? 0), cachedInputTokens: Number(i.cached_tokens ?? 0), outputTokens: Number(value.output_tokens ?? 0), reasoningTokens: Number(o.reasoning_tokens ?? 0) }; }
+function breakdownSchema() { return { type: "object", additionalProperties: false, required: ["candidates"], properties: { candidates: { type: "array", maxItems: 120, items: { type: "object", additionalProperties: false, required: ["name", "category", "sceneId", "blockId", "excerpt", "nature"], properties: { name: { type: "string", maxLength: 160 }, category: { type: "string", enum: ["character", "prop", "location", "wardrobe", "vehicle", "animal", "extra", "makeup", "practical_effect", "visual_effect", "stunt", "sound_music", "other"] }, sceneId: { type: "string" }, blockId: { type: "string" }, excerpt: { type: "string", maxLength: 500 }, nature: { type: "string", enum: ["present", "used", "mentioned", "inferred"] } } } } } }; }
+function shotSchema() { return { type: "object", additionalProperties: false, required: ["shots"], properties: { shots: { type: "array", maxItems: 120, items: { type: "object", additionalProperties: false, required: ["groupId", "sourceBlockId", "shotType", "subject", "angle", "movement", "lens", "setup", "durationSeconds", "description", "intention"], properties: { groupId: { type: "string" }, sourceBlockId: { type: ["string", "null"] }, shotType: { type: "string", maxLength: 80 }, subject: { type: "string", maxLength: 500 }, angle: { type: "string", maxLength: 80 }, movement: { type: "string", maxLength: 80 }, lens: { type: ["string", "null"], maxLength: 40 }, setup: { type: ["string", "null"], maxLength: 40 }, durationSeconds: { type: ["number", "null"], minimum: 0, maximum: 86400 }, description: { type: ["string", "null"], maxLength: 4000 }, intention: { type: ["string", "null"], maxLength: 2000 } } } } } }; }

@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function WriterPage() {
+export default async function WriterPage({ searchParams }: { searchParams: Promise<{ shotlistImport?: string }> }) {
   const viewer = await getViewer();
   if (!viewer) redirect("/login?next=/writer");
   const [supabase, billing] = await Promise.all([createClient(), getBillingAccess()]);
@@ -21,10 +21,13 @@ export default async function WriterPage() {
     .select("id,title,revision,updated_at")
     .order("updated_at", { ascending: false });
   const scripts = (result.data ?? []) as WriterListItem[];
+  const query = await searchParams;
   return (
     <div className="writer-library-page">
       <SiteHeader contextLink={{ href: "/tools", label: "← Tools" }} />
-      <WriterLibrary initialScripts={scripts} limit={writerLimitForPlan(billing.plan)} userId={viewer.id} />
+      <WriterLibrary initialScripts={scripts} limit={writerLimitForPlan(billing.plan)} userId={viewer.id}
+        initialImportOpen={query.shotlistImport === "1"}
+        importDestination={query.shotlistImport === "1" ? "shotlist" : "writer"} />
     </div>
   );
 }
