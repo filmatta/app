@@ -12,7 +12,10 @@ import {
 } from "./import.ts";
 import { WRITER_NARRATIVE_PULSE_MIN_SCENES } from "./narrative-pulse.ts";
 import { isClearlyNonCharacterLine } from "./character-cues.ts";
-import { countRedundantWriterBlankBlocks } from "./spacing.ts";
+import {
+  countRedundantWriterBlankBlocks,
+  countWriterPresentationWhitespaceAdjustments,
+} from "./spacing.ts";
 
 export const WRITER_SIGNIFICANT_PASTE_MIN_CHARACTERS = 120;
 export const WRITER_SIGNIFICANT_PASTE_MIN_LINES = 4;
@@ -232,7 +235,8 @@ export function createWriterAutoFormatPlan(
   const sourceText = targets.map(blockText).join("\n");
   const staging = analyzePastedWriterText(sourceText, "Formato automático");
   const changes: WriterAutoFormatChange[] = [];
-  const redundantBlankBlocks = countRedundantWriterBlankBlocks(document, input.blockIds);
+  const redundantBlankBlocks = countRedundantWriterBlankBlocks(document, input.blockIds)
+    + countWriterPresentationWhitespaceAdjustments(document, input.blockIds);
 
   for (const detected of staging.blocks) {
     const target = targets[detected.sourceStartLine - 1];

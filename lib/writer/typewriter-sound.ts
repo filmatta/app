@@ -1,11 +1,18 @@
 "use client";
 
-const MIN_INTERVAL_MS = 34;
-const MAX_ACTIVE_VOICES = 3;
+export const WRITER_TYPEWRITER_AUDIO_URL = "/audio/writer/typewriter-key.wav";
+export const WRITER_TYPEWRITER_EFFECTIVE_DURATION_SECONDS = 0.2;
+export const WRITER_TYPEWRITER_MAX_ACTIVE_VOICES = 4;
+
+const MIN_INTERVAL_MS = 38;
+const BASE_GAIN = 0.052;
+const PLAYBACK_RATE_VARIATION = 0.025;
 
 let audioContext: AudioContext | null = null;
+let audioBuffer: AudioBuffer | null = null;
+let audioBufferPromise: Promise<AudioBuffer | null> | null = null;
 let lastPlayedAt = 0;
-let activeVoices = 0;
+const activeVoices = new Set<AudioBufferSourceNode>();
 
 export function writerTypewriterSoundStorageKey(userId: string) {
   return `filmatta:writer-typewriter-sound:v1:${userId}`;
@@ -34,33 +41,53 @@ export function saveWriterTypewriterSoundPreference(userId: string, enabled: boo
   }
 }
 
+export function writerTypewriterVoiceSettings(random = Math.random) {
+  return {
+    gain: BASE_GAIN * (0.94 + random() * 0.12),
+    playbackRate: 1 - PLAYBACK_RATE_VARIATION + random() * PLAYBACK_RATE_VARIATION * 2,
+  };
+}
+
+export function primeWriterTypewriterSound() {
+  const context = writerAudioContext();
+  if (!context) return Promise.resolve(false);
+  if (context.state === "suspended") void context.resume();
+  return loadWriterTypewriterBuffer(context).then(Boolean);
+}
+
 export function playWriterTypewriterClick() {
   const now = performance.now();
-  if (now - lastPlayedAt < MIN_INTERVAL_MS || activeVoices >= MAX_ACTIVE_VOICES) return false;
-  const Context = window.AudioContext
-    ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!Context) return false;
-  audioContext ??= new Context();
-  if (audioContext.state === "suspended") void audioContext.resume();
-  const start = audioContext.currentTime;
-  const duration = 0.026;
-  const oscillator = audioContext.createOscillator();
-  const gain = audioContext.createGain();
-  const filter = audioContext.createBiquadFilter();
-  oscillator.type = "square";
-  oscillator.frequency.setValueAtTime(760 + Math.random() * 90, start);
-  filter.type = "bandpass";
-  filter.frequency.setValueAtTime(1050, start);
-  filter.Q.setValueAtTime(0.7, start);
+  if (now - lastPlayedAt < MIN_INTERVAL_MS || activeVoices.size >= WRITER_TYPEWRITER_MAX_ACTIVE_VOICES) return false;
+  const context = writerAudioContext();
+  if (!context) return false;
+  if (!audioBuffer) {
+    void loadWriterTypewriterBuffer(context);
+    if (context.state === "suspended") void context.resume();
+    return false;
+  }
+  if (context.state === "suspended") {
+    void context.resume();
+    return false;
+  }
+  const start = context.currentTime;
+  const settings = writerTypewriterVoiceSettings();
+  const source = context.createBufferSource();
+  const gain = context.createGain();
+  source.buffer = audioBuffer;
+  source.playbackRate.setValueAtTime(settings.playbackRate, start);
   gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(0.018 + Math.random() * 0.005, start + 0.002);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-  oscillator.connect(filter).connect(gain).connect(audioContext.destination);
-  oscillator.start(start);
-  oscillator.stop(start + duration);
-  activeVoices += 1;
+  gain.gain.linearRampToValueAtTime(settings.gain, start + 0.004);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + WRITER_TYPEWRITER_EFFECTIVE_DURATION_SECONDS);
+  source.connect(gain).connect(context.destination);
+  source.start(start, 0, WRITER_TYPEWRITER_EFFECTIVE_DURATION_SECONDS);
+  source.stop(start + WRITER_TYPEWRITER_EFFECTIVE_DURATION_SECONDS + 0.01);
+  activeVoices.add(source);
   lastPlayedAt = now;
-  oscillator.addEventListener("ended", () => { activeVoices = Math.max(0, activeVoices - 1); }, { once: true });
+  source.addEventListener("ended", () => {
+    activeVoices.delete(source);
+    source.disconnect();
+    gain.disconnect();
+  }, { once: true });
   return true;
 }
 
@@ -70,4 +97,31 @@ export function isWriterTextInputKey(event: Pick<KeyboardEvent, "key" | "ctrlKey
     && !event.metaKey
     && !event.altKey
     && [...event.key].length === 1;
+}
+
+function writerAudioContext() {
+  const Context = window.AudioContext
+    ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Context) return null;
+  audioContext ??= new Context();
+  return audioContext;
+}
+
+function loadWriterTypewriterBuffer(context: AudioContext) {
+  if (audioBuffer) return Promise.resolve(audioBuffer);
+  audioBufferPromise ??= fetch(WRITER_TYPEWRITER_AUDIO_URL, { cache: "force-cache" })
+    .then((response) => {
+      if (!response.ok) throw new Error("Writer typewriter audio unavailable");
+      return response.arrayBuffer();
+    })
+    .then((data) => context.decodeAudioData(data))
+    .then((decoded) => {
+      audioBuffer = decoded;
+      return decoded;
+    })
+    .catch(() => {
+      audioBufferPromise = null;
+      return null;
+    });
+  return audioBufferPromise;
 }

@@ -63,6 +63,7 @@ import WriterPanelResizeHandle from "./WriterPanelResizeHandle";
 import WriterSetupPayoff from "./WriterSetupPayoff";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
 import WriterTimelineView from "./WriterTimeline";
+import WriterIcon from "./WriterIcon";
 import { WriterIdeasPanel, WriterSearchPanel, WriterVersionsPanel } from "./WriterErgonomicTools";
 import {
   SmartFeatureIndicator,
@@ -129,6 +130,7 @@ import {
   isWriterTextInputKey,
   loadWriterTypewriterSoundPreference,
   playWriterTypewriterClick,
+  primeWriterTypewriterSound,
   saveWriterTypewriterSoundPreference,
 } from "@/lib/writer/typewriter-sound";
 import { classifyWriterAutoFormat } from "@/lib/writer/auto-format-client";
@@ -540,6 +542,7 @@ export default function WriterWorkspace({
         pointerdown: (_view, event) => {
           const pointerEvent = event as PointerEvent;
           pointerRef.current = { type: pointerEvent.pointerType || "mouse", at: Date.now() };
+          if (typewriterSoundEnabledRef.current) void primeWriterTypewriterSound();
           if (pointerEvent.button === 2 && pointerRef.current.type === "mouse") {
             rightClickSelectionRef.current = activeWriterSelectionRef.current
               ? captureWriterSelectionTarget(_view.state)
@@ -1999,7 +2002,7 @@ export default function WriterWorkspace({
       ...plan.blockIds.map((blockId) => ({ blockId, kind: "action" as const })),
       ...resolveWriterAutoFormatChanges(plan, choices, reviewAll),
     ];
-    const result = applyWriterAutoFormat(editor, mutations);
+    const result = applyWriterAutoFormat(editor, mutations, { blockIds: plan.blockIds });
     closeAutoFormat();
     if (result === "applied") {
       refreshWriterDerivedStateAfterFormatting();
@@ -2112,6 +2115,7 @@ export default function WriterWorkspace({
     typewriterSoundEnabledRef.current = next;
     setTypewriterSoundEnabled(next);
     saveWriterTypewriterSoundPreference(userId, next);
+    if (next) void primeWriterTypewriterSound();
   }
 
   function refreshWriterDerivedStateAfterFormatting() {
@@ -2243,7 +2247,7 @@ export default function WriterWorkspace({
             onClick={() => timelineOpen ? closeTimeline() : openTimeline()}
             disabled={!initialTimeline.ok}
           >Timeline</button>
-          <button className="writer-versions-button" type="button" onClick={() => setVersionsOpen(true)}>◷ Versiones</button>
+          <button className="writer-versions-button" type="button" onClick={() => setVersionsOpen(true)}><WriterIcon name="history" /><span>Versiones</span></button>
           <div className="writer-export-wrap">
             <button
               ref={exportButtonRef}
@@ -2296,10 +2300,10 @@ export default function WriterWorkspace({
             <div className="writer-mobile-sheet-head"><strong>Writer</strong><button type="button" onClick={() => setMobileMoreOpen(false)}>Cerrar</button></div>
             <button type="button" onClick={openImportFlow}>Importar borrador</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document"); }}><SmartFeatureIndicator label="FORMATO AUTOMÁTICO" /></button>
-            <button type="button" onClick={() => { setMobileMoreOpen(false); setSearchReplaceMode(false); setSearchOpen(true); }}>🔍 Buscar</button>
-            <button type="button" onClick={() => { setMobileMoreOpen(false); setIdeasOpen(true); }}>💡 Ideas</button>
-            <button type="button" onClick={() => { setMobileMoreOpen(false); setVersionsOpen(true); }}>◷ Versiones</button>
-            <button type="button" onClick={() => { setMobileMoreOpen(false); toggleTypewriterSound(); }}>{typewriterSoundEnabled ? "🔊 Desactivar sonido" : "🔇 Activar sonido"}</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setSearchReplaceMode(false); setSearchOpen(true); }}><WriterIcon name="search" /> Buscar</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setIdeasOpen(true); }}><WriterIcon name="ideas" /> Ideas</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setVersionsOpen(true); }}><WriterIcon name="history" /> Versiones</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); toggleTypewriterSound(); }}><WriterIcon name={typewriterSoundEnabled ? "soundOn" : "soundOff"} /> {typewriterSoundEnabled ? "Desactivar sonido" : "Activar sonido"}</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setPdfExportOpen(true); }}>Exportar PDF</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); downloadBackup("json"); }}>Exportar JSON</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); downloadBackup("fdx"); }}>Exportar FDX</button>
@@ -3001,7 +3005,7 @@ function WriterToolbar({
           });
         }}
         aria-label="Insertar en el guion"
-      >Insertar</button>
+      ><WriterIcon name="insert" /><span>Insertar</span><WriterIcon className="writer-insert-chevron" name="chevronDown" size={14} /></button>
       <button className="writer-auto-format-button" type="button" onMouseDown={preserveSelection} onClick={onAutoFormat}>
         <SmartFeatureIndicator label="FORMATO AUTOMÁTICO" />
       </button>
@@ -3011,11 +3015,11 @@ function WriterToolbar({
         <button type="button" aria-label="Cursiva" aria-pressed={state.italic} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleItalic().run()}><em>I</em></button>
         <button type="button" aria-label="Subrayado" aria-pressed={state.underline} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleUnderline().run()}><u>U</u></button>
         <span className="writer-toolbar-divider" aria-hidden="true" />
-        <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().undo().run()} disabled={!state.canUndo} aria-label="Deshacer">↶</button>
-        <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().redo().run()} disabled={!state.canRedo} aria-label="Rehacer">↷</button>
+        <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().undo().run()} disabled={!state.canUndo} aria-label="Deshacer" title="Deshacer"><WriterIcon name="undo" /></button>
+        <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().redo().run()} disabled={!state.canRedo} aria-label="Rehacer" title="Rehacer"><WriterIcon name="redo" /></button>
         <span className="writer-toolbar-divider" aria-hidden="true" />
-        <button className="writer-search-button" type="button" onMouseDown={preserveSelection} onClick={onSearch} title="Buscar · Ctrl/Cmd+F">🔍 <span>Buscar</span></button>
-        <button className="writer-ideas-button" type="button" onMouseDown={preserveSelection} onClick={onIdeas} title="Ideas narrativas">💡 <span>Ideas</span></button>
+        <button className="writer-search-button" type="button" onMouseDown={preserveSelection} onClick={onSearch} title="Buscar · Ctrl/Cmd+F"><WriterIcon name="search" /><span>Buscar</span></button>
+        <button className="writer-ideas-button" type="button" onMouseDown={preserveSelection} onClick={onIdeas} title="Ideas narrativas"><WriterIcon name="ideas" /><span>Ideas</span></button>
       </div>
       <div className="writer-format-wrap">
         <button className="writer-format-button" type="button" aria-label="Formato de texto" aria-expanded={formatOpen} onMouseDown={preserveSelection} onClick={() => setFormatOpen((open) => !open)}>Aa</button>
@@ -3029,7 +3033,7 @@ function WriterToolbar({
       </div>
       <button className="writer-touch-actions" type="button" aria-label="Acciones Writer en el cursor" onMouseDown={preserveSelection} onClick={onWriterActions}>⋯ Writer</button>
       <span className="writer-word-count">{words.toLocaleString("es-MX")} palabras</span>
-      <button className="writer-sound-button" type="button" aria-label="Sonido de máquina de escribir" aria-pressed={soundEnabled} title="Sonido de máquina de escribir" onMouseDown={preserveSelection} onClick={onToggleSound}>{soundEnabled ? "🔊" : "🔇"}</button>
+      <button className="writer-sound-button" type="button" aria-label="Sonido de máquina de escribir" aria-pressed={soundEnabled} title="Sonido de máquina de escribir" onMouseDown={preserveSelection} onClick={onToggleSound}><WriterIcon name={soundEnabled ? "soundOn" : "soundOff"} /></button>
     </div>
   );
 }

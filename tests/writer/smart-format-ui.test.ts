@@ -33,7 +33,7 @@ test("automatic formatting is hybrid, included, idempotent, and one undoable tra
   assert.match(smart, /parser resuelve lo evidente/u);
   assert.match(smart, /0 AI Credits/u);
   assert.doesNotMatch(smart, /upgrade|paywall|checkout/iu);
-  assert.match(workspace, /applyWriterAutoFormat\(editor, mutations\)/u);
+  assert.match(workspace, /applyWriterAutoFormat\(editor, mutations, \{ blockIds: plan\.blockIds \}\)/u);
   assert.match(workspace, /refreshWriterDerivedStateAfterFormatting/u);
   assert.match(workspace, /Este documento ya parece estar correctamente formateado como guion/u);
 });

@@ -124,18 +124,24 @@ test("large paste supports both warnings, later recovery, one-step undo, and fre
 
 test("automatic format collapses redundant blank presentation blocks in one undoable operation", async ({ page, context }) => {
   await openWriter(page, context);
-  await pasteReplacingDocument(page, `INT. CASA - DÍA\n\n\n\nUna caja descansa sobre la mesa.\n\n\n\nMARA\nNo la abras.`);
+  await pasteReplacingDocument(page, `INT. CASA - DÍA\n\nUna caja descansa sobre la mesa.\n\n\nMARA\n\n\n\nNo la abras.\n\n\n\n\nCORTE A:`);
   await page.getByRole("dialog", { name: "✦ Formatear este guion" }).getByRole("button", { name: "FORMATEAR GUION" }).click();
   const dialog = page.locator(".writer-auto-format-dialog");
   await expect(dialog.getByText(/Espacios redundantes/u)).toBeVisible();
   const emptyActions = () => page.getByLabel("Editor de guion").locator('[data-screenplay-kind="action"]').evaluateAll(
     (nodes) => nodes.filter((node) => !(node.textContent ?? "").trim()).length,
   );
+  const semanticText = () => page.getByLabel("Editor de guion").locator(".writer-screenplay-block").evaluateAll(
+    (nodes) => nodes.flatMap((node) => (node.textContent ?? "").match(/\S+/gu) ?? []).join(" "),
+  );
   const before = await emptyActions();
+  const textBefore = await semanticText();
   await dialog.getByRole("button", { name: "Aplicar formato", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   const after = await emptyActions();
-  expect(after).toBeLessThan(before);
+  expect(before).toBeGreaterThanOrEqual(10);
+  expect(after).toBe(0);
+  expect(await semanticText()).toBe(textBefore);
   await expect(page.getByLabel("Editor de guion")).toContainText("Una caja descansa sobre la mesa.");
   await page.getByLabel("Deshacer", { exact: true }).click();
   await expect.poll(emptyActions).toBe(before);

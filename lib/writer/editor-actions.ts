@@ -4,8 +4,9 @@ import type { Editor } from "@tiptap/core";
 import { closeHistory } from "@tiptap/pm/history";
 import { Fragment, Slice, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { TextSelection, type EditorState } from "@tiptap/pm/state";
-import type { ScreenplayKind } from "./document.ts";
+import type { ScreenplayKind, WriterBlock, WriterDocument } from "./document.ts";
 import { writerCharacterIdentityKey } from "./character-observations.ts";
+import { normalizeWriterPresentationContent, redundantWriterBlankBlockIds } from "./spacing.ts";
 
 export type WriterBlockTarget = {
   id: string;
@@ -137,25 +138,37 @@ export function applyWriterAutoFormat(
     editor.state.tr.setMeta("writerStructuralOperation", "autoFormat"),
   );
   let changed = 0;
-  const redundant: Array<{ from: number; to: number }> = [];
-  let blankRun = 0;
+  const document = editor.getJSON() as unknown as WriterDocument;
+  const redundant = new Set(redundantWriterBlankBlockIds(document, [...scope]));
+  const operations: Array<{
+    from: number;
+    to: number;
+    replacement?: ProseMirrorNode;
+  }> = [];
   editor.state.doc.forEach((node, position) => {
     const blockId = String(node.attrs.id ?? "");
-    if (!scope.has(blockId)) {
-      blankRun = 0;
-    } else if (node.attrs.kind === "action" && !node.textContent.trim()) {
-      blankRun += 1;
-      if (blankRun > 1) redundant.push({ from: position, to: position + node.nodeSize });
-    } else {
-      blankRun = 0;
+    if (!scope.has(blockId)) return;
+    if (redundant.has(blockId)) {
+      operations.push({ from: position, to: position + node.nodeSize });
+      return;
     }
-    const kind = requested.get(blockId);
-    if (!kind || node.attrs.kind !== "action" || node.attrs.kind === kind) return;
-    transaction.setNodeMarkup(position, undefined, { ...node.attrs, kind });
-    changed += 1;
+    const source = node.toJSON() as WriterBlock;
+    const normalizedContent = normalizeWriterPresentationContent(source);
+    const requestedKind = requested.get(blockId);
+    const nextKind = requestedKind && node.attrs.kind === "action" ? requestedKind : node.attrs.kind;
+    const contentChanged = JSON.stringify(source.content ?? []) !== JSON.stringify(normalizedContent ?? []);
+    const kindChanged = nextKind !== node.attrs.kind;
+    if (!contentChanged && !kindChanged) return;
+    const replacement = node.type.create(
+      { ...node.attrs, kind: nextKind },
+      Fragment.fromJSON(editor.schema, normalizedContent ?? []),
+      node.marks,
+    );
+    operations.push({ from: position, to: position + node.nodeSize, replacement });
   });
-  for (const blank of redundant.sort((left, right) => right.from - left.from)) {
-    transaction.delete(blank.from, blank.to);
+  for (const operation of operations.sort((left, right) => right.from - left.from)) {
+    if (operation.replacement) transaction.replaceWith(operation.from, operation.to, operation.replacement);
+    else transaction.delete(operation.from, operation.to);
     changed += 1;
   }
   if (!changed) return "unchanged";

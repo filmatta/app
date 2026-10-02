@@ -19,6 +19,7 @@ import { setWriterDragPreview } from "@/lib/writer/drag-preview";
 import type { WriterSceneMovePosition } from "@/lib/writer/editor-actions";
 import type { WriterPulseMilestone } from "@/lib/writer/narrative-pulse";
 import WriterNarrativePulse from "./WriterNarrativePulse";
+import WriterIcon from "./WriterIcon";
 
 const ZOOM_LEVELS = [76, 112, 156] as const;
 const INITIAL_CHARACTER_TRACKS = 8;
@@ -335,10 +336,10 @@ export default function WriterTimelineView({
             <button type="button" aria-pressed={panelView === "timeline"} onClick={() => changePanelView("timeline")}>Timeline</button>
             <button type="button" aria-pressed={panelView === "pulse"} onClick={() => changePanelView("pulse")}>Narrative Pulse</button>
           </div>
-          {panelView === "timeline" && <button className="timeline-refresh" type="button" onClick={() => void refreshTimeline()} disabled={refreshing}>
-            {refreshing ? "Actualizando…" : "Actualizar Timeline"}
+          {panelView === "timeline" && <button className="timeline-refresh" type="button" onClick={() => void refreshTimeline()} disabled={refreshing} aria-label={refreshing ? "Actualizando Timeline" : "Actualizar Timeline"}>
+            <WriterIcon name="refresh" /><span>{refreshing ? "Actualizando…" : "Actualizar Timeline"}</span>
           </button>}
-          {onToggleExpanded && <button className="timeline-expand" type="button" onClick={onToggleExpanded} aria-pressed={expanded} title={expanded ? "Contraer vista" : "Expandir vista"}>{expanded ? "⛶ Contraer" : "⛶ Expandir"}</button>}
+          {onToggleExpanded && <button className="timeline-expand" type="button" onClick={onToggleExpanded} aria-label={expanded ? "Contraer vista" : "Expandir vista"} aria-pressed={expanded} title={expanded ? "Contraer vista" : "Expandir vista"}><WriterIcon name={expanded ? "collapse" : "expand"} /><span>{expanded ? "Contraer" : "Expandir"}</span></button>}
           {onClose && <button className="timeline-close" type="button" onClick={onClose}>Cerrar</button>}
         </div>
       </header>

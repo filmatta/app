@@ -130,3 +130,103 @@ test("Ideas, Replace All checkpoints and mobile geometry remain safe", async ({ 
   expect(geometry.offenders).toBe(0);
   expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewport + 1);
 });
+
+test("toolbar controls remain inside the Writer viewport across supported widths", async ({ page, context }) => {
+  await openLongWriter(page, context, 1920);
+  for (const width of [1920, 1440, 1280, 1024, 768, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await expect(page.locator(".writer-toolbar")).toBeVisible();
+    const geometry = await page.evaluate(() => {
+      const viewport = window.innerWidth;
+      const toolbar = document.querySelector<HTMLElement>(".writer-toolbar");
+      if (!toolbar) return { offenders: ["missing-toolbar"], scrollWidth: document.documentElement.scrollWidth, viewport };
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const offenders = [...toolbar.querySelectorAll<HTMLElement>("button, select")]
+        .filter((element) => {
+          const style = getComputedStyle(element);
+          return style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0;
+        })
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.left < Math.max(-1, toolbarRect.left - 1)
+            || rect.right > Math.min(viewport + 1, toolbarRect.right + 1)
+            || rect.width > viewport + 1;
+        })
+        .map((element) => element.getAttribute("aria-label") ?? element.textContent?.trim() ?? element.tagName);
+      return { offenders, scrollWidth: document.documentElement.scrollWidth, viewport };
+    });
+    expect(geometry.offenders, `toolbar overflow at ${width}px`).toEqual([]);
+    expect(geometry.scrollWidth, `document overflow at ${width}px`).toBeLessThanOrEqual(geometry.viewport + 1);
+  }
+});
+
+test("typewriter WAV decodes once, stays bounded and ignores paste, shortcuts, Backspace and Enter", async ({ page, context }) => {
+  await page.addInitScript(() => {
+    const stats = { active: 0, decodes: 0, maxActive: 0, resumes: 0, starts: 0 };
+    (window as typeof window & { __writerAudioQa?: typeof stats }).__writerAudioQa = stats;
+    class FakeAudioParam {
+      setValueAtTime() {}
+      linearRampToValueAtTime() {}
+      exponentialRampToValueAtTime() {}
+    }
+    class FakeNode {
+      connect<T>(node: T) { return node; }
+      disconnect() {}
+    }
+    class FakeSource extends FakeNode {
+      buffer = null;
+      playbackRate = new FakeAudioParam();
+      private ended: (() => void) | null = null;
+      addEventListener(_name: string, callback: () => void) { this.ended = callback; }
+      start() {
+        stats.starts += 1;
+        stats.active += 1;
+        stats.maxActive = Math.max(stats.maxActive, stats.active);
+        window.setTimeout(() => {
+          stats.active -= 1;
+          this.ended?.();
+        }, 205);
+      }
+      stop() {}
+    }
+    class FakeGain extends FakeNode { gain = new FakeAudioParam(); }
+    class FakeAudioContext {
+      currentTime = 0;
+      destination = {};
+      state = "running";
+      createBufferSource() { return new FakeSource(); }
+      createGain() { return new FakeGain(); }
+      decodeAudioData() { stats.decodes += 1; return Promise.resolve({}); }
+      resume() { stats.resumes += 1; this.state = "running"; return Promise.resolve(); }
+    }
+    Object.defineProperty(window, "AudioContext", { configurable: true, value: FakeAudioContext });
+  });
+  await openLongWriter(page, context);
+  const editor = page.getByLabel("Editor de guion");
+  await editor.click();
+  await page.keyboard.type("a", { delay: 50 });
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __writerAudioQa?: { decodes: number } }).__writerAudioQa?.decodes ?? 0)).toBe(1);
+  await page.keyboard.type("bcdefghijk", { delay: 42 });
+  const afterTyping = await page.evaluate(() => (window as typeof window & { __writerAudioQa?: { maxActive: number; starts: number } }).__writerAudioQa!);
+  expect(afterTyping.starts).toBeGreaterThan(0);
+  expect(afterTyping.maxActive).toBeLessThanOrEqual(4);
+
+  const startsBeforeNonText = afterTyping.starts;
+  await page.keyboard.press("Control+b");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Enter");
+  await editor.evaluate((element) => {
+    const transfer = new DataTransfer();
+    transfer.setData("text/plain", "paste masivo sin audio ".repeat(100));
+    element.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: transfer }));
+  });
+  await page.waitForTimeout(80);
+  const afterNonText = await page.evaluate(() => (window as typeof window & { __writerAudioQa?: { starts: number } }).__writerAudioQa!.starts);
+  expect(afterNonText).toBe(startsBeforeNonText);
+
+  await page.getByRole("button", { name: "Sonido de máquina de escribir" }).click();
+  await page.keyboard.type("silencio", { delay: 42 });
+  const afterMute = await page.evaluate(() => (window as typeof window & { __writerAudioQa?: { decodes: number; starts: number } }).__writerAudioQa!);
+  expect(afterMute.decodes).toBe(1);
+  expect(afterMute.starts).toBe(startsBeforeNonText);
+});
