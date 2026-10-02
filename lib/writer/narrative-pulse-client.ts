@@ -17,19 +17,22 @@ export function useWriterNarrativePulse({ scriptId, enabled }: { scriptId: strin
       const response = await fetch(`/api/writer/scripts/${scriptId}/narrative-pulse`, { cache: "no-store" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? "No pudimos cargar Narrative Pulse.");
-      setState({ analysis: data.analysis ?? null, points: Array.isArray(data.points) ? data.points : [], milestones: Array.isArray(data.milestones) ? data.milestones : [], zones: Array.isArray(data.zones) ? data.zones : [], currentSourceHash: typeof data.currentSourceHash === "string" ? data.currentSourceHash : null });
-    } catch (cause) { setFeedback(message(cause)); }
+      const next = normalize(data);
+      setState(next);
+      return next;
+    } catch (cause) { setFeedback(message(cause)); return null; }
     finally { setLoaded(true); }
   }, [scriptId]);
 
   useEffect(() => { if (!enabled) return; const timer = window.setTimeout(() => void reload(), 0); return () => window.clearTimeout(timer); }, [enabled, reload]);
   useEffect(() => () => controllerRef.current?.abort(), []);
 
-  const analyze = useCallback(async () => {
-    if (analyzing || !state.currentSourceHash) return false;
+  const analyze = useCallback(async (sourceHashOverride?: string) => {
+    const sourceHash = sourceHashOverride ?? state.currentSourceHash;
+    if (analyzing || !sourceHash) return false;
     const controller = new AbortController(); controllerRef.current = controller; setAnalyzing(true); setFeedback(null);
     try {
-      const response = await fetch(`/api/writer/scripts/${scriptId}/narrative-pulse`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceHash: state.currentSourceHash, operationId: crypto.randomUUID() }), signal: controller.signal });
+      const response = await fetch(`/api/writer/scripts/${scriptId}/narrative-pulse`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceHash, operationId: crypto.randomUUID() }), signal: controller.signal });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? "No pudimos analizar Narrative Pulse ahora.");
       if (data.pending) window.setTimeout(() => void reload(), 3_000); else setState(normalize(data));

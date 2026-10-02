@@ -1,4 +1,5 @@
 import {
+  SCREENPLAY_KINDS,
   blockText,
   type ScreenplayKind,
   type WriterDocument,
@@ -75,6 +76,25 @@ export type WriterAutoFormatPlan = {
   changes: WriterAutoFormatChange[];
   summary: ReturnType<typeof writerImportSummary>;
   alreadyFormatted: boolean;
+};
+
+export const WRITER_AUTO_FORMAT_MAX_AI_CANDIDATES = 80;
+
+export type WriterAutoFormatCandidate = {
+  blockId: string;
+  text: string;
+  currentKind: ScreenplayKind;
+  parserProposal: ScreenplayKind | null;
+  confidence: WriterImportConfidence;
+  previousText: string | null;
+  nextText: string | null;
+  sceneHeading: string | null;
+};
+
+export type WriterAutoFormatClassification = {
+  blockId: string;
+  kind: ScreenplayKind;
+  characterName: string | null;
 };
 
 const SCENE_HEADING = /^(?:INT\.?|EXT\.?|INT\.?\s*\/\s*EXT\.?|EXT\.?\s*\/\s*INT\.?)\s+\S/iu;
@@ -205,6 +225,7 @@ export function createWriterAutoFormatPlan(
 ): WriterAutoFormatPlan {
   const requested = input.blockIds ? new Set(input.blockIds) : null;
   const targets = document.content.filter((block) => !requested || requested.has(block.attrs.id));
+  const entirelyActionSource = targets.every((block) => block.attrs.kind === "action");
   const sourceText = targets.map(blockText).join("\n");
   const staging = analyzePastedWriterText(sourceText, "Formato automático");
   const changes: WriterAutoFormatChange[] = [];
@@ -212,7 +233,8 @@ export function createWriterAutoFormatPlan(
   for (const detected of staging.blocks) {
     const target = targets[detected.sourceStartLine - 1];
     if (!target || target.attrs.kind !== "action" || !blockText(target).trim()) continue;
-    if (detected.proposedKind === target.attrs.kind) continue;
+    if (detected.proposedKind === target.attrs.kind
+      && (!entirelyActionSource || detected.confidence === "high")) continue;
     changes.push(toChange(target.attrs.id, target.attrs.kind, detected));
   }
 
@@ -238,6 +260,128 @@ export function resolveWriterAutoFormatChanges(
   });
 }
 
+export function writerAutoFormatCandidates(
+  document: WriterDocument,
+  plan: WriterAutoFormatPlan,
+): WriterAutoFormatCandidate[] {
+  const ambiguous = new Map(
+    plan.changes
+      .filter((change) => change.confidence !== "high" || !change.proposedKind)
+      .map((change) => [change.blockId, change]),
+  );
+  if (ambiguous.size === 0) return [];
+
+  const meaningful = document.content
+    .map((block, index) => ({ block, index, text: blockText(block).trim() }))
+    .filter((item) => item.text);
+  const positions = new Map(meaningful.map((item, index) => [item.block.attrs.id, index]));
+  const result: WriterAutoFormatCandidate[] = [];
+
+  for (const change of plan.changes) {
+    if (!ambiguous.has(change.blockId)) continue;
+    const meaningfulIndex = positions.get(change.blockId);
+    if (meaningfulIndex === undefined) continue;
+    const item = meaningful[meaningfulIndex];
+    let sceneHeading: string | null = null;
+    for (let cursor = meaningfulIndex - 1; cursor >= 0; cursor -= 1) {
+      const candidate = meaningful[cursor];
+      if (candidate.block.attrs.kind === "sceneHeading" || SCENE_HEADING.test(candidate.text)) {
+        sceneHeading = clippedContext(candidate.text);
+        break;
+      }
+    }
+    result.push({
+      blockId: change.blockId,
+      text: clippedContext(item.text),
+      currentKind: change.currentKind,
+      parserProposal: change.proposedKind,
+      confidence: change.confidence,
+      previousText: meaningful[meaningfulIndex - 1]?.text
+        ? clippedContext(meaningful[meaningfulIndex - 1].text)
+        : null,
+      nextText: meaningful[meaningfulIndex + 1]?.text
+        ? clippedContext(meaningful[meaningfulIndex + 1].text)
+        : null,
+      sceneHeading,
+    });
+    if (result.length >= WRITER_AUTO_FORMAT_MAX_AI_CANDIDATES) break;
+  }
+  return result;
+}
+
+export function validateWriterAutoFormatClassifications(
+  candidates: readonly WriterAutoFormatCandidate[],
+  value: unknown,
+): WriterAutoFormatClassification[] {
+  if (!isRecord(value) || !Array.isArray(value.classifications)) {
+    throw new Error("La clasificación asistida no tiene el formato esperado.");
+  }
+  const known = new Set(candidates.map((candidate) => candidate.blockId));
+  const seen = new Set<string>();
+  const classifications = value.classifications.map((entry) => {
+    const allowedKeys = new Set(["blockId", "kind", "characterName"]);
+    if (!isRecord(entry)
+      || Object.keys(entry).some((key) => !allowedKeys.has(key))
+      || typeof entry.blockId !== "string"
+      || !known.has(entry.blockId)
+      || seen.has(entry.blockId)
+      || typeof entry.kind !== "string"
+      || !SCREENPLAY_KINDS.includes(entry.kind as ScreenplayKind)
+      || !(entry.characterName === null || typeof entry.characterName === "string")) {
+      throw new Error("La clasificación asistida contiene un resultado inválido.");
+    }
+    seen.add(entry.blockId);
+    return {
+      blockId: entry.blockId,
+      kind: entry.kind as ScreenplayKind,
+      characterName: entry.characterName === null ? null : entry.characterName.slice(0, 80),
+    };
+  });
+  if (seen.size !== candidates.length) {
+    throw new Error("La clasificación asistida no devolvió todos los bloques ambiguos.");
+  }
+  return classifications;
+}
+
+export function mergeWriterAutoFormatClassifications(
+  plan: WriterAutoFormatPlan,
+  classifications: readonly WriterAutoFormatClassification[],
+): WriterAutoFormatPlan {
+  const classified = new Map(classifications.map((item) => [item.blockId, item]));
+  const byKind = { ...plan.summary.byKind };
+  let unresolved = plan.summary.unresolved;
+  let needsReview = plan.summary.needsReview;
+  const characterNames = new Set<string>();
+  const changes = plan.changes.map((change) => {
+    if (change.proposedKind === "character") characterNames.add(normalizedCharacterName(change.text));
+    const result = classified.get(change.blockId);
+    if (!result) return change;
+    if (change.proposedKind) byKind[change.proposedKind] = Math.max(0, byKind[change.proposedKind] - 1);
+    else unresolved = Math.max(0, unresolved - 1);
+    byKind[result.kind] += 1;
+    if (change.confidence !== "high" || !change.proposedKind) needsReview = Math.max(0, needsReview - 1);
+    if (result.kind === "character") characterNames.add(normalizedCharacterName(change.text));
+    return {
+      ...change,
+      proposedKind: result.kind,
+      confidence: "high" as const,
+      signals: [...change.signals, "Clasificación contextual asistida aplicada sin modificar el texto."],
+    };
+  });
+  return {
+    ...plan,
+    changes,
+    summary: {
+      ...plan.summary,
+      byKind,
+      unresolved,
+      needsReview,
+      distinctCharacterNames: Math.max(plan.summary.distinctCharacterNames, characterNames.size),
+    },
+    alreadyFormatted: changes.length === 0,
+  };
+}
+
 function toChange(blockId: string, currentKind: ScreenplayKind, detected: WriterImportBlock): WriterAutoFormatChange {
   return {
     blockId,
@@ -259,4 +403,16 @@ function looksLikeCharacterCue(line: string, next: string) {
     && Boolean(next)
     && !SCENE_HEADING.test(next)
     && !TRANSITION.test(next);
+}
+
+function clippedContext(value: string) {
+  return [...value].slice(0, 240).join("");
+}
+
+function normalizedCharacterName(value: string) {
+  return value.trim().replace(/\s+/gu, " ").normalize("NFKC").toLocaleUpperCase("es-MX");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

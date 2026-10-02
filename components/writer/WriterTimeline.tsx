@@ -50,6 +50,7 @@ type WriterTimelineViewProps = {
   timelineReadinessNotice?: ReactNode;
   pulseReadinessNotice?: ReactNode;
   pulseAvailable?: boolean;
+  onEnsureCurrentSaved?: () => Promise<void>;
 };
 
 export default function WriterTimelineView({
@@ -69,6 +70,7 @@ export default function WriterTimelineView({
   timelineReadinessNotice,
   pulseReadinessNotice,
   pulseAvailable = true,
+  onEnsureCurrentSaved,
 }: WriterTimelineViewProps) {
   const [timeline, setTimeline] = useState<WriterTimeline | null>(initialTimeline);
   const [selectedSceneKey, setSelectedSceneKey] = useState<string | null>(null);
@@ -602,6 +604,7 @@ export default function WriterTimelineView({
           scrollRef={pulseScrollRef}
           onSelectScene={activateScene}
           onMilestonesChange={setPulseMilestones}
+          onEnsureCurrentSaved={onEnsureCurrentSaved}
         />
       </div>
     </Root>

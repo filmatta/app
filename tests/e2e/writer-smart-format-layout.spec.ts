@@ -36,6 +36,9 @@ async function session(context: BrowserContext) {
 async function openWriter(page: Page, context: BrowserContext, width = 1440) {
   await page.request.get("http://127.0.0.1:54329/__scenario?value=writer-ux");
   await session(context);
+  await page.route(`**/api/writer/scripts/${scriptId}/auto-format`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ classifications: [], userCreditsConsumed: 0 }) });
+  });
   await page.setViewportSize({ width, height: 900 });
   await page.goto(`/writer/${scriptId}`);
   await expect(page.getByLabel("Editor de guion")).toBeVisible();
@@ -66,21 +69,29 @@ test("large paste supports both warnings, later recovery, one-step undo, and fre
   });
   await openWriter(page, context);
   await pasteReplacingDocument(page, screenplay);
-  await expect(page.getByText("¿Quieres aplicar Formato Automático?", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "No, gracias" }).click();
-  await expect(page.getByText("Continuar sin estructura limita el contexto disponible.")).toBeVisible();
-  await page.getByRole("button", { name: "Continuar sin formato" }).click();
+  await expect(page.getByRole("dialog", { name: "✦ Formatear este guion" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "✦ Formatear este guion" })).toHaveCount(0);
+  await expect(page.getByLabel("Editor de guion")).toContainText("No deberíamos abrirla.");
+  await pasteReplacingDocument(page, screenplay);
+  await page.getByRole("button", { name: "CONTINUAR SIN FORMATO" }).click();
+  await expect(page.getByRole("dialog", { name: "¿Continuar sin identificar la estructura?" })).toBeVisible();
+  await page.getByRole("button", { name: "VOLVER Y FORMATEAR" }).click();
+  await expect(page.getByRole("dialog", { name: "✦ Formatear este guion" })).toBeVisible();
+  await page.getByRole("button", { name: "CONTINUAR SIN FORMATO" }).click();
+  await page.getByRole("dialog", { name: "¿Continuar sin identificar la estructura?" }).getByRole("button", { name: "CONTINUAR SIN FORMATO" }).click();
   await expect(page.getByLabel("Editor de guion")).toContainText("No deberíamos abrirla.");
   await expect(page.locator(".writer-observations-panel").getByText("Las herramientas de revisión necesitan identificar la estructura del guion.")).toBeVisible();
 
   const dialog = await openManualFormat(page);
-  await expect(dialog.getByText("US$0", { exact: false })).toBeVisible();
+  await expect(dialog.getByText("0 AI Credits", { exact: false })).toBeVisible();
   await dialog.getByRole("button", { name: "Revisar", exact: true }).click();
   await dialog.getByRole("button", { name: "Aplicar formato revisado" }).click();
   const editor = page.getByLabel("Editor de guion");
   await expect(editor.locator('[data-screenplay-kind="sceneHeading"]')).toHaveCount(4);
   await expect(editor.locator('[data-screenplay-kind="character"]')).toHaveCount(1);
   await expect(editor).toContainText("No deberíamos abrirla.");
+  await expect(page.getByText("O-O-C necesita personajes y diálogos identificados.")).toHaveCount(0);
   await page.getByLabel("Deshacer", { exact: true }).click();
   await expect(editor.locator('[data-screenplay-kind="sceneHeading"]')).toHaveCount(0);
   await page.getByLabel("Rehacer", { exact: true }).click();
@@ -95,8 +106,10 @@ test("large paste supports both warnings, later recovery, one-step undo, and fre
   await expect(page.getByText(/compra créditos|sube de plan|te quedan/iu)).toHaveCount(0);
 });
 
-test("small paste stays quiet while first-warning acceptance unlocks structured views", async ({ page, context }) => {
+test("small paste stays quiet while modal acceptance unlocks structured views and Pulse saves before one-click analysis", async ({ page, context }) => {
+  const pulseMethods: string[] = [];
   await page.route(`**/api/writer/scripts/${scriptId}/narrative-pulse`, async (route) => {
+    pulseMethods.push(route.request().method());
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -117,10 +130,10 @@ test("small paste stays quiet while first-warning acceptance unlocks structured 
     const transfer = new DataTransfer(); transfer.setData("text/plain", "Una frase breve.");
     element.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: transfer }));
   });
-  await expect(page.getByText("¿Quieres aplicar Formato Automático?", { exact: false })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "✦ Formatear este guion" })).toHaveCount(0);
 
   await pasteReplacingDocument(page, screenplay);
-  await page.getByRole("button", { name: "Aplicar formato automático", exact: true }).click();
+  await page.getByRole("dialog", { name: "✦ Formatear este guion" }).getByRole("button", { name: "FORMATEAR GUION" }).click();
   const dialog = page.locator(".writer-auto-format-dialog");
   await expect(dialog.getByRole("heading", { name: "Estructura detectada" })).toBeVisible();
   await dialog.getByRole("button", { name: "Aplicar formato", exact: true }).click();
@@ -142,7 +155,16 @@ test("small paste stays quiet while first-warning acceptance unlocks structured 
   );
   await expect(page.locator(".writer-timeline-panel")).toBeVisible();
   await page.locator(".writer-timeline-panel").getByRole("button", { name: "Narrative Pulse" }).click();
-  await expect(page.getByRole("button", { name: /Analizar Narrative Pulse/ })).toBeEnabled();
+  const analyze = page.getByRole("button", { name: /Analizar Narrative Pulse/ });
+  await expect(analyze).toBeEnabled();
+  pulseMethods.length = 0;
+  await editor.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Cambio pendiente.");
+  await analyze.click();
+  await expect.poll(() => pulseMethods.filter((method) => method === "POST").length).toBe(1);
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 10_000 });
+  expect(pulseMethods[0]).toBe("GET");
 });
 
 test("desktop columns are full-height and mobile keeps drawers without horizontal overflow", async ({ page, context }) => {

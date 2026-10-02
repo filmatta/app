@@ -7,7 +7,10 @@ import {
   canUseStructuredFeature,
   createWriterAutoFormatPlan,
   getWriterDocumentReadiness,
+  mergeWriterAutoFormatClassifications,
   resolveWriterAutoFormatChanges,
+  validateWriterAutoFormatClassifications,
+  writerAutoFormatCandidates,
 } from "../../lib/writer/smart-format.ts";
 import {
   SMART_FORMAT_FIXTURES,
@@ -98,6 +101,55 @@ test("auto-format reuses import detection, preserves text, and applies only one 
   assert.deepEqual(after.content.map(blockText), before);
   assert.deepEqual(after.content.map((block) => block.attrs.id), ids);
   assert.equal(getWriterDocumentReadiness(after).sceneCount, 2);
+});
+
+test("LA CAJA detects scenes, characters and blank-separated dialogue without rewriting", () => {
+  const source = SMART_FORMAT_FIXTURES.laCaja;
+  const document = documentFromLines(source);
+  const before = document.content.map(blockText);
+  const plan = createWriterAutoFormatPlan(document, { scope: "document" });
+  const resolved = resolveWriterAutoFormatChanges(plan, {}, false);
+  const kinds = new Map(resolved.map((change) => [change.blockId, change.kind]));
+  const after: WriterDocument = { type: "doc", content: document.content.map((block) => ({
+    ...block,
+    attrs: { ...block.attrs, kind: kinds.get(block.attrs.id) ?? block.attrs.kind },
+  })) };
+  const readiness = getWriterDocumentReadiness(after);
+  const characters = after.content
+    .filter((block) => block.attrs.kind === "character")
+    .map((block) => blockText(block));
+
+  assert.equal(readiness.sceneCount, 12);
+  assert.ok(readiness.characterCount > 0);
+  assert.ok(readiness.dialogueCount > 0);
+  assert.ok(after.content.some((block) => block.attrs.kind === "action" && blockText(block) === "Silencio."));
+  assert.ok(characters.includes("LUCÍA"));
+  assert.ok(characters.includes("PADRE (TELÉFONO)"));
+  assert.ok(characters.includes("HOMBRE"));
+  assert.deepEqual(after.content.map(blockText), before);
+  assert.equal(canUseStructuredFeature(readiness, "ooc").available, true);
+});
+
+test("hybrid formatting exposes only ambiguous blocks and accepts closed structured classifications", () => {
+  const document = documentFromLines(`INT. CASA - NOCHE
+
+Una lámpara tiembla.
+
+Silencio.`);
+  const plan = createWriterAutoFormatPlan(document, { scope: "document" });
+  const candidates = writerAutoFormatCandidates(document, plan);
+  assert.equal(candidates.length, 2);
+  const silence = candidates.find((candidate) => candidate.text === "Silencio.");
+  assert.equal(silence?.sceneHeading, "INT. CASA - NOCHE");
+  const classifications = validateWriterAutoFormatClassifications(candidates, {
+    classifications: candidates.map((candidate) => ({ blockId: candidate.blockId, kind: "action", characterName: null })),
+  });
+  const merged = mergeWriterAutoFormatClassifications(plan, classifications);
+  assert.equal(merged.changes.find((change) => change.text === "Silencio.")?.confidence, "high");
+  assert.equal(merged.changes.find((change) => change.text === "Silencio.")?.proposedKind, "action");
+  assert.throws(() => validateWriterAutoFormatClassifications(candidates, {
+    classifications: [{ blockId: "unknown", kind: "dialogue", characterName: "LUCÍA", rewrittenText: "Hola" }],
+  }), /inválido/u);
 });
 
 test("ready documents are idempotent and mixed documents preserve existing IDs", () => {

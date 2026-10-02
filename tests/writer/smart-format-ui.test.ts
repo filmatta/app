@@ -8,11 +8,13 @@ const setup = fs.readFileSync("components/writer/WriterSetupPayoff.tsx", "utf8")
 const pulse = fs.readFileSync("components/writer/WriterNarrativePulse.tsx", "utf8");
 const css = fs.readFileSync("app/writer/writer.css", "utf8");
 
-test("paste onboarding is non-blocking, has two explicit decisions, and recovers through one flow", () => {
+test("paste onboarding is an explicit modal with two decisions and one recovery flow", () => {
   assert.match(workspace, /assessWriterPaste\(text\)/u);
-  assert.match(workspace, /¿Quieres aplicar Formato Automático\?/u);
-  assert.match(workspace, /No, gracias/u);
-  assert.match(workspace, /Continuar sin formato/u);
+  assert.doesNotMatch(workspace, /writer-paste-assist/u);
+  assert.match(smart, /WriterPasteFormatPrompt/u);
+  assert.match(smart, /✦ Formatear este guion/u);
+  assert.match(smart, /¿Continuar sin identificar la estructura\?/u);
+  assert.match(smart, /CONTINUAR SIN FORMATO/u);
   assert.match(workspace, /startAutoFormat\("paste", pasteAssist\.blockIds\)/u);
   assert.match(smart, /Aplicar formato revisado/u);
 });
@@ -26,11 +28,22 @@ test("readiness notices cover every structured Writer surface and remain dismiss
   assert.match(workspace, /pulseReadinessNotice=\{readinessNotice\("pulse"\)\}/u);
 });
 
-test("automatic formatting is explicitly local, free, idempotent, and one undoable transaction", () => {
-  assert.match(smart, /Procesamiento determinista y local · US\$0 · no consume AI Credits/u);
+test("automatic formatting is hybrid, included, idempotent, and one undoable transaction", () => {
+  assert.match(smart, /parser resuelve lo evidente/u);
+  assert.match(smart, /0 AI Credits/u);
   assert.doesNotMatch(smart, /upgrade|paywall|checkout/iu);
   assert.match(workspace, /applyWriterAutoFormat\(editor, mutations\)/u);
+  assert.match(workspace, /refreshWriterDerivedStateAfterFormatting/u);
   assert.match(workspace, /Este documento ya parece estar correctamente formateado como guion/u);
+});
+
+test("Pulse turns one analysis intent into save, hash reload, and analysis", () => {
+  assert.match(workspace, /onEnsureCurrentSaved=\{ensureCurrentDocumentSaved\}/u);
+  assert.match(pulse, /Guardando cambios…/u);
+  assert.match(pulse, /await onEnsureCurrentSaved\?\.\(\)/u);
+  assert.match(pulse, /const latest = await pulse\.reload\(\)/u);
+  assert.match(pulse, /pulse\.analyze\(latest\.currentSourceHash\)/u);
+  assert.match(pulse, /Reintentar guardado/u);
 });
 
 test("smart indicator is shared only by analytical or automated actions", () => {

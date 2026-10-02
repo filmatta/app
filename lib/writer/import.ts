@@ -235,7 +235,11 @@ function analyzePlainText(
     const originalText = lines[index];
     const trimmed = originalText.trim();
     if (!trimmed) {
-      dialogueContext = false;
+      // Screenplays commonly leave a visual blank line between a character cue,
+      // a parenthetical and the spoken line. Keep that pending turn alive until
+      // the next meaningful line. Once dialogue has started, a blank line closes
+      // the turn so subsequent prose remains Action.
+      if (blocks.at(-1)?.proposedKind === "dialogue") dialogueContext = false;
       continue;
     }
     const previousBlank = index === 0 || !lines[index - 1].trim();
@@ -328,7 +332,7 @@ function classifyPlainTextLine(input: {
   if (short && uppercase && !hasTerminalSentencePunctuation && previousBlank && nextCanBeDialogue) {
     return {
       proposedKind: "character",
-      confidence: "medium",
+      confidence: "high",
       signals: [
         "Línea corta en mayúsculas.",
         "Separada del bloque anterior y seguida de texto compatible con diálogo.",

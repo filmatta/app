@@ -45,6 +45,71 @@ FADE OUT:`,
   uppercaseAction: `LA CIUDAD DESPIERTA BAJO LA LLUVIA.
 
 Las luces de los autobuses dibujan líneas en el asfalto.`,
+  laCaja: `INT. PANADERÍA - NOCHE
+
+LUCÍA limpia el mostrador. Una caja vieja espera junto al horno.
+
+LUCÍA
+
+Encontré la caja.
+
+Silencio.
+
+INT. CASA DE LUCÍA - NOCHE
+
+LUCÍA deja la caja sobre la mesa.
+
+PADRE (TELÉFONO)
+
+No la abras.
+
+INT. PASILLO - NOCHE
+
+Una sombra cruza la pared.
+
+EXT. CALLE - NOCHE
+
+LUCÍA sale con la caja.
+
+HOMBRE
+
+Entrégamela.
+
+INT. TAXI - NOCHE
+
+La ciudad se deshace tras el cristal.
+
+INT. BODEGA - NOCHE
+
+LUCÍA enciende una lámpara.
+
+INT. OFICINA - NOCHE
+
+PADRE (TELÉFONO)
+
+Escúchame con atención.
+
+EXT. PUENTE - NOCHE
+
+El HOMBRE espera bajo la lluvia.
+
+INT. CUARTO VACÍO - NOCHE
+
+La caja se abre.
+
+EXT. BOSQUE - MADRUGADA
+
+LUCÍA corre entre los árboles.
+
+INT. CABAÑA - MADRUGADA
+
+HOMBRE
+
+Ya es tarde.
+
+EXT. CLARO - AMANECER
+
+LUCÍA deja la caja en el suelo.`,
 } as const;
 
 const existingScene = createBlock("sceneHeading", "INT. CASA - DÍA");

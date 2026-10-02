@@ -66,6 +66,7 @@ import WriterTimelineView from "./WriterTimeline";
 import {
   SmartFeatureIndicator,
   WriterAutoFormatFlow,
+  WriterPasteFormatPrompt,
   WriterReadinessNotice,
 } from "./WriterSmartFormatting";
 import {
@@ -105,10 +106,13 @@ import {
   canUseStructuredFeature,
   createWriterAutoFormatPlan,
   getWriterDocumentReadiness,
+  mergeWriterAutoFormatClassifications,
   resolveWriterAutoFormatChanges,
+  writerAutoFormatCandidates,
   type WriterAutoFormatPlan,
   type WriterStructuredFeature,
 } from "@/lib/writer/smart-format";
+import { classifyWriterAutoFormat } from "@/lib/writer/auto-format-client";
 import {
   analyzeWriterCharacterObservations,
   deriveWriterKnownCharacterIdentities,
@@ -232,6 +236,8 @@ export default function WriterWorkspace({
   const [importOpen, setImportOpen] = useState(false);
   const [pasteAssist, setPasteAssist] = useState<WriterPasteAssistState | null>(null);
   const [autoFormatPlan, setAutoFormatPlan] = useState<WriterAutoFormatPlan | null>(null);
+  const [autoFormatResolving, setAutoFormatResolving] = useState(false);
+  const [autoFormatFallback, setAutoFormatFallback] = useState<string | null>(null);
   const [dismissedReadiness, setDismissedReadiness] = useState<Set<WriterStructuredFeature>>(() => new Set());
   const [observationsOpen, setObservationsOpen] = useState(true);
   const [panelLayout, setPanelLayout] = useState<WriterPanelLayout>(WRITER_PANEL_LAYOUT_DEFAULTS);
@@ -274,6 +280,7 @@ export default function WriterWorkspace({
   const importNoticeHandledRef = useRef(false);
   const highlightTimeoutRef = useRef<number | null>(null);
   const autocompleteRef = useRef<WriterAutocompleteState | null>(null);
+  const autoFormatRequestRef = useRef(0);
   const acceptAutocompleteRef = useRef<((suggestion: WriterAutocompleteSuggestion) => boolean) | null>(null);
   const confirmedTimelineRevisionRef = useRef(script.revision);
   const timelineRequestedRevisionRef = useRef(script.revision);
@@ -1236,7 +1243,7 @@ export default function WriterWorkspace({
     const closeSurfaceOrFocus = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (importOpen) return;
-      if (autoFormatPlan) return setAutoFormatPlan(null);
+      if (autoFormatPlan) return closeAutoFormat();
       if (pasteAssist) return setPasteAssist(null);
       if (contextMenu) return setContextMenu(null);
       if (insertState) return setInsertState(null);
@@ -1541,7 +1548,7 @@ export default function WriterWorkspace({
       if (saveStateRef.current.status === "local") await controller.flush();
     }
     if (saveStateRef.current.status !== "cloud") {
-      throw new Error("Guarda el documento actual en la nube antes de crear el guion importado.");
+      throw new Error("No pudimos guardar los últimos cambios.");
     }
   }
 
@@ -1834,7 +1841,7 @@ export default function WriterWorkspace({
     showStructuralUndo("Personaje renombrado");
   }
 
-  function startAutoFormat(scope: "document" | "partial" | "paste", blockIds?: readonly string[]) {
+  async function startAutoFormat(scope: "document" | "partial" | "paste", blockIds?: readonly string[]) {
     if (!editor) return;
     if (readiness.state === "EMPTY" && scope !== "paste") {
       setFeedback("Añade contenido antes de aplicar Formato Automático.");
@@ -1842,28 +1849,77 @@ export default function WriterWorkspace({
     }
     try {
       const ids = scope === "partial" ? readiness.suspiciousBlockIds : blockIds;
-      setAutoFormatPlan(createWriterAutoFormatPlan(
-        editor.getJSON() as unknown as WriterDocument,
+      const sourceDocument = editor.getJSON() as unknown as WriterDocument;
+      const plan = createWriterAutoFormatPlan(
+        sourceDocument,
         { scope, ...(ids ? { blockIds: ids } : {}) },
-      ));
+      );
+      const candidates = writerAutoFormatCandidates(sourceDocument, plan);
+      const request = ++autoFormatRequestRef.current;
+      setAutoFormatPlan(plan);
+      setAutoFormatFallback(null);
+      setAutoFormatResolving(candidates.length > 0);
       setPasteAssist(null);
+      if (candidates.length === 0) return;
+      try {
+        await ensureCurrentDocumentSaved();
+        const classifications = await classifyWriterAutoFormat(script.id, {
+          scope,
+          blockIds: plan.blockIds,
+        });
+        if (autoFormatRequestRef.current !== request) return;
+        setAutoFormatPlan(mergeWriterAutoFormatClassifications(plan, classifications));
+      } catch {
+        if (autoFormatRequestRef.current !== request) return;
+        setAutoFormatFallback("No pudimos resolver todas las ambigüedades con clasificación contextual. Puedes aplicar la detección local y revisar los elementos pendientes.");
+      } finally {
+        if (autoFormatRequestRef.current === request) setAutoFormatResolving(false);
+      }
     } catch (cause) {
       setFeedback(cause instanceof Error ? cause.message : "No se pudo detectar la estructura del texto.");
     }
+  }
+
+  function closeAutoFormat() {
+    autoFormatRequestRef.current += 1;
+    setAutoFormatResolving(false);
+    setAutoFormatFallback(null);
+    setAutoFormatPlan(null);
   }
 
   function applyAutoFormatPlan(choices: Readonly<Record<string, ScreenplayKind>>, reviewAll: boolean) {
     if (!editor || !autoFormatPlan) return;
     const mutations = resolveWriterAutoFormatChanges(autoFormatPlan, choices, reviewAll);
     const result = applyWriterAutoFormat(editor, mutations);
-    setAutoFormatPlan(null);
-    setDismissedReadiness(new Set());
+    closeAutoFormat();
     if (result === "applied") {
+      refreshWriterDerivedStateAfterFormatting();
       setFeedback("Formato aplicado. El texto se conservó y la estructura de Writer se actualizó.");
       showStructuralUndo("Formato Automático aplicado");
     } else {
       setFeedback("Este documento ya parece estar correctamente formateado como guion.");
     }
+  }
+
+  function refreshWriterDerivedStateAfterFormatting() {
+    if (!editor || editor.isDestroyed) return;
+    const validated = validateWriterDocument(editor.getJSON() as unknown as WriterDocument);
+    if (!validated.ok) {
+      setFeedback(validated.reason);
+      return;
+    }
+    const canonical = canonicalWriterDocument(validated.document);
+    if (JSON.stringify(canonical) !== JSON.stringify(documentRef.current)) {
+      documentRef.current = canonical;
+      controllerRef.current?.markChanged({
+        title: titleRef.current,
+        document: canonical,
+        schemaVersion: WRITER_SCHEMA_VERSION,
+      });
+    }
+    setDocument(canonical);
+    setDismissedReadiness(new Set());
+    setAnalysisEpoch((value) => value + 1);
   }
 
   function readinessNotice(feature: WriterStructuredFeature) {
@@ -2200,14 +2256,6 @@ export default function WriterWorkspace({
         <div className="writer-editor-notices">
           {!focusMode && navigationDepth > 0 && <button className="writer-navigation-back" type="button" onClick={navigateBack}>← Volver</button>}
           {feedback && <div className="writer-editor-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback(null)}>Cerrar</button></div>}
-          {pasteAssist?.step === "offer" && <aside className="writer-paste-assist" role="status">
-            <div><strong><span aria-hidden="true">✦</span> ¿Quieres aplicar Formato Automático?</strong><p>Podemos identificar escenas, acciones, personajes, diálogos y otros elementos del guion sin cambiar lo que escribiste.</p></div>
-            <div><button type="button" onClick={() => startAutoFormat("paste", pasteAssist.blockIds)}>Aplicar formato automático</button><button type="button" onClick={() => setPasteAssist((current) => current ? { ...current, step: "consequence" } : null)}>No, gracias</button></div>
-          </aside>}
-          {pasteAssist?.step === "consequence" && <aside className="writer-paste-assist is-consequence" role="status">
-            <div><strong>Continuar sin estructura limita el contexto disponible.</strong><p>Sin Formato Automático, FILMATTA no podrá identificar correctamente escenas, personajes, acciones, diálogos y otros elementos de este texto. Esto puede limitar Revisión, O-O-C, Setup/Payoff, Guided Writing, Timeline y Narrative Pulse.</p></div>
-            <div><button type="button" onClick={() => startAutoFormat("paste", pasteAssist.blockIds)}>Aplicar formato automático</button><button type="button" onClick={() => setPasteAssist(null)}>Continuar sin formato</button></div>
-          </aside>}
         </div>
         <div
           ref={paperRef}
@@ -2335,6 +2383,7 @@ export default function WriterWorkspace({
             timelineReadinessNotice={readinessNotice("timeline")}
             pulseReadinessNotice={readinessNotice("pulse")}
             pulseAvailable={canUseStructuredFeature(readiness, "pulse").available}
+            onEnsureCurrentSaved={ensureCurrentDocumentSaved}
             refreshToken={timelineRefreshToken}
             activeSceneId={activeScene}
             sceneNicknames={structuralMetadata.sceneNicknames}
@@ -2383,8 +2432,26 @@ export default function WriterWorkspace({
       {autoFormatPlan && (
         <WriterAutoFormatFlow
           plan={autoFormatPlan}
+          resolving={autoFormatResolving}
+          fallbackNotice={autoFormatFallback}
           onApply={applyAutoFormatPlan}
-          onClose={() => setAutoFormatPlan(null)}
+          onClose={closeAutoFormat}
+        />
+      )}
+
+      {pasteAssist && !autoFormatPlan && (
+        <WriterPasteFormatPrompt
+          step={pasteAssist.step}
+          onFormat={() => startAutoFormat("paste", pasteAssist.blockIds)}
+          onContinue={() => {
+            if (pasteAssist.step === "offer") {
+              setPasteAssist((current) => current ? { ...current, step: "consequence" } : null);
+            } else {
+              setPasteAssist(null);
+            }
+          }}
+          onBack={() => setPasteAssist((current) => current ? { ...current, step: "offer" } : null)}
+          onClose={() => setPasteAssist(null)}
         />
       )}
 

@@ -8,9 +8,10 @@ import { SmartFeatureIndicator } from "./WriterSmartFormatting";
 
 const TYPES: WriterPulseMilestoneType[] = ["inciting_incident", "first_turning_point", "midpoint", "crisis", "climax", "resolution", "custom"];
 
-export default function WriterNarrativePulse({ scriptId, scenes, active, analysisEnabled = true, selectedSceneId, columnWidth, scrollRef, onSelectScene, onMilestonesChange }: {
+export default function WriterNarrativePulse({ scriptId, scenes, active, analysisEnabled = true, selectedSceneId, columnWidth, scrollRef, onSelectScene, onMilestonesChange, onEnsureCurrentSaved }: {
   scriptId: string; scenes: TimelineScene[]; active: boolean; analysisEnabled?: boolean; selectedSceneId: string | null; columnWidth: number;
   scrollRef: RefObject<HTMLDivElement | null>; onSelectScene: (scene: TimelineScene) => void; onMilestonesChange?: (milestones: WriterPulseMilestone[]) => void;
+  onEnsureCurrentSaved?: () => Promise<void>;
 }) {
   const pulse = useWriterNarrativePulse({ scriptId, enabled: active });
   const [expanded, setExpanded] = useState(false);
@@ -21,6 +22,7 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, analysi
   const [manualLabel, setManualLabel] = useState("");
   const [moveScene, setMoveScene] = useState("");
   const [renameLabel, setRenameLabel] = useState("");
+  const [savePhase, setSavePhase] = useState<"idle" | "saving" | "error">("idle");
   const orderedPoints = useMemo(() => scenes.flatMap((scene) => {
     const point = pulse.points.find((item) => item.sceneId === scene.sourceId);
     return point ? [{ scene, point }] : [];
@@ -55,16 +57,34 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, analysi
     setRenameLabel(milestone.label);
   }
 
-  return <div className={`writer-pulse${expanded ? " is-expanded" : ""}`} aria-busy={pulse.analyzing}>
+  async function saveThenAnalyze() {
+    if (savePhase === "saving" || pulse.analyzing) return;
+    setSavePhase("saving");
+    pulse.setFeedback(null);
+    try {
+      await onEnsureCurrentSaved?.();
+      const latest = await pulse.reload();
+      if (!latest?.currentSourceHash) throw new Error("missing_hash");
+      setSavePhase("idle");
+      await pulse.analyze(latest.currentSourceHash);
+    } catch {
+      setSavePhase("error");
+      pulse.setFeedback(null);
+    }
+  }
+
+  return <div className={`writer-pulse${expanded ? " is-expanded" : ""}`} aria-busy={pulse.analyzing || savePhase === "saving"}>
     <section className="writer-pulse-intro">
       <div><p className="timeline-eyebrow">Lectura descriptiva</p><h1>Intensidad narrativa</h1><p>Compara cambios dentro de este guion. No es una puntuación de calidad, ritmo ni estructura.</p></div>
       <div className="writer-pulse-actions">
         <button type="button" onClick={() => setExpanded((value) => !value)}>{expanded ? "Reducir" : "Expandir"}</button>
-        {pulse.analyzing ? <button type="button" onClick={pulse.cancel}>Cancelar</button> : <button type="button" disabled={!analysisEnabled || !pulse.currentSourceHash || scenes.length < WRITER_NARRATIVE_PULSE_MIN_SCENES} onClick={() => void pulse.analyze()}><SmartFeatureIndicator label={pulse.analysis ? "Actualizar Narrative Pulse" : "Analizar Narrative Pulse"} /></button>}
+        {pulse.analyzing ? <button type="button" onClick={pulse.cancel}>Cancelar</button> : <button type="button" disabled={!analysisEnabled || savePhase === "saving" || scenes.length < WRITER_NARRATIVE_PULSE_MIN_SCENES} onClick={() => void saveThenAnalyze()}><SmartFeatureIndicator label={pulse.analysis ? "Actualizar Narrative Pulse" : "Analizar Narrative Pulse"} /></button>}
       </div>
     </section>
     {scenes.length < WRITER_NARRATIVE_PULSE_MIN_SCENES && <p className="writer-pulse-empty">Narrative Pulse necesita más escenas para producir una lectura útil.</p>}
     {pulse.analysis && !current && <p className="writer-pulse-stale">El guion cambió desde este análisis. Los hitos humanos se conservan.</p>}
+    {savePhase === "saving" && <p className="writer-pulse-loading" role="status">Guardando cambios…</p>}
+    {savePhase === "error" && <div className="timeline-notice" role="alert"><span>No pudimos guardar los últimos cambios.</span><button type="button" onClick={() => void saveThenAnalyze()}>Reintentar guardado</button></div>}
     {pulse.analyzing && <p className="writer-pulse-loading" role="status">Analizando estructura narrativa… Puedes seguir escribiendo.</p>}
     {pulse.feedback && <p className="timeline-notice" role="status">{pulse.feedback}</p>}
     {!pulse.analysis && scenes.length >= WRITER_NARRATIVE_PULSE_MIN_SCENES && pulse.loaded && <div className="writer-pulse-empty"><strong>Todavía no hay lectura narrativa.</strong><span>El análisis sólo se ejecuta cuando eliges “Analizar Narrative Pulse”.</span></div>}

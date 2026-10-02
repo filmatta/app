@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { SCREENPLAY_KINDS, type ScreenplayKind } from "@/lib/writer/document";
 import {
   canUseStructuredFeature,
@@ -48,19 +48,25 @@ export function WriterReadinessNotice({
 
 export function WriterAutoFormatFlow({
   plan,
+  resolving = false,
+  fallbackNotice = null,
   onApply,
   onClose,
 }: {
   plan: WriterAutoFormatPlan;
+  resolving?: boolean;
+  fallbackNotice?: string | null;
   onApply: (choices: Readonly<Record<string, ScreenplayKind>>, reviewAll: boolean) => void;
   onClose: () => void;
 }) {
   const [phase, setPhase] = useState<"detecting" | "summary" | "review">("detecting");
   const [choices, setChoices] = useState<Record<string, ScreenplayKind>>({});
   useEffect(() => {
+    if (resolving) return;
     const timer = window.setTimeout(() => setPhase("summary"), 180);
     return () => window.clearTimeout(timer);
-  }, [plan]);
+  }, [plan, resolving]);
+  const displayedPhase = resolving ? "detecting" : phase;
   const reviewItems = useMemo(() => plan.changes.filter((item) => item.confidence !== "high").sort((left, right) => {
     const rank = { review: 0, medium: 1, high: 2 } as const;
     return rank[left.confidence] - rank[right.confidence] || left.sourceLine - right.sourceLine;
@@ -69,9 +75,10 @@ export function WriterAutoFormatFlow({
 
   return <div className="writer-auto-format-backdrop" role="presentation">
     <section className="writer-auto-format-dialog" role="dialog" aria-modal="true" aria-labelledby="writer-auto-format-title">
-      <header><div><SmartFeatureIndicator label="FORMATO AUTOMÁTICO" /><h2 id="writer-auto-format-title">{phase === "detecting" ? "Detectando estructura…" : phase === "review" ? "Revisar formato detectado" : "Estructura detectada"}</h2></div><button type="button" onClick={onClose} aria-label="Cerrar Formato Automático">Cerrar</button></header>
-      {phase === "detecting" && <div className="writer-auto-format-detecting" role="status"><span aria-hidden="true" />Analizando localmente escenas y bloques del guion…</div>}
-      {phase === "summary" && <>
+      <header><div><SmartFeatureIndicator label="FORMATO AUTOMÁTICO" /><h2 id="writer-auto-format-title">{displayedPhase === "detecting" ? "Detectando estructura…" : displayedPhase === "review" ? "Revisar formato detectado" : "Estructura detectada"}</h2></div><button type="button" onClick={onClose} aria-label="Cerrar Formato Automático">Cerrar</button></header>
+      {displayedPhase === "detecting" && <div className="writer-auto-format-detecting" role="status"><span aria-hidden="true" />El parser organiza lo evidente y revisa sólo las ambigüedades de contexto…</div>}
+      {displayedPhase === "summary" && <>
+        {fallbackNotice && <p className="writer-auto-format-fallback" role="status">{fallbackNotice}</p>}
         {plan.alreadyFormatted ? <div className="writer-auto-format-ready"><strong>Este documento ya parece estar correctamente formateado como guion.</strong><p>No se regeneraron IDs ni se modificó el contenido.</p></div> : <>
           <p>Detectamos:</p>
           <dl className="writer-auto-format-summary">
@@ -81,11 +88,11 @@ export function WriterAutoFormatFlow({
             <div><dt>Acción</dt><dd>{detected.action}</dd></div>
             <div><dt>Por revisar</dt><dd>{plan.summary.needsReview}</dd></div>
           </dl>
-          <p className="writer-auto-format-free">Procesamiento determinista y local · US$0 · no consume AI Credits.</p>
+          <p className="writer-auto-format-free">Formato Automático incluido · el parser resuelve lo evidente y la clasificación contextual sólo revisa ambigüedades · 0 AI Credits.</p>
         </>}
         <footer>{!plan.alreadyFormatted && <><button type="button" onClick={() => setPhase("review")}>Revisar</button><button type="button" className="is-primary" onClick={() => onApply({}, false)}>Aplicar formato</button></>}<button type="button" onClick={onClose}>{plan.alreadyFormatted ? "Cerrar" : "Cancelar"}</button></footer>
       </>}
-      {phase === "review" && <>
+      {displayedPhase === "review" && <>
         <p>Confirma únicamente los bloques que necesitan atención. Los cambios de alta confianza se aplicarán sin pedirte revisar páginas ya claras. El texto no se reescribe.</p>
         <div className="writer-auto-format-review">
           {reviewItems.map((item) => <label key={item.blockId} data-confidence={item.confidence}>
@@ -97,6 +104,48 @@ export function WriterAutoFormatFlow({
         </div>
         <footer><button type="button" onClick={() => setPhase("summary")}>Volver</button><button type="button" className="is-primary" onClick={() => onApply(choices, true)}>Aplicar formato revisado</button><button type="button" onClick={onClose}>Cancelar</button></footer>
       </>}
+    </section>
+  </div>;
+}
+
+export function WriterPasteFormatPrompt({
+  step,
+  onFormat,
+  onContinue,
+  onBack,
+  onClose,
+}: {
+  step: "offer" | "consequence";
+  onFormat: () => void;
+  onContinue: () => void;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  const title = step === "offer" ? "✦ Formatear este guion" : "¿Continuar sin identificar la estructura?";
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => { closeRef.current?.focus(); }, []);
+  return <div className="writer-auto-format-backdrop writer-paste-format-backdrop" role="presentation">
+    <section className="writer-auto-format-dialog writer-paste-format-dialog" role="dialog" aria-modal="true" aria-labelledby="writer-paste-format-title" onKeyDown={(event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    }}>
+      <header><div><h2 id="writer-paste-format-title">{title}</h2></div><button ref={closeRef} type="button" onClick={onClose} aria-label="Cerrar">×</button></header>
+      {step === "offer" ? <div className="writer-paste-format-copy">
+        <p>Este texto parece contener un guion.</p>
+        <p>Para que FILMATTA pueda identificar escenas, personajes, diálogos y acciones —y utilizar correctamente Timeline, Narrative Pulse y las herramientas de análisis— necesitamos organizar su formato.</p>
+        <strong>No cambiaremos lo que escribiste.</strong>
+      </div> : <div className="writer-paste-format-copy">
+        <p>FILMATTA no podrá reconocer correctamente escenas, personajes, diálogos y acciones. Algunas herramientas pueden quedar limitadas hasta que formatees el documento.</p>
+      </div>}
+      <footer>{step === "offer" ? <>
+        <button type="button" className="is-primary" onClick={onFormat}>FORMATEAR GUION</button>
+        <button type="button" onClick={onContinue}>CONTINUAR SIN FORMATO</button>
+      </> : <>
+        <button type="button" className="is-primary" onClick={onBack}>VOLVER Y FORMATEAR</button>
+        <button type="button" onClick={onContinue}>CONTINUAR SIN FORMATO</button>
+      </>}</footer>
     </section>
   </div>;
 }
