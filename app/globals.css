@@ -50,7 +50,9 @@ html {
 .global-header { --nav-panel-offset: 19px; position: relative; z-index: 40; }
 .global-header--context { --nav-panel-offset: 47px; }
 .global-header-inner { margin: 0 auto; max-width: 1800px; display: flex; min-height: 80px; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.5rem; }
-.nav-brand { font-size: 1.125rem; font-weight: 900; letter-spacing: .2em; }
+.nav-brand { display: inline-flex; align-items: baseline; gap: .55rem; font-size: 1.125rem; font-weight: 900; letter-spacing: .2em; }
+.nav-brand i { color: #a9d7e6; font-size: .58rem; font-style: normal; font-weight: 650; letter-spacing: .18em; }
+.nav-create-tools-grid { display: grid; min-width: min(34rem, 82vw); grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .nav-trigger { position: relative; align-items: center; min-height: 44px; padding: .5rem .25rem; font-size: .875rem; color: #c8c6c2; white-space: nowrap; transition: color 140ms ease, background-color 140ms ease; }
 @layer components {
   .global-header-inner .nav-trigger { display: inline-flex; height: 44px; line-height: 20px; gap: .375rem; justify-content: center; }
@@ -67,6 +69,7 @@ html {
 .nav-primary-panel--perfiles { width: min(320px, calc(100vw - 2rem)); }
 .nav-primary-panel--oportunidades { width: min(440px, calc(100vw - 2rem)); }
 .nav-primary-panel--tools { width: min(600px, calc(100vw - 2rem)); }
+.nav-primary-panel--herramientas { width: min(600px, calc(100vw - 2rem)); }
 .nav-publishing-panel { width: min(320px, calc(100vw - 2rem)); padding: .5rem; }
 .nav-menu-link { display: block; min-height: 44px; padding: .75rem; font-size: .875rem; line-height: 1.4; color: #e0ded8; transition: background-color 120ms ease, color 120ms ease; }
 .nav-menu-description { display: block; margin-top: .25rem; font-size: .75rem; line-height: 1.55; color: #ffffff73; }
@@ -110,6 +113,7 @@ html {
 .nav-drawer::backdrop { background: #000b; }
 @media (min-width: 1024px) { .global-header-inner { padding-inline: 2rem; } }
 @media (min-width: 1280px) { .global-header-inner { padding-inline: 3rem; } }
+@media (max-width: 639px) { .nav-brand i { display: none; } .nav-create-tools-grid { display: block; min-width: 0; } }
 @media (max-width: 389px) { .global-header-inner { gap: .5rem; padding-inline: 1rem; } .nav-brand { font-size: 1rem; letter-spacing: .12em; } }
 
 .editorial-page { min-height: 100vh; background: #080808; color: #f1efe9; --vertical-accent: #b9dceb; }

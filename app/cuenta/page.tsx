@@ -1,39 +1,152 @@
-import LegacyAccountLinks from "./LegacyAccountLinks";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import LegacyAccountLinks from "./LegacyAccountLinks";
 import SiteHeader from "@/components/SiteHeader";
 import { PlanBadge } from "@/components/entitlements/PlanBadge";
 import { getViewer } from "@/lib/auth/get-viewer";
-import { getAccountDashboard } from "@/lib/account/dashboard";
+import {
+  getAccountDashboard,
+  type CreateDashboardItem,
+} from "@/lib/account/dashboard";
 import { getBillingAccess } from "@/lib/billing/access";
-import StatusBadge from "@/components/ui/StatusBadge";
-import ProfileAvatar from "@/components/profiles/ProfileAvatar";
-import ProjectMetadata, { ProjectStatus } from "@/components/networking/ProjectMetadata";
-import "@/components/networking/networking.css";
+import { surfacesFor } from "@/lib/create/catalog";
 import "./dashboard.css";
-export const metadata = {title:"Cuenta",robots:{index:false,follow:false}};
-function Icon({kind}:{kind:"profile"|"project"|"request"|"network"|"location"|"learn"}) {
- const paths={profile:"M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 21a8 8 0 0 1 16 0",project:"M3 6h7l2 3h9v11H3ZM3 6V4h7l2 2",request:"M3 4h18v13H8l-5 4ZM7 8h10M7 12h7",network:"M7 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6M17 14a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 16a5 5 0 0 1 10 0M12 22a5 5 0 0 1 10 0",location:"M12 22s8-9 8-14A8 8 0 0 0 4 8c0 5 8 14 8 14ZM12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6",learn:"m9 6 10 6-10 6ZM3 3v18"};
- return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"><path d={paths[kind]}/></svg>;
+
+export const metadata = {
+  title: "Dashboard · FILMATTA CREATE",
+  robots: { index: false, follow: false },
+};
+
+const dateFormatter = new Intl.DateTimeFormat("es-MX", {
+  dateStyle: "medium",
+  timeZone: "America/Mexico_City",
+});
+
+function CreationCard({ item, featured = false }: { item: CreateDashboardItem; featured?: boolean }) {
+  return (
+    <Link className={`create-dashboard-item${featured ? " is-featured" : ""}`} href={item.href}>
+      <span className="create-dashboard-kind">{item.kind === "writer" ? "WRITER" : "SHOTLIST"}</span>
+      <h3>{item.title}</h3>
+      {item.relation && <p>{item.relation}</p>}
+      <small>Editado {dateFormatter.format(new Date(item.updatedAt))}</small>
+      <b>Abrir <span>↗</span></b>
+    </Link>
+  );
 }
-export default async function AccountDashboardPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}) {
- const feedback=await searchParams;
- if(Object.keys(feedback).some(key=>["profile","profile_error","email","email_error","password","password_error","session_error"].includes(key))){const query=new URLSearchParams();for(const [key,value] of Object.entries(feedback)){if(typeof value==="string")query.set(key,value);}redirect("/cuenta/configuracion?"+query.toString());}
- const viewer=await getViewer();if(!viewer)redirect("/login?next=%2Fcuenta");
- const [d,billing]=await Promise.all([getAccountDashboard(viewer.id),getBillingAccess()]);
- const portrait=d.profile?.presentation as {portrait_media_id?:string;portrait_url?:string}|undefined;
- return <div className="editorial-page"><LegacyAccountLinks/><SiteHeader/><main className="network-shell account-dashboard">
- <header className="account-dashboard-header"><p className="eyebrow">CUENTA</p><h1>Hola, {viewer.fullName || "bienvenido"}.</h1><p>Aquí puedes continuar tu trabajo y administrar tu cuenta.</p></header>
- {d.partial&&<p role="status" className="network-muted">Algunos resúmenes no están disponibles. Puedes seguir usando los accesos.</p>}
- <section aria-labelledby="quick-links"><h2 id="quick-links">Accesos rápidos</h2><div className="account-quick-grid">
- <Link className="network-card account-quick-card" href="/mi-perfil"><div className="account-quick-icon">{<ProfileAvatar id={portrait?.portrait_media_id} fallbackUrl={portrait?.portrait_url} name={d.profile?.display_name||viewer.displayName}/>}</div><h3>Mi perfil</h3>{d.profile?<StatusBadge tone={d.profile.is_public?"success":"neutral"}>{d.profile.is_public?"Publicado":"Borrador"}</StatusBadge>:d.profile===null?<p>Crea tu presencia profesional.</p>:null}<span className="network-card-cta">Editar perfil →</span></Link>
- <Link className="network-card account-quick-card" href="/mis-proyectos"><div className="account-quick-icon"><Icon kind="project"/></div><h3>Mis proyectos</h3>{d.active!==null&&d.pending!==null&&<p>{d.active} activos · {d.pending} por confirmar</p>}<span className="network-card-cta">Abrir proyectos →</span></Link>
- <Link className="network-card account-quick-card" href="/cuenta/contactos"><div className="account-quick-icon"><Icon kind="request"/></div><h3>Solicitudes / Contactos</h3>{d.summary&&(d.summary.pending_received || d.summary.location_pending_received ? <div className="network-credit-metrics">{d.summary.pending_received > 0 && <StatusBadge tone="warning">{d.summary.pending_received} profesionales</StatusBadge>}{Boolean(d.summary.location_pending_received) && <StatusBadge tone="info">{d.summary.location_pending_received} locaciones</StatusBadge>}</div>:<p>No tienes solicitudes pendientes.</p>)}<span className="network-card-cta">Ver solicitudes →</span></Link>
- <Link className="network-card account-quick-card" href="/mi-red"><div className="account-quick-icon"><Icon kind="network"/></div><h3>Mi red</h3>{d.summary&&<p>{d.summary.followers} seguidores · {d.summary.following} siguiendo</p>}<span className="network-card-cta">Ver red →</span></Link>
- <Link className="network-card account-quick-card" href="/mis-locaciones"><div className="account-quick-icon"><Icon kind="location"/></div><h3>Mis locaciones</h3>{d.locations!==null&&<p>{d.locations} publicadas</p>}<span className="network-card-cta">Administrar locaciones →</span></Link>
- <Link className="network-card account-quick-card" href="/cuenta/configuracion#mis-cursos"><div className="account-quick-icon"><Icon kind="learn"/></div><h3>Learn</h3><p>Tu biblioteca y acceso al catálogo.</p><span className="network-card-cta">Continuar aprendiendo →</span></Link>
- </div></section>
- {d.latest&&<section className="account-recent" aria-labelledby="latest-project"><h2 id="latest-project">Último proyecto actualizado</h2><Link className="network-card" href={"/proyectos/"+d.latest.slug}><ProjectStatus project={d.latest}/><h3>{d.latest.title}</h3><ProjectMetadata project={d.latest}/><p className="network-muted">Actualizado {new Intl.DateTimeFormat("es-MX",{dateStyle:"medium",timeZone:"America/Mexico_City"}).format(new Date(d.latest.updated_at))}</p><span className="network-card-cta">Abrir →</span></Link></section>}
- <section className="account-configuration" aria-labelledby="account-settings"><h2 id="account-settings">Configuración</h2><div className="account-settings-links"><Link href="/cuenta/configuracion#configuracion">Configuración →</Link><Link href="/cuenta/configuracion#datos-contacto">Datos de contacto →</Link><Link href="/cuenta/configuracion#seguridad">Seguridad →</Link><Link href="/cuenta/suscripcion">Plan / suscripción →</Link></div>{billing.plan&&<p className="account-plan">Tu plan <PlanBadge plan={billing.plan}/></p>}</section>
- </main></div>;
+export default async function AccountDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const feedback = await searchParams;
+  if (
+    Object.keys(feedback).some((key) =>
+      ["profile", "profile_error", "email", "email_error", "password", "password_error", "session_error"].includes(key),
+    )
+  ) {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(feedback)) {
+      if (typeof value === "string") query.set(key, value);
+    }
+    redirect("/cuenta/configuracion?" + query.toString());
+  }
+
+  const viewer = await getViewer();
+  if (!viewer) redirect("/login?next=%2Fcuenta");
+  const [dashboard, billing] = await Promise.all([
+    getAccountDashboard(viewer.id),
+    getBillingAccess(),
+  ]);
+  const [continueItem, ...otherRecent] = dashboard.recent;
+  const available = surfacesFor("dashboard").filter((surface) => surface.href);
+  const upcoming = surfacesFor("dashboard").filter((surface) => !surface.href);
+
+  return (
+    <div className="create-dashboard-page">
+      <LegacyAccountLinks />
+      <SiteHeader />
+      <main className="create-dashboard-shell">
+        <header className="create-dashboard-header">
+          <p><span>FILMATTA</span> CREATE</p>
+          <h1>¿En qué vas a trabajar hoy?</h1>
+          <span>Hola, {viewer.fullName || "bienvenido"}.</span>
+        </header>
+
+        {dashboard.partial && (
+          <p role="status" className="create-dashboard-notice">
+            Algunos documentos recientes no están disponibles. Puedes seguir usando Writer y Shotlist.
+          </p>
+        )}
+
+        <section className="create-dashboard-continue" aria-labelledby="continue-heading">
+          <div className="create-dashboard-section-title">
+            <p>01</p>
+            <h2 id="continue-heading">Continúa donde lo dejaste</h2>
+          </div>
+          {continueItem ? (
+            <div className="create-dashboard-continue-grid">
+              <CreationCard item={continueItem} featured />
+              <div className="create-dashboard-recent-stack">
+                {otherRecent.slice(0, 3).map((item) => <CreationCard item={item} key={`${item.kind}-${item.id}`} />)}
+              </div>
+            </div>
+          ) : (
+            <div className="create-dashboard-empty">
+              <div><span>PRIMER PASO</span><h3>Empieza una historia en Writer.</h3><p>Crea un guion o importa uno existente. No necesitas crear un proyecto antes.</p></div>
+              <Link href="/writer">Empezar con Writer <span>↗</span></Link>
+            </div>
+          )}
+        </section>
+
+        <section aria-labelledby="creations-heading">
+          <div className="create-dashboard-section-title">
+            <p>02</p>
+            <h2 id="creations-heading">Tus guiones y shotlists</h2>
+          </div>
+          <div className="create-dashboard-libraries">
+            <article>
+              <header><div><span>WRITER</span><h3>Guiones</h3></div><Link href="/writer">Ver todos ↗</Link></header>
+              {dashboard.scripts.length ? dashboard.scripts.slice(0, 3).map((item) => <CreationCard item={item} key={item.id} />) : <p className="create-library-empty">Todavía no tienes guiones.</p>}
+            </article>
+            <article>
+              <header><div><span>SHOTLIST</span><h3>Listas de planos</h3></div><Link href="/shotlists">Ver todas ↗</Link></header>
+              {dashboard.shotlists.length ? dashboard.shotlists.slice(0, 3).map((item) => <CreationCard item={item} key={item.id} />) : <p className="create-library-empty">Todavía no tienes shotlists.</p>}
+            </article>
+          </div>
+        </section>
+
+        <section aria-labelledby="tools-heading">
+          <div className="create-dashboard-section-title">
+            <p>03</p>
+            <h2 id="tools-heading">Herramientas disponibles</h2>
+          </div>
+          <div className="create-dashboard-tools">
+            {available.map((surface) => (
+              <Link href={surface.href!} key={surface.id}>
+                <span>{surface.name.toUpperCase()}</span>
+                <h3>{surface.eyebrow}</h3>
+                <p>{surface.description}</p>
+                <b>{surface.actionLabel} ↗</b>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="create-dashboard-learn" aria-labelledby="learn-heading">
+          <div><p>04 · LEARN</p><h2 id="learn-heading">Aprende FILMATTA.</h2><span>Consulta únicamente los cursos y contenidos publicados.</span></div>
+          <Link href="/cursos">Explorar Learn ↗</Link>
+        </section>
+
+        <section className="create-dashboard-upcoming" aria-labelledby="upcoming-heading">
+          <div className="create-dashboard-section-title"><p>05</p><h2 id="upcoming-heading">Próximamente</h2></div>
+          <div>{upcoming.map((surface) => <article key={surface.id}><span>{surface.statusLabel}</span><h3>{surface.name}</h3><p>{surface.eyebrow}</p></article>)}</div>
+        </section>
+
+        <section className="create-dashboard-account" aria-label="Cuenta y suscripción">
+          <div><h2>Cuenta</h2>{billing.plan && <p>Tu plan <PlanBadge plan={billing.plan} /></p>}</div>
+          <nav><Link href="/cuenta/configuracion#configuracion">Configuración</Link><Link href="/cuenta/configuracion#seguridad">Seguridad</Link><Link href="/cuenta/suscripcion">Plan / suscripción</Link></nav>
+        </section>
+      </main>
+    </div>
+  );
 }

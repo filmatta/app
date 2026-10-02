@@ -42,9 +42,7 @@ test("desktop panels connect to the header and preserve their editorial widths",
   const header = page.locator("header.global-header");
 
   for (const [name, expectedWidth, file] of [
-    ["Perfiles", 320, "perfiles"],
-    ["Oportunidades", 440, "oportunidades"],
-    ["Tools", 600, "tools"],
+    ["Herramientas", 600, "herramientas"],
     ["Cuenta", 280, "mi-cuenta"],
   ] as const) {
     const { panel } = await openPanel(page, name);
@@ -64,8 +62,8 @@ test("desktop panels connect to the header and preserve their editorial widths",
     await page.keyboard.press("Escape");
   }
 
-  await page.goto("/tools/writer");
-  const { panel } = await openPanel(page, "Tools");
+  await page.goto("/writer");
+  const { panel } = await openPanel(page, "Herramientas");
   await page.waitForTimeout(200);
   const [contextHeaderBox, contextPanelBox] = await Promise.all([
     header.boundingBox(),
@@ -81,17 +79,17 @@ test("desktop dropdown switching, outside click and Escape stay predictable", as
   await authenticatedSession(context);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  const profiles = await openPanel(page, "Perfiles");
-  const opportunities = await openPanel(page, "Oportunidades");
-  await expect(profiles.panel).toBeHidden();
-  await expect(opportunities.panel).toBeVisible();
-  await page.locator("main").click({ position: { x: 20, y: 200 } });
-  await expect(opportunities.panel).toBeHidden();
+  const tools = await openPanel(page, "Herramientas");
   const account = await openPanel(page, "Cuenta");
-  await expect(account.panel.getByText("Preview User", { exact: true })).toBeVisible();
-  await expect(account.panel.locator(".account-avatar")).toHaveText("PU");
+  await expect(tools.panel).toBeHidden();
+  await expect(account.panel).toBeVisible();
+  await page.locator("main").click({ position: { x: 20, y: 200 } });
+  await expect(account.panel).toBeHidden();
+  const reopenedAccount = await openPanel(page, "Cuenta");
+  await expect(reopenedAccount.panel.getByText("Preview User", { exact: true })).toBeVisible();
+  await expect(reopenedAccount.panel.locator(".account-avatar")).toHaveText("PU");
   await page.keyboard.press("Escape");
-  await expect(account.trigger).toBeFocused();
+  await expect(reopenedAccount.trigger).toBeFocused();
 });
 
 test("header stays aligned at desktop breakpoints and the mobile drawer keeps its account block", async ({ page, context }) => {

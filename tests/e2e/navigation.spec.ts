@@ -35,15 +35,15 @@ test("desktop dropdown works with keyboard, closes on Escape and restores focus"
     name: "Navegación principal",
     exact: true,
   });
-  const profiles = nav.getByRole("button", { name: "Perfiles", exact: true });
-  await profiles.focus();
+  const tools = nav.getByRole("button", { name: "Herramientas", exact: true });
+  await tools.focus();
   await page.keyboard.press("Enter");
-  await expect(profiles).toHaveAttribute("aria-expanded", "true");
+  await expect(tools).toHaveAttribute("aria-expanded", "true");
   await page.keyboard.press("Tab");
-  await expect(nav.getByRole("link", { name: /Profesionales/ })).toBeFocused();
+  await expect(nav.getByRole("link", { name: /Writer/ })).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(profiles).toBeFocused();
-  await expect(profiles).toHaveAttribute("aria-expanded", "false");
+  await expect(tools).toBeFocused();
+  await expect(tools).toHaveAttribute("aria-expanded", "false");
 });
 
 test("mobile dialog traps focus, restores it and closes on navigation", async ({
@@ -66,7 +66,7 @@ test("mobile dialog traps focus, restores it and closes on navigation", async ({
   await expect(trigger).toBeFocused();
   await trigger.click();
   await dialog.getByRole("link", { name: "Learn", exact: true }).click();
-  await expect(page).toHaveURL(/\/descubre\/learn/);
+  await expect(page).toHaveURL(/\/cursos/);
   await expect(dialog).not.toBeVisible();
 });
 

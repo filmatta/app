@@ -8,7 +8,7 @@ import { logout } from "@/app/cuenta/actions";
 import LoadingButton from "@/components/ui/LoadingButton";
 import Disclosure from "./Disclosure";
 import NetworkingHeader from "@/components/networking/NetworkingHeader";
-import { getAccountNavigation, getPrimaryNavigation, isNavigationActive, publishingNavigation, type NavigationLink } from "@/lib/navigation";
+import { getAccountNavigation, getCreateNavigation, getPrimaryNavigation, isNavigationActive, type NavigationLink } from "@/lib/navigation";
 
 function MenuLinks({ items, descriptions = true }: { items: NavigationLink[]; descriptions?: boolean }) {
   return <>{items.map(item => {
@@ -35,44 +35,21 @@ function AccountAvatar({ name, small = false, portrait }: { name: string; small?
 }
 
 function AccountIdentity({ name, mobile = false, portrait }: { name: string; mobile?: boolean; portrait?: AccountPortrait }) {
-  return <Link href="/mi-perfil" className={`account-identity ${mobile ? "account-identity--mobile" : ""}`}>
+  return <Link href="/cuenta" className={`account-identity ${mobile ? "account-identity--mobile" : ""}`}>
     <AccountAvatar name={name} portrait={portrait} />
     <span className="min-w-0">
       <span className="account-identity-name">{name}</span>
-      <span className="account-identity-meta">Mi perfil →</span>
+      <span className="account-identity-meta">Dashboard →</span>
     </span>
   </Link>;
 }
 
 function DesktopMenu({ item }: { item: { label: string; children: NavigationLink[] } }) {
-  if (item.label === "Tools") {
-    const byLabel = (label: string) => item.children.find(link => link.label === label)!;
-    return <div className="nav-product-menu nav-product-menu--tools">
-      <p className="nav-panel-heading">Tools</p>
-      <div className="nav-tools-grid">
-        <div className="nav-tools-column">
-          <p className="nav-panel-group">Crear</p>
-          <MenuLinks descriptions={false} items={[byLabel("FILMATTA Writer"), byLabel("Production Assistant")]} />
-        </div>
-        <div className="nav-tools-column">
-          <p className="nav-panel-group">Utilidades</p>
-          <MenuLinks descriptions={false} items={[byLabel("Calculadoras y conversores"), byLabel("Todas las herramientas")]} />
-        </div>
-      </div>
-    </div>;
-  }
-
-  if (item.label === "Oportunidades") {
-    return <div className="nav-product-menu nav-product-menu--opportunities">
-      <p className="nav-panel-heading">Oportunidades</p>
-      <div className="nav-opportunities-grid"><MenuLinks descriptions={false} items={item.children} /></div>
-      <p className="nav-panel-note">Convocatorias para hacer posibles los proyectos.</p>
-    </div>;
-  }
-
-  return <div className="nav-product-menu nav-product-menu--profiles">
-    <p className="nav-panel-heading">Perfiles</p>
-    <MenuLinks items={item.children} />
+  return <div className="nav-product-menu nav-product-menu--tools">
+    <p className="nav-panel-heading">{item.label}</p>
+    <div className="nav-create-tools-grid">
+      <MenuLinks items={item.children} />
+    </div>
   </div>;
 }
 
@@ -80,7 +57,7 @@ export function AccountNavigation({ role, displayName, portrait }: { role: strin
   const pathname = usePathname();
   const [hash, setHash] = useState("");
   const accountLinks = getAccountNavigation(role);
-  const personalLinks = ["/mi-perfil", "/cuenta/contactos", "/mi-red", "/mis-proyectos", "/mis-locaciones", "/mis-servicios", "/cuenta/configuracion#mis-cursos", "/cuenta/suscripcion"]
+  const personalLinks = ["/writer", "/shotlists", "/cuenta/configuracion#mis-cursos", "/mi-perfil", "/cuenta/suscripcion"]
     .map(href => accountLinks.find(item => item.href === href)!);
   const settings = accountLinks.find(item => item.href === "/cuenta/configuracion#configuracion")!;
   const admin = accountLinks.find(item => item.href === "/admin");
@@ -124,6 +101,7 @@ export default function GlobalNavigation({ authenticated, role, accountName = "C
 }) {
   const pathname = usePathname();
   const links = getPrimaryNavigation(authenticated);
+  const createLinks = getCreateNavigation();
   const dialog = useRef<HTMLDialogElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const close = () => { dialog.current?.close(); document.body.style.overflow = ""; menuButton.current?.focus(); };
@@ -136,7 +114,7 @@ export default function GlobalNavigation({ authenticated, role, accountName = "C
   return <header className={`global-header border-b border-white/15 bg-[#080808] text-[#f1efe9] ${hasContextLink ? "global-header--context" : ""}`}>
     <div className="global-header-inner">
       <div className="flex min-w-0 shrink-0 items-center gap-2">
-        <Link href="/" aria-label="FILMATTA — Inicio" className="nav-brand">FILMATTA</Link>{badge}
+        <Link href="/" aria-label="FILMATTA CREATE — Inicio" className="nav-brand"><span>FILMATTA</span><i>CREATE</i></Link>{badge}
       </div>
       <nav aria-label="Navegación principal" className="hidden min-[1440px]:block">
         <ul className="flex items-center gap-3">
@@ -151,11 +129,11 @@ export default function GlobalNavigation({ authenticated, role, accountName = "C
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">
         <NetworkingHeader authenticated={authenticated} />
         {authenticated ? <>
-          <div className="nav-publish-slot hidden min-[1600px]:flex"><Disclosure label="Publicar" align="right" panelClassName="nav-publishing-panel"><MenuLinks items={publishingNavigation.filter(i => !["/mis-locaciones/nueva","/mis-servicios/nuevo"].includes(i.href))} /></Disclosure></div>
+          <div className="nav-publish-slot hidden min-[1440px]:flex"><Disclosure label="Crear" align="right" panelClassName="nav-publishing-panel"><MenuLinks items={createLinks} /></Disclosure></div>
           <div className="nav-account-slot hidden min-[1280px]:flex"><AccountNavigation role={role ?? "user"} displayName={accountName} portrait={accountPortrait} /></div>
         </> : <>
-          <Link href="/login" className="nav-trigger hidden sm:inline-flex">Entrar</Link>
-          <Link href="/registro" className="nav-signup hidden sm:inline-flex">Crear cuenta</Link>
+          <Link href="/login" className="nav-trigger hidden sm:inline-flex">Iniciar sesión</Link>
+          <Link href="/writer" className="nav-signup hidden sm:inline-flex">Empezar con Writer</Link>
         </>}
         <button type="button" ref={menuButton} aria-haspopup="dialog" aria-controls="global-navigation-drawer"
           className="nav-trigger min-[1440px]:hidden" onClick={() => {
@@ -178,7 +156,7 @@ export default function GlobalNavigation({ authenticated, role, accountName = "C
       onClick={event => { if (event.target === event.currentTarget) close(); }}>
       <div className="min-h-full p-6">
         <div className="mb-8 flex items-center justify-between border-b border-white/15 pb-5">
-          <p id="navigation-drawer-title" className="text-sm font-semibold tracking-[0.2em]">EXPLORA FILMATTA</p>
+          <p id="navigation-drawer-title" className="text-sm font-semibold tracking-[0.2em]">FILMATTA CREATE</p>
           <button type="button" className="nav-trigger" onClick={close} autoFocus>Cerrar ×</button>
         </div>
         <nav aria-label="Navegación móvil" onClick={event => { if ((event.target as HTMLElement).closest("a")) close(); }}>
@@ -192,10 +170,10 @@ export default function GlobalNavigation({ authenticated, role, accountName = "C
               <p className="mb-2 text-xs uppercase tracking-[0.2em] text-white/50">Tu espacio</p>
 
               <MenuLinks items={getAccountNavigation(role ?? "user")} />
-              <p className="mb-2 mt-7 text-xs uppercase tracking-[0.2em] text-white/50">Publicar</p>
-              <MenuLinks items={publishingNavigation.filter(i => !["/mis-locaciones/nueva","/mis-servicios/nuevo"].includes(i.href))} />
+              <p className="mb-2 mt-7 text-xs uppercase tracking-[0.2em] text-white/50">Crear</p>
+              <MenuLinks items={createLinks} />
               <form action={logout} className="mt-5"><LoadingButton type="submit" loadingText="Saliendo…" className="nav-menu-link">Cerrar sesión</LoadingButton></form>
-            </> : <div className="flex flex-wrap gap-4"><Link href="/login" className="nav-trigger">Entrar</Link><Link href="/registro" className="nav-signup">Crear cuenta</Link></div>}
+            </> : <div className="flex flex-wrap gap-4"><Link href="/login" className="nav-trigger">Iniciar sesión</Link><Link href="/writer" className="nav-signup">Empezar con Writer</Link></div>}
           </div>
         </nav>
       </div>

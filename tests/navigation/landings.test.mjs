@@ -4,16 +4,17 @@ import fs from "node:fs";
 import load from "../load.mjs";
 const { landings, getLanding, landingActionHref } = load("content/landings.ts");
 const nav = load("lib/navigation.ts");
-test("anonymous navigation presents verticals; member navigation keeps direct access", () => {
+test("public and member navigation present the same focused CREATE surfaces", () => {
   const anon = nav.getPrimaryNavigation(false);
   const member = nav.getPrimaryNavigation(true);
-  assert.equal(anon[0].href, "/descubre/perfiles");
-  assert.equal(member[0].href, "/perfiles");
+  assert.equal(anon[0].label, "Herramientas");
+  assert.equal(member[0].label, "Herramientas");
   assert.equal(
     anon.find((item) => item.label === "Learn").href,
-    "/descubre/learn",
+    "/cursos",
   );
   assert.equal(member.find((item) => item.label === "Learn").href, "/cursos");
+  assert.deepEqual(anon, member);
 });
 test("unknown editorial slugs cannot resolve through object prototype", () => {
   assert.equal(getLanding("__proto__"), null);

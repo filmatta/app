@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "branch": "codex/filmatta-create-home-dashboard-v1",
+  "baseSha": "050013a43e8991a6cdfc412e8ebd698b90e38c58",
+  "captureContext": "working tree based on baseSha; final commit recorded in delivery",
+  "demo": {
+    "name": "LA FRECUENCIA",
+    "dataClass": "synthetic",
+    "privacyReview": "No email, password, token, billing data, shareable URL or private work is present."
+  },
+  "assets": [
+    {
+      "tool": "Writer",
+      "status": "real",
+      "viewport": "1600x1000",
+      "source": "source/writer-source.png",
+      "derivatives": [
+        { "file": "derived/writer-product.webp", "transform": "crop 1600x760 from 0,0; resize width 1440; WebP quality 84" },
+        { "file": "derived/writer-detail.webp", "transform": "crop 1040x650 from 210,65; WebP quality 84" },
+        { "file": "derived/writer-review.webp", "transform": "crop 420x700 from 1180,55; WebP quality 84" }
+      ],
+      "notes": "Actual WriterWorkspace rendered with a synthetic screenplay; no AI execution."
+    },
+    {
+      "tool": "Shotlist",
+      "status": "real",
+      "viewport": "1600x1000",
+      "source": "source/shotlist-source.png",
+      "derivatives": [
+        { "file": "derived/shotlist-product.webp", "transform": "full frame; resize width 1440; WebP quality 84" },
+        { "file": "derived/shotlist-grid.webp", "transform": "crop 1040x560 from 220,100; WebP quality 84" },
+        { "file": "derived/shotlist-inspector.webp", "transform": "crop 390x900 from 1210,70; WebP quality 84" }
+      ],
+      "notes": "Actual ShotlistWorkspace with synthetic linked scenes and shots; assisted is not described as AI."
+    },
+    {
+      "tool": "Storyboard / Sketcher",
+      "status": "conceptual",
+      "viewport": "responsive HTML/CSS/SVG",
+      "source": "../../components/create/ProductVisuals.tsx",
+      "derivatives": [
+        { "file": "qa/storyboard-section-1440.png", "transform": "browser render at 1440px" },
+        { "file": "qa/storyboard-section-390.png", "transform": "browser render at 390px" }
+      ],
+      "notes": "Editable visual source only; no route, persistence, image generation or working drawing controls."
+    },
+    {
+      "tool": "Production",
+      "status": "conceptual",
+      "viewport": "responsive HTML/CSS",
+      "source": "../../components/create/ProductVisuals.tsx",
+      "derivatives": [{ "file": "qa/home-1440.png", "transform": "section within full-page browser render" }],
+      "notes": "Synthetic plan data; no API actions or production-management implementation."
+    },
+    {
+      "tool": "REC",
+      "status": "conceptual",
+      "viewport": "responsive HTML/CSS/SVG",
+      "source": "../../components/create/ProductVisuals.tsx",
+      "derivatives": [{ "file": "qa/home-390.png", "transform": "section within full-page browser render" }],
+      "notes": "Future direction; no native app, camera or offline claim."
+    }
+  ],
+  "qaViewports": ["1920x1080", "1440x1000", "834x1112", "768x1024", "390x844"]
+}
