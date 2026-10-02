@@ -44,6 +44,7 @@ button,input,select,textarea { font:inherit; }
 .shotlist-grid-head { position:sticky; z-index:4; top:0; height:44px; background:#0c131a; border-bottom:1px solid #27313c; color:#aeb9c8; font-size:12px; }
 .shotlist-grid-head span,.shotlist-row>* { min-width:0; display:flex; align-items:center; padding:0 10px; border-right:1px solid #202a34; box-sizing:border-box; }
 .shotlist-group-head { position:sticky; z-index:3; top:44px; display:flex; align-items:center; gap:10px; width:100%; height:48px; border:0; border-bottom:1px solid #24303a; background:#0b1218; color:#dfe7f1; text-align:left; padding:0 15px; }.shotlist-group-head strong{color:#bfe9ff}.shotlist-group-head small{color:#b3bfcc}.shotlist-group-head i{margin-left:auto;font-style:normal;color:#90a1b5}
+.shotlist-empty-group{margin:0;padding:18px 54px;border-bottom:1px solid #24303a;color:#8999a9;background:#091017;font-size:12px;line-height:1.5}
 .shotlist-row { min-height:43px; border-bottom:1px solid #1b252e; color:#bdc7d4; font-size:12px; cursor:default; }
 .shotlist-row:hover { background:#0c1821; }.shotlist-row.is-selected { background:linear-gradient(90deg,#0b2a39,#0c2431); outline:1px solid var(--shot-cyan); outline-offset:-1px; color:#eafaff; }
 .shotlist-row input,.shotlist-row select { width:100%; height:100%; min-height:41px; color:inherit; background:transparent; border:0; outline:none; padding:0; }.shotlist-row select{color-scheme:dark}.shotlist-row input:focus,.shotlist-row select:focus{background:#101c25;box-shadow:inset 0 0 0 1px #3a9db9}

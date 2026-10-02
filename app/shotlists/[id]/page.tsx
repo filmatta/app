@@ -7,13 +7,20 @@ import { loadWriterShotlist } from "@/lib/writer/production-server";
 
 export const metadata: Metadata = { title: "Shotlist · FILMATTA", robots: { index: false, follow: false } };
 
-export default async function ShotlistPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ShotlistPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ mode?: string | string[] }>;
+}) {
   const viewer = await getViewer();
   const { id } = await params;
+  const { mode } = await searchParams;
   if (!viewer) redirect(`/login?next=/shotlists/${encodeURIComponent(id)}`);
   const state = await loadShotlistOrNull(viewer.id, id);
   if (!state) notFound();
-  return <ShotlistWorkspace initialState={state} />;
+  return <ShotlistWorkspace initialState={state} initialMode={mode === "suggested" ? "suggested" : "manual"} />;
 }
 
 async function loadShotlistOrNull(userId: string, id: string) {

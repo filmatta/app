@@ -232,6 +232,21 @@ export const ScreenplayBlockExtension = Node.create({
         view.dispatch(transaction.scrollIntoView());
         return true;
       },
+      Tab: () => {
+        const { state, view } = this.editor;
+        if (view.composing || !state.selection.empty) return false;
+        const { $from } = state.selection;
+        if ($from.parent.type.name !== this.name || $from.parent.content.size !== 0) return false;
+        const current = ($from.parent.attrs.kind ?? "action") as ScreenplayKind;
+        const next: Partial<Record<ScreenplayKind, ScreenplayKind>> = {
+          sceneHeading: "action", action: "character", character: "dialogue",
+          parenthetical: "dialogue", dialogue: "action", transition: "sceneHeading",
+        };
+        const kind = next[current];
+        if (!kind) return false;
+        view.dispatch(state.tr.setNodeMarkup($from.before(), undefined, { ...$from.parent.attrs, kind }));
+        return true;
+      },
     };
   },
 

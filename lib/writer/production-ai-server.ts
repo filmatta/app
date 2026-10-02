@@ -30,7 +30,7 @@ export async function analyzeBreakdownWithAi(input: {
   const providerInput = JSON.stringify({ scenes: scenes.map((scene) => ({ sceneId: scene.sceneId, heading: scene.heading, blocks: scene.blocks })) });
   if (providerInput.length > 70_000) throw new WriterProductionAiError("too_large", "Analiza menos escenas por operación.", 413);
   const instructions = "Detecta sólo elementos de producción explícitamente sostenidos por el texto. No inventes. Devuelve referencias exactas a sceneId y blockId. Distingue present, used, mentioned e inferred. No propongas equipo de cámara.";
-  const output = await executeOperation({ userId: input.userId, scriptId: input.scriptId, kind: "breakdown_detect", scope: input.sceneIds?.length === 1 ? "scene" : "document", source: providerInput, instructions, schema: breakdownSchema(), operationId: input.operationId, signal: input.signal });
+  const output = await executeOperation({ userId: input.userId, scriptId: input.scriptId, sourceRevision: script.revision, kind: "breakdown_detect", scope: input.sceneIds?.length === 1 ? "scene" : "document", source: providerInput, instructions, schema: breakdownSchema(), operationId: input.operationId, signal: input.signal });
   const candidates = validateWriterBreakdownCandidates((output.result as { candidates?: unknown }).candidates, script.document);
   return { candidates, ...output.metrics };
 }
@@ -88,7 +88,7 @@ export async function loadProposals(db: SupabaseClient, userId: string, shotlist
   return result.data ?? [];
 }
 
-async function executeOperation(input: { userId: string; scriptId?: string | null; shotlistId?: string; kind: string; scope: string; source: string; instructions: string; schema: Record<string, unknown>; operationId?: string; signal?: AbortSignal }) {
+async function executeOperation(input: { userId: string; scriptId?: string | null; sourceRevision?: number | null; shotlistId?: string; kind: string; scope: string; source: string; instructions: string; schema: Record<string, unknown>; operationId?: string; signal?: AbortSignal }) {
   const sourceHash = sha256(input.source); const requestHash = sha256(`${VERSION}:${WRITER_SCRIPT_ASSISTANT_MODEL}:${input.instructions}:${input.source}`);
   let operationId = input.operationId ?? randomUUID();
   const estimated = estimateWriterSceneAnalysisMaximumCost(countWriterSceneAnalysisTokens(`${input.instructions}\n${input.source}`), MAX_OUTPUT_TOKENS);
@@ -100,7 +100,7 @@ async function executeOperation(input: { userId: string; scriptId?: string | nul
   if (existing.data?.id) operationId = String(existing.data.id);
   const reserved = await admin.from("writer_production_operations").upsert({
     id: operationId, owner_id: input.userId, script_id: input.scriptId ?? null, shotlist_id: input.shotlistId ?? null,
-    kind: input.kind, scope: input.scope, source_revision: null, source_hash: sourceHash, request_hash: requestHash,
+    kind: input.kind, scope: input.scope, source_revision: input.sourceRevision ?? null, source_hash: sourceHash, request_hash: requestHash,
     model: WRITER_SCRIPT_ASSISTANT_MODEL, status: "processing", reserved_cost_microusd: estimated, updated_at: new Date().toISOString(),
   }, { onConflict: "id" });
   if (reserved.error) throw new WriterProductionAiError("storage", "No pudimos reservar la operación.", 500);

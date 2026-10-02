@@ -57,10 +57,20 @@ import {
 } from "@/lib/writer/panel-layout";
 import {
   WRITER_WORKSPACE_LAYOUT_DEFAULTS,
+  legacyWriterWorkspaceLayoutStorageKey,
+  migrateWriterWorkspaceLayout,
   parseWriterWorkspaceLayout,
   writerWorkspaceLayoutStorageKey,
   type WriterWorkspaceLayout,
 } from "@/lib/writer/workspace-layout";
+import {
+  WRITER_APPEARANCE_DEFAULTS,
+  parseWriterAppearance,
+  writerAppearanceStorageKey,
+  type WriterAppearance,
+  type WriterSkin,
+} from "@/lib/writer/appearance";
+import { WRITER_KIND_SHORTCUTS, writerKindShortcut, writerShortcutLabel } from "@/lib/writer/shortcuts";
 import WriterImportFlow from "./WriterImportFlow";
 import WriterBreakdownPanel from "./WriterBreakdownPanel";
 import WriterAssistantNarrative from "./WriterAssistantNarrative";
@@ -229,9 +239,11 @@ const initialSaveState: WriterPersistenceState = {
 export default function WriterWorkspace({
   script,
   userId,
+  previewNoCredits,
 }: {
   script: ScriptInput;
   userId: string;
+  previewNoCredits: boolean;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(script.title);
@@ -276,6 +288,9 @@ export default function WriterWorkspace({
   const [observationsOpen, setObservationsOpen] = useState(true);
   const [panelLayout, setPanelLayout] = useState<WriterPanelLayout>(WRITER_PANEL_LAYOUT_DEFAULTS);
   const [workspaceLayout, setWorkspaceLayout] = useState<WriterWorkspaceLayout>(WRITER_WORKSPACE_LAYOUT_DEFAULTS);
+  const [appearance, setAppearance] = useState<WriterAppearance>(WRITER_APPEARANCE_DEFAULTS);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [observationsSection, setObservationsSection] = useState<WriterObservationsSection>("review");
   const [selectedObservationBlockId, setSelectedObservationBlockId] = useState<string | null>(null);
   const [selectedAssistantObservationId, setSelectedAssistantObservationId] = useState<string | null>(null);
@@ -307,6 +322,8 @@ export default function WriterWorkspace({
   const [autocomplete, setAutocomplete] = useState<WriterAutocompleteState | null>(null);
   const [conflictBusy, setConflictBusy] = useState(false);
   const [shotlistBusy, setShotlistBusy] = useState(false);
+  const [shotlistModalOpen, setShotlistModalOpen] = useState(false);
+  const [shotlists, setShotlists] = useState<Array<{ id: string; title?: string }>>([]);
   const [feedback, setFeedback] = useState<string | null>(null);
   const controllerRef = useRef<WriterPersistenceController | null>(null);
   const documentRef = useRef(script.document);
@@ -315,6 +332,7 @@ export default function WriterWorkspace({
   const toastTimeoutRef = useRef<number | null>(null);
   const leaseRef = useRef<WriterTabLease | null>(null);
   const exportButtonRef = useRef<HTMLButtonElement>(null);
+  const shotlistTriggerRef = useRef<HTMLButtonElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const paperRef = useRef<HTMLDivElement>(null);
   const nativeFullscreenRef = useRef(false);
@@ -443,6 +461,7 @@ export default function WriterWorkspace({
 
   const panelLayoutStorageKey = useMemo(() => writerPanelStorageKey(userId), [userId]);
   const workspaceLayoutStorageKey = useMemo(() => writerWorkspaceLayoutStorageKey(userId), [userId]);
+  const appearanceStorageKey = useMemo(() => writerAppearanceStorageKey(userId), [userId]);
   const commitPanelWidth = useCallback((side: WriterPanelSide, value: number) => {
     setPanelLayout((current) => {
       const next = { ...current, [side]: value };
@@ -481,7 +500,13 @@ export default function WriterWorkspace({
     const frame = window.requestAnimationFrame(() => {
       let restored = { ...WRITER_WORKSPACE_LAYOUT_DEFAULTS };
       try {
-        restored = parseWriterWorkspaceLayout(window.localStorage.getItem(workspaceLayoutStorageKey));
+        const current = window.localStorage.getItem(workspaceLayoutStorageKey);
+        if (current) restored = parseWriterWorkspaceLayout(current);
+        else {
+          const legacy = window.localStorage.getItem(legacyWriterWorkspaceLayoutStorageKey(userId));
+          restored = migrateWriterWorkspaceLayout(legacy);
+          if (legacy) window.localStorage.setItem(workspaceLayoutStorageKey, JSON.stringify(restored));
+        }
       } catch {
         // Private browsing or disabled storage keeps the product defaults.
       }
@@ -489,7 +514,23 @@ export default function WriterWorkspace({
       if (window.matchMedia("(min-width: 901px)").matches) setObservationsOpen(restored.rightSidebarVisible);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [workspaceLayoutStorageKey]);
+  }, [userId, workspaceLayoutStorageKey]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      try { setAppearance(parseWriterAppearance(window.localStorage.getItem(appearanceStorageKey))); }
+      catch { setAppearance({ ...WRITER_APPEARANCE_DEFAULTS }); }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [appearanceStorageKey]);
+
+  const commitAppearance = useCallback((patch: Partial<WriterAppearance>) => {
+    setAppearance((current) => {
+      const next = { ...current, ...patch };
+      try { window.localStorage.setItem(appearanceStorageKey, JSON.stringify(next)); } catch { /* visual preference stays local */ }
+      return next;
+    });
+  }, [appearanceStorageKey]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -699,6 +740,34 @@ export default function WriterWorkspace({
       activeWriterSelectionRef.current = captureWriterSelectionTarget(current.state);
     },
   });
+
+  useEffect(() => {
+    if (!editor) return;
+    const applyKindShortcut = (event: KeyboardEvent) => {
+      const kind = writerKindShortcut(event, navigator.platform);
+      if (!kind || composingRef.current || !editor.isFocused) return;
+      const target = event.target;
+      if (!(target instanceof Node) || !editor.view.dom.contains(target)) return;
+      if (window.document.querySelector('[role="dialog"]')) return;
+      const block = currentWriterBlock(editor);
+      if (!block) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (changeWriterBlockKind(editor, block.id, kind)) setFeedback(`Tipo cambiado a ${WRITER_KIND_LABELS[kind]}.`);
+    };
+    window.addEventListener("keydown", applyKindShortcut, true);
+    return () => window.removeEventListener("keydown", applyKindShortcut, true);
+  }, [editor]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`/api/writer/scripts/${script.id}/shotlists`, { cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.shotlists)) setShotlists(data.shotlists);
+      });
+    return () => { cancelled = true; };
+  }, [script.id]);
 
   useEffect(() => {
     if (timelineInitialOpenHandledRef.current === script.id) return;
@@ -1323,7 +1392,7 @@ export default function WriterWorkspace({
       if (key === "s") {
         event.preventDefault();
         void controllerRef.current?.flush();
-      } else if (key === "f" || key === "h") {
+      } else if (key === "f" || (key === "h" && event.ctrlKey && !event.metaKey)) {
         event.preventDefault();
         setSearchReplaceMode(key === "h");
         setSearchOpen(true);
@@ -1379,6 +1448,9 @@ export default function WriterWorkspace({
     const closeSurfaceOrFocus = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (importOpen) return;
+      if (shotlistModalOpen && !shotlistBusy) return setShotlistModalOpen(false);
+      if (shortcutsOpen) return setShortcutsOpen(false);
+      if (appearanceOpen) return setAppearanceOpen(false);
       if (searchOpen) return setSearchOpen(false);
       if (ideasOpen) return setIdeasOpen(false);
       if (versionsOpen) return setVersionsOpen(false);
@@ -1410,7 +1482,7 @@ export default function WriterWorkspace({
     };
     window.addEventListener("keydown", closeSurfaceOrFocus);
     return () => window.removeEventListener("keydown", closeSurfaceOrFocus);
-  }, [autoFormatPlan, contextMenu, exportMenu, feedback, focusMode, ideasOpen, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pasteAssist, pdfExportOpen, restoreTimelineAfterFocus, searchOpen, timelineExpanded, timelineOpen, versionsOpen]);
+  }, [appearanceOpen, autoFormatPlan, contextMenu, exportMenu, feedback, focusMode, ideasOpen, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pasteAssist, pdfExportOpen, restoreTimelineAfterFocus, searchOpen, shortcutsOpen, shotlistBusy, shotlistModalOpen, timelineExpanded, timelineOpen, versionsOpen]);
 
   useEffect(() => {
     if (!editor || !ready || deepLinkHandledRef.current) return;
@@ -1672,18 +1744,24 @@ export default function WriterWorkspace({
     }
   }
 
-  async function openOrCreateShotlist() {
+  function openShotlistFlow() {
+    if (shotlistBusy) return;
+    if (shotlists.length === 1) {
+      router.push(`/shotlists/${shotlists[0].id}`);
+      return;
+    }
+    if (shotlists.length > 1) {
+      router.push("/shotlists");
+      return;
+    }
+    setShotlistModalOpen(true);
+  }
+
+  async function createShotlist(mode: "manual" | "suggested") {
     if (shotlistBusy) return;
     setShotlistBusy(true);
     setFeedback(null);
     try {
-      const existingResponse = await fetch(`/api/writer/scripts/${script.id}/shotlists`, { cache: "no-store" });
-      const existing = await existingResponse.json();
-      if (!existingResponse.ok) throw new Error(existing.error ?? "No pudimos consultar la Shotlist.");
-      if (Array.isArray(existing.shotlists) && existing.shotlists.length) {
-        router.push(`/shotlists/${existing.shotlists[0].id}`);
-        return;
-      }
       await ensureCurrentDocumentSaved();
       const createResponse = await fetch(`/api/writer/scripts/${script.id}/shotlists`, {
         method: "POST",
@@ -1692,7 +1770,9 @@ export default function WriterWorkspace({
       });
       const created = await createResponse.json();
       if (!createResponse.ok || typeof created.id !== "string") throw new Error(created.error ?? "No pudimos crear la Shotlist.");
-      router.push(`/shotlists/${created.id}`);
+      setShotlistModalOpen(false);
+      setShotlists([{ id: created.id, title: `${title.trim() || "Guion sin título"} — Shotlist` }]);
+      router.push(`/shotlists/${created.id}${mode === "suggested" ? "?mode=suggested" : ""}`);
     } catch (cause) {
       setFeedback(cause instanceof Error ? cause.message : "No pudimos abrir la Shotlist.");
       setShotlistBusy(false);
@@ -2249,6 +2329,8 @@ export default function WriterWorkspace({
     <div
       ref={workspaceRef}
       className={`writer-workspace${focusMode ? " writer-workspace--focus" : ""}${timelineOpen ? " writer-workspace--timeline" : ""}${timelineExpanded ? " writer-workspace--timeline-expanded" : ""}${observationsOpen && !focusMode ? " writer-workspace--observations" : ""}${!workspaceLayout.leftSidebarVisible && !focusMode ? " writer-workspace--left-hidden" : ""}${charactersCollapsed ? " writer-workspace--characters-collapsed" : ""}`}
+      data-writer-skin={appearance.skin}
+      data-writer-warm-filter={appearance.warmFilter ? "true" : "false"}
       data-focus-scale={focusScale.toFixed(3)}
       data-structural-metadata-persistent={structuralMetadataPersistent ? "true" : "false"}
       style={{
@@ -2257,6 +2339,7 @@ export default function WriterWorkspace({
         "--writer-right-panel-width": `${panelLayout.right}px`,
         "--writer-timeline-panel-height": `${workspaceLayout.timelineHeight}px`,
         "--writer-character-panel-height": `${workspaceLayout.charactersHeight}px`,
+        "--writer-warm-intensity": appearance.warmIntensity / 100,
       } as CSSProperties}
     >
       <header className="writer-header">
@@ -2302,12 +2385,15 @@ export default function WriterWorkspace({
             ><WriterIcon name="panelRight" /></button>
           </div>
           <SaveStatus state={saveState} />
-          <button
-            className="writer-shotlist-open-button"
-            type="button"
-            onClick={() => void openOrCreateShotlist()}
-            disabled={!ready || shotlistBusy}
-          >{shotlistBusy ? "Abriendo…" : "Shotlist"}</button>
+          <button className="writer-appearance-button" type="button" aria-label="Apariencia de Writer" aria-expanded={appearanceOpen} onClick={() => setAppearanceOpen((open) => !open)}><WriterIcon name="eye" /></button>
+          {appearanceOpen && <div className="writer-appearance-popover" role="dialog" aria-label="Apariencia de Writer">
+            <strong>Apariencia</strong>
+            <div className="writer-skin-options" role="radiogroup" aria-label="Skin de Writer">{(["carbon", "navy", "cream"] as WriterSkin[]).map((skin) => <button key={skin} type="button" role="radio" aria-checked={appearance.skin === skin} onClick={() => commitAppearance({ skin })}><span className={`writer-skin-swatch is-${skin}`} />{skin === "carbon" ? "Carbon" : skin === "navy" ? "Marino" : "Cream"}</button>)}</div>
+            <label className="writer-warm-toggle"><input type="checkbox" checked={appearance.warmFilter} onChange={(event) => commitAppearance({ warmFilter: event.target.checked })} />Confort visual / filtro cálido</label>
+            {appearance.warmFilter && <label className="writer-warm-intensity">Intensidad<input type="range" min="4" max="14" value={appearance.warmIntensity} onChange={(event) => commitAppearance({ warmIntensity: Number(event.target.value) })} /></label>}
+            <small>El filtro cálido altera temporalmente la percepción del color. No cambia el guion ni sus exports.</small>
+            <button type="button" onClick={() => { setAppearanceOpen(false); setShortcutsOpen(true); }}>Atajos de teclado</button>
+          </div>}
           <button
             className="writer-import-open-button"
             type="button"
@@ -2381,7 +2467,7 @@ export default function WriterWorkspace({
           <div className="writer-mobile-sheet writer-mobile-more-sheet" role="dialog" aria-label="Más acciones de Writer">
             <div className="writer-mobile-sheet-head"><strong>Writer</strong><button type="button" onClick={() => setMobileMoreOpen(false)}>Cerrar</button></div>
             <button type="button" onClick={openImportFlow}>Importar borrador</button>
-            <button type="button" disabled={shotlistBusy} onClick={() => { setMobileMoreOpen(false); void openOrCreateShotlist(); }}>Shotlist</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setAppearanceOpen(true); }}>Apariencia y atajos</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document"); }}><SmartFeatureIndicator label="FORMATO AUTOMÁTICO" /></button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setSearchReplaceMode(false); setSearchOpen(true); }}><WriterIcon name="search" /> Buscar</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setIdeasOpen(true); }}><WriterIcon name="ideas" /> Ideas</button>
@@ -2891,6 +2977,7 @@ export default function WriterWorkspace({
             suggestedQuestion={guidedIdeaQuestion}
           />
         )}
+        footer={<button ref={shotlistTriggerRef} className="writer-shotlist-footer-button" type="button" disabled={!ready || shotlistBusy} onClick={openShotlistFlow}><SmartFeatureIndicator label={shotlistBusy ? "GUARDANDO…" : shotlists.length ? "ABRIR SHOTLIST" : "GENERAR SHOTLIST"} /></button>}
         observations={combinedCharacterObservations}
         knownIdentities={knownCharacterIdentities}
         knownCharacterActivity={characterRows}
@@ -2936,6 +3023,27 @@ export default function WriterWorkspace({
         onChangeFormat={changeFormatObservation}
         onToggleHighlights={setShowImportReviewHighlights}
       />
+
+      {shotlistModalOpen && !focusMode && <div className="writer-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !shotlistBusy) setShotlistModalOpen(false); }}>
+        <section className="writer-modal writer-shotlist-modal" role="dialog" aria-modal="true" aria-labelledby="writer-shotlist-modal-title">
+          <p className="writer-eyebrow">Preproducción</p>
+          <h2 id="writer-shotlist-modal-title">Generar Shotlist</h2>
+          <p>Puedes crear una base desde las escenas de tu guion o pedir una propuesta de planos con IA.</p>
+          <p className="writer-shotlist-credit-note">{previewNoCredits ? "Esta prueba no descontará créditos." : "La generación sugerida está sujeta a la política generativa disponible para tu cuenta."}</p>
+          <div className="writer-shotlist-modal-actions"><button className="writer-satin-button writer-satin-button--primary" type="button" autoFocus disabled={shotlistBusy} onClick={() => void createShotlist("suggested")}><SmartFeatureIndicator label="Generar sugerida" /></button><button className="writer-satin-button" type="button" disabled={shotlistBusy} onClick={() => void createShotlist("manual")}>Continuar sin IA</button><button type="button" disabled={shotlistBusy} onClick={() => { setShotlistModalOpen(false); window.requestAnimationFrame(() => shotlistTriggerRef.current?.focus()); }}>Cancelar</button></div>
+          <small>La opción sugerida abre Shotlist en modo Sugerido. La IA sólo se ejecuta allí con otra confirmación explícita.</small>
+        </section>
+      </div>}
+
+      {shortcutsOpen && !focusMode && <div className="writer-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShortcutsOpen(false); }}>
+        <section className="writer-modal writer-shortcuts-modal" role="dialog" aria-modal="true" aria-labelledby="writer-shortcuts-title">
+          <p className="writer-eyebrow">Escritura</p><h2 id="writer-shortcuts-title">Atajos de teclado</h2>
+          <p>Estos atajos cambian el tipo del bloque actual; no insertan ni borran texto.</p>
+          <dl>{WRITER_KIND_SHORTCUTS.map((item) => <div key={item.digit}><dt>{item.label}</dt><dd><kbd>{writerShortcutLabel(item.digit, typeof navigator === "undefined" ? "" : navigator.platform)}</kbd></dd></div>)}</dl>
+          <p><kbd>Enter</kbd> crea el siguiente bloque según el contexto. <kbd>Tab</kbd> sólo cambia un bloque vacío cuando Writer reconoce una transición segura.</p>
+          <button type="button" autoFocus onClick={() => setShortcutsOpen(false)}>Cerrar</button>
+        </section>
+      </div>}
 
       {structuralToast && !focusMode && (
         <div className="writer-structural-toast" role="status" aria-live="polite">

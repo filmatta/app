@@ -9,18 +9,29 @@ export const WRITER_WORKSPACE_LAYOUT_DEFAULTS: WriterWorkspaceLayout = {
   leftSidebarVisible: true,
   rightSidebarVisible: true,
   timelineHeight: 260,
-  charactersHeight: 260,
+  charactersHeight: 360,
 };
 
 export const WRITER_HORIZONTAL_PANEL_LIMITS = {
   timeline: { min: 160, max: 720 },
-  characters: { min: 120, max: 520 },
+  characters: { min: 120, max: 620 },
 } as const;
 
 export type WriterHorizontalPanel = keyof typeof WRITER_HORIZONTAL_PANEL_LIMITS;
 
 export function writerWorkspaceLayoutStorageKey(userId: string) {
+  return `filmatta.writer.workspace-layout.v2:${userId}`;
+}
+
+export function legacyWriterWorkspaceLayoutStorageKey(userId: string) {
   return `filmatta.writer.workspace-layout.v1:${userId}`;
+}
+
+export function migrateWriterWorkspaceLayout(value: string | null): WriterWorkspaceLayout {
+  const parsed = parseWriterWorkspaceLayout(value);
+  // v1 persisted 260px even when the user never moved the splitter. Only that exact
+  // legacy default is migrated; every other saved height is treated as deliberate.
+  return parsed.charactersHeight === 260 ? { ...parsed, charactersHeight: 360 } : parsed;
 }
 
 export function clampWriterHorizontalPanelHeight(panel: WriterHorizontalPanel, value: number) {

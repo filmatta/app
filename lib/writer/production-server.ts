@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateWriterDocument } from "./document.ts";
 import { deriveWriterSceneSources } from "./script-assistant.ts";
@@ -38,8 +38,8 @@ export async function assertOwnedWriterScript(db: SupabaseClient, userId: string
 }
 
 export async function loadWriterBreakdown(db: SupabaseClient, userId: string, scriptId: string) {
-  await assertOwnedWriterScript(db, userId, scriptId);
-  const [elementsResult, appearancesResult] = await Promise.all([
+  const script = await assertOwnedWriterScript(db, userId, scriptId);
+  const [elementsResult, appearancesResult, operationResult] = await Promise.all([
     db.from("writer_breakdown_elements")
       .select("id,script_id,category,name,status,source,canonical_identity_key,note,asset_id,fingerprint,revision,updated_at")
       .eq("owner_id", userId)
@@ -50,8 +50,12 @@ export async function loadWriterBreakdown(db: SupabaseClient, userId: string, sc
       .eq("owner_id", userId)
       .eq("script_id", scriptId)
       .order("created_at", { ascending: true }),
+    db.from("writer_production_operations")
+      .select("scope,source_revision,status,error_code,updated_at,model")
+      .eq("owner_id", userId).eq("script_id", scriptId).eq("kind", "breakdown_detect")
+      .order("updated_at", { ascending: false }).limit(1),
   ]);
-  if (elementsResult.error || appearancesResult.error) {
+  if (elementsResult.error || appearancesResult.error || operationResult.error) {
     throw new WriterProductionError("storage", "No pudimos cargar el Breakdown.", 500);
   }
   const appearancesByElement = new Map<string, WriterBreakdownAppearance[]>();
@@ -87,6 +91,15 @@ export async function loadWriterBreakdown(db: SupabaseClient, userId: string, sc
   return {
     elements,
     pendingCount: elements.filter((element) => element.status === "suggested").length,
+    analysis: operationResult.data?.[0] ? {
+      scope: String(operationResult.data[0].scope),
+      status: String(operationResult.data[0].status),
+      sourceRevision: Number(operationResult.data[0].source_revision ?? 0),
+      stale: Number(operationResult.data[0].source_revision ?? 0) !== script.revision,
+      errorCode: operationResult.data[0].error_code ? String(operationResult.data[0].error_code) : null,
+      model: String(operationResult.data[0].model),
+      updatedAt: String(operationResult.data[0].updated_at),
+    } : null,
   };
 }
 
@@ -94,9 +107,21 @@ export async function detectAndStoreWriterBreakdown(
   db: SupabaseClient,
   userId: string,
   scriptId: string,
-  options: { sceneIds?: ReadonlySet<string>; extraCandidates?: WriterBreakdownCandidate[] } = {},
+  options: { sceneIds?: ReadonlySet<string>; extraCandidates?: WriterBreakdownCandidate[]; scope?: "scene" | "changed" | "document"; recordLocalRun?: boolean } = {},
 ) {
   const script = await assertOwnedWriterScript(db, userId, scriptId);
+  const operationId = options.recordLocalRun ? randomUUID() : null;
+  if (operationId) {
+    const operation = await db.from("writer_production_operations").insert({
+      id: operationId, owner_id: userId, script_id: scriptId, kind: "breakdown_detect",
+      scope: options.scope ?? (options.sceneIds?.size === 1 ? "scene" : "document"),
+      source_revision: script.revision,
+      source_hash: createHash("sha256").update(JSON.stringify(script.document)).digest("hex"),
+      request_hash: createHash("sha256").update(`local:${operationId}`).digest("hex"),
+      model: "local-rules-v1", status: "processing", reserved_cost_microusd: 0,
+    });
+    if (operation.error) throw new WriterProductionError("storage", "No pudimos registrar la detección.", 500);
+  }
   const candidates = [
     ...detectWriterBreakdownRules(script.document, options.sceneIds),
     ...(options.extraCandidates ?? []),
@@ -151,6 +176,12 @@ export async function detectAndStoreWriterBreakdown(
       updated_at: new Date().toISOString(),
     }, { onConflict: "element_id,block_id,from_offset,nature" });
     if (appearance.error) throw new WriterProductionError("storage", "No pudimos guardar la evidencia del Breakdown.", 500);
+  }
+  if (operationId) {
+    const completed = await db.from("writer_production_operations").update({
+      status: "completed", actual_cost_microusd: 0, settled_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }).eq("id", operationId).eq("owner_id", userId);
+    if (completed.error) throw new WriterProductionError("storage", "No pudimos finalizar la detección.", 500);
   }
   return { detected: accepted.length, skippedByDecision: candidates.length - accepted.length, revision: script.revision };
 }

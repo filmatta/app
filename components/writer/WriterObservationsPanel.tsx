@@ -39,7 +39,7 @@ const FORMAT_LABELS: Record<ScreenplayKind, { plural: string; singular: string; 
 export default function WriterObservationsPanel({
   observations, knownIdentities, knownCharacterActivity, decisions, storagePersistent, importedAnalysisPersistent,
   formatObservations, reviewedFormatIds, activeFormatObservationId, showHighlights, formatReviewPersistent,
-  sceneCount, selectedBlockId, hidden, section, readinessNotice, assistantPanel, setupPayoffPanel, guidedWritingPanel, onSectionChange, onClose, onConfirm, onLink, onIgnore,
+  sceneCount, selectedBlockId, hidden, section, readinessNotice, assistantPanel, setupPayoffPanel, guidedWritingPanel, footer, onSectionChange, onClose, onConfirm, onLink, onIgnore,
   onRestore, onAddManual, onView, onViewFormat, onReviewFormat, onChangeFormat, onToggleHighlights,
 }: {
   observations: WriterCharacterObservation[];
@@ -61,6 +61,7 @@ export default function WriterObservationsPanel({
   assistantPanel: ReactNode;
   setupPayoffPanel: ReactNode;
   guidedWritingPanel: ReactNode;
+  footer: ReactNode;
   onSectionChange: (section: WriterObservationsSection) => void;
   onClose: () => void;
   onConfirm: (observation: WriterCharacterObservation, name: string) => void;
@@ -294,6 +295,7 @@ export default function WriterObservationsPanel({
         </>}
       </div>
 
+      <footer className="writer-observations-footer">{footer}</footer>
       {linking && <div className="writer-observation-decision" role="dialog" aria-modal="true" aria-labelledby="writer-observation-link-title"><div className="writer-observation-decision-card"><p className="writer-eyebrow">Confirmar identidad</p><h3 id="writer-observation-link-title">¿Es el mismo personaje que {knownIdentities.find((identity) => identity.key === linkKey)?.name ?? "el personaje reconocido"}?</h3><p>El texto del cue permanecerá intacto.</p><div><button className="writer-satin-button" type="button" onClick={() => { onConfirm(linking, parseWriterCharacterCue(linking.identity).name); setLinking(null); }}>Crear identidad nueva</button><button className="writer-satin-button writer-satin-button--primary" type="button" autoFocus onClick={() => { onLink(linking, linkKey); setLinking(null); }} disabled={!linkKey}>Vincular</button></div></div></div>}
     </aside>
   );

@@ -17,10 +17,16 @@ type SourceChanges = { renamed: Array<{ groupId: string; sceneId: string; title:
 type Mode = "manual" | "assisted" | "suggested";
 type ShotProposal = { id: string; group_id: string; payload: Partial<WriterShot>; status: "pending" | "accepted" | "dismissed" };
 
-export default function ShotlistWorkspace({ initialState }: { initialState: { shotlist: WriterShotlist; sourceChanges: SourceChanges } }) {
+export default function ShotlistWorkspace({
+  initialState,
+  initialMode = "manual",
+}: {
+  initialState: { shotlist: WriterShotlist; sourceChanges: SourceChanges };
+  initialMode?: Mode;
+}) {
   const [shotlist, setShotlist] = useState(initialState.shotlist);
   const [sourceChanges, setSourceChanges] = useState(initialState.sourceChanges);
-  const [mode, setMode] = useState<Mode>("manual");
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [expanded, setExpanded] = useState(() => new Set(initialState.shotlist.groups.slice(0, 2).map((group) => group.id)));
   const [activeGroupId, setActiveGroupId] = useState<string | null>(initialState.shotlist.groups[0]?.id ?? null);
   const [selectedShotId, setSelectedShotId] = useState<string | null>(initialState.shotlist.groups.flatMap((group) => group.shots)[0]?.id ?? null);
@@ -250,6 +256,7 @@ export default function ShotlistWorkspace({ initialState }: { initialState: { sh
           <div className="shotlist-grid-head" aria-hidden="true" style={{ gridTemplateColumns: showSecondaryColumns ? undefined : "55px 88px 130px minmax(220px,1fr) 96px 118px 112px", minWidth: showSecondaryColumns ? undefined : 720 }}><span>#</span><span>Escena</span><span>Plano</span><span>Sujeto / acción</span><span>Ángulo</span><span>Movimiento</span>{showSecondaryColumns && <><span>Lente</span><span>Setup</span><span>Duración</span></>}<span>Estado</span>{showSecondaryColumns && <span>Storyboard</span>}</div>
           {visibleGroups.map((group) => <section key={group.id} id={`shot-group-${group.id}`} className="shotlist-group">
             <button className="shotlist-group-head" type="button" onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next; })}><span>{expanded.has(group.id) ? "⌄" : "›"}</span><strong>{group.sourceStatus === "manual" ? "MANUAL" : `ESC. ${String(shotlist.groups.indexOf(group) + 1).padStart(2, "0")}`} · {group.title}</strong><small>· {group.shots.length} planos</small><i>•••</i></button>
+            {expanded.has(group.id) && group.shots.length === 0 && <p className="shotlist-empty-group">Tus escenas están listas. Añade planos manualmente o utiliza Asistido/Sugerido cuando quieras.</p>}
             {expanded.has(group.id) && group.shots.map((shot) => <div key={shot.id} className={`shotlist-row${selectedShotId === shot.id ? " is-selected" : ""}`} style={{ gridTemplateColumns: showSecondaryColumns ? undefined : "55px 88px 130px minmax(220px,1fr) 96px 118px 112px", minWidth: showSecondaryColumns ? undefined : 720 }} role="button" tabIndex={0} aria-label={`Plano ${visibleNumber(shot.id)}: ${shot.subject || shot.shotType}`} onClick={() => selectShot(shot)} onKeyDown={(event) => {
               if (event.target !== event.currentTarget) return;
               if (event.key === "ArrowUp" || event.key === "ArrowDown") {

@@ -5,6 +5,7 @@ export type WriterIconName =
   | "collapse"
   | "expand"
   | "history"
+  | "eye"
   | "ideas"
   | "insert"
   | "more"
@@ -22,6 +23,7 @@ const paths: Record<WriterIconName, ReactNode> = {
   collapse: <><path d="M8 3v5H3" /><path d="m3 8 5-5" /><path d="M16 21v-5h5" /><path d="m21 16-5 5" /></>,
   expand: <><path d="M8 3H3v5" /><path d="m3 3 6 6" /><path d="M16 21h5v-5" /><path d="m21 21-6-6" /></>,
   history: <><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></>,
+  eye: <><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /></>,
   ideas: <><path d="M9 18h6" /><path d="M10 22h4" /><path d="M8.3 14.7A7 7 0 1 1 15.7 14.7c-.9.7-1.4 1.6-1.5 2.3h-4.4c-.1-.7-.6-1.6-1.5-2.3Z" /></>,
   insert: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
   more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,

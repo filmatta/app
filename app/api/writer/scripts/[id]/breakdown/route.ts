@@ -23,7 +23,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   if (!validUuid(id)) return writerJson({ error: "Solicitud inválida.", code: "invalid" }, 400);
   try {
-    return writerJson(await loadWriterBreakdown(session.supabase, session.user.id, id));
+    return writerJson(await loadWriterBreakdown(createAdminClient(), session.user.id, id));
   } catch (cause) {
     return productionError(cause, "No pudimos cargar el Breakdown.");
   }
@@ -49,8 +49,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // V1 always runs safe local rules. AI is a separate, explicit action and is
       // never triggered by opening the panel or by autosave.
       await assertOwnedWriterScript(session.supabase, session.user.id, id);
-      const result = await detectAndStoreWriterBreakdown(createAdminClient(), session.user.id, id, { sceneIds });
-      return writerJson({ ...result, analysis: "deterministic", breakdown: await loadWriterBreakdown(session.supabase, session.user.id, id) });
+      const result = await detectAndStoreWriterBreakdown(createAdminClient(), session.user.id, id, { sceneIds, scope: String(body.value.scope) as "scene" | "changed" | "document", recordLocalRun: true });
+      return writerJson({ ...result, analysis: "deterministic", breakdown: await loadWriterBreakdown(createAdminClient(), session.user.id, id) });
     }
     if (body.value.action === "detectAi" && validUuid(body.value.operationId)
       && ["scene", "changed", "document"].includes(String(body.value.scope))) {
@@ -61,7 +61,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         readDb: session.supabase, signal: request.signal,
       });
       const stored = await detectAndStoreWriterBreakdown(createAdminClient(), session.user.id, id, { sceneIds: sceneIds ? new Set(sceneIds) : undefined, extraCandidates: analysis.candidates });
-      return writerJson({ ...stored, ...analysis, analysis: "ai", breakdown: await loadWriterBreakdown(session.supabase, session.user.id, id) });
+      return writerJson({ ...stored, ...analysis, analysis: "ai", breakdown: await loadWriterBreakdown(createAdminClient(), session.user.id, id) });
     }
     if (body.value.action === "manual" && isCategory(body.value.category) && clean(body.value.name, 160)) {
       const script = await assertOwnedWriterScript(session.supabase, session.user.id, id);
@@ -88,7 +88,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         });
         if (appearance.error) throw new WriterProductionError("storage", "No pudimos vincular la escena.", 500);
       }
-      return writerJson({ created: true, id: element.data.id, breakdown: await loadWriterBreakdown(session.supabase, session.user.id, id) }, 201);
+      return writerJson({ created: true, id: element.data.id, breakdown: await loadWriterBreakdown(createAdminClient(), session.user.id, id) }, 201);
     }
     return writerJson({ error: "Solicitud inválida.", code: "invalid" }, 400);
   } catch (cause) {
@@ -144,7 +144,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     } else {
       return writerJson({ error: "Solicitud inválida.", code: "invalid" }, 400);
     }
-    return writerJson({ saved: true, breakdown: await loadWriterBreakdown(session.supabase, session.user.id, id) });
+    return writerJson({ saved: true, breakdown: await loadWriterBreakdown(createAdminClient(), session.user.id, id) });
   } catch (cause) {
     return productionError(cause, "No pudimos guardar esta decisión.");
   }

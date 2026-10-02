@@ -5,6 +5,7 @@ import {
   WRITER_WORKSPACE_LAYOUT_DEFAULTS,
   clampWriterHorizontalPanelHeight,
   parseWriterWorkspaceLayout,
+  migrateWriterWorkspaceLayout,
   writerWorkspaceLayoutStorageKey,
 } from "../../lib/writer/workspace-layout.ts";
 
@@ -17,8 +18,10 @@ test("workspace layout parses visibility and bounded independent heights", () =>
   });
   assert.deepEqual(parseWriterWorkspaceLayout(null), WRITER_WORKSPACE_LAYOUT_DEFAULTS);
   assert.equal(clampWriterHorizontalPanelHeight("timeline", 10), 160);
-  assert.equal(clampWriterHorizontalPanelHeight("characters", 999), 520);
-  assert.equal(writerWorkspaceLayoutStorageKey("reviewer"), "filmatta.writer.workspace-layout.v1:reviewer");
+  assert.equal(clampWriterHorizontalPanelHeight("characters", 999), 620);
+  assert.equal(writerWorkspaceLayoutStorageKey("reviewer"), "filmatta.writer.workspace-layout.v2:reviewer");
+  assert.equal(migrateWriterWorkspaceLayout('{"charactersHeight":260}').charactersHeight, 360);
+  assert.equal(migrateWriterWorkspaceLayout('{"charactersHeight":315}').charactersHeight, 315);
 });
 
 test("workspace exposes persisted panel toggles and accessible horizontal splitters", () => {
