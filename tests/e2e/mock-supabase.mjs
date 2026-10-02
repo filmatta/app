@@ -14,6 +14,7 @@ let writerTitle = "Guion de prueba UX";
 let writerSaveCount = 0;
 let writerReadCount = 0;
 let writerCreateCount = 0;
+let writerCheckpoints = [];
 const profile = {
   slug: "test-profile",
   display_name: "Persona P.",
@@ -84,12 +85,14 @@ http
       if (scenario === "profiles-polish") resetProfileFixture();
       if (scenario === "writer-ux") {
         writerRevision = 1;
-        writerDocument = makeWriterDocument();
+        const writerScenes = Math.min(160, Math.max(0, Number(url.searchParams.get("writerScenes")) || 0));
+        writerDocument = writerScenes ? makeLongWriterDocument(writerScenes) : makeWriterDocument();
         writerScriptId = id;
         writerTitle = "Guion de prueba UX";
         writerSaveCount = 0;
         writerReadCount = 0;
         writerCreateCount = 0;
+        writerCheckpoints = [];
       }
       return res.end("{}");
     }
@@ -100,6 +103,7 @@ http
         saves: writerSaveCount,
         reads: writerReadCount,
         creates: writerCreateCount,
+        checkpoints: writerCheckpoints,
         approximateResponseBytes: Buffer.byteLength(JSON.stringify(writerDocument), "utf8"),
       }));
     }
@@ -122,7 +126,7 @@ http
     }
     if (url.pathname === "/rest/v1/profiles")
       return res.end(JSON.stringify({ role }));
-    if (req.method !== "GET" && req.method !== "POST") {
+    if (req.method !== "GET" && req.method !== "POST" && req.method !== "DELETE") {
       res.statusCode = 405;
       return res.end("{}");
     }
@@ -134,6 +138,28 @@ http
       await new Promise((resolve) => setTimeout(resolve, profileDelayMs));
     if (scenario === "profiles-polish" && await profileFixture(req,res,url,token)) return;
     if (scenario === "writer-ux") {
+      if (url.pathname === "/rest/v1/writer_checkpoints" && req.method === "GET") {
+        const checkpointId = url.searchParams.get("id")?.replace(/^eq\./u, "");
+        const rangeStart = Number.parseInt(String(req.headers.range ?? "0-").split("-")[0] ?? "0", 10) || 0;
+        const automaticRetentionOffset = url.searchParams.get("kind") === "neq.manual" ? 15 : 0;
+        const rows = checkpointId
+          ? writerCheckpoints.filter((item) => item.id === checkpointId)
+          : [...writerCheckpoints].sort((left, right) => right.created_at.localeCompare(left.created_at)).slice(Math.max(rangeStart, automaticRetentionOffset));
+        const row = rows[0] ?? null;
+        return res.end(req.headers.accept?.includes("vnd.pgrst.object") ? JSON.stringify(row) : JSON.stringify(rows));
+      }
+      if (url.pathname === "/rest/v1/writer_checkpoints" && req.method === "POST") {
+        const payload = await readJson(req);
+        const body = Array.isArray(payload) ? payload[0] : payload;
+        const row = { ...body, id: crypto.randomUUID(), created_at: new Date().toISOString() };
+        writerCheckpoints.push(row);
+        return res.end(req.headers.accept?.includes("vnd.pgrst.object") ? JSON.stringify(row) : JSON.stringify([row]));
+      }
+      if (url.pathname === "/rest/v1/writer_checkpoints" && req.method === "DELETE") {
+        const ids = (url.searchParams.get("id") ?? "").replace(/^in\.\(/u, "").replace(/\)$/u, "").split(",").filter(Boolean);
+        writerCheckpoints = writerCheckpoints.filter((item) => !ids.includes(item.id));
+        return res.end("[]");
+      }
       if (url.pathname === "/rest/v1/writer_scripts" && req.method === "GET") {
         writerReadCount += 1;
         const row = {
@@ -293,4 +319,31 @@ function makeWriterDocument() {
       block("09", "action", "La segunda escena conserva un ID distinto."),
     ],
   };
+}
+
+function makeLongWriterDocument(sceneCount) {
+  const content = [];
+  for (let index = 0; index < sceneCount; index += 1) {
+    const headingId = stableWriterId(index * 3 + 1);
+    const actionId = stableWriterId(index * 3 + 2);
+    const characterId = stableWriterId(index * 3 + 3);
+    content.push({
+      type: "screenplayBlock",
+      attrs: { id: headingId, kind: "sceneHeading" },
+      content: [{ type: "text", text: `INT. ESCENARIO ${index + 1} - DÍA` }],
+    }, {
+      type: "screenplayBlock",
+      attrs: { id: actionId, kind: "action" },
+      content: [{ type: "text", text: index === 73 ? "María se tropieza con el cable junto a la puerta." : `Acción de prueba ${index + 1}.` }],
+    }, {
+      type: "screenplayBlock",
+      attrs: { id: characterId, kind: "character" },
+      content: [{ type: "text", text: `PERSONA ${index % 30 + 1}` }],
+    });
+  }
+  return { type: "doc", content };
+}
+
+function stableWriterId(index) {
+  return `11111111-1111-4111-8111-${index.toString(16).padStart(12, "0")}`;
 }

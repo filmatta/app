@@ -102,8 +102,43 @@ test("large paste supports both warnings, later recovery, one-step undo, and fre
     await expect(readyDialog.getByText("Este documento ya parece estar correctamente formateado como guion.")).toBeVisible();
     await readyDialog.getByRole("button", { name: "Cerrar", exact: true }).click();
   }
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 10_000 });
+  await page.reload();
+  const restoredEditor = page.getByLabel("Editor de guion");
+  await expect(restoredEditor).toBeVisible();
+  let readyDialog = await openManualFormat(page);
+  await expect(readyDialog.getByText("Este documento ya parece estar correctamente formateado como guion.")).toBeVisible();
+  await readyDialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await restoredEditor.locator('[data-screenplay-kind="action"]').first().click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Sigue intacta.");
+  readyDialog = await openManualFormat(page);
+  await expect(readyDialog.getByText("Este documento ya parece estar correctamente formateado como guion.")).toBeVisible();
+  await readyDialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await pasteReplacingDocument(page, screenplay);
+  await expect(page.getByRole("dialog", { name: "✦ Formatear este guion" })).toBeVisible();
+  await page.keyboard.press("Escape");
   expect(analysisRequests).toEqual([]);
   await expect(page.getByText(/compra créditos|sube de plan|te quedan/iu)).toHaveCount(0);
+});
+
+test("automatic format collapses redundant blank presentation blocks in one undoable operation", async ({ page, context }) => {
+  await openWriter(page, context);
+  await pasteReplacingDocument(page, `INT. CASA - DÍA\n\n\n\nUna caja descansa sobre la mesa.\n\n\n\nMARA\nNo la abras.`);
+  await page.getByRole("dialog", { name: "✦ Formatear este guion" }).getByRole("button", { name: "FORMATEAR GUION" }).click();
+  const dialog = page.locator(".writer-auto-format-dialog");
+  await expect(dialog.getByText(/Espacios redundantes/u)).toBeVisible();
+  const emptyActions = () => page.getByLabel("Editor de guion").locator('[data-screenplay-kind="action"]').evaluateAll(
+    (nodes) => nodes.filter((node) => !(node.textContent ?? "").trim()).length,
+  );
+  const before = await emptyActions();
+  await dialog.getByRole("button", { name: "Aplicar formato", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const after = await emptyActions();
+  expect(after).toBeLessThan(before);
+  await expect(page.getByLabel("Editor de guion")).toContainText("Una caja descansa sobre la mesa.");
+  await page.getByLabel("Deshacer", { exact: true }).click();
+  await expect.poll(emptyActions).toBe(before);
 });
 
 test("LA FRECUENCIA keeps its date out of character review and collapses known cue modalities", async ({ page, context }) => {
