@@ -6,6 +6,7 @@ const workspace = fs.readFileSync("components/writer/WriterWorkspace.tsx", "utf8
 const smart = fs.readFileSync("components/writer/WriterSmartFormatting.tsx", "utf8");
 const setup = fs.readFileSync("components/writer/WriterSetupPayoff.tsx", "utf8");
 const pulse = fs.readFileSync("components/writer/WriterNarrativePulse.tsx", "utf8");
+const observations = fs.readFileSync("components/writer/WriterObservationsPanel.tsx", "utf8");
 const css = fs.readFileSync("app/writer/writer.css", "utf8");
 
 test("paste onboarding is an explicit modal with two decisions and one recovery flow", () => {
@@ -74,4 +75,29 @@ test("navigation uses one reference contract and a bounded highlight", () => {
   assert.match(workspace, /window\.setTimeout\(clearSceneHighlight, 1_800\)/u);
   assert.match(workspace, /viewNarrativeObservation[\s\S]*navigateToWriterReference/u);
   assert.match(workspace, /viewSetupPayoffElement[\s\S]*navigateToWriterReference/u);
+});
+
+test("character review is binary first and asks about identity linking only after acceptance", () => {
+  assert.match(observations, /¿“\{parseWriterCharacterCue\(first\.identity\)\.name[\s\S]*” es un personaje\?/u);
+  assert.match(observations, /Sí, es personaje/u);
+  assert.match(observations, />No<\/button>/u);
+  assert.match(observations, /¿Es el mismo personaje que/u);
+  assert.match(observations, /Crear identidad nueva/u);
+  assert.doesNotMatch(observations, /Identidad por revisar|Vincular a existente|Sin evidencias claras/u);
+});
+
+test("character references use global navigation, stale copy, mobile close, and a bounded highlight", () => {
+  assert.match(workspace, /function viewCharacterObservation[\s\S]*navigateToWriterReference/u);
+  assert.match(workspace, /Este fragmento cambió desde la revisión\./u);
+  assert.match(workspace, /viewCharacterObservation[\s\S]*max-width: 900px[\s\S]*setObservationsOpen\(false\)/u);
+  assert.match(css, /writer-screenplay-block\.writer-scene-target-highlight[^}]*rgba\(86,205,230/u);
+  assert.doesNotMatch(css, /writer-screenplay-block\.writer-scene-target-highlight[^}]*box-shadow/u);
+});
+
+test("Writer review uses calm intelligence and review colors with compact satin controls", () => {
+  assert.match(css, /--writer-intelligence:/u);
+  assert.match(css, /--writer-review:/u);
+  assert.match(css, /\.writer-character-review-card[^}]*border-radius: 14px/u);
+  assert.match(css, /\.writer-satin-button/u);
+  assert.match(css, /\.writer-satin-button--primary/u);
 });

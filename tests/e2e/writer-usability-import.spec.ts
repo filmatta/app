@@ -222,7 +222,7 @@ CORTE A:
 
 MISTERIO`);
   await dialog.getByRole("button", { name: "Importar sin IA" }).click();
-  await expect(dialog.getByRole("button", { name: /Revisar \(2\)/ })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /Revisar \(1\)/ })).toBeVisible();
   await expect(dialog.getByText("MISTERIO", { exact: true })).toBeVisible();
   const characterSummary = dialog.locator(".writer-import-summary button").filter({ hasText: "Personaje — encabezado de diálogo" });
   await expect(characterSummary.getByText("1", { exact: true })).toBeVisible();
@@ -237,7 +237,6 @@ MISTERIO`);
     expect(cardBox!.x).toBeGreaterThanOrEqual(0);
     expect(cardBox!.x + cardBox!.width).toBeLessThanOrEqual(viewport.width);
   }
-  await dialog.getByRole("button", { name: "Confirmar este tipo" }).click();
   const unresolvedCard = dialog.locator(".writer-import-list article").filter({ hasText: "MISTERIO" });
   await unresolvedCard.getByLabel("Tipo").selectOption("action");
   await expect(dialog.getByRole("button", { name: "Revisar (0)" })).toHaveCount(0);
@@ -266,7 +265,7 @@ test("character observations are revealed on demand, local, reversible, and abse
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWriter(page, context);
   const editor = page.getByLabel("Editor de guion");
-  const action = editor.locator('[data-block-id$="02"]');
+  const action = editor.locator('.writer-screenplay-block[data-block-id$="02"]');
   await replaceBlockText(page, action, "Un robot observa a ANA.");
   await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 10_000 });
   const marker = page.getByRole("button", { name: "1 observación en este bloque" });
@@ -275,18 +274,20 @@ test("character observations are revealed on demand, local, reversible, and abse
 
   await marker.click();
   const panel = page.locator(".writer-observations-panel");
-  await expect(panel.getByText("Identidad por revisar: UN ROBOT")).toBeVisible();
+  await expect(panel.getByText("¿“UN ROBOT” es un personaje?")).toBeVisible();
   await expect(panel.getByText("Un robot observa a ANA.", { exact: false })).toBeVisible();
-  await panel.getByRole("button", { name: "Ignorar" }).click();
+  await panel.getByRole("button", { name: "No", exact: true }).click();
   await expect(panel.getByText("No hay posibles personajes pendientes en el texto actual.")).toBeVisible();
   await panel.getByText(/Ignoradas \(1\)/).click();
   await panel.getByRole("button", { name: "Restaurar" }).click();
-  await expect(panel.getByText("Identidad por revisar: UN ROBOT")).toBeVisible();
+  await expect(panel.getByText("¿“UN ROBOT” es un personaje?")).toBeVisible();
   await panel.getByRole("button", { name: "Ver fragmento" }).click();
   await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe("Un robot");
-  await panel.getByRole("button", { name: "Vincular a existente" }).click();
-  const linkDialog = page.getByRole("dialog", { name: "Vincular evidencia" });
-  await linkDialog.getByLabel("Personaje").selectOption({ label: "ANA" });
+  await expect(action).toHaveClass(/writer-scene-target-highlight/);
+  await panel.getByLabel("Reconocer manualmente").fill("ROBOT");
+  await panel.getByRole("button", { name: "Añadir" }).click();
+  await panel.getByRole("button", { name: "Sí, es personaje" }).click();
+  const linkDialog = page.getByRole("dialog", { name: "¿Es el mismo personaje que ROBOT?" });
   await linkDialog.getByRole("button", { name: "Vincular", exact: true }).click();
   await expect(panel.getByText("No hay posibles personajes pendientes en el texto actual.")).toBeVisible();
   const afterLink = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
@@ -294,12 +295,9 @@ test("character observations are revealed on demand, local, reversible, and abse
   expect(afterLink.reads).toBe(afterEdit.reads);
 
   await replaceBlockText(page, action, "Un guardia bloquea la salida.");
-  await expect(panel.getByText("Identidad por revisar: UN GUARDIA")).toBeVisible();
-  await panel.getByRole("button", { name: "Confirmar personaje" }).click();
-  const confirmDialog = page.getByRole("dialog", { name: "Confirmar personaje" });
-  await confirmDialog.getByLabel("Nombre reconocido").fill("ROBOT R-7");
-  await confirmDialog.getByRole("button", { name: "Confirmar", exact: true }).click();
-  await expect(panel.getByText("ROBOT R-7", { exact: true })).toBeVisible();
+  await expect(panel.getByText("¿“UN GUARDIA” es un personaje?")).toBeVisible();
+  await panel.getByRole("button", { name: "Sí, es personaje" }).click();
+  await expect(panel.getByText("Un guardia", { exact: true })).toBeVisible();
   await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 10_000 });
   const afterSecondEdit = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
   await page.waitForTimeout(700);
@@ -311,16 +309,33 @@ test("character observations are revealed on demand, local, reversible, and abse
   await page.reload();
   await expect(editor).toBeVisible();
   await page.locator(".writer-header").getByRole("button", { name: /Observaciones/ }).click();
-  await expect(page.locator(".writer-observations-panel").getByText("ROBOT R-7", { exact: true })).toBeVisible();
+  await expect(page.locator(".writer-observations-panel").getByText("Un guardia", { exact: true })).toBeVisible();
   await page.locator(".writer-observations-panel").getByRole("button", { name: "Cerrar" }).click();
 
   const character = editor.locator('[data-block-id$="03"]');
   await replaceBlockText(page, character, "ROB");
-  await expect(page.getByRole("listbox", { name: "Sugerencias de formato" }).getByRole("option", { name: /ROBOT R-7/ })).toBeVisible();
+  await expect(page.getByRole("listbox", { name: "Sugerencias de formato" }).getByRole("option", { name: /ROBOT/ })).toBeVisible();
   await page.keyboard.press("Escape");
+
+  await replaceBlockText(page, action, "Nadie habla.");
+  await page.getByRole("button", { name: "1 observación en este bloque" }).click();
+  await expect(page.locator(".writer-observations-panel").getByText("¿“NADIE” es un personaje?")).toBeVisible();
+  await page.locator(".writer-observations-panel").getByRole("button", { name: "No", exact: true }).click();
+  await page.locator(".writer-observations-panel").getByRole("button", { name: "Cerrar" }).click();
+  await page.reload();
+  await expect(editor).toBeVisible();
+  await page.locator(".writer-header").getByRole("button", { name: /Observaciones/ }).click();
+  await expect(page.locator(".writer-observations-panel").getByText("¿“NADIE” es un personaje?")).toHaveCount(0);
+  await page.locator(".writer-observations-panel").getByRole("button", { name: "Cerrar" }).click();
 
   await replaceBlockText(page, action, "Un perro sigue a la niña.");
   await expect(page.getByRole("button", { name: /observaciones en este bloque/ })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: /observaciones en este bloque/ }).click();
+  await page.locator(".writer-observations-panel").getByRole("button", { name: "Ver fragmento" }).first().click();
+  await expect(page.locator(".writer-observations-panel")).toBeHidden();
+  await expect(action).toHaveClass(/writer-scene-target-highlight/);
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("button", { name: "Focus" }).click();
   await expect(page.locator(".writer-observation-marker")).toBeHidden();
   await expect(page.locator(".writer-mobile-observations")).toBeHidden();

@@ -2,7 +2,13 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { SCREENPLAY_KINDS, type ScreenplayKind } from "@/lib/writer/document";
-import type { WriterCharacterObservation, WriterKnownCharacterIdentity } from "@/lib/writer/character-observations";
+import {
+  writerCharacterIdentityKey,
+  writerParticipantRoleKey,
+  type WriterCharacterObservation,
+  type WriterKnownCharacterIdentity,
+} from "@/lib/writer/character-observations";
+import { parseWriterCharacterCue } from "@/lib/writer/character-cues";
 import type { WriterCharacterDecision, WriterCharacterDecisionState } from "@/lib/writer/character-observation-storage";
 import {
   groupWriterFormatObservations,
@@ -20,13 +26,6 @@ const EVIDENCE_LABELS: Record<WriterCharacterObservation["evidence"], string> = 
   indeterminate: "Relación indeterminada",
 };
 
-const SOURCE_LABELS: Record<WriterKnownCharacterIdentity["source"], string> = {
-  characterBlock: "Bloque Personaje",
-  confirmedAction: "Confirmado en Acción",
-  manual: "Alta manual",
-  imported: "Detectado al importar",
-};
-
 const FORMAT_LABELS: Record<ScreenplayKind, { plural: string; singular: string; item: string }> = {
   dialogue: { plural: "Diálogos", singular: "Diálogo", item: "fragmentos clasificados" },
   character: { plural: "Personajes", singular: "Personaje", item: "encabezados clasificados" },
@@ -38,13 +37,14 @@ const FORMAT_LABELS: Record<ScreenplayKind, { plural: string; singular: string; 
 };
 
 export default function WriterObservationsPanel({
-  observations, knownIdentities, decisions, storagePersistent, importedAnalysisPersistent,
+  observations, knownIdentities, knownCharacterActivity, decisions, storagePersistent, importedAnalysisPersistent,
   formatObservations, reviewedFormatIds, activeFormatObservationId, showHighlights, formatReviewPersistent,
   sceneCount, selectedBlockId, hidden, section, readinessNotice, assistantPanel, setupPayoffPanel, guidedWritingPanel, onSectionChange, onClose, onConfirm, onLink, onIgnore,
   onRestore, onAddManual, onView, onViewFormat, onReviewFormat, onChangeFormat, onToggleHighlights,
 }: {
   observations: WriterCharacterObservation[];
   knownIdentities: WriterKnownCharacterIdentity[];
+  knownCharacterActivity: Array<{ key: string; evidenceCount: number; firstBlockId: string | null }>;
   decisions: WriterCharacterDecisionState;
   storagePersistent: boolean;
   importedAnalysisPersistent: boolean;
@@ -74,8 +74,6 @@ export default function WriterObservationsPanel({
   onChangeFormat: (observation: WriterFormatObservation, kind: ScreenplayKind) => void;
   onToggleHighlights: (visible: boolean) => void;
 }) {
-  const [confirming, setConfirming] = useState<WriterCharacterObservation | null>(null);
-  const [confirmName, setConfirmName] = useState("");
   const [linking, setLinking] = useState<WriterCharacterObservation | null>(null);
   const [linkKey, setLinkKey] = useState("");
   const [manualName, setManualName] = useState("");
@@ -125,6 +123,20 @@ export default function WriterObservationsPanel({
     )
     : 0;
   const activeFormat = activeGroup?.observations[activeIndex] ?? null;
+  const activityByKey = useMemo(
+    () => new Map(knownCharacterActivity.map((activity) => [activity.key, activity])),
+    [knownCharacterActivity],
+  );
+
+  function acceptCharacterCandidate(observation: WriterCharacterObservation) {
+    const compatible = findCompatibleIdentity(observation.identity, knownIdentities);
+    if (!compatible) {
+      onConfirm(observation, parseWriterCharacterCue(observation.identity).name);
+      return;
+    }
+    setLinkKey(compatible.key);
+    setLinking(observation);
+  }
 
   function openFormatGroup(kind: ScreenplayKind) {
     const group = formatGroups.find((candidate) => candidate.kind === kind);
@@ -240,20 +252,19 @@ export default function WriterObservationsPanel({
           {characterGroups.length ? characterGroups.map((group) => {
             const first = group[0];
             return (
-              <article key={first.identityKey} className={group.some((item) => item.blockId === selectedBlockId) ? "is-selected" : ""} data-state="question">
-                <div className="writer-observation-title"><strong>Identidad por revisar: {first.identity.toLocaleUpperCase("es-MX")}</strong><span>Duda</span></div>
-                {group.map((observation) => (
-                  <div className="writer-observation-evidence" key={observation.id}>
-                    <p>“{observation.excerpt}”</p><small>{EVIDENCE_LABELS[observation.evidence]} · {confidenceLabel(observation.confidence)}</small>
-                    <details><summary>Por qué se señaló</summary><ul>{observation.signals.map((signal) => <li key={signal}>{signal}</li>)}</ul></details>
-                    <button type="button" onClick={() => onView(observation)}>Ver fragmento</button>
-                  </div>
-                ))}
-                <p>La relación puede ser intervención, acción, mención o incierta. Reconocerla no cambia el texto ni crea diálogo.</p>
-                <div className="writer-observation-actions">
-                  <button type="button" onClick={() => { setConfirming(first); setConfirmName(first.identity); }}>Confirmar personaje</button>
-                  <button type="button" onClick={() => { setLinking(first); setLinkKey(knownIdentities[0]?.key ?? ""); }} disabled={!knownIdentities.length}>Vincular a existente</button>
-                  <button type="button" onClick={() => onIgnore(first)}>Ignorar</button>
+              <article key={first.identityKey} className={`writer-character-review-card${group.some((item) => item.blockId === selectedBlockId) ? " is-selected" : ""}`} data-state="question">
+                <div className="writer-character-review-question"><span aria-hidden="true">?</span><strong>¿“{parseWriterCharacterCue(first.identity).name.toLocaleUpperCase("es-MX")}” es un personaje?</strong></div>
+                <blockquote>“{writerObservationExcerpt(first.excerpt, 180)}”</blockquote>
+                {group.length > 1 && <small className="writer-character-review-count">También aparece en {group.length - 1} {group.length === 2 ? "fragmento" : "fragmentos"}.</small>}
+                <button className="writer-fragment-link" type="button" onClick={() => onView(first)}>Ver fragmento <span aria-hidden="true">→</span></button>
+                <details className="writer-character-review-details">
+                  <summary>Detalles</summary>
+                  <p>{EVIDENCE_LABELS[first.evidence]} · confianza {confidenceLabel(first.confidence).toLocaleLowerCase("es-MX")}</p>
+                  <ul>{first.signals.map((signal) => <li key={signal}>{signal}</li>)}</ul>
+                </details>
+                <div className="writer-observation-actions writer-character-binary-actions">
+                  <button className="writer-satin-button writer-satin-button--primary" type="button" onClick={() => acceptCharacterCandidate(first)}>Sí, es personaje</button>
+                  <button className="writer-satin-button" type="button" onClick={() => onIgnore(first)}>No</button>
                 </div>
               </article>
             );
@@ -266,7 +277,15 @@ export default function WriterObservationsPanel({
           <div className="writer-observations-section-heading"><h3 id="writer-observations-known-heading">Personajes reconocidos</h3><span>{knownIdentities.length}</span></div>
           {knownIdentities.length ? <ul className="writer-observations-known">{knownIdentities.map((identity) => {
             const references = observations.filter((observation) => observation.identityKey === identity.key);
-            return <li key={`${identity.source}:${identity.key}`}><div><strong>{identity.name}</strong><span>{SOURCE_LABELS[identity.source]}</span></div><small>{references.length ? `${references.length} evidencias actuales` : "Sin evidencias actuales"}</small></li>;
+            const activity = activityByKey.get(identity.key);
+            const appearanceCount = activity?.evidenceCount ?? references.length;
+            const variants = identity.variants?.filter(Boolean) ?? [];
+            return <li key={`${identity.source}:${identity.key}`}>
+              {references.length ? <details>
+                <summary><span><strong>{identity.name}</strong><small>{recognizedCharacterSummary(appearanceCount, variants, identity.source)}</small></span><span aria-hidden="true">⌄</span></summary>
+                <div className="writer-character-appearances">{references.slice(0, 12).map((reference, index) => <button className="writer-fragment-link" type="button" key={reference.id} onClick={() => onView(reference)}>Aparición {index + 1} <span aria-hidden="true">→</span></button>)}</div>
+              </details> : <div><strong>{identity.name}</strong><small>{recognizedCharacterSummary(appearanceCount, variants, identity.source)}</small></div>}
+            </li>;
           })}</ul> : <p className="writer-observations-empty">Todavía no hay identidades reconocidas.</p>}
           <form className="writer-observations-manual" onSubmit={(event) => { event.preventDefault(); if (!manualName.trim()) return; onAddManual(manualName); setManualName(""); }}>
             <label>Reconocer manualmente<input value={manualName} onChange={(event) => setManualName(event.target.value)} maxLength={64} placeholder="Nombre o identidad" /></label><button type="submit" disabled={!manualName.trim()}>Añadir</button>
@@ -275,8 +294,7 @@ export default function WriterObservationsPanel({
         </>}
       </div>
 
-      {confirming && <div className="writer-observation-decision" role="dialog" aria-modal="true" aria-labelledby="writer-observation-confirm-title"><h3 id="writer-observation-confirm-title">Confirmar personaje</h3><label>Nombre reconocido<input autoFocus value={confirmName} onChange={(event) => setConfirmName(event.target.value)} maxLength={64} /></label><div><button type="button" onClick={() => setConfirming(null)}>Cancelar</button><button type="button" onClick={() => { onConfirm(confirming, confirmName); setConfirming(null); }} disabled={!confirmName.trim()}>Confirmar</button></div></div>}
-      {linking && <div className="writer-observation-decision" role="dialog" aria-modal="true" aria-labelledby="writer-observation-link-title"><h3 id="writer-observation-link-title">Vincular evidencia</h3><label>Personaje<select autoFocus value={linkKey} onChange={(event) => setLinkKey(event.target.value)}>{knownIdentities.map((identity) => <option key={`${identity.source}:${identity.key}`} value={identity.key}>{identity.name}</option>)}</select></label><div><button type="button" onClick={() => setLinking(null)}>Cancelar</button><button type="button" onClick={() => { onLink(linking, linkKey); setLinking(null); }} disabled={!linkKey}>Vincular</button></div></div>}
+      {linking && <div className="writer-observation-decision" role="dialog" aria-modal="true" aria-labelledby="writer-observation-link-title"><div className="writer-observation-decision-card"><p className="writer-eyebrow">Confirmar identidad</p><h3 id="writer-observation-link-title">¿Es el mismo personaje que {knownIdentities.find((identity) => identity.key === linkKey)?.name ?? "el personaje reconocido"}?</h3><p>El texto del cue permanecerá intacto.</p><div><button className="writer-satin-button" type="button" onClick={() => { onConfirm(linking, parseWriterCharacterCue(linking.identity).name); setLinking(null); }}>Crear identidad nueva</button><button className="writer-satin-button writer-satin-button--primary" type="button" autoFocus onClick={() => { onLink(linking, linkKey); setLinking(null); }} disabled={!linkKey}>Vincular</button></div></div></div>}
     </aside>
   );
 }
@@ -285,4 +303,25 @@ function confidenceLabel(value: WriterCharacterObservation["confidence"]) {
   if (value === "high") return "Alta";
   if (value === "medium") return "Media";
   return "Revisar";
+}
+
+function findCompatibleIdentity(candidate: string, identities: readonly WriterKnownCharacterIdentity[]) {
+  const candidateKey = foldedIdentityKey(writerCharacterIdentityKey(candidate));
+  const participantKey = foldedIdentityKey(writerParticipantRoleKey(candidate));
+  return identities.find((identity) => {
+    const identityKey = foldedIdentityKey(identity.key);
+    return identityKey === candidateKey
+      || foldedIdentityKey(writerParticipantRoleKey(identity.name)) === participantKey;
+  }) ?? null;
+}
+
+function foldedIdentityKey(value: string) {
+  return value.normalize("NFD").replace(/\p{M}/gu, "").toLocaleUpperCase("es-MX");
+}
+
+function recognizedCharacterSummary(count: number, variants: readonly string[], source: WriterKnownCharacterIdentity["source"]) {
+  const appearances = count > 0
+    ? `${count} ${count === 1 ? "aparición" : "apariciones"}`
+    : source === "manual" || source === "confirmedAction" ? "Confirmado por ti" : "Reconocido en el guion";
+  return variants.length ? `${appearances} · ${variants.join(" · ").toLocaleLowerCase("es-MX")}` : appearances;
 }

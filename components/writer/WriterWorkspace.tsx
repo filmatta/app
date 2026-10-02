@@ -116,12 +116,12 @@ import { classifyWriterAutoFormat } from "@/lib/writer/auto-format-client";
 import {
   analyzeWriterCharacterObservations,
   deriveWriterKnownCharacterIdentities,
-  normalizeWriterCharacterIdentity,
   writerCharacterIdentityKey,
   writerObservationTextHash,
   type WriterCharacterAnalysisCache,
   type WriterCharacterObservation,
 } from "@/lib/writer/character-observations";
+import { isClearlyNonCharacterLine, parseWriterCharacterCue } from "@/lib/writer/character-cues";
 import {
   emptyWriterCharacterDecisionState,
   loadWriterCharacterDecisionState,
@@ -679,6 +679,7 @@ export default function WriterWorkspace({
           .map((identity) => ({
             name: identity.name,
             source: identity.source,
+            variants: identity.variants,
           })) ?? []),
       ],
     );
@@ -691,15 +692,31 @@ export default function WriterWorkspace({
   const currentBlocksById = useMemo(() => new Map(document.content.map((block) => [block.attrs.id, block])), [document]);
   const combinedCharacterObservations = useMemo(() => {
     const byEvidence = new Map<string, WriterCharacterObservation>();
+    const decisionByFingerprint = new Map(characterDecisions.decisions.map((decision) => [decision.fingerprint, decision]));
     for (const observation of [...characterObservations, ...(persistedImportAnalysis?.observations ?? [])]) {
+      if (isClearlyNonCharacterLine(observation.identity)) continue;
       const currentBlock = currentBlocksById.get(observation.blockId);
       if (!currentBlock || writerObservationTextHash(blockText(currentBlock)) !== observation.blockHash) continue;
       const key = [observation.identityKey, observation.blockId, observation.start, observation.end, observation.evidence].join("|");
       const current = byEvidence.get(key);
-      if (!current || observation.source === "ai" || observation.source === "explicit") byEvidence.set(key, observation);
+      if (current && observation.source !== "ai" && observation.source !== "explicit") continue;
+      const decision = decisionByFingerprint.get(observation.fingerprint);
+      const decidedIdentity = decision?.identityId
+        ? characterDecisions.identities.find((identity) => identity.id === decision.identityId)
+        : null;
+      const decidedKey = decision?.identityKey ?? (decidedIdentity ? writerCharacterIdentityKey(decidedIdentity.name) : null);
+      const knownIdentity = decidedKey
+        ? knownCharacterIdentities.find((identity) => identity.key === decidedKey)
+        : null;
+      byEvidence.set(key, decision && decision.state !== "ignored" && decidedKey ? {
+        ...observation,
+        identityKey: decidedKey,
+        identity: decidedIdentity?.name ?? knownIdentity?.name ?? observation.identity,
+        known: true,
+      } : observation);
     }
     return [...byEvidence.values()];
-  }, [characterObservations, currentBlocksById, persistedImportAnalysis?.observations]);
+  }, [characterDecisions.decisions, characterDecisions.identities, characterObservations, currentBlocksById, knownCharacterIdentities, persistedImportAnalysis?.observations]);
   const characterActivity = useMemo(
     () => deriveAcceptedCharacterActivity(document, knownCharacterIdentities, combinedCharacterObservations),
     [combinedCharacterObservations, document, knownCharacterIdentities],
@@ -1561,11 +1578,12 @@ export default function WriterWorkspace({
   }
 
   function confirmCharacterObservation(observation: WriterCharacterObservation, value: string) {
-    const name = value.trim().replace(/\s+/gu, " ").slice(0, 64);
-    if (!name) return;
-    const key = normalizeWriterCharacterIdentity(name);
+    const candidate = value.trim().replace(/\s+/gu, " ").slice(0, 64);
+    const name = parseWriterCharacterCue(candidate).name;
+    if (!name || isClearlyNonCharacterLine(candidate)) return;
+    const key = writerCharacterIdentityKey(name);
     const existing = characterDecisionsRef.current.identities.find(
-      (identity) => normalizeWriterCharacterIdentity(identity.name) === key,
+      (identity) => writerCharacterIdentityKey(identity.name) === key,
     );
     const identityId = existing?.id ?? crypto.randomUUID();
     updateCharacterDecisions((current) => ({
@@ -1598,9 +1616,11 @@ export default function WriterWorkspace({
   }
 
   function addManualCharacter(value: string) {
-    const name = value.trim().replace(/\s+/gu, " ").slice(0, 64);
-    const key = normalizeWriterCharacterIdentity(name);
-    if (!key || knownCharacterIdentities.some((identity) => identity.key === key)) return;
+    const candidate = value.trim().replace(/\s+/gu, " ").slice(0, 64);
+    const name = parseWriterCharacterCue(candidate).name;
+    const key = writerCharacterIdentityKey(name);
+    if (!key || isClearlyNonCharacterLine(candidate)
+      || knownCharacterIdentities.some((identity) => identity.key === key)) return;
     updateCharacterDecisions((current) => ({
       ...current,
       identities: [...current.identities, {
@@ -1658,19 +1678,24 @@ export default function WriterWorkspace({
 
   function viewCharacterObservation(observation: WriterCharacterObservation) {
     if (!editor) return;
+    setSelectedObservationBlockId(observation.blockId);
     const target = findWriterBlockById(editor, observation.blockId);
     if (!target || writerObservationTextHash(target.text) !== observation.blockHash) {
-      setFeedback("La evidencia cambió y ya no se puede abrir. Las observaciones se actualizarán con el texto actual.");
+      setFeedback("Este fragmento cambió desde la revisión.");
       setAnalysisEpoch((value) => value + 1);
+      if (observation.sceneId) navigateToWriterReference({ sceneId: observation.sceneId });
+      if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
       return;
     }
-    const sceneId = findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId);
+    const sceneId = observation.sceneId
+      ?? findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId);
     if (!sceneId || !navigateToWriterReference({
       sceneId,
       blockId: observation.blockId,
       fromOffset: observation.start,
       toOffset: observation.end,
-    })) setFeedback("La evidencia ya no pertenece a una escena disponible.");
+    })) setFeedback("Este fragmento cambió desde la revisión.");
+    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
   }
 
   function viewFormatObservation(observation: WriterFormatObservation) {
@@ -2538,6 +2563,7 @@ export default function WriterWorkspace({
         )}
         observations={combinedCharacterObservations}
         knownIdentities={knownCharacterIdentities}
+        knownCharacterActivity={characterRows}
         decisions={characterDecisions}
         storagePersistent={characterStoragePersistent}
         importedAnalysisPersistent={Boolean(persistedImportAnalysis)}
