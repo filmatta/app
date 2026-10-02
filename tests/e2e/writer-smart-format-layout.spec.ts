@@ -106,6 +106,54 @@ test("large paste supports both warnings, later recovery, one-step undo, and fre
   await expect(page.getByText(/compra créditos|sube de plan|te quedan/iu)).toHaveCount(0);
 });
 
+test("LA FRECUENCIA keeps its date out of character review and collapses known cue modalities", async ({ page, context }) => {
+  await openWriter(page, context);
+  await pasteReplacingDocument(page, `INT. CABINA DE RADIO - NOCHE
+
+17 DE NOVIEMBRE DE 2004
+
+MARA
+La frecuencia volvió.
+
+TOMÁS
+Esta vez no contestes.
+
+IRIS
+Ya es tarde.
+
+RUBÉN
+Apaga el transmisor.
+
+RUBÉN (ALTAVOCES)
+Mara, sal de ahí.
+
+PADRE (GRABACIÓN)
+Si oyes esto, busca la cinta.
+
+PADRE (VIDEO)
+No abras la puerta.`);
+  await page.getByRole("dialog", { name: "✦ Formatear este guion" }).getByRole("button", { name: "FORMATEAR GUION" }).click();
+  const dialog = page.locator(".writer-auto-format-dialog");
+  await expect(dialog.getByRole("heading", { name: "Estructura detectada" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Aplicar formato", exact: true }).click();
+
+  const editor = page.getByLabel("Editor de guion");
+  await expect(editor.locator('[data-screenplay-kind="action"]', { hasText: "17 DE NOVIEMBRE DE 2004" })).toHaveCount(1);
+  await expect(editor.locator('[data-screenplay-kind="character"]')).toHaveCount(7);
+  const sidebar = page.getByRole("region", { name: /^Personajes 5$/ });
+  for (const name of ["MARA", "TOMÁS", "IRIS", "RUBÉN", "PADRE"]) {
+    await expect(sidebar.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
+  }
+  await expect(sidebar.getByText("17 DE NOVIEMBRE DE 2004", { exact: true })).toHaveCount(0);
+  await page.locator(".writer-header").getByRole("button", { name: /Observaciones/ }).click();
+  const observations = page.locator(".writer-observations-panel");
+  await expect(observations.getByText("17 DE NOVIEMBRE DE 2004", { exact: true })).toHaveCount(0);
+  await expect(observations.getByText("PADRE (VIDEO)", { exact: true })).toHaveCount(0);
+  await expect(observations.getByText("PADRE", { exact: true })).toBeVisible();
+  await expect(observations.locator(".writer-observations-known li").filter({ hasText: "PADRE" })).toContainText(/2 apariciones · grabación · video/u);
+  await expect(observations.locator(".writer-observations-known li").filter({ hasText: "RUBÉN" })).toContainText(/2 apariciones · altavoces/u);
+});
+
 test("small paste stays quiet while modal acceptance unlocks structured views and Pulse saves before one-click analysis", async ({ page, context }) => {
   const pulseMethods: string[] = [];
   await page.route(`**/api/writer/scripts/${scriptId}/narrative-pulse`, async (route) => {

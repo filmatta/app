@@ -11,6 +11,7 @@ import {
   type WriterImportConfidence,
 } from "./import.ts";
 import { WRITER_NARRATIVE_PULSE_MIN_SCENES } from "./narrative-pulse.ts";
+import { isClearlyNonCharacterLine } from "./character-cues.ts";
 
 export const WRITER_SIGNIFICANT_PASTE_MIN_CHARACTERS = 120;
 export const WRITER_SIGNIFICANT_PASTE_MIN_LINES = 4;
@@ -266,7 +267,8 @@ export function writerAutoFormatCandidates(
 ): WriterAutoFormatCandidate[] {
   const ambiguous = new Map(
     plan.changes
-      .filter((change) => change.confidence !== "high" || !change.proposedKind)
+      .filter((change) => (change.confidence !== "high" || !change.proposedKind)
+        && !isClearlyNonCharacterLine(change.text))
       .map((change) => [change.blockId, change]),
   );
   if (ambiguous.size === 0) return [];
@@ -327,6 +329,8 @@ export function validateWriterAutoFormatClassifications(
       || seen.has(entry.blockId)
       || typeof entry.kind !== "string"
       || !SCREENPLAY_KINDS.includes(entry.kind as ScreenplayKind)
+      || (entry.kind === "character"
+        && isClearlyNonCharacterLine(candidates.find((candidate) => candidate.blockId === entry.blockId)?.text ?? ""))
       || !(entry.characterName === null || typeof entry.characterName === "string")) {
       throw new Error("La clasificación asistida contiene un resultado inválido.");
     }
@@ -399,6 +403,7 @@ function looksLikeCharacterCue(line: string, next: string) {
   return [...line].length <= 42
     && /\p{L}/u.test(line)
     && line === normalized
+    && !isClearlyNonCharacterLine(line)
     && !/[.!?…,:;]$/u.test(line)
     && Boolean(next)
     && !SCENE_HEADING.test(next)

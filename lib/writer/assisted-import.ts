@@ -25,6 +25,7 @@ import {
   writerObservationTextHash,
   type WriterCharacterEvidence,
 } from "./character-observations.ts";
+import { isClearlyNonCharacterLine, parseWriterCharacterCue } from "./character-cues.ts";
 
 export const WRITER_ASSISTED_IMPORT_VERSION = "writer-import-ai-v1-compact-v4";
 export const WRITER_ASSISTED_IMPORT_MAX_BYTES = 2 * 1024 * 1024;
@@ -459,6 +460,8 @@ export function buildAssistedImportBatches(staging: WriterImportStaging) {
       sceneId = block.id;
     }
     if (block.proposedKind === "authorNote") continue;
+    if (block.proposedKind === "action" && block.confidence === "high"
+      && isClearlyNonCharacterLine(block.originalText)) continue;
     const shouldAnalyze = block.proposedKind === "action"
       || block.proposedKind === "character"
       || block.confidence !== "high"
@@ -811,7 +814,7 @@ export function reconcileAssistedImport(
   const modelAcceptedIdentityKeys = new Set<string>();
   for (const characterBlock of document.content.filter((block) => block.attrs.kind === "character")) {
     const identity = blockText(characterBlock).trim();
-    if (!identity) continue;
+    if (!identity || isClearlyNonCharacterLine(identity)) continue;
     const sceneId = sceneByBlock.get(characterBlock.attrs.id) ?? null;
     const sceneKey = sceneId ?? "PREAMBLE";
     const catalog = explicitByScene.get(sceneKey) ?? new Set<string>();
@@ -867,7 +870,7 @@ export function reconcileAssistedImport(
     if (!current || sourcePriority(item.source) > sourcePriority(current.source)) {
       identityMap.set(item.identityKey, {
         key: item.identityKey,
-        name: item.identity,
+        name: parseWriterCharacterCue(item.identity).name,
         source: item.source,
         detected: true,
         accepted: acceptedIdentityKeys.has(item.identityKey),
@@ -906,6 +909,7 @@ function withLocalAnchors(batch: AssistedImportBatch): AssistedImportBatch {
   for (const block of batch.blocks) {
     const scene = batch.sceneContextByBlock[block.id] ?? { sceneId: null, sceneLabel: null };
     if (block.proposedKind === "character") continue;
+    if (isClearlyNonCharacterLine(block.originalText)) continue;
     const spans = new Map<string, { start: number; end: number; signals: Set<string> }>();
     const add = (start: number, end: number, signal: string) => {
       const text = block.originalText.slice(start, end);
@@ -1198,6 +1202,7 @@ function withStableSourceIds(staging: WriterImportStaging): WriterImportStaging 
 
 function canBeCharacterHeading(value: string) {
   const trimmed = value.trim();
+  if (isClearlyNonCharacterLine(trimmed)) return false;
   const identity = stripWriterCharacterSuffix(trimmed);
   if (!identity || [...trimmed].length > 64 || /[.!?…]/u.test(identity)) return false;
   const words = identity.split(/\s+/u);

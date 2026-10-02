@@ -5,6 +5,7 @@ import {
   type ScreenplayKind,
   type WriterDocument,
 } from "./document.ts";
+import { isClearlyNonCharacterLine, isWriterDateLine, isWriterTimeLine } from "./character-cues.ts";
 
 export const WRITER_IMPORT_MAX_FILE_BYTES = 5_000_000;
 export const WRITER_IMPORT_MAX_TEXT_CHARACTERS = 1_500_000;
@@ -320,6 +321,22 @@ function classifyPlainTextLine(input: {
       proposedKind: "dialogue",
       confidence: "high",
       signals: ["Texto situado después de un personaje o acotación sin separación de turno."],
+    };
+  }
+
+  if (isWriterDateLine(trimmed) || isWriterTimeLine(trimmed)) {
+    return {
+      proposedKind: "action",
+      confidence: "high",
+      signals: ["Fecha u hora reconocible; no es un encabezado de personaje."],
+    };
+  }
+
+  if (isClearlyNonCharacterLine(trimmed)) {
+    return {
+      proposedKind: "action",
+      confidence: "high",
+      signals: ["Patrón determinista incompatible con un encabezado de personaje."],
     };
   }
 

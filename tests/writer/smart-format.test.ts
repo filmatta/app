@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { blockText, createBlock, type WriterDocument } from "../../lib/writer/document.ts";
+import { analyzePastedWriterText } from "../../lib/writer/import.ts";
 import {
   WRITER_SIGNIFICANT_PASTE_MIN_CHARACTERS,
   assessWriterPaste,
@@ -51,6 +52,21 @@ test("format fixtures cover prose, one-line paste, parentheticals, transitions, 
   assert.ok(assessWriterPaste(SMART_FORMAT_FIXTURES.transitions).signals.includes("transition"));
   const uppercase = createWriterAutoFormatPlan(documentFromLines(SMART_FORMAT_FIXTURES.uppercaseAction), { scope: "document" });
   assert.equal(uppercase.changes.some((change) => change.proposedKind === "character"), false);
+});
+
+test("dates and times are deterministically Action and never reach character review or AI", () => {
+  const source = `17 DE NOVIEMBRE DE 2004\n\n3:45 AM\n\nMARA\n\nNo mires.`;
+  const document = documentFromLines(source);
+  const plan = createWriterAutoFormatPlan(document, { scope: "document" });
+  const byText = new Map(plan.changes.map((change) => [change.text, change]));
+  const stagingByText = new Map(analyzePastedWriterText(source, "Fechas").blocks.map((block) => [block.originalText, block]));
+  assert.equal(stagingByText.get("17 DE NOVIEMBRE DE 2004")?.proposedKind, "action");
+  assert.equal(stagingByText.get("17 DE NOVIEMBRE DE 2004")?.confidence, "high");
+  assert.equal(stagingByText.get("3:45 AM")?.proposedKind, "action");
+  assert.equal(byText.has("17 DE NOVIEMBRE DE 2004"), false);
+  assert.equal(byText.has("3:45 AM"), false);
+  assert.equal(writerAutoFormatCandidates(document, plan).some((candidate) => /NOVIEMBRE|3:45/u.test(candidate.text)), false);
+  assert.equal(byText.get("MARA")?.proposedKind, "character");
 });
 
 test("readiness distinguishes EMPTY, UNFORMATTED, PARTIAL, and READY", () => {
