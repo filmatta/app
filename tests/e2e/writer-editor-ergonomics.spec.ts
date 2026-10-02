@@ -161,6 +161,10 @@ test("toolbar controls remain inside the Writer viewport across supported widths
 });
 
 test("typewriter WAV decodes once, stays bounded and ignores paste, shortcuts, Backspace and Enter", async ({ page, context }) => {
+  const audioResponse = await page.request.get("/audio/writer/typewriter-key.wav");
+  expect(audioResponse.status()).toBe(200);
+  expect(audioResponse.headers()["content-type"]).toMatch(/^audio\/(?:wav|wave|x-wav)/u);
+
   await page.addInitScript(() => {
     const stats = { active: 0, decodes: 0, maxActive: 0, resumes: 0, starts: 0 };
     (window as typeof window & { __writerAudioQa?: typeof stats }).__writerAudioQa = stats;

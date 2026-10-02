@@ -172,6 +172,11 @@ test("typewriter WAV playback is short, quiet and bounded", () => {
   assert.doesNotMatch(source, /createOscillator/u);
 });
 
+test("typewriter WAV bypasses the session proxy and remains a static asset", () => {
+  const proxy = readFileSync(new URL("../../proxy.ts", import.meta.url), "utf8");
+  assert.match(proxy, /webp\|wav/u);
+});
+
 test("Writer UI exposes independent scroll regions, usable thumbs and expanded analysis", () => {
   const css = readFileSync(new URL("../../app/writer/writer.css", import.meta.url), "utf8");
   const workspace = readFileSync(new URL("../../components/writer/WriterWorkspace.tsx", import.meta.url), "utf8");
