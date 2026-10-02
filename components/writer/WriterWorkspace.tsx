@@ -62,6 +62,7 @@ import {
   type WriterWorkspaceLayout,
 } from "@/lib/writer/workspace-layout";
 import WriterImportFlow from "./WriterImportFlow";
+import WriterBreakdownPanel from "./WriterBreakdownPanel";
 import WriterAssistantNarrative from "./WriterAssistantNarrative";
 import WriterGuidedWriting from "./WriterGuidedWriting";
 import WriterObservationsPanel, { type WriterObservationsSection } from "./WriterObservationsPanel";
@@ -258,6 +259,11 @@ export default function WriterWorkspace({
   const [draggedSceneId, setDraggedSceneId] = useState<string | null>(null);
   const [sceneDropTarget, setSceneDropTarget] = useState<{ sceneId: string; position: WriterSceneMovePosition } | null>(null);
   const [navigationDepth, setNavigationDepth] = useState(0);
+  const [shotlistReturnPath] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const value = new URLSearchParams(window.location.search).get("return");
+    return value?.startsWith("/shotlists/") ? value : null;
+  });
   const [structuralToast, setStructuralToast] = useState<WriterStructuralToast | null>(null);
   const [exportMenu, setExportMenu] = useState(false);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
@@ -300,6 +306,7 @@ export default function WriterWorkspace({
   const [typewriterSoundEnabled, setTypewriterSoundEnabled] = useState(false);
   const [autocomplete, setAutocomplete] = useState<WriterAutocompleteState | null>(null);
   const [conflictBusy, setConflictBusy] = useState(false);
+  const [shotlistBusy, setShotlistBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const controllerRef = useRef<WriterPersistenceController | null>(null);
   const documentRef = useRef(script.document);
@@ -1665,6 +1672,33 @@ export default function WriterWorkspace({
     }
   }
 
+  async function openOrCreateShotlist() {
+    if (shotlistBusy) return;
+    setShotlistBusy(true);
+    setFeedback(null);
+    try {
+      const existingResponse = await fetch(`/api/writer/scripts/${script.id}/shotlists`, { cache: "no-store" });
+      const existing = await existingResponse.json();
+      if (!existingResponse.ok) throw new Error(existing.error ?? "No pudimos consultar la Shotlist.");
+      if (Array.isArray(existing.shotlists) && existing.shotlists.length) {
+        router.push(`/shotlists/${existing.shotlists[0].id}`);
+        return;
+      }
+      await ensureCurrentDocumentSaved();
+      const createResponse = await fetch(`/api/writer/scripts/${script.id}/shotlists`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operationId: crypto.randomUUID(), title: `${title.trim() || "Guion sin título"} — Shotlist` }),
+      });
+      const created = await createResponse.json();
+      if (!createResponse.ok || typeof created.id !== "string") throw new Error(created.error ?? "No pudimos crear la Shotlist.");
+      router.push(`/shotlists/${created.id}`);
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No pudimos abrir la Shotlist.");
+      setShotlistBusy(false);
+    }
+  }
+
   function setCharacterDecision(decision: WriterCharacterDecision) {
     updateCharacterDecisions((current) => ({
       ...current,
@@ -2269,6 +2303,12 @@ export default function WriterWorkspace({
           </div>
           <SaveStatus state={saveState} />
           <button
+            className="writer-shotlist-open-button"
+            type="button"
+            onClick={() => void openOrCreateShotlist()}
+            disabled={!ready || shotlistBusy}
+          >{shotlistBusy ? "Abriendo…" : "Shotlist"}</button>
+          <button
             className="writer-import-open-button"
             type="button"
             onClick={openImportFlow}
@@ -2341,6 +2381,7 @@ export default function WriterWorkspace({
           <div className="writer-mobile-sheet writer-mobile-more-sheet" role="dialog" aria-label="Más acciones de Writer">
             <div className="writer-mobile-sheet-head"><strong>Writer</strong><button type="button" onClick={() => setMobileMoreOpen(false)}>Cerrar</button></div>
             <button type="button" onClick={openImportFlow}>Importar borrador</button>
+            <button type="button" disabled={shotlistBusy} onClick={() => { setMobileMoreOpen(false); void openOrCreateShotlist(); }}>Shotlist</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document"); }}><SmartFeatureIndicator label="FORMATO AUTOMÁTICO" /></button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setSearchReplaceMode(false); setSearchOpen(true); }}><WriterIcon name="search" /> Buscar</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setIdeasOpen(true); }}><WriterIcon name="ideas" /> Ideas</button>
@@ -2448,9 +2489,23 @@ export default function WriterWorkspace({
         )}
         <section className={`writer-character-section${charactersCollapsed ? " is-collapsed" : ""}`} aria-labelledby="writer-character-heading">
           <button className="writer-character-section-toggle" type="button" aria-expanded={!charactersCollapsed} onClick={() => setCharactersCollapsed((value) => !value)}>
-            <span id="writer-character-heading" className="writer-sidebar-heading">Personajes <b>{characterRows.length}</b></span><span aria-hidden="true">{charactersCollapsed ? "⌄" : "⌃"}</span>
+            <span id="writer-character-heading" className="writer-sidebar-heading">Breakdown</span><span aria-hidden="true">{charactersCollapsed ? "⌄" : "⌃"}</span>
           </button>
-          {!charactersCollapsed && (characterRows.length ? (
+          {!charactersCollapsed && <WriterBreakdownPanel
+            scriptId={script.id}
+            activeSceneId={activeScene}
+            characterCount={characterRows.length}
+            onEnsureSaved={ensureCurrentDocumentSaved}
+            onNavigate={(reference) => {
+              if (!reference.sceneId) return;
+              navigateToWriterReference({
+                sceneId: reference.sceneId,
+                blockId: reference.blockId,
+                fromOffset: reference.fromOffset ?? undefined,
+                toOffset: reference.toOffset ?? undefined,
+              });
+            }}
+            characters={characterRows.length ? (
             <ul aria-label="Personajes del guion" tabIndex={0}>{characterRows.map((character) => (
               <li key={character.identityId} className="writer-character-item">
                 {editingCharacterId === character.identityId ? (
@@ -2496,7 +2551,8 @@ export default function WriterWorkspace({
                 </div>
               </li>
             ))}</ul>
-          ) : <p className="writer-sidebar-empty">Los personajes aceptados aparecerán aquí.</p>)}
+          ) : <p className="writer-sidebar-empty">Los personajes aceptados aparecerán aquí.</p>}
+          />}
         </section>
       </aside>
 
@@ -2532,6 +2588,7 @@ export default function WriterWorkspace({
           }}
         />
         <div className="writer-editor-notices">
+          {!focusMode && shotlistReturnPath && <Link className="writer-navigation-back" href={shotlistReturnPath}>← Volver a Shotlist</Link>}
           {!focusMode && navigationDepth > 0 && <button className="writer-navigation-back" type="button" onClick={navigateBack}>← Volver</button>}
           {feedback && <div className="writer-editor-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback(null)}>Cerrar</button></div>}
         </div>
