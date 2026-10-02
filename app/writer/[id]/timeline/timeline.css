@@ -369,6 +369,10 @@
 .writer-pulse-detail > p:not(.timeline-eyebrow), .writer-pulse-milestone-detail > p { color: var(--timeline-muted); font-size: .7rem; line-height: 1.55; }
 .writer-pulse-signals { display: flex; flex-wrap: wrap; gap: 5px; margin: 12px 0; }
 .writer-pulse-signals span { padding: 4px 6px; border: 1px solid rgba(126,199,216,.25); color: #acdbe5; font-size: .58rem; }
+.writer-pulse-dimensions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px 12px; margin:12px 0; }
+.writer-pulse-dimensions>div { display:flex; justify-content:space-between; gap:8px; padding:5px 0; border-bottom:1px solid var(--timeline-border); }
+.writer-pulse-dimensions dt,.writer-pulse-dimensions dd { margin:0; font-size:.6rem; }.writer-pulse-dimensions dt{color:var(--timeline-muted)}.writer-pulse-dimensions dd{font-family:var(--font-geist-mono)}
+.writer-pulse-evidence { margin:10px 0; padding-left:18px; color:var(--timeline-muted); font:.62rem/1.5 var(--font-geist-mono); }
 .writer-pulse-milestone-list { padding: 14px; }
 .writer-pulse-milestone-list > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .writer-pulse-milestone-list h2 { margin: 0; font-size: .82rem; }

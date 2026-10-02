@@ -17,7 +17,7 @@ const MAX_INPUT_CHARACTERS = 180_000;
 const GLOBAL_BUDGET_MICRO_USD = 10_000_000;
 
 export const WRITER_NARRATIVE_PULSE_INSTRUCTIONS = `Eres el lector de Narrative Pulse de FILMATTA. Describe la evolución comparativa de intensidad narrativa escena por escena; no evalúes calidad, pacing, estructura correcta ni salud del guion.
-Considera conflicto, cambio, presión, giro, riesgo, revelación, consecuencia y actividad narrativa. La intensidad es relativa dentro de este guion y nunca una calificación. Detecta pocos hitos plausibles y zonas amplias; no impongas tres actos ni inventes hitos ausentes.
+Considera amenaza/peligro, conflicto/presión, stakes/consecuencias, intensidad emocional, revelación/cambio de comprensión y urgencia/acción. La intensidad global es una lectura contextual, no una media rígida de las dimensiones: una sola dimensión decisiva puede sostener una escena intensa. Las dimensiones explican y permiten revisar la lectura; no uses pesos fijos. La intensidad es relativa dentro de este guion y nunca una calificación. Detecta pocos hitos plausibles y zonas amplias; no impongas tres actos ni inventes hitos ausentes.
 Usa exclusivamente los sceneId recibidos y devuelve exactamente un punto por escena, en el mismo orden. Las notas y explicaciones deben ser breves, descriptivas y sin razonamiento interno. Las relaciones Setup/Payoff confirmadas son hechos; las sugeridas sólo contexto. Los cambios O-O-C son contexto, no una fórmula de intensidad.`;
 
 type Database = ReturnType<typeof createAdminClient>;
@@ -94,7 +94,7 @@ export async function loadWriterNarrativePulseState(db: Database, userId: string
   const analysisRow = analysisResult.data?.[0] as Record<string, unknown> | undefined;
   const analysisId = analysisRow ? String(analysisRow.id) : null;
   const [pointsResult, zonesResult, milestonesResult] = await Promise.all([
-    analysisId ? db.from("writer_narrative_pulse_points").select("id,analysis_id,scene_id,intensity,signals,note").eq("owner_id", userId).eq("analysis_id", analysisId) : Promise.resolve({ data: [], error: null }),
+    analysisId ? db.from("writer_narrative_pulse_points").select("id,analysis_id,scene_id,intensity,signals,note,dimensions,evidence").eq("owner_id", userId).eq("analysis_id", analysisId) : Promise.resolve({ data: [], error: null }),
     analysisId ? db.from("writer_narrative_pulse_zones").select("id,analysis_id,start_scene_id,end_scene_id,zone_type,note").eq("owner_id", userId).eq("analysis_id", analysisId) : Promise.resolve({ data: [], error: null }),
     db.from("writer_narrative_pulse_milestones").select("id,script_id,scene_id,milestone_type,label,explanation,status,source,source_hash,fingerprint,moved_by_user,updated_at").eq("owner_id", userId).eq("script_id", scriptId).order("updated_at", { ascending: true }),
   ]);
@@ -102,7 +102,7 @@ export async function loadWriterNarrativePulseState(db: Database, userId: string
   return {
     currentSourceHash,
     analysis: analysisRow ? { id: String(analysisRow.id), sourceHash: String(analysisRow.source_hash), analysisVersion: String(analysisRow.analysis_version), model: String(analysisRow.model), status: analysisRow.status as NonNullable<WriterNarrativePulseState["analysis"]>["status"], errorCode: analysisRow.error_code ? String(analysisRow.error_code) : null, updatedAt: String(analysisRow.updated_at) } : null,
-    points: (pointsResult.data ?? []).map((row: Record<string, unknown>) => ({ id: String(row.id), analysisId: String(row.analysis_id), sceneId: String(row.scene_id), intensity: Number(row.intensity), signals: Array.isArray(row.signals) ? row.signals as never : [], note: String(row.note) })),
+    points: (pointsResult.data ?? []).map((row: Record<string, unknown>) => ({ id: String(row.id), analysisId: String(row.analysis_id), sceneId: String(row.scene_id), intensity: Number(row.intensity), signals: Array.isArray(row.signals) ? row.signals as never : [], note: String(row.note), dimensions: isRecord(row.dimensions) ? row.dimensions as never : {}, evidence: Array.isArray(row.evidence) ? row.evidence.map(String) : [] })),
     zones: (zonesResult.data ?? []).map((row: Record<string, unknown>) => ({ id: String(row.id), analysisId: String(row.analysis_id), startSceneId: String(row.start_scene_id), endSceneId: String(row.end_scene_id), type: row.zone_type as never, note: String(row.note) })),
     milestones: (milestonesResult.data ?? []).map((row: Record<string, unknown>) => ({ id: String(row.id), scriptId: String(row.script_id), sceneId: String(row.scene_id), type: row.milestone_type as WriterPulseMilestoneType, label: String(row.label), explanation: row.explanation ? String(row.explanation) : null, status: sceneIds.has(String(row.scene_id)) ? row.status as WriterPulseMilestoneStatus : "needs_review", source: row.source as "ai" | "user", sourceHash: row.source_hash ? String(row.source_hash) : null, fingerprint: String(row.fingerprint), movedByUser: Boolean(row.moved_by_user), updatedAt: String(row.updated_at) })),
   };
@@ -158,7 +158,7 @@ async function persistPulse(db: Database, userId: string, scriptId: string, anal
     db.from("writer_narrative_pulse_points").delete().eq("owner_id", userId).eq("analysis_id", analysisId),
     db.from("writer_narrative_pulse_zones").delete().eq("owner_id", userId).eq("analysis_id", analysisId),
   ]);
-  const pointResult = await db.from("writer_narrative_pulse_points").insert(payload.scenes.map((point) => ({ analysis_id: analysisId, owner_id: userId, script_id: scriptId, scene_id: point.sceneId, intensity: point.intensity, signals: point.signals, note: point.note })));
+  const pointResult = await db.from("writer_narrative_pulse_points").insert(payload.scenes.map((point) => ({ analysis_id: analysisId, owner_id: userId, script_id: scriptId, scene_id: point.sceneId, intensity: point.intensity, signals: point.signals, note: point.note, dimensions: point.dimensions ?? {}, evidence: point.evidence ?? [] })));
   const zoneResult = payload.zones.length ? await db.from("writer_narrative_pulse_zones").insert(payload.zones.map((zone) => ({ analysis_id: analysisId, owner_id: userId, script_id: scriptId, start_scene_id: zone.startSceneId, end_scene_id: zone.endSceneId, zone_type: zone.type, note: zone.note }))) : { error: null };
   if (pointResult.error || zoneResult.error) throw pointResult.error ?? zoneResult.error;
   const existing = await db.from("writer_narrative_pulse_milestones").select("id,fingerprint,status,source").eq("owner_id", userId).eq("script_id", scriptId);

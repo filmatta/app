@@ -1,7 +1,7 @@
 import type { WriterDocument } from "./document.ts";
 import { deriveWriterSceneSources, writerSceneCanonicalSource, type WriterSceneSource } from "./script-assistant.ts";
 
-export const WRITER_NARRATIVE_PULSE_VERSION = "narrative-pulse-v1" as const;
+export const WRITER_NARRATIVE_PULSE_VERSION = "narrative-pulse-v2" as const;
 export const WRITER_NARRATIVE_PULSE_MODEL = "gpt-5.6-terra" as const;
 export const WRITER_NARRATIVE_PULSE_MIN_SCENES = 4;
 
@@ -10,7 +10,8 @@ export type WriterPulseZoneType = "stable" | "build" | "release" | "peak";
 export type WriterPulseMilestoneType = "inciting_incident" | "first_turning_point" | "midpoint" | "crisis" | "climax" | "resolution" | "custom";
 export type WriterPulseMilestoneStatus = "suggested" | "confirmed" | "manual" | "dismissed" | "needs_review";
 
-export type WriterPulsePointCandidate = { sceneId: string; intensity: number; signals: WriterPulseSignal[]; note: string };
+export type WriterPulseDimension = "threat" | "pressure" | "stakes" | "emotion" | "revelation" | "urgency";
+export type WriterPulsePointCandidate = { sceneId: string; intensity: number; signals: WriterPulseSignal[]; note: string; dimensions?: Partial<Record<WriterPulseDimension, number>>; evidence?: string[] };
 export type WriterPulseMilestoneCandidate = { sceneId: string; type: Exclude<WriterPulseMilestoneType, "custom">; label: string; explanation: string };
 export type WriterPulseZoneCandidate = { startSceneId: string; endSceneId: string; type: WriterPulseZoneType; note: string };
 export type WriterNarrativePulsePayload = { scenes: WriterPulsePointCandidate[]; milestones: WriterPulseMilestoneCandidate[]; zones: WriterPulseZoneCandidate[] };
@@ -56,7 +57,7 @@ export function buildWriterPulseContext(
       sceneNumber: index + 1,
       heading: cleanInline(scene.heading, 180),
       characters: [...new Set(scene.blocks.filter((block) => block.kind === "character").map((block) => cleanInline(block.text, 64)).filter(Boolean))].slice(0, 12),
-      summary: cleanInline(scene.blocks.filter((block) => block.kind !== "sceneHeading").map((block) => block.text).join(" "), 700),
+      summary: sceneSummary(scene),
       setupPayoff: (relationships.get(scene.sceneId) ?? []).slice(0, 8),
       changes: (changes.get(scene.sceneId) ?? []).slice(0, 4),
     })),
@@ -74,12 +75,20 @@ export function validateWriterPulseOutput(value: unknown, scenes: WriterSceneSou
   const sceneOrder = new Map(scenes.map((scene, index) => [scene.sceneId, index]));
   const seen = new Set<string>();
   const points = value.scenes.map((entry) => {
-    if (!isRecord(entry) || !hasExactKeys(entry, ["sceneId", "intensity", "signals", "note"]) || !validSceneIds.has(String(entry.sceneId)) || seen.has(String(entry.sceneId))) throw new Error("narrative_pulse_invalid_scene");
+    if (!isRecord(entry) || !hasExactKeys(entry, ["sceneId", "intensity", "signals", "note", "dimensions", "evidence"]) || !validSceneIds.has(String(entry.sceneId)) || seen.has(String(entry.sceneId))) throw new Error("narrative_pulse_invalid_scene");
     if (!Number.isInteger(entry.intensity) || Number(entry.intensity) < 0 || Number(entry.intensity) > 100 || !Array.isArray(entry.signals) || entry.signals.length > 5) throw new Error("narrative_pulse_invalid_point");
     const signals = [...new Set(entry.signals.map(String))];
     if (signals.some((signal) => !PULSE_SIGNALS.includes(signal as WriterPulseSignal))) throw new Error("narrative_pulse_invalid_signal");
+    if (!isRecord(entry.dimensions) || !hasExactKeys(entry.dimensions, PULSE_DIMENSIONS) || !Array.isArray(entry.evidence) || entry.evidence.length > 4) throw new Error("narrative_pulse_invalid_explanation");
+    const rawDimensions = entry.dimensions as Record<string, unknown>;
+    const dimensions = Object.fromEntries(PULSE_DIMENSIONS.map((dimension) => {
+      const score = rawDimensions[dimension];
+      if (!Number.isInteger(score) || Number(score) < 0 || Number(score) > 100) throw new Error("narrative_pulse_invalid_dimension");
+      return [dimension, Number(score)];
+    })) as Record<WriterPulseDimension, number>;
+    const evidence = entry.evidence.map((item) => cleanText(item, 180));
     seen.add(String(entry.sceneId));
-    return { sceneId: String(entry.sceneId), intensity: Number(entry.intensity), signals: signals as WriterPulseSignal[], note: cleanText(entry.note, 360) };
+    return { sceneId: String(entry.sceneId), intensity: Number(entry.intensity), signals: signals as WriterPulseSignal[], note: cleanText(entry.note, 360), dimensions, evidence };
   });
   const milestones = value.milestones.map((entry) => {
     if (!isRecord(entry) || !hasExactKeys(entry, ["sceneId", "type", "label", "explanation"]) || !validSceneIds.has(String(entry.sceneId)) || !STANDARD_MILESTONES.includes(entry.type as never)) throw new Error("narrative_pulse_invalid_milestone");
@@ -95,8 +104,10 @@ export function validateWriterPulseOutput(value: unknown, scenes: WriterSceneSou
 
 export function writerPulseOutputSchema() {
   return { type: "object", additionalProperties: false, required: ["scenes", "milestones", "zones"], properties: {
-    scenes: { type: "array", maxItems: 160, items: { type: "object", additionalProperties: false, required: ["sceneId", "intensity", "signals", "note"], properties: {
+    scenes: { type: "array", maxItems: 160, items: { type: "object", additionalProperties: false, required: ["sceneId", "intensity", "signals", "note", "dimensions", "evidence"], properties: {
       sceneId: { type: "string" }, intensity: { type: "integer", minimum: 0, maximum: 100 }, signals: { type: "array", maxItems: 5, items: { type: "string", enum: PULSE_SIGNALS } }, note: { type: "string", maxLength: 360 },
+      dimensions: { type: "object", additionalProperties: false, required: PULSE_DIMENSIONS, properties: Object.fromEntries(PULSE_DIMENSIONS.map((dimension) => [dimension, { type: "integer", minimum: 0, maximum: 100 }])) },
+      evidence: { type: "array", maxItems: 4, items: { type: "string", maxLength: 180 } },
     } } },
     milestones: { type: "array", maxItems: 18, items: { type: "object", additionalProperties: false, required: ["sceneId", "type", "label", "explanation"], properties: {
       sceneId: { type: "string" }, type: { type: "string", enum: STANDARD_MILESTONES }, label: { type: "string", maxLength: 100 }, explanation: { type: "string", maxLength: 360 },
@@ -162,11 +173,17 @@ export function writerPulseMilestoneLabel(type: WriterPulseMilestoneType) {
 }
 
 const PULSE_SIGNALS: WriterPulseSignal[] = ["conflict", "change", "pressure", "turn", "risk", "revelation", "consequence", "activity"];
+export const PULSE_DIMENSIONS: WriterPulseDimension[] = ["threat", "pressure", "stakes", "emotion", "revelation", "urgency"];
 const ZONE_TYPES: WriterPulseZoneType[] = ["stable", "build", "release", "peak"];
 const STANDARD_MILESTONES: Array<Exclude<WriterPulseMilestoneType, "custom">> = ["inciting_incident", "first_turning_point", "midpoint", "crisis", "climax", "resolution"];
 
 function cleanText(value: unknown, limit: number) { if (typeof value !== "string") throw new Error("narrative_pulse_invalid_text"); const text = value.trim().replace(/\s+/gu, " "); if (!text || text.length > limit) throw new Error("narrative_pulse_invalid_text"); return text; }
 function cleanInline(value: string, limit: number) { return value.trim().replace(/\s+/gu, " ").slice(0, limit); }
+function sceneSummary(scene: WriterSceneSource) {
+  const text = scene.blocks.filter((block) => block.kind !== "sceneHeading").map((block) => block.text).join(" ").trim().replace(/\s+/gu, " ");
+  if (text.length <= 1_400) return text;
+  return `${text.slice(0, 680)} … [momento final] … ${text.slice(-680)}`;
+}
 function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]) { const actual = Object.keys(value).sort(); return actual.length === keys.length && [...keys].sort().every((key, index) => key === actual[index]); }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function groupByScene<T>(items: ReadonlyArray<T>, scene: (item: T) => string, value: (item: T) => string) { const result = new Map<string, string[]>(); for (const item of items) result.set(scene(item), [...(result.get(scene(item)) ?? []), cleanInline(value(item), 180)]); return result; }
