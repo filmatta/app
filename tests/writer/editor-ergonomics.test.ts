@@ -110,11 +110,15 @@ test("Writer UI exposes independent scroll regions, usable thumbs and expanded a
 
 test("checkpoints are owner-scoped, bounded and created before structural operations", () => {
   const migration = readFileSync(new URL("../../supabase/migrations/20261001010000_writer_editor_ergonomics_v1.sql", import.meta.url), "utf8");
+  const aclFix = readFileSync(new URL("../../supabase/migrations/20261001011000_writer_editor_ergonomics_acl_fix.sql", import.meta.url), "utf8");
   const route = readFileSync(new URL("../../app/api/writer/scripts/[id]/checkpoints/route.ts", import.meta.url), "utf8");
   const workspace = readFileSync(new URL("../../components/writer/WriterWorkspace.tsx", import.meta.url), "utf8");
   assert.match(migration, /alter table public\.writer_checkpoints enable row level security/u);
   assert.match(migration, /owner_id = \(select auth\.uid\(\)\)/u);
   assert.doesNotMatch(migration, /grant (?:insert|update|delete).* to anon/iu);
+  assert.match(aclFix, /revoke all on public\.writer_checkpoints from service_role/u);
+  assert.match(aclFix, /grant select, insert, update on public\.writer_smart_tool_operations to service_role/u);
+  assert.doesNotMatch(aclFix, /grant (?:delete|truncate|trigger|references)/iu);
   assert.match(route, /WRITER_AUTO_CHECKPOINT_RETENTION/u);
   assert.match(workspace, /kind: "before_auto_format"/u);
   assert.match(workspace, /kind: "before_replace_all"/u);
