@@ -33,6 +33,10 @@ test("desktop keeps Observations active while splitters and Timeline Pulse switc
   await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();
   await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();
   await expect(panel.locator(".writer-pulse-point")).toHaveCount(2);
+  await expect(panel.locator(".writer-pulse-point").first()).toHaveAttribute("data-raw-intensity", "28");
+  await expect(panel.locator(".writer-pulse-point").last()).toHaveAttribute("data-raw-intensity", "76");
+  const displayed = await panel.locator(".writer-pulse-point").evaluateAll((nodes) => nodes.map((node) => Number((node as HTMLElement).dataset.displayIntensity)));
+  expect(displayed[1] - displayed[0]).toBeGreaterThanOrEqual(65);
   await expect(observations).toBeVisible();
   await expect(reviewTab).toHaveAttribute("aria-current","page");
   await expect(rightSplitter).toHaveAttribute("aria-valuenow","376");

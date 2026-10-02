@@ -17,6 +17,15 @@ export type WriterNarrativePulsePayload = { scenes: WriterPulsePointCandidate[];
 
 export type WriterPulseAnalysis = { id: string; sourceHash: string; analysisVersion: string; model: string; status: "analyzing" | "fresh" | "error" | "uncertain"; errorCode: string | null; updatedAt: string } | null;
 export type WriterPulsePoint = WriterPulsePointCandidate & { id: string; analysisId: string };
+export type WriterPulseDisplayPoint = { rawIntensity: number; displayIntensity: number };
+export type WriterPulseDisplayStats = {
+  rawMin: number;
+  rawMax: number;
+  rawMedian: number;
+  rawVariance: number;
+  displayMin: number;
+  displayMax: number;
+};
 export type WriterPulseMilestone = {
   id: string; scriptId: string; sceneId: string; type: WriterPulseMilestoneType; label: string; explanation: string | null;
   status: WriterPulseMilestoneStatus; source: "ai" | "user"; sourceHash: string | null; fingerprint: string; movedByUser: boolean; updatedAt: string;
@@ -98,12 +107,52 @@ export function writerPulseOutputSchema() {
   } } as const;
 }
 
-export function writerPulsePath(points: ReadonlyArray<{ intensity: number }>, width: number, height: number, inset = 20) {
+export function writerPulseDisplaySeries(points: ReadonlyArray<{ intensity: number }>): WriterPulseDisplayPoint[] {
+  if (!points.length) return [];
+  const raw = points.map((point) => Math.max(0, Math.min(100, point.intensity)));
+  const minimum = Math.min(...raw);
+  const maximum = Math.max(...raw);
+  const range = maximum - minimum;
+  if (range === 0) return raw.map((rawIntensity) => ({ rawIntensity, displayIntensity: 50 }));
+
+  const targetSpan = range <= 4
+    ? Math.max(2, range)
+    : range < 12
+      ? Math.min(18, range * 1.5)
+      : Math.min(76, Math.max(42, range * 2.2));
+  const lowerBound = (100 - targetSpan) / 2;
+  const gamma = range >= 12 ? 0.92 : 1;
+  return raw.map((rawIntensity) => {
+    const normalized = (rawIntensity - minimum) / range;
+    const displayIntensity = lowerBound + targetSpan * Math.pow(normalized, gamma);
+    return { rawIntensity, displayIntensity: Math.max(0, Math.min(100, displayIntensity)) };
+  });
+}
+
+export function writerPulseDisplayStats(points: ReadonlyArray<{ intensity: number }>): WriterPulseDisplayStats {
+  const series = writerPulseDisplaySeries(points);
+  if (!series.length) return { rawMin: 0, rawMax: 0, rawMedian: 0, rawVariance: 0, displayMin: 0, displayMax: 0 };
+  const raw = series.map((point) => point.rawIntensity).sort((left, right) => left - right);
+  const middle = Math.floor(raw.length / 2);
+  const rawMedian = raw.length % 2 ? raw[middle] : (raw[middle - 1] + raw[middle]) / 2;
+  const mean = raw.reduce((sum, value) => sum + value, 0) / raw.length;
+  const rawVariance = raw.reduce((sum, value) => sum + (value - mean) ** 2, 0) / raw.length;
+  return {
+    rawMin: raw[0],
+    rawMax: raw[raw.length - 1],
+    rawMedian,
+    rawVariance,
+    displayMin: Math.min(...series.map((point) => point.displayIntensity)),
+    displayMax: Math.max(...series.map((point) => point.displayIntensity)),
+  };
+}
+
+export function writerPulsePath(points: ReadonlyArray<{ displayIntensity: number }>, width: number, height: number, inset = 20) {
   if (!points.length) return "";
   const span = Math.max(1, points.length - 1);
   return points.map((point, index) => {
     const x = inset + (index / span) * Math.max(0, width - inset * 2);
-    const y = inset + (1 - point.intensity / 100) * Math.max(0, height - inset * 2);
+    const y = inset + (1 - point.displayIntensity / 100) * Math.max(0, height - inset * 2);
     return `${index ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`;
   }).join(" ");
 }

@@ -284,6 +284,8 @@
 .timeline-private-state a { width: fit-content; margin: 22px auto 0; padding: 10px 14px; text-decoration: none; }
 
 .timeline-page--embedded {
+  container-name: writer-timeline;
+  container-type: inline-size;
   min-height: 0;
   height: 100%;
   overflow-y: auto;
@@ -320,6 +322,22 @@
 .timeline-page--embedded .timeline-accessible-list { margin-bottom: 28px; }
 .timeline-private-state--embedded { min-height: 100%; }
 
+@container writer-timeline (max-width: 700px) {
+  .timeline-page--embedded .timeline-header { display: flex; min-width: 0; }
+  .timeline-page--embedded .timeline-title { display: none; }
+  .timeline-page--embedded .timeline-header-actions { width: 100%; min-width: 0; justify-content: flex-end; }
+  .timeline-page--embedded .timeline-refresh span,
+  .timeline-page--embedded .timeline-expand span { display: none; }
+  .timeline-page--embedded .timeline-refresh,
+  .timeline-page--embedded .timeline-expand { width: 36px; flex: 0 0 36px; padding: 0; }
+}
+
+@container writer-timeline (max-width: 390px) {
+  .timeline-page--embedded .timeline-view-switch { flex: 1 1 auto; min-width: 0; }
+  .timeline-page--embedded .timeline-view-switch button { min-width: 0; flex: 1 1 50%; overflow: hidden; text-overflow: ellipsis; }
+  .timeline-page--embedded .timeline-close { padding-inline: 8px; }
+}
+
 .writer-pulse { min-width: 0; padding-bottom: 56px; }
 .writer-pulse.is-expanded { position: fixed; z-index: 120; inset: 12px; overflow-y: auto; border: 1px solid var(--timeline-border); background: #080b0e; box-shadow: 0 24px 80px rgba(0,0,0,.72); }
 .writer-pulse-intro { display: flex; width: min(1480px, calc(100% - 28px)); align-items: end; justify-content: space-between; gap: 24px; margin: 0 auto; padding: 22px 0 16px; }
@@ -333,6 +351,7 @@
 .writer-pulse-canvas { position: relative; min-width: 100%; }
 .writer-pulse-canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .writer-pulse-baseline { fill: none; stroke: rgba(255,255,255,.08); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.writer-pulse-area { fill: rgba(126,199,216,.055); stroke: none; }
 .writer-pulse-curve { fill: none; stroke: #7ec7d8; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .writer-pulse-point { position: absolute; z-index: 3; width: 24px; height: 24px; padding: 0; border: 0 !important; border-radius: 50% !important; background: transparent !important; transform: translate(-50%,-50%); pointer-events: auto; }
 .writer-pulse-point span { display: block; width: 8px; height: 8px; margin: auto; border: 2px solid #080b0e; border-radius: 50%; background: #7ec7d8; box-shadow: 0 0 0 1px #7ec7d8; }

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createBlock, type WriterDocument } from "../../lib/writer/document.ts";
 import { deriveWriterSceneSources } from "../../lib/writer/script-assistant.ts";
-import { WRITER_NARRATIVE_PULSE_MODEL, WRITER_NARRATIVE_PULSE_VERSION, buildWriterPulseContext, validateWriterPulseOutput, writerNarrativePulseSourceHash, writerPulseMilestoneLabel, writerPulseOutputSchema, writerPulsePath } from "../../lib/writer/narrative-pulse.ts";
+import fs from "node:fs";
+import { WRITER_NARRATIVE_PULSE_MODEL, WRITER_NARRATIVE_PULSE_VERSION, buildWriterPulseContext, validateWriterPulseOutput, writerNarrativePulseSourceHash, writerPulseDisplaySeries, writerPulseDisplayStats, writerPulseMilestoneLabel, writerPulseOutputSchema, writerPulsePath } from "../../lib/writer/narrative-pulse.ts";
 
 const ids = Array.from({ length: 24 }, (_, index) => `11111111-1111-4111-8111-${String(index + 1).padStart(12, "0")}`);
 function fixture(): WriterDocument { return { type: "doc", content: Array.from({ length: 7 }, (_, index) => [
@@ -17,7 +18,29 @@ test("ambiguous midpoint and non-traditional structure may omit standard milesto
 test("context is compact, accepts confirmed Setup/Payoff and human O-O-C changes", () => { const scenes = deriveWriterSceneSources(fixture()); const context = buildWriterPulseContext(scenes, { setupPayoff: [{ sceneId: scenes[0].sceneId, label: "Llave confirmada", status: "confirmed" }], changes: [{ sceneId: scenes[3].sceneId, change: "Marta decide revelar la verdad." }] }); assert.equal(context.scenes.length, 7); assert.deepEqual(context.scenes[0].setupPayoff, ["Llave confirmada"]); assert.deepEqual(context.scenes[3].changes, ["Marta decide revelar la verdad."]); assert.ok(context.scenes.every((scene) => scene.summary.length <= 700)); });
 test("unknown scenes, duplicate points and reversed zones are rejected", () => { const scenes = deriveWriterSceneSources(fixture()); const unknown = payload(); unknown.scenes[0].sceneId = ids[23]; assert.throws(() => validateWriterPulseOutput(unknown, scenes), /invalid_scene/u); const duplicate = payload(); duplicate.scenes[1].sceneId = duplicate.scenes[0].sceneId; assert.throws(() => validateWriterPulseOutput(duplicate, scenes), /invalid_scene/u); const reversed = payload(); reversed.zones[0] = { ...reversed.zones[0], startSceneId: scenes[4].sceneId, endSceneId: scenes[1].sceneId }; assert.throws(() => validateWriterPulseOutput(reversed, scenes), /zone_order/u); });
 test("intensity stays internal and constrained to normalized integer bounds", () => { const scenes = deriveWriterSceneSources(fixture()); const tooHigh = payload(); tooHigh.scenes[0].intensity = 101; assert.throws(() => validateWriterPulseOutput(tooHigh, scenes), /invalid_point/u); const fractional = payload(); fractional.scenes[0].intensity = 8.4; assert.throws(() => validateWriterPulseOutput(fractional, scenes), /invalid_point/u); });
-test("SVG path is deterministic and scales to 160 scenes without a chart dependency", () => { const points = Array.from({ length: 160 }, (_, index) => ({ intensity: index % 101 })); const path = writerPulsePath(points, 12800, 230); assert.match(path, /^M/u); assert.equal((path.match(/L/gu) ?? []).length, 159); assert.equal(path, writerPulsePath(points, 12800, 230)); });
+test("SVG path is deterministic and scales to 160 scenes without a chart dependency", () => { const points = writerPulseDisplaySeries(Array.from({ length: 160 }, (_, index) => ({ intensity: index % 101 }))); const path = writerPulsePath(points, 12800, 230); assert.match(path, /^M/u); assert.equal((path.match(/L/gu) ?? []).length, 159); assert.equal(path, writerPulsePath(points, 12800, 230)); });
+test("adaptive display keeps a genuinely flat fixture restrained without mutating raw values", () => {
+  const fixture = JSON.parse(fs.readFileSync("tests/fixtures/writer/pulse-flat.json", "utf8")) as { intensities: number[] };
+  const source = fixture.intensities.map((intensity) => ({ intensity }));
+  const series = writerPulseDisplaySeries(source);
+  const stats = writerPulseDisplayStats(source);
+  assert.deepEqual(series.map((point) => point.rawIntensity), fixture.intensities);
+  assert.ok(stats.displayMax - stats.displayMin <= 4);
+  assert.equal(stats.rawMin, 48);
+  assert.equal(stats.rawMax, 50);
+  assert.equal(stats.rawMedian, 49);
+});
+test("high-dynamic-thriller fixture uses a broad display range while preserving all 48 raw values", () => {
+  const fixture = JSON.parse(fs.readFileSync("tests/fixtures/writer/high-dynamic-thriller.json", "utf8")) as { scenes: Array<{ intensity: number }> };
+  const series = writerPulseDisplaySeries(fixture.scenes);
+  const stats = writerPulseDisplayStats(fixture.scenes);
+  assert.equal(series.length, 48);
+  assert.deepEqual(series.map((point) => point.rawIntensity), fixture.scenes.map((scene) => scene.intensity));
+  assert.ok(stats.displayMax - stats.displayMin >= 65 && stats.displayMax - stats.displayMin <= 80);
+  assert.equal(stats.rawMin, 18);
+  assert.equal(stats.rawMax, 97);
+  assert.ok(stats.rawVariance > 400);
+});
 test("canonical hash survives reorder-independent cloning but changes with screenplay text", async () => { const document = fixture(); const hash = await writerNarrativePulseSourceHash(document); assert.equal(hash, await writerNarrativePulseSourceHash(structuredClone(document))); const changed = structuredClone(document); changed.content[1].content = [{ type: "text", text: "Marta destruye la llave." }]; assert.notEqual(hash, await writerNarrativePulseSourceHash(changed)); });
 test("strict response schema and supported milestone labels remain bounded", () => { const schema = writerPulseOutputSchema(); assert.equal(schema.additionalProperties, false); assert.equal(schema.properties.scenes.items.additionalProperties, false); assert.equal(writerPulseMilestoneLabel("custom"), "Hito personalizado"); assert.equal(WRITER_NARRATIVE_PULSE_VERSION, "narrative-pulse-v1"); assert.equal(WRITER_NARRATIVE_PULSE_MODEL, "gpt-5.6-terra"); });
 test("extra free-form or quality fields cannot enter the structured response", () => { const value = { ...payload(), score: 83 }; assert.throws(() => validateWriterPulseOutput(value, deriveWriterSceneSources(fixture())), /invalid_schema/u); });

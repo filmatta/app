@@ -604,6 +604,7 @@ export default function WriterTimelineView({
           scriptId={timeline.scriptId}
           scenes={timeline.scenes}
           active={active}
+          expanded={expanded}
           analysisEnabled={pulseAvailable}
           selectedSceneId={selectedScene?.sourceId ?? activeSceneId}
           columnWidth={columnWidth}

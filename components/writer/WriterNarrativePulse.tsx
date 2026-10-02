@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState, type RefObject } from "react";
-import { WRITER_NARRATIVE_PULSE_MIN_SCENES, writerPulseMilestoneLabel, writerPulsePath, type WriterPulseMilestone, type WriterPulseMilestoneType } from "@/lib/writer/narrative-pulse";
+import { WRITER_NARRATIVE_PULSE_MIN_SCENES, writerPulseDisplaySeries, writerPulseMilestoneLabel, writerPulsePath, type WriterPulseMilestone, type WriterPulseMilestoneType } from "@/lib/writer/narrative-pulse";
 import { useWriterNarrativePulse } from "@/lib/writer/narrative-pulse-client";
 import type { TimelineScene } from "@/lib/writer/timeline";
 import { SmartFeatureIndicator } from "./WriterSmartFormatting";
 
 const TYPES: WriterPulseMilestoneType[] = ["inciting_incident", "first_turning_point", "midpoint", "crisis", "climax", "resolution", "custom"];
 
-export default function WriterNarrativePulse({ scriptId, scenes, active, analysisEnabled = true, selectedSceneId, columnWidth, scrollRef, onSelectScene, onMilestonesChange, onEnsureCurrentSaved }: {
+export default function WriterNarrativePulse({ scriptId, scenes, active, expanded = false, analysisEnabled = true, selectedSceneId, columnWidth, scrollRef, onSelectScene, onMilestonesChange, onEnsureCurrentSaved }: {
   scriptId: string; scenes: TimelineScene[]; active: boolean; analysisEnabled?: boolean; selectedSceneId: string | null; columnWidth: number;
+  expanded?: boolean;
   scrollRef: RefObject<HTMLDivElement | null>; onSelectScene: (scene: TimelineScene) => void; onMilestonesChange?: (milestones: WriterPulseMilestone[]) => void;
   onEnsureCurrentSaved?: () => Promise<void>;
 }) {
@@ -32,8 +33,10 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, analysi
   const selectedMilestone = visibleMilestones.find((item) => item.id === selectedMilestoneId) ?? null;
   const current = Boolean(pulse.analysis && pulse.currentSourceHash === pulse.analysis.sourceHash && pulse.analysis.status === "fresh");
   const graphWidth = Math.max(320, scenes.length * columnWidth);
-  const graphHeight = 230;
-  const path = writerPulsePath(orderedPoints.map((item) => item.point), graphWidth, graphHeight, 24);
+  const graphHeight = expanded ? 320 : 230;
+  const displayPoints = useMemo(() => writerPulseDisplaySeries(orderedPoints.map((item) => item.point)), [orderedPoints]);
+  const path = writerPulsePath(displayPoints, graphWidth, graphHeight, 24);
+  const areaPath = path ? `${path} L${graphWidth - 24},${graphHeight - 24} L24,${graphHeight - 24} Z` : "";
 
   useEffect(() => { onMilestonesChange?.(pulse.milestones); }, [onMilestonesChange, pulse.milestones]);
   useEffect(() => {
@@ -97,12 +100,14 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, analysi
         }}>
           <svg viewBox={`0 0 ${graphWidth} ${graphHeight}`} role="img" aria-label="Curva comparativa de intensidad narrativa por escena" preserveAspectRatio="none">
             <path className="writer-pulse-baseline" d={`M0,${graphHeight - 24} L${graphWidth},${graphHeight - 24}`} />
+            <path className="writer-pulse-area" d={areaPath} />
             <path className="writer-pulse-curve" d={path} />
           </svg>
           {orderedPoints.map(({ scene, point }, index) => {
             const x = 24 + (index / Math.max(1, orderedPoints.length - 1)) * Math.max(0, graphWidth - 48);
-            const y = 24 + (1 - point.intensity / 100) * Math.max(0, graphHeight - 48);
-            return <button key={scene.key} type="button" data-pulse-scene-id={scene.sourceId ?? undefined} className={`writer-pulse-point${selectedSceneId === scene.sourceId ? " is-selected" : ""}`} style={{ left: x, top: y }} onClick={() => onSelectScene(scene)} aria-label={`Escena ${scene.order}: ${scene.heading}. ${point.note}`}><span aria-hidden="true" /></button>;
+            const displayIntensity = displayPoints[index]?.displayIntensity ?? point.intensity;
+            const y = 24 + (1 - displayIntensity / 100) * Math.max(0, graphHeight - 48);
+            return <button key={scene.key} type="button" data-pulse-scene-id={scene.sourceId ?? undefined} data-raw-intensity={point.intensity} data-display-intensity={displayIntensity.toFixed(2)} className={`writer-pulse-point${selectedSceneId === scene.sourceId ? " is-selected" : ""}`} style={{ left: x, top: y }} onClick={() => onSelectScene(scene)} aria-label={`Escena ${scene.order}: ${scene.heading}. ${point.note}`}><span aria-hidden="true" /></button>;
           })}
           {visibleMilestones.map((milestone) => {
             const index = scenes.findIndex((scene) => scene.sourceId === milestone.sceneId); if (index < 0) return null;
