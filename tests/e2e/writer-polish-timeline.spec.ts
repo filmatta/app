@@ -109,6 +109,7 @@ test("context menu preserves selection, uses the real clipboard, and fails close
   await expect(page.locator(".writer-editor-feedback")).toContainText("el texto no se eliminó");
 
   await action.click();
+  await page.keyboard.press("End");
   await page.keyboard.press("Shift+F10");
   menu = page.getByRole("menu", { name: "Acciones del bloque" });
   await expect(menu.getByRole("menuitem", { name: /^Copiar/ })).toBeDisabled();
@@ -131,7 +132,7 @@ test("right-click uses the active caret across blocks and screenplay margins", a
   await page.mouse.click(paperBox!.x + 6, paperBox!.y + 10, { button: "right" });
   let menu = page.getByRole("menu", { name: "Acciones del bloque" });
   await expect(menu.getByText("Coloca el cursor en el guion para insertar.")).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: /^Insertar/ })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: /^Insertar/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
 
   const blockA = editor.locator('[data-block-id$="02"]');
@@ -140,8 +141,9 @@ test("right-click uses the active caret across blocks and screenplay margins", a
   await blockB.click({ button: "right", position: { x: 18, y: 12 } });
   menu = page.getByRole("menu", { name: "Acciones del bloque" });
   await expect(menu.getByText("En el cursor actual")).toBeVisible();
-  await menu.getByRole("menuitem", { name: /^Insertar/ }).click();
-  await page.getByRole("button", { name: /Nueva escena/ }).click();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Insertar en el guion" }).click();
+  await page.getByRole("dialog", { name: "Insertar en el guion" }).getByRole("button", { name: /Encabezado de escena/ }).click();
   const dialog = page.getByRole("dialog", { name: "Nueva escena" });
   await dialog.getByLabel("Lugar").fill("DESTINO CARET");
   await dialog.getByLabel("Momento").selectOption("NOCHE");
@@ -159,7 +161,7 @@ test("right-click uses the active caret across blocks and screenplay margins", a
 
   await blockA.click({ position: { x: 18, y: 12 } });
   await page.mouse.click(paperBox!.x + 6, paperBox!.y + 10, { button: "right" });
-  await expect(menu.getByRole("menuitem", { name: /^Insertar/ })).toBeEnabled();
+  await expect(menu.getByRole("menuitem", { name: /^Insertar/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
 });
 
@@ -173,7 +175,7 @@ test("context menu rejects ambiguous, composing, denied, cancelled, and obsolete
   for (const kind of ["Encabezado de escena", "Acción", "Personaje", "Diálogo", "Acotación", "Transición", "Nota del autor"]) {
     await expect(menu.getByRole("menuitemradio", { name: new RegExp(`^${kind}`) })).toBeDisabled();
   }
-  await expect(menu.getByRole("menuitem", { name: /^Insertar/ })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: /^Insertar/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
 
   await first.click();
@@ -270,7 +272,7 @@ test("context menu resolves empty editable lines and keeps the caret across shee
 
   await page.locator(".writer-paper").click({ button: "right", position: { x: 5, y: 5 } });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: /^Insertar/ })).toBeEnabled();
+  await expect(menu.getByRole("menuitem", { name: /^Insertar/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
 });
 
@@ -329,9 +331,9 @@ test("scene heading assistant separates conversion, cancellation, insertion, and
   await expect(editor.locator(`[data-block-id="${targetId}"]`)).toHaveText("INT. SALA B - NOCHE");
 
   const secondAction = editor.locator('[data-block-id$="09"]');
-  menu = await rightClick(page, secondAction);
-  await menu.getByRole("menuitem", { name: /^Insertar/ }).click();
-  await page.getByRole("button", { name: /Nueva escena/ }).click();
+  await secondAction.click();
+  await page.getByRole("button", { name: "Insertar en el guion" }).click();
+  await page.getByRole("dialog", { name: "Insertar en el guion" }).getByRole("button", { name: /Encabezado de escena/ }).click();
   dialog = page.getByRole("dialog", { name: "Nueva escena" });
   await dialog.getByLabel("Lugar").fill("PASILLO");
   await dialog.getByRole("button", { name: "Insertar encabezado" }).click();
@@ -411,9 +413,9 @@ test("a new unsaved scene appears only after save and explicit Timeline refresh"
   await openWriter(page, context, 2400);
   const editor = page.getByLabel("Editor de guion");
   const action = editor.locator('[data-block-id$="09"]');
-  let menu = await rightClick(page, action);
-  await menu.getByRole("menuitem", { name: /^Insertar/ }).click();
-  await page.getByRole("button", { name: /Nueva escena/ }).click();
+  await action.click();
+  await page.getByRole("button", { name: "Insertar en el guion" }).click();
+  await page.getByRole("dialog", { name: "Insertar en el guion" }).getByRole("button", { name: /Encabezado de escena/ }).click();
   const dialog = page.getByRole("dialog", { name: "Nueva escena" });
   await dialog.getByLabel("Lugar").fill("AZOTEA");
   await dialog.getByLabel("Momento").selectOption("NOCHE");
@@ -421,7 +423,7 @@ test("a new unsaved scene appears only after save and explicit Timeline refresh"
   const heading = editor.getByText("INT. AZOTEA - NOCHE");
   await expect(heading).toBeVisible();
 
-  menu = await rightClick(page, heading);
+  const menu = await rightClick(page, heading);
   await menu.getByRole("menuitem", { name: /Ver en línea de tiempo/ }).click();
   const panel = page.getByRole("region", { name: "Timeline del guion" });
   await expect(panel.getByRole("status")).toContainText("todavía no está en la revisión");

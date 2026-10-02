@@ -52,9 +52,9 @@ test("context actions, assisted insertion, live metrics and reload use the canon
   await page.getByRole("button", { name: "Deshacer" }).click();
   await expect(action).toHaveAttribute("data-screenplay-kind", "transition");
 
-  await action.click({ button: "right" });
-  await menu.getByRole("menuitem", { name: /Nueva escena/ }).click();
-  await page.getByRole("button", { name: /Nueva escena/ }).click();
+  await action.click();
+  await page.getByRole("button", { name: "Insertar en el guion" }).click();
+  await page.getByRole("dialog", { name: "Insertar en el guion" }).getByRole("button", { name: /Encabezado de escena/ }).click();
   const dialog = page.getByRole("dialog", { name: "Nueva escena" });
   await dialog.getByLabel("Lugar").fill("Cocina");
   await dialog.getByLabel("Momento").selectOption("NOCHE");
@@ -277,7 +277,7 @@ test("writing presentation uses a stable mobile shell without toolbar overflow",
       expect(await toolbar.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
       expect(await page.locator(".writer-workspace").evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
       await expect(page.getByRole("button", { name: "Formato de texto" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Acciones Writer en el cursor" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Más acciones" })).toBeVisible();
 
       if (width === 430) {
         const notice = page.getByRole("dialog", { name: "Writer en móvil" });
@@ -304,11 +304,11 @@ test("writing presentation uses a stable mobile shell without toolbar overflow",
 
       const editor = page.getByLabel("Editor de guion");
       await editor.locator('[data-block-id$="02"]').click();
-      await page.getByRole("button", { name: "Acciones Writer en el cursor" }).click();
-      const writerActions = page.getByRole("menu", { name: "Acciones del bloque" });
-      await expect(writerActions).toBeVisible();
-      await expect(writerActions.getByRole("menuitem", { name: /Cortar|Copiar|Pegar/ })).toHaveCount(0);
-      await writerActions.getByRole("button", { name: "Cerrar" }).click();
+      await page.getByRole("button", { name: "Insertar en el guion" }).click();
+      const insert = page.getByRole("dialog", { name: "Insertar en el guion" });
+      await expect(insert.getByRole("button", { name: /Acción/ })).toBeVisible();
+      await expect(insert.getByRole("button", { name: /Convenciones/ })).toBeVisible();
+      await insert.getByRole("button", { name: "Cerrar" }).click();
 
       const appBarBefore = await page.getByRole("navigation", { name: "Navegación de Writer" }).boundingBox();
       await page.locator(".writer-paper").evaluate((element) => { element.scrollTop = 500; });
@@ -319,7 +319,32 @@ test("writing presentation uses a stable mobile shell without toolbar overflow",
   }
 });
 
-test("touch pointer keeps native context behavior while dedicated Writer actions use the active caret", async ({ page }) => {
+test("unified Insert exposes seven canonical elements, conventions and container-responsive labels", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await page.goto(`/writer/${scriptId}`);
+  const insertButton = page.getByRole("button", { name: "Insertar en el guion" });
+  await expect(insertButton.locator(".writer-toolbar-label")).toBeVisible();
+  await page.getByLabel("Editor de guion").locator('[data-block-id$="02"]').click();
+  await insertButton.click();
+  const panel = page.getByRole("dialog", { name: "Insertar en el guion" });
+  for (const label of ["Encabezado de escena", "Acción", "Personaje", "Diálogo", "Acotación", "Transición", "Nota del autor"]) {
+    await expect(panel.getByRole("button", { name: new RegExp(label) })).toBeVisible();
+  }
+  await panel.getByRole("button", { name: /Convenciones/ }).click();
+  await expect(panel.getByRole("button", { name: /FADE IN:/ })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /CUT TO:/ })).toBeVisible();
+  await panel.getByRole("button", { name: "Cerrar" }).click();
+  await expect(page.getByRole("button", { name: "Acciones Writer en el cursor" })).toHaveCount(0);
+
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await expect(insertButton.locator(".writer-toolbar-label")).toBeHidden();
+  await expect(insertButton).toHaveAttribute("title", "Insertar");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(insertButton.locator(".writer-toolbar-label")).toBeHidden();
+  await expect(insertButton).toBeVisible();
+});
+
+test("touch pointer keeps native context behavior while unified Insert uses the active caret", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => localStorage.setItem(`filmatta.writer.mobile-notice.v1:${"11111111-1111-4111-8111-111111111111"}`, "dismissed"));
   await page.goto(`/writer/${scriptId}`);
@@ -328,10 +353,10 @@ test("touch pointer keeps native context behavior while dedicated Writer actions
   await block.dispatchEvent("pointerdown", { pointerType: "touch", button: 0 });
   await block.dispatchEvent("contextmenu", { button: 0 });
   await expect(page.getByRole("menu", { name: "Acciones del bloque" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Acciones Writer en el cursor" }).click();
-  const menu = page.getByRole("menu", { name: "Acciones del bloque" });
-  await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitemradio", { name: /Acción — actual/ })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("button", { name: "Insertar en el guion" }).click();
+  const insert = page.getByRole("dialog", { name: "Insertar en el guion" });
+  await expect(insert.getByRole("button", { name: /Acción/ })).toBeVisible();
+  await expect(insert.getByRole("button", { name: /Convenciones/ })).toBeVisible();
 });
 
 test("assisted import shows immediate indeterminate progress, blocks duplicates, and preserves source on error", async ({ page }) => {

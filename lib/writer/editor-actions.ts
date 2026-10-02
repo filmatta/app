@@ -457,6 +457,26 @@ export function insertWriterBlock(
   return true;
 }
 
+export function insertWriterEmptyBlock(
+  editor: Editor,
+  targetId: string,
+  kind: ScreenplayKind,
+): boolean {
+  const target = findWriterBlockById(editor, targetId);
+  if (!target) return false;
+  const node = editor.state.doc.nodeAt(target.position);
+  const screenplayBlock = editor.state.schema.nodes.screenplayBlock;
+  if (!node || !screenplayBlock) return false;
+
+  const inserted = screenplayBlock.create({ id: crypto.randomUUID(), kind });
+  const insertAt = target.position + node.nodeSize;
+  const transaction = editor.state.tr.insert(insertAt, inserted);
+  transaction.setSelection(TextSelection.near(transaction.doc.resolve(insertAt + 1)));
+  editor.view.dispatch(transaction.scrollIntoView());
+  editor.view.focus();
+  return true;
+}
+
 export function replaceWriterBlockWithSceneHeading(
   editor: Editor,
   targetId: string,

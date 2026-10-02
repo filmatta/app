@@ -11,6 +11,7 @@ import {
   findWriterBlockById,
   insertWriterPlainText,
   insertWriterBlock,
+  insertWriterEmptyBlock,
   replaceWriterBlockWithSceneHeading,
   writerSelectionTargetIsCurrent,
   type WriterSelectionTarget,
@@ -57,7 +58,6 @@ export function WriterContextMenu({
   editor,
   state,
   onClose,
-  onInsert,
   onConvertSceneHeading,
   onTimeline,
   onAnalyzeScene,
@@ -67,7 +67,6 @@ export function WriterContextMenu({
   editor: Editor;
   state: WriterContextMenuState;
   onClose: () => void;
-  onInsert: (view: WriterInsertState["view"]) => void;
   onConvertSceneHeading: () => void;
   onTimeline: (sceneId: string) => void;
   onAnalyzeScene: (sceneId: string) => void;
@@ -245,9 +244,6 @@ export function WriterContextMenu({
         </button>
       ))}
       <div className="writer-context-menu-separator" />
-      <button type="button" role="menuitem" disabled={!hasValidTarget || target?.multipleBlocks} title={target?.multipleBlocks ? "La inserción no es inequívoca con varios bloques seleccionados." : undefined} onClick={() => contextIsCurrent() ? onInsert("menu") : staleContext()}>
-        <span>Insertar…</span><small>Nueva escena y convenciones rápidas</small>
-      </button>
       <button type="button" role="menuitem" disabled={!hasValidTarget || !state.sceneId} title={state.timelineReason ?? undefined} onClick={() => state.sceneId && (contextIsCurrent() ? onAnalyzeScene(state.sceneId) : staleContext())}>
         <span>Analizar escena</span><small>Objective · Obstacle · Change</small>
       </button>
@@ -272,6 +268,7 @@ export function WriterInsertPanel({
 }) {
   const target = findWriterBlockById(editor, state.targetId);
   const [sceneOpen, setSceneOpen] = useState(state.view === "scene");
+  const [conventionsOpen, setConventionsOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: state.x, top: state.y });
 
@@ -285,7 +282,7 @@ export function WriterInsertPanel({
       top: Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8)),
     });
     panel.querySelector<HTMLButtonElement>("button")?.focus();
-  }, [sceneOpen, state.x, state.y]);
+  }, [conventionsOpen, sceneOpen, state.x, state.y]);
 
   useEffect(() => {
     if (sceneOpen) return;
@@ -327,6 +324,23 @@ export function WriterInsertPanel({
     onClose();
   }
 
+  function insertKind(kind: ScreenplayKind) {
+    if (kind === "sceneHeading") {
+      setSceneOpen(true);
+      return;
+    }
+    if (editor.state.doc !== state.documentAtOpen
+      || editor.state.selection.from !== state.selectionFrom
+      || editor.state.selection.to !== state.selectionTo
+      || target?.kind !== state.expectedKind
+      || target?.text !== state.expectedText) {
+      onClose();
+      return;
+    }
+    insertWriterEmptyBlock(editor, state.targetId, kind);
+    onClose();
+  }
+
   return (
     <div
       ref={panelRef}
@@ -344,15 +358,25 @@ export function WriterInsertPanel({
       }}
     >
       <div className="writer-insert-panel-head"><strong>Insertar</strong><button type="button" onClick={onClose}>Cerrar</button></div>
-      <button className="writer-insert-scene" type="button" onClick={() => setSceneOpen(true)}>
-        <span><strong>Nueva escena</strong><small>Construir un encabezado</small></span><span aria-hidden="true">→</span>
-      </button>
-      <p className="writer-context-menu-label">Convenciones rápidas</p>
-      {QUICK_INSERTS.map((item) => (
-        <button key={item.text} type="button" onClick={() => insertQuick(item.kind, item.text)}>
-          <span><strong>{item.text}</strong><small>{WRITER_KIND_LABELS[item.kind]}</small></span><span aria-hidden="true">+</span>
+      {!conventionsOpen ? <>
+        <p className="writer-context-menu-label">Elementos</p>
+        {SCREENPLAY_KINDS.map((kind) => (
+          <button key={kind} className={kind === "sceneHeading" ? "writer-insert-scene" : undefined} type="button" onClick={() => insertKind(kind)}>
+            <span><strong>{WRITER_KIND_LABELS[kind]}</strong><small>{kind === "sceneHeading" ? "Construir encabezado" : "Insertar bloque vacío"}</small></span><span aria-hidden="true">+</span>
+          </button>
+        ))}
+        <div className="writer-context-menu-separator" />
+        <button className="writer-insert-conventions" type="button" aria-haspopup="menu" onClick={() => setConventionsOpen(true)}>
+          <span><strong>Convenciones</strong><small>Transiciones y marcas compatibles</small></span><span aria-hidden="true">›</span>
         </button>
-      ))}
+      </> : <>
+        <button className="writer-insert-back" type="button" onClick={() => setConventionsOpen(false)}><span>← Convenciones</span></button>
+        {QUICK_INSERTS.map((item) => (
+          <button key={item.text} type="button" onClick={() => insertQuick(item.kind, item.text)}>
+            <span><strong>{item.text}</strong><small>{WRITER_KIND_LABELS[item.kind]}</small></span><span aria-hidden="true">+</span>
+          </button>
+        ))}
+      </>}
     </div>
   );
 }

@@ -131,9 +131,9 @@ test("Ideas, Replace All checkpoints and mobile geometry remain safe", async ({ 
   expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewport + 1);
 });
 
-test("toolbar controls remain inside the Writer viewport across supported widths", async ({ page, context }) => {
+test("toolbar and visible Writer regions remain inside the viewport across the full matrix", async ({ page, context }) => {
   await openLongWriter(page, context, 1920);
-  for (const width of [1920, 1440, 1280, 1024, 768, 390]) {
+  for (const width of [1920, 1680, 1440, 1280, 1024, 834, 820, 768, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     await expect(page.locator(".writer-toolbar")).toBeVisible();
     const geometry = await page.evaluate(() => {
@@ -153,11 +153,83 @@ test("toolbar controls remain inside the Writer viewport across supported widths
             || rect.width > viewport + 1;
         })
         .map((element) => element.getAttribute("aria-label") ?? element.textContent?.trim() ?? element.tagName);
-      return { offenders, scrollWidth: document.documentElement.scrollWidth, viewport };
+      const regions = [...document.querySelectorAll<HTMLElement>(".writer-toolbar, .writer-editor-area, .writer-sidebar, .writer-observations-panel, .writer-timeline-panel, .writer-character-section")]
+        .filter((element) => {
+          const style = getComputedStyle(element);
+          return style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0;
+        })
+        .filter((element) => !element.closest(".writer-sidebar--mobile-closed"))
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.left < -1 || rect.right > viewport + 1 || rect.width > viewport + 1;
+        })
+        .map((element) => element.className);
+      const timelineHeader = document.querySelector<HTMLElement>(".timeline-page--embedded .timeline-header");
+      const timelineActions = timelineHeader
+        ? [...timelineHeader.querySelectorAll<HTMLElement>("button")]
+          .filter((element) => {
+            const rect = element.getBoundingClientRect();
+            const parentRect = timelineHeader.getBoundingClientRect();
+            return rect.left < parentRect.left - 1 || rect.right > parentRect.right + 1;
+          })
+          .map((element) => element.getAttribute("aria-label") ?? element.textContent?.trim() ?? element.tagName)
+        : [];
+      return { offenders, regions, timelineActions, scrollWidth: document.documentElement.scrollWidth, viewport };
     });
     expect(geometry.offenders, `toolbar overflow at ${width}px`).toEqual([]);
+    expect(geometry.regions, `visible region overflow at ${width}px`).toEqual([]);
+    expect(geometry.timelineActions, `Timeline action overflow at ${width}px`).toEqual([]);
     expect(geometry.scrollWidth, `document overflow at ${width}px`).toBeLessThanOrEqual(geometry.viewport + 1);
   }
+});
+
+test("desktop panel toggles and horizontal heights persist, reset and restore around Focus", async ({ page, context }) => {
+  await openLongWriter(page, context, 1440);
+  const workspace = page.locator(".writer-workspace");
+  const toolbar = page.locator(".writer-toolbar");
+  const label = toolbar.locator(".writer-insert-button .writer-toolbar-label");
+  await expect(label).toBeVisible();
+
+  await page.getByRole("button", { name: "Ocultar panel izquierdo" }).click();
+  await expect(workspace).toHaveClass(/writer-workspace--left-hidden/);
+  await expect(page.locator(".writer-sidebar")).toBeHidden();
+  await page.getByRole("button", { name: "Ocultar panel derecho" }).click();
+  await expect(page.getByRole("complementary", { name: "Observaciones" })).toBeHidden();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Mostrar panel izquierdo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mostrar panel derecho" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Mostrar panel izquierdo" }).click();
+  await page.getByRole("button", { name: "Mostrar panel derecho" }).click();
+  const characters = page.getByRole("separator", { name: "Cambiar altura del panel de personajes" });
+  const timeline = page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" });
+  await expect(characters).toHaveAttribute("aria-valuenow", "260");
+  await expect(timeline).toHaveAttribute("aria-valuenow", "260");
+  await characters.focus();
+  await page.keyboard.press("ArrowUp");
+  await timeline.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(characters).toHaveAttribute("aria-valuenow", "276");
+  await expect(timeline).toHaveAttribute("aria-valuenow", "244");
+  await page.reload();
+  await expect(page.getByRole("separator", { name: "Cambiar altura del panel de personajes" })).toHaveAttribute("aria-valuenow", "276");
+  await expect(page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" })).toHaveAttribute("aria-valuenow", "244");
+  await page.getByRole("separator", { name: "Cambiar altura del panel de personajes" }).dblclick();
+  await page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" }).dblclick();
+  await expect(page.getByRole("separator", { name: "Cambiar altura del panel de personajes" })).toHaveAttribute("aria-valuenow", "260");
+  await expect(page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" })).toHaveAttribute("aria-valuenow", "260");
+
+  const normalPaper = await page.locator(".writer-paper-sheet").boundingBox();
+  await page.getByRole("button", { name: "Focus", exact: true }).click();
+  await expect(workspace).toHaveClass(/writer-workspace--focus/);
+  await expect(page.locator(".writer-sidebar")).toBeHidden();
+  await expect(page.locator(".writer-timeline-panel")).toBeHidden();
+  await expect(page.locator('[role="separator"]:visible')).toHaveCount(0);
+  const focusPaper = await page.locator(".writer-paper-sheet").boundingBox();
+  expect(focusPaper?.width ?? 0).toBeGreaterThan(normalPaper?.width ?? 0);
+  await page.getByRole("button", { name: "Salir de Focus" }).click();
+  await expect(workspace).not.toHaveClass(/writer-workspace--focus/);
+  await expect(page.locator(".writer-sidebar")).toBeVisible();
 });
 
 test("typewriter WAV decodes once, stays bounded and ignores paste, shortcuts, Backspace and Enter", async ({ page, context }) => {

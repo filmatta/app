@@ -55,11 +55,18 @@ import {
   type WriterPanelLayout,
   type WriterPanelSide,
 } from "@/lib/writer/panel-layout";
+import {
+  WRITER_WORKSPACE_LAYOUT_DEFAULTS,
+  parseWriterWorkspaceLayout,
+  writerWorkspaceLayoutStorageKey,
+  type WriterWorkspaceLayout,
+} from "@/lib/writer/workspace-layout";
 import WriterImportFlow from "./WriterImportFlow";
 import WriterAssistantNarrative from "./WriterAssistantNarrative";
 import WriterGuidedWriting from "./WriterGuidedWriting";
 import WriterObservationsPanel, { type WriterObservationsSection } from "./WriterObservationsPanel";
 import WriterPanelResizeHandle from "./WriterPanelResizeHandle";
+import WriterHorizontalResizeHandle from "./WriterHorizontalResizeHandle";
 import WriterSetupPayoff from "./WriterSetupPayoff";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
 import WriterTimelineView from "./WriterTimeline";
@@ -262,6 +269,7 @@ export default function WriterWorkspace({
   const [dismissedReadiness, setDismissedReadiness] = useState<Set<WriterStructuredFeature>>(() => new Set());
   const [observationsOpen, setObservationsOpen] = useState(true);
   const [panelLayout, setPanelLayout] = useState<WriterPanelLayout>(WRITER_PANEL_LAYOUT_DEFAULTS);
+  const [workspaceLayout, setWorkspaceLayout] = useState<WriterWorkspaceLayout>(WRITER_WORKSPACE_LAYOUT_DEFAULTS);
   const [observationsSection, setObservationsSection] = useState<WriterObservationsSection>("review");
   const [selectedObservationBlockId, setSelectedObservationBlockId] = useState<string | null>(null);
   const [selectedAssistantObservationId, setSelectedAssistantObservationId] = useState<string | null>(null);
@@ -427,6 +435,7 @@ export default function WriterWorkspace({
   }, [script.id, userId]);
 
   const panelLayoutStorageKey = useMemo(() => writerPanelStorageKey(userId), [userId]);
+  const workspaceLayoutStorageKey = useMemo(() => writerWorkspaceLayoutStorageKey(userId), [userId]);
   const commitPanelWidth = useCallback((side: WriterPanelSide, value: number) => {
     setPanelLayout((current) => {
       const next = { ...current, [side]: value };
@@ -438,6 +447,42 @@ export default function WriterWorkspace({
       return next;
     });
   }, [panelLayoutStorageKey]);
+
+  const commitWorkspaceLayout = useCallback((patch: Partial<WriterWorkspaceLayout>) => {
+    setWorkspaceLayout((current) => {
+      const next = { ...current, ...patch };
+      try {
+        window.localStorage.setItem(workspaceLayoutStorageKey, JSON.stringify(next));
+      } catch {
+        // Workspace preferences are best-effort and never block Writer.
+      }
+      return next;
+    });
+  }, [workspaceLayoutStorageKey]);
+
+  const setLeftSidebarVisible = useCallback((visible: boolean) => {
+    commitWorkspaceLayout({ leftSidebarVisible: visible });
+  }, [commitWorkspaceLayout]);
+
+  const setRightSidebarVisible = useCallback((visible: boolean) => {
+    observationsExplicitRef.current = true;
+    setObservationsOpen(visible);
+    commitWorkspaceLayout({ rightSidebarVisible: visible });
+  }, [commitWorkspaceLayout]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      let restored = { ...WRITER_WORKSPACE_LAYOUT_DEFAULTS };
+      try {
+        restored = parseWriterWorkspaceLayout(window.localStorage.getItem(workspaceLayoutStorageKey));
+      } catch {
+        // Private browsing or disabled storage keeps the product defaults.
+      }
+      setWorkspaceLayout(restored);
+      if (window.matchMedia("(min-width: 901px)").matches) setObservationsOpen(restored.rightSidebarVisible);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [workspaceLayoutStorageKey]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -1314,7 +1359,7 @@ export default function WriterWorkspace({
     const updateScale = () => {
       const exteriorMargin = window.innerWidth <= 600 ? 20 : 80;
       const available = Math.max(0, paper.clientWidth - exteriorMargin);
-      const next = Math.max(1, Math.min(1.15, available / 880));
+      const next = Math.max(1, Math.min(1.15, available / 960));
       setFocusScale(Math.round(next * 1_000) / 1_000);
     };
     updateScale();
@@ -1584,27 +1629,6 @@ export default function WriterWorkspace({
     closeTimeline();
     setObservationsOpen(false);
     setImportOpen(true);
-  }
-
-  function openTouchWriterActions() {
-    if (!editor) return;
-    const target = activeWriterSelectionRef.current
-      && writerSelectionTargetIsCurrent(editor.state, activeWriterSelectionRef.current)
-      ? activeWriterSelectionRef.current
-      : captureWriterSelectionTarget(editor.state);
-    const scene = target ? writerSceneForSelection(editor.state) : {
-      sceneId: null,
-      reason: "Coloca el cursor en el guion para abrir una escena en Timeline.",
-    };
-    setMobileMoreOpen(false);
-    setContextMenu({
-      target,
-      x: 8,
-      y: window.innerHeight - 420,
-      sceneId: scene.sceneId,
-      timelineReason: scene.reason,
-      touch: true,
-    });
   }
 
   function dismissMobileNotice() {
@@ -2190,13 +2214,15 @@ export default function WriterWorkspace({
   return (
     <div
       ref={workspaceRef}
-      className={`writer-workspace${focusMode ? " writer-workspace--focus" : ""}${timelineOpen ? " writer-workspace--timeline" : ""}${timelineExpanded ? " writer-workspace--timeline-expanded" : ""}${observationsOpen && !focusMode ? " writer-workspace--observations" : ""}`}
+      className={`writer-workspace${focusMode ? " writer-workspace--focus" : ""}${timelineOpen ? " writer-workspace--timeline" : ""}${timelineExpanded ? " writer-workspace--timeline-expanded" : ""}${observationsOpen && !focusMode ? " writer-workspace--observations" : ""}${!workspaceLayout.leftSidebarVisible && !focusMode ? " writer-workspace--left-hidden" : ""}${charactersCollapsed ? " writer-workspace--characters-collapsed" : ""}`}
       data-focus-scale={focusScale.toFixed(3)}
       data-structural-metadata-persistent={structuralMetadataPersistent ? "true" : "false"}
       style={{
         "--writer-focus-scale": focusScale,
         "--writer-left-panel-width": `${panelLayout.left}px`,
         "--writer-right-panel-width": `${panelLayout.right}px`,
+        "--writer-timeline-panel-height": `${workspaceLayout.timelineHeight}px`,
+        "--writer-character-panel-height": `${workspaceLayout.charactersHeight}px`,
       } as CSSProperties}
     >
       <header className="writer-header">
@@ -2225,6 +2251,22 @@ export default function WriterWorkspace({
           disabled={!ready || saveState.status === "tabBlocked"}
         />
         <div className="writer-header-actions">
+          <div className="writer-panel-toggles" role="group" aria-label="Paneles de Writer">
+            <button
+              type="button"
+              aria-label={workspaceLayout.leftSidebarVisible ? "Ocultar panel izquierdo" : "Mostrar panel izquierdo"}
+              aria-pressed={workspaceLayout.leftSidebarVisible}
+              title={workspaceLayout.leftSidebarVisible ? "Ocultar escenas y personajes" : "Mostrar escenas y personajes"}
+              onClick={() => setLeftSidebarVisible(!workspaceLayout.leftSidebarVisible)}
+            ><WriterIcon name="panelLeft" /></button>
+            <button
+              type="button"
+              aria-label={observationsOpen ? "Ocultar panel derecho" : "Mostrar panel derecho"}
+              aria-pressed={observationsOpen}
+              title={observationsOpen ? "Ocultar revisión y Assistant" : "Mostrar revisión y Assistant"}
+              onClick={() => setRightSidebarVisible(!observationsOpen)}
+            ><WriterIcon name="panelRight" /></button>
+          </div>
           <SaveStatus state={saveState} />
           <button
             className="writer-import-open-button"
@@ -2236,7 +2278,7 @@ export default function WriterWorkspace({
             ref={observationsButtonRef}
             className="writer-observations-open-button"
             type="button"
-            onClick={() => { observationsExplicitRef.current = true; setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen(true); }}
+            onClick={() => { setSelectedObservationBlockId(null); setObservationsSection("review"); setRightSidebarVisible(true); }}
             aria-expanded={observationsOpen}
           >Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
           <button
@@ -2396,6 +2438,14 @@ export default function WriterWorkspace({
             </ol>
           ) : <p className="writer-sidebar-empty">Añade un encabezado para crear una escena.</p>}
         </nav>
+        {!charactersCollapsed && (
+          <WriterHorizontalResizeHandle
+            panel="characters"
+            value={workspaceLayout.charactersHeight}
+            workspaceRef={workspaceRef}
+            onCommit={(charactersHeight) => commitWorkspaceLayout({ charactersHeight })}
+          />
+        )}
         <section className={`writer-character-section${charactersCollapsed ? " is-collapsed" : ""}`} aria-labelledby="writer-character-heading">
           <button className="writer-character-section-toggle" type="button" aria-expanded={!charactersCollapsed} onClick={() => setCharactersCollapsed((value) => !value)}>
             <span id="writer-character-heading" className="writer-sidebar-heading">Personajes <b>{characterRows.length}</b></span><span aria-hidden="true">{charactersCollapsed ? "⌄" : "⌃"}</span>
@@ -2450,7 +2500,7 @@ export default function WriterWorkspace({
         </section>
       </aside>
 
-      {!focusMode && (
+      {!focusMode && workspaceLayout.leftSidebarVisible && (
         <WriterPanelResizeHandle
           side="left"
           value={panelLayout.left}
@@ -2470,7 +2520,6 @@ export default function WriterWorkspace({
           onIdeas={() => setIdeasOpen(true)}
           soundEnabled={typewriterSoundEnabled}
           onToggleSound={toggleTypewriterSound}
-          onWriterActions={openTouchWriterActions}
           onInsert={(next) => {
             setExportMenu(false);
             setContextMenu(null);
@@ -2532,8 +2581,8 @@ export default function WriterWorkspace({
         <WriterPanelResizeHandle
           side="right"
           value={panelLayout.right}
-          otherValue={panelLayout.left}
-          otherVisible
+          otherValue={workspaceLayout.leftSidebarVisible ? panelLayout.left : 0}
+          otherVisible={workspaceLayout.leftSidebarVisible}
           workspaceRef={workspaceRef}
           onCommit={(value) => commitPanelWidth("right", value)}
         />
@@ -2544,26 +2593,6 @@ export default function WriterWorkspace({
           editor={editor}
           state={contextMenu}
           onClose={() => setContextMenu(null)}
-          onInsert={(view) => {
-            const snapshot = contextMenu.target;
-            if (!snapshot || !writerSelectionTargetIsCurrent(editor.state, snapshot)) {
-              setFeedback("El cursor o el documento cambió. Abre de nuevo el menú en el destino actual.");
-              return setContextMenu(null);
-            }
-            setInsertState({
-              targetId: snapshot.targetId,
-              x: contextMenu.x,
-              y: contextMenu.y,
-              view,
-              intent: "insert",
-              expectedKind: snapshot.kind,
-              expectedText: snapshot.text,
-              selectionFrom: snapshot.from,
-              selectionTo: snapshot.to,
-              documentAtOpen: snapshot.document,
-            });
-            setContextMenu(null);
-          }}
           onConvertSceneHeading={() => {
             const snapshot = contextMenu.target;
             if (!snapshot || !writerSelectionTargetIsCurrent(editor.state, snapshot)) {
@@ -2601,6 +2630,14 @@ export default function WriterWorkspace({
           aria-label="Timeline del guion"
           hidden={!timelineOpen}
         >
+          {!timelineExpanded && (
+            <WriterHorizontalResizeHandle
+              panel="timeline"
+              value={workspaceLayout.timelineHeight}
+              workspaceRef={workspaceRef}
+              onCommit={(timelineHeight) => commitWorkspaceLayout({ timelineHeight })}
+            />
+          )}
           <WriterTimelineView
             initialTimeline={initialTimeline.timeline}
             variant="embedded"
@@ -2811,7 +2848,7 @@ export default function WriterWorkspace({
         sceneCount={scenes.length}
         selectedBlockId={selectedObservationBlockId}
         onClose={() => {
-            setObservationsOpen(false);
+            setRightSidebarVisible(false);
             focusObservationsTrigger();
         }}
         onConfirm={confirmCharacterObservation}
@@ -2922,7 +2959,6 @@ function WriterToolbar({
   onIdeas,
   soundEnabled,
   onToggleSound,
-  onWriterActions,
   onInsert,
   onConvertSceneHeading,
 }: {
@@ -2933,11 +2969,25 @@ function WriterToolbar({
   onIdeas: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
-  onWriterActions: () => void;
   onInsert: (state: WriterInsertState) => void;
   onConvertSceneHeading: (state: WriterInsertState) => void;
 }) {
   const [formatOpen, setFormatOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [toolbarMode, setToolbarMode] = useState<"wide" | "compact" | "minimal">("wide");
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+    const update = () => {
+      const width = toolbar.clientWidth;
+      setToolbarMode(width >= 860 ? "wide" : width >= 620 ? "compact" : "minimal");
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, []);
   const state = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
@@ -2953,7 +3003,7 @@ function WriterToolbar({
   if (!editor || !state) return <div className="writer-toolbar" aria-hidden="true" />;
   const preserveSelection = (event: React.MouseEvent) => event.preventDefault();
   return (
-    <div className="writer-toolbar" role="toolbar" aria-label="Formato del guion">
+    <div ref={toolbarRef} className="writer-toolbar" role="toolbar" aria-label="Formato del guion" data-toolbar-mode={toolbarMode}>
       <select
         aria-label="Tipo de bloque"
         value={state.kind}
@@ -3005,21 +3055,28 @@ function WriterToolbar({
           });
         }}
         aria-label="Insertar en el guion"
-      ><WriterIcon name="insert" /><span>Insertar</span><WriterIcon className="writer-insert-chevron" name="chevronDown" size={14} /></button>
+        title="Insertar"
+      ><WriterIcon name="insert" /><span className="writer-toolbar-label">Insertar</span><WriterIcon className="writer-insert-chevron" name="chevronDown" size={14} /></button>
       <button className="writer-auto-format-button" type="button" onMouseDown={preserveSelection} onClick={onAutoFormat}>
         <SmartFeatureIndicator label="FORMATO AUTOMÁTICO" />
       </button>
       <div className="writer-toolbar-desktop-actions">
+        <div className="writer-toolbar-formatting-actions">
         <span className="writer-toolbar-divider" aria-hidden="true" />
         <button type="button" aria-label="Negrita" aria-pressed={state.bold} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleBold().run()}><strong>B</strong></button>
         <button type="button" aria-label="Cursiva" aria-pressed={state.italic} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleItalic().run()}><em>I</em></button>
         <button type="button" aria-label="Subrayado" aria-pressed={state.underline} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleUnderline().run()}><u>U</u></button>
+        </div>
+        <div className="writer-toolbar-history-actions">
         <span className="writer-toolbar-divider" aria-hidden="true" />
         <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().undo().run()} disabled={!state.canUndo} aria-label="Deshacer" title="Deshacer"><WriterIcon name="undo" /></button>
         <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().redo().run()} disabled={!state.canRedo} aria-label="Rehacer" title="Rehacer"><WriterIcon name="redo" /></button>
+        </div>
+        <div className="writer-toolbar-secondary-actions">
         <span className="writer-toolbar-divider" aria-hidden="true" />
-        <button className="writer-search-button" type="button" onMouseDown={preserveSelection} onClick={onSearch} title="Buscar · Ctrl/Cmd+F"><WriterIcon name="search" /><span>Buscar</span></button>
-        <button className="writer-ideas-button" type="button" onMouseDown={preserveSelection} onClick={onIdeas} title="Ideas narrativas"><WriterIcon name="ideas" /><span>Ideas</span></button>
+        <button className="writer-search-button" type="button" aria-label="Buscar" onMouseDown={preserveSelection} onClick={onSearch} title="Buscar · Ctrl/Cmd+F"><WriterIcon name="search" /><span className="writer-toolbar-label">Buscar</span></button>
+        {toolbarMode !== "minimal" && <button className="writer-ideas-button" type="button" aria-label="Ideas" onMouseDown={preserveSelection} onClick={onIdeas} title="Ideas narrativas"><WriterIcon name="ideas" /><span className="writer-toolbar-label">Ideas</span></button>}
+        </div>
       </div>
       <div className="writer-format-wrap">
         <button className="writer-format-button" type="button" aria-label="Formato de texto" aria-expanded={formatOpen} onMouseDown={preserveSelection} onClick={() => setFormatOpen((open) => !open)}>Aa</button>
@@ -3031,9 +3088,16 @@ function WriterToolbar({
           <button type="button" role="menuitem" disabled={!state.canRedo} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().redo().run()}>Rehacer</button>
         </div>}
       </div>
-      <button className="writer-touch-actions" type="button" aria-label="Acciones Writer en el cursor" onMouseDown={preserveSelection} onClick={onWriterActions}>⋯ Writer</button>
-      <span className="writer-word-count">{words.toLocaleString("es-MX")} palabras</span>
-      <button className="writer-sound-button" type="button" aria-label="Sonido de máquina de escribir" aria-pressed={soundEnabled} title="Sonido de máquina de escribir" onMouseDown={preserveSelection} onClick={onToggleSound}><WriterIcon name={soundEnabled ? "soundOn" : "soundOff"} /></button>
+      {toolbarMode === "wide" && <span className="writer-word-count">{words.toLocaleString("es-MX")} palabras</span>}
+      {toolbarMode !== "minimal" && <button className="writer-sound-button" type="button" aria-label="Sonido de máquina de escribir" aria-pressed={soundEnabled} title="Sonido de máquina de escribir" onMouseDown={preserveSelection} onClick={onToggleSound}><WriterIcon name={soundEnabled ? "soundOn" : "soundOff"} /></button>}
+      {toolbarMode === "minimal" && <div className="writer-toolbar-overflow-wrap">
+        <button className="writer-toolbar-overflow-button" type="button" aria-label="Más acciones" aria-expanded={overflowOpen} title="Más acciones" onMouseDown={preserveSelection} onClick={() => setOverflowOpen((open) => !open)}><WriterIcon name="more" /></button>
+        {overflowOpen && <div className="writer-toolbar-overflow-menu" role="menu">
+          <button type="button" role="menuitem" onClick={() => { setOverflowOpen(false); onIdeas(); }}><WriterIcon name="ideas" /> Ideas</button>
+          <button type="button" role="menuitem" onClick={() => { setOverflowOpen(false); onToggleSound(); }}><WriterIcon name={soundEnabled ? "soundOn" : "soundOff"} /> {soundEnabled ? "Desactivar sonido" : "Activar sonido"}</button>
+          <span>{words.toLocaleString("es-MX")} palabras</span>
+        </div>}
+      </div>}
     </div>
   );
 }
