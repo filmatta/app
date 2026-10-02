@@ -63,6 +63,7 @@ import WriterPanelResizeHandle from "./WriterPanelResizeHandle";
 import WriterSetupPayoff from "./WriterSetupPayoff";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
 import WriterTimelineView from "./WriterTimeline";
+import { WriterIdeasPanel, WriterSearchPanel, WriterVersionsPanel } from "./WriterErgonomicTools";
 import {
   SmartFeatureIndicator,
   WriterAutoFormatFlow,
@@ -89,6 +90,7 @@ import {
   moveWriterScene,
   renameWriterCharacter,
   renameWriterSceneNickname,
+  replaceWriterTextMatches,
   writerSceneIds,
   type WriterCharacterReference,
   type WriterSceneMovePosition,
@@ -105,13 +107,30 @@ import {
   assessWriterPaste,
   canUseStructuredFeature,
   createWriterAutoFormatPlan,
-  getWriterDocumentReadiness,
   mergeWriterAutoFormatClassifications,
   resolveWriterAutoFormatChanges,
   writerAutoFormatCandidates,
   type WriterAutoFormatPlan,
   type WriterStructuredFeature,
 } from "@/lib/writer/smart-format";
+import {
+  createWriterFormatBaseline,
+  invalidateWriterFormatBaseline,
+  loadWriterFormatBaseline,
+  resolveWriterFormatBaseline,
+  saveWriterFormatBaseline,
+  writerReadinessWithFormatBaseline,
+  type WriterFormatBaseline,
+} from "@/lib/writer/format-baseline";
+import { createWriterCheckpoint, writerCheckpointLabel } from "@/lib/writer/checkpoints";
+import type { WriterSearchResult, WriterSearchScope } from "@/lib/writer/search";
+import type { WriterIdea } from "@/lib/writer/ideas";
+import {
+  isWriterTextInputKey,
+  loadWriterTypewriterSoundPreference,
+  playWriterTypewriterClick,
+  saveWriterTypewriterSoundPreference,
+} from "@/lib/writer/typewriter-sound";
 import { classifyWriterAutoFormat } from "@/lib/writer/auto-format-client";
 import {
   analyzeWriterCharacterObservations,
@@ -260,6 +279,15 @@ export default function WriterWorkspace({
   const [timelineRefreshToken, setTimelineRefreshToken] = useState(0);
   const [timelineRequestedScene, setTimelineRequestedScene] = useState<string | null>(null);
   const [timelineRequestedView, setTimelineRequestedView] = useState<"timeline" | "pulse" | null>(null);
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
+  const [charactersCollapsed, setCharactersCollapsed] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchReplaceMode, setSearchReplaceMode] = useState(false);
+  const [ideasOpen, setIdeasOpen] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [guidedIdeaQuestion, setGuidedIdeaQuestion] = useState("");
+  const [formatBaseline, setFormatBaseline] = useState<WriterFormatBaseline | null>(null);
+  const [typewriterSoundEnabled, setTypewriterSoundEnabled] = useState(false);
   const [autocomplete, setAutocomplete] = useState<WriterAutocompleteState | null>(null);
   const [conflictBusy, setConflictBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -295,6 +323,8 @@ export default function WriterWorkspace({
   const characterAnalysisCacheRef = useRef<WriterCharacterAnalysisCache>(new Map());
   const localAutocompleteCharactersRef = useRef<string[]>([]);
   const composingRef = useRef(false);
+  const formatBaselineRef = useRef<WriterFormatBaseline | null>(null);
+  const typewriterSoundEnabledRef = useRef(false);
   const observationsButtonRef = useRef<HTMLButtonElement>(null);
   const mobileObservationsButtonRef = useRef<HTMLButtonElement>(null);
   const formatObservationsRef = useRef<WriterFormatObservation[]>([]);
@@ -382,6 +412,18 @@ export default function WriterWorkspace({
     enabled: observationsOpen && observationsSection === "guided" && !focusMode,
   });
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const restored = loadWriterFormatBaseline(window.location.origin, userId, script.id);
+      formatBaselineRef.current = restored;
+      setFormatBaseline(restored);
+      const sound = loadWriterTypewriterSoundPreference(userId);
+      typewriterSoundEnabledRef.current = sound;
+      setTypewriterSoundEnabled(sound);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [script.id, userId]);
+
   const panelLayoutStorageKey = useMemo(() => writerPanelStorageKey(userId), [userId]);
   const commitPanelWidth = useCallback((side: WriterPanelSide, value: number) => {
     setPanelLayout((current) => {
@@ -468,7 +510,19 @@ export default function WriterWorkspace({
         });
         view.dispatch(view.state.tr.replaceSelection(new Slice(Fragment.fromArray(blocks), 0, 0)).scrollIntoView());
         if (assessment.qualifies) {
-          window.queueMicrotask(() => setPasteAssist({ step: "offer", blockIds }));
+          window.queueMicrotask(() => {
+            const nextBaseline = invalidateWriterFormatBaseline(formatBaselineRef.current, {
+              kind: "structural",
+              reason: "significantPaste",
+              affectedBlockIds: blockIds,
+            });
+            formatBaselineRef.current = nextBaseline;
+            setFormatBaseline(nextBaseline);
+            if (nextBaseline) {
+              try { saveWriterFormatBaseline(window.location.origin, userId, script.id, nextBaseline); } catch { /* best-effort local baseline */ }
+            }
+            setPasteAssist({ step: "offer", blockIds });
+          });
         }
         return true;
       },
@@ -509,6 +563,7 @@ export default function WriterWorkspace({
         },
       },
       handleKeyDown: (view, event) => {
+        if (typewriterSoundEnabledRef.current && isWriterTextInputKey(event)) playWriterTypewriterClick();
         const autocompleteMenu = autocompleteRef.current;
         if (!view.composing && !event.isComposing && autocompleteMenu) {
           const action = writerAutocompleteKeyAction(event.key, view.composing || event.isComposing, autocompleteMenu.explicitlySelected);
@@ -661,7 +716,10 @@ export default function WriterWorkspace({
   }, [editor]);
 
   const scenes = useMemo(() => deriveScenes(document), [document]);
-  const readiness = useMemo(() => getWriterDocumentReadiness(document), [document]);
+  const readiness = useMemo(
+    () => writerReadinessWithFormatBaseline(document, formatBaseline),
+    [document, formatBaseline],
+  );
   const sceneMetadata = useMemo(() => deriveWriterSceneMetadata(document), [document]);
   const knownCharacterIdentities = useMemo(() => {
     const retiredKeys = new Set(Object.entries(structuralMetadata.characterAliases)
@@ -1205,9 +1263,15 @@ export default function WriterWorkspace({
 
     const online = () => void controllerRef.current?.flush();
     const keyboard = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === "s") {
         event.preventDefault();
         void controllerRef.current?.flush();
+      } else if (key === "f" || key === "h") {
+        event.preventDefault();
+        setSearchReplaceMode(key === "h");
+        setSearchOpen(true);
       }
     };
     window.addEventListener("online", online);
@@ -1260,6 +1324,9 @@ export default function WriterWorkspace({
     const closeSurfaceOrFocus = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (importOpen) return;
+      if (searchOpen) return setSearchOpen(false);
+      if (ideasOpen) return setIdeasOpen(false);
+      if (versionsOpen) return setVersionsOpen(false);
       if (autoFormatPlan) return closeAutoFormat();
       if (pasteAssist) return setPasteAssist(null);
       if (contextMenu) return setContextMenu(null);
@@ -1269,6 +1336,7 @@ export default function WriterWorkspace({
       if (exportMenu) return setExportMenu(false);
       if (pdfExportOpen) return setPdfExportOpen(false);
       if (feedback) return setFeedback(null);
+      if (timelineExpanded) return setTimelineExpanded(false);
       if (observationsOpen) {
         setObservationsOpen(false);
         focusObservationsTrigger();
@@ -1287,7 +1355,7 @@ export default function WriterWorkspace({
     };
     window.addEventListener("keydown", closeSurfaceOrFocus);
     return () => window.removeEventListener("keydown", closeSurfaceOrFocus);
-  }, [autoFormatPlan, contextMenu, exportMenu, feedback, focusMode, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pasteAssist, pdfExportOpen, restoreTimelineAfterFocus, timelineOpen]);
+  }, [autoFormatPlan, contextMenu, exportMenu, feedback, focusMode, ideasOpen, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pasteAssist, pdfExportOpen, restoreTimelineAfterFocus, searchOpen, timelineExpanded, timelineOpen, versionsOpen]);
 
   useEffect(() => {
     if (!editor || !ready || deepLinkHandledRef.current) return;
@@ -1547,6 +1615,7 @@ export default function WriterWorkspace({
 
   function closeTimeline() {
     timelineOpenRef.current = false;
+    setTimelineExpanded(false);
     setTimelineOpen(false);
   }
 
@@ -1912,18 +1981,137 @@ export default function WriterWorkspace({
     setAutoFormatPlan(null);
   }
 
-  function applyAutoFormatPlan(choices: Readonly<Record<string, ScreenplayKind>>, reviewAll: boolean) {
+  async function applyAutoFormatPlan(choices: Readonly<Record<string, ScreenplayKind>>, reviewAll: boolean) {
     if (!editor || !autoFormatPlan) return;
-    const mutations = resolveWriterAutoFormatChanges(autoFormatPlan, choices, reviewAll);
+    try {
+      await createWriterCheckpoint(script.id, {
+        kind: "before_auto_format",
+        label: writerCheckpointLabel("before_auto_format"),
+        snapshot: currentSnapshot(),
+        sourceRevision: Math.max(1, saveStateRef.current.revision),
+      });
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No pudimos crear la versión de seguridad.");
+      return;
+    }
+    const plan = autoFormatPlan;
+    const mutations = [
+      ...plan.blockIds.map((blockId) => ({ blockId, kind: "action" as const })),
+      ...resolveWriterAutoFormatChanges(plan, choices, reviewAll),
+    ];
     const result = applyWriterAutoFormat(editor, mutations);
     closeAutoFormat();
     if (result === "applied") {
       refreshWriterDerivedStateAfterFormatting();
-      setFeedback("Formato aplicado. El texto se conservó y la estructura de Writer se actualizó.");
+      const validated = validateWriterDocument(editor.getJSON() as unknown as WriterDocument);
+      if (validated.ok) {
+        const nextBaseline = resolveWriterFormatBaseline(
+          formatBaselineRef.current,
+          validated.document,
+          plan.blockIds,
+          Math.max(1, saveStateRef.current.revision),
+        );
+        persistFormatBaseline(nextBaseline);
+      }
+      setFeedback(`Formato aplicado. El texto se conservó y la estructura de Writer se actualizó.${plan.redundantBlankBlocks ? ` ${plan.redundantBlankBlocks} espacios redundantes normalizados.` : ""}`);
       showStructuralUndo("Formato Automático aplicado");
     } else {
+      const nextBaseline = createWriterFormatBaseline(documentRef.current, Math.max(1, saveStateRef.current.revision));
+      persistFormatBaseline(nextBaseline);
       setFeedback("Este documento ya parece estar correctamente formateado como guion.");
     }
+  }
+
+  function persistFormatBaseline(next: WriterFormatBaseline) {
+    formatBaselineRef.current = next;
+    setFormatBaseline(next);
+    try { saveWriterFormatBaseline(window.location.origin, userId, script.id, next); } catch { /* local baseline is best-effort */ }
+  }
+
+  function navigateSearchResult(result: WriterSearchResult) {
+    setTimelineExpanded(false);
+    if (!result.sceneId || !navigateToWriterReference({
+      sceneId: result.sceneId,
+      blockId: result.blockId,
+      fromOffset: result.start,
+      toOffset: result.end,
+    })) setFeedback("El fragmento ya no existe en el documento actual.");
+  }
+
+  function replaceSearchResult(result: WriterSearchResult, replacement: string) {
+    if (!editor) return false;
+    return replaceWriterTextMatches(editor, [{
+      blockId: result.blockId,
+      start: result.start,
+      end: result.end,
+      expectedText: result.text,
+      replacement,
+    }]).status === "applied";
+  }
+
+  async function replaceAllSearchResults(results: WriterSearchResult[], replacement: string) {
+    if (!editor || !results.length) return 0;
+    try {
+      await createWriterCheckpoint(script.id, {
+        kind: "before_replace_all",
+        label: writerCheckpointLabel("before_replace_all"),
+        snapshot: currentSnapshot(),
+        sourceRevision: Math.max(1, saveStateRef.current.revision),
+      });
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No pudimos crear la versión de seguridad.");
+      return 0;
+    }
+    const result = replaceWriterTextMatches(editor, results.map((item) => ({
+      blockId: item.blockId,
+      start: item.start,
+      end: item.end,
+      expectedText: item.text,
+      replacement,
+    })));
+    if (result.status === "applied" && result.replaced >= 8) {
+      const nextBaseline = invalidateWriterFormatBaseline(formatBaselineRef.current, {
+        kind: "structural",
+        reason: "largeReplace",
+        affectedBlockIds: [...new Set(results.map((item) => item.blockId))],
+        replacementCount: result.replaced,
+      });
+      if (nextBaseline) persistFormatBaseline(nextBaseline);
+    }
+    return result.replaced;
+  }
+
+  async function restoreWriterCheckpoint(snapshot: WriterSnapshot) {
+    if (!editor) return;
+    await createWriterCheckpoint(script.id, {
+      kind: "before_restore",
+      label: writerCheckpointLabel("before_restore"),
+      snapshot: currentSnapshot(),
+      sourceRevision: Math.max(1, saveStateRef.current.revision),
+    });
+    editor.commands.setContent(snapshot.document, { emitUpdate: false });
+    titleRef.current = snapshot.title;
+    setTitle(snapshot.title);
+    documentRef.current = snapshot.document;
+    setDocument(snapshot.document);
+    controllerRef.current?.markChanged(snapshot);
+    const nextBaseline = createWriterFormatBaseline(snapshot.document, Math.max(1, saveStateRef.current.revision));
+    persistFormatBaseline(nextBaseline);
+  }
+
+  function thinkTogetherFromIdea(idea: WriterIdea, scope: WriterSearchScope) {
+    setIdeasOpen(false);
+    setGuidedIdeaQuestion(`${idea.title}: ${idea.direction} Consecuencia posible: ${idea.consequence}`);
+    guidedWriting.setScope(scope);
+    setObservationsSection("guided");
+    setObservationsOpen(true);
+  }
+
+  function toggleTypewriterSound() {
+    const next = !typewriterSoundEnabledRef.current;
+    typewriterSoundEnabledRef.current = next;
+    setTypewriterSoundEnabled(next);
+    saveWriterTypewriterSoundPreference(userId, next);
   }
 
   function refreshWriterDerivedStateAfterFormatting() {
@@ -1961,6 +2149,7 @@ export default function WriterWorkspace({
     timelineBeforeFocusRef.current = timelineOpenRef.current;
     observationsBeforeFocusRef.current = observationsOpen;
     timelineOpenRef.current = false;
+    setTimelineExpanded(false);
     setTimelineOpen(false);
     setObservationsOpen(false);
     setSelectedObservationBlockId(null);
@@ -1997,7 +2186,7 @@ export default function WriterWorkspace({
   return (
     <div
       ref={workspaceRef}
-      className={`writer-workspace${focusMode ? " writer-workspace--focus" : ""}${timelineOpen ? " writer-workspace--timeline" : ""}${observationsOpen && !focusMode ? " writer-workspace--observations" : ""}`}
+      className={`writer-workspace${focusMode ? " writer-workspace--focus" : ""}${timelineOpen ? " writer-workspace--timeline" : ""}${timelineExpanded ? " writer-workspace--timeline-expanded" : ""}${observationsOpen && !focusMode ? " writer-workspace--observations" : ""}`}
       data-focus-scale={focusScale.toFixed(3)}
       data-structural-metadata-persistent={structuralMetadataPersistent ? "true" : "false"}
       style={{
@@ -2054,6 +2243,7 @@ export default function WriterWorkspace({
             onClick={() => timelineOpen ? closeTimeline() : openTimeline()}
             disabled={!initialTimeline.ok}
           >Timeline</button>
+          <button className="writer-versions-button" type="button" onClick={() => setVersionsOpen(true)}>◷ Versiones</button>
           <div className="writer-export-wrap">
             <button
               ref={exportButtonRef}
@@ -2106,6 +2296,10 @@ export default function WriterWorkspace({
             <div className="writer-mobile-sheet-head"><strong>Writer</strong><button type="button" onClick={() => setMobileMoreOpen(false)}>Cerrar</button></div>
             <button type="button" onClick={openImportFlow}>Importar borrador</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document"); }}><SmartFeatureIndicator label="FORMATO AUTOMÁTICO" /></button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setSearchReplaceMode(false); setSearchOpen(true); }}>🔍 Buscar</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setIdeasOpen(true); }}>💡 Ideas</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setVersionsOpen(true); }}>◷ Versiones</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); toggleTypewriterSound(); }}>{typewriterSoundEnabled ? "🔊 Desactivar sonido" : "🔇 Activar sonido"}</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setPdfExportOpen(true); }}>Exportar PDF</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); downloadBackup("json"); }}>Exportar JSON</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); downloadBackup("fdx"); }}>Exportar FDX</button>
@@ -2124,7 +2318,7 @@ export default function WriterWorkspace({
           <small>Guion</small>
           <strong>{title || "Guion sin título"}</strong>
         </div>
-        <nav aria-label="Escenas del guion">
+        <nav className="writer-scene-region" aria-label="Escenas del guion" tabIndex={0}>
           <p className="writer-sidebar-heading">Escenas <span>{scenes.length}</span></p>
           {scenes.length ? (
             <ol className="writer-scene-list">
@@ -2198,10 +2392,12 @@ export default function WriterWorkspace({
             </ol>
           ) : <p className="writer-sidebar-empty">Añade un encabezado para crear una escena.</p>}
         </nav>
-        <section className="writer-character-section" aria-labelledby="writer-character-heading">
-          <p id="writer-character-heading" className="writer-sidebar-heading">Personajes <span>{characterRows.length}</span></p>
-          {characterRows.length ? (
-            <ul>{characterRows.map((character) => (
+        <section className={`writer-character-section${charactersCollapsed ? " is-collapsed" : ""}`} aria-labelledby="writer-character-heading">
+          <button className="writer-character-section-toggle" type="button" aria-expanded={!charactersCollapsed} onClick={() => setCharactersCollapsed((value) => !value)}>
+            <span id="writer-character-heading" className="writer-sidebar-heading">Personajes <b>{characterRows.length}</b></span><span aria-hidden="true">{charactersCollapsed ? "⌄" : "⌃"}</span>
+          </button>
+          {!charactersCollapsed && (characterRows.length ? (
+            <ul aria-label="Personajes del guion" tabIndex={0}>{characterRows.map((character) => (
               <li key={character.identityId} className="writer-character-item">
                 {editingCharacterId === character.identityId ? (
                   <input
@@ -2246,7 +2442,7 @@ export default function WriterWorkspace({
                 </div>
               </li>
             ))}</ul>
-          ) : <p className="writer-sidebar-empty">Los personajes aceptados aparecerán aquí.</p>}
+          ) : <p className="writer-sidebar-empty">Los personajes aceptados aparecerán aquí.</p>)}
         </section>
       </aside>
 
@@ -2266,6 +2462,10 @@ export default function WriterWorkspace({
           editor={editor}
           words={words}
           onAutoFormat={() => startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document")}
+          onSearch={() => { setSearchReplaceMode(false); setSearchOpen(true); }}
+          onIdeas={() => setIdeasOpen(true)}
+          soundEnabled={typewriterSoundEnabled}
+          onToggleSound={toggleTypewriterSound}
           onWriterActions={openTouchWriterActions}
           onInsert={(next) => {
             setExportMenu(false);
@@ -2414,7 +2614,10 @@ export default function WriterWorkspace({
             sceneNicknames={structuralMetadata.sceneNicknames}
             onMoveScene={handleMoveScene}
             onClose={closeTimeline}
+            expanded={timelineExpanded}
+            onToggleExpanded={() => setTimelineExpanded((value) => !value)}
             onGoToWriter={(sceneId) => {
+              setTimelineExpanded(false);
               if (!editor) {
                 setFeedback("El editor todavía no está preparado.");
                 return;
@@ -2437,6 +2640,33 @@ export default function WriterWorkspace({
           <button type="button" onClick={() => leaseRef.current?.takeOver()}>Editar aquí</button>
         </div>
       )}
+
+      {searchOpen && <WriterSearchPanel
+        scriptId={script.id}
+        document={document}
+        activeSceneId={activeScene}
+        initialReplace={searchReplaceMode}
+        onClose={() => setSearchOpen(false)}
+        onNavigate={navigateSearchResult}
+        onReplace={replaceSearchResult}
+        onReplaceAll={replaceAllSearchResults}
+      />}
+
+      {ideasOpen && <WriterIdeasPanel
+        scriptId={script.id}
+        activeSceneId={activeScene}
+        onClose={() => setIdeasOpen(false)}
+        onNavigate={navigateSearchResult}
+        onThinkTogether={thinkTogetherFromIdea}
+      />}
+
+      {versionsOpen && <WriterVersionsPanel
+        scriptId={script.id}
+        snapshot={currentSnapshot()}
+        revision={Math.max(1, saveState.revision)}
+        onClose={() => setVersionsOpen(false)}
+        onRestore={restoreWriterCheckpoint}
+      />}
 
       {pdfExportOpen && (
         <WriterPdfExportDialog
@@ -2546,6 +2776,7 @@ export default function WriterWorkspace({
         )}
         guidedWritingPanel={(
           <WriterGuidedWriting
+            key={guidedIdeaQuestion}
             scope={guidedWriting.scope}
             sceneNumber={activeScene ? (scenes.find((scene) => scene.id === activeScene)?.order ?? null) : null}
             sceneTitle={activeScene ? (structuralMetadata.sceneNicknames[activeScene]
@@ -2559,6 +2790,7 @@ export default function WriterWorkspace({
             onSend={sendGuidedWriting}
             onCancel={guidedWriting.cancel}
             onReference={viewGuidedReference}
+            suggestedQuestion={guidedIdeaQuestion}
           />
         )}
         observations={combinedCharacterObservations}
@@ -2682,6 +2914,10 @@ function WriterToolbar({
   editor,
   words,
   onAutoFormat,
+  onSearch,
+  onIdeas,
+  soundEnabled,
+  onToggleSound,
   onWriterActions,
   onInsert,
   onConvertSceneHeading,
@@ -2689,6 +2925,10 @@ function WriterToolbar({
   editor: Editor | null;
   words: number;
   onAutoFormat: () => void;
+  onSearch: () => void;
+  onIdeas: () => void;
+  soundEnabled: boolean;
+  onToggleSound: () => void;
   onWriterActions: () => void;
   onInsert: (state: WriterInsertState) => void;
   onConvertSceneHeading: (state: WriterInsertState) => void;
@@ -2773,6 +3013,9 @@ function WriterToolbar({
         <span className="writer-toolbar-divider" aria-hidden="true" />
         <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().undo().run()} disabled={!state.canUndo} aria-label="Deshacer">↶</button>
         <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().redo().run()} disabled={!state.canRedo} aria-label="Rehacer">↷</button>
+        <span className="writer-toolbar-divider" aria-hidden="true" />
+        <button className="writer-search-button" type="button" onMouseDown={preserveSelection} onClick={onSearch} title="Buscar · Ctrl/Cmd+F">🔍 <span>Buscar</span></button>
+        <button className="writer-ideas-button" type="button" onMouseDown={preserveSelection} onClick={onIdeas} title="Ideas narrativas">💡 <span>Ideas</span></button>
       </div>
       <div className="writer-format-wrap">
         <button className="writer-format-button" type="button" aria-label="Formato de texto" aria-expanded={formatOpen} onMouseDown={preserveSelection} onClick={() => setFormatOpen((open) => !open)}>Aa</button>
@@ -2786,6 +3029,7 @@ function WriterToolbar({
       </div>
       <button className="writer-touch-actions" type="button" aria-label="Acciones Writer en el cursor" onMouseDown={preserveSelection} onClick={onWriterActions}>⋯ Writer</button>
       <span className="writer-word-count">{words.toLocaleString("es-MX")} palabras</span>
+      <button className="writer-sound-button" type="button" aria-label="Sonido de máquina de escribir" aria-pressed={soundEnabled} title="Sonido de máquina de escribir" onMouseDown={preserveSelection} onClick={onToggleSound}>{soundEnabled ? "🔊" : "🔇"}</button>
     </div>
   );
 }

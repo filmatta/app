@@ -282,6 +282,15 @@ export const ENTITLEMENT_DEFINITIONS = {
       "La función queda preparada para Entitlements sin activar todavía un paywall comercial.",
     values: { free: { access: true } },
   }),
+  "writer.ideas": define({
+    key: "writer.ideas",
+    name: "Ideas",
+    description: "Direcciones creativas conceptuales para pensar una escena o el documento sin escribir el guion por el usuario.",
+    minimumPlan: "free",
+    upgradeTitle: "Ideas en Writer",
+    upgradeDescription: "La función queda preparada para Entitlements sin activar todavía un paywall comercial.",
+    values: { free: { access: true } },
+  }),
   "production.assistant": productionTool(
     "production.assistant",
     "Production Assistant"

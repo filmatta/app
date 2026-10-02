@@ -86,11 +86,12 @@ export function WriterAutoFormatFlow({
             <div><dt>Personajes</dt><dd>{plan.summary.distinctCharacterNames}</dd></div>
             <div><dt>Diálogos</dt><dd>{detected.dialogue}</dd></div>
             <div><dt>Acción</dt><dd>{detected.action}</dd></div>
+            <div><dt>Espacios redundantes</dt><dd>{plan.redundantBlankBlocks}</dd></div>
             <div><dt>Por revisar</dt><dd>{plan.summary.needsReview}</dd></div>
           </dl>
           <p className="writer-auto-format-free">Formato Automático incluido · el parser resuelve lo evidente y la clasificación contextual sólo revisa ambigüedades · 0 AI Credits.</p>
         </>}
-        <footer>{!plan.alreadyFormatted && <><button type="button" onClick={() => setPhase("review")}>Revisar</button><button type="button" className="is-primary" onClick={() => onApply({}, false)}>Aplicar formato</button></>}<button type="button" onClick={onClose}>{plan.alreadyFormatted ? "Cerrar" : "Cancelar"}</button></footer>
+        <footer>{!plan.alreadyFormatted && <>{plan.changes.length > 0 && <button type="button" onClick={() => setPhase("review")}>Revisar</button>}<button type="button" className="is-primary" onClick={() => onApply({}, false)}>Aplicar formato</button></>}<button type="button" onClick={onClose}>{plan.alreadyFormatted ? "Cerrar" : "Cancelar"}</button></footer>
       </>}
       {displayedPhase === "review" && <>
         <p>Confirma únicamente los bloques que necesitan atención. Los cambios de alta confianza se aplicarán sin pedirte revisar páginas ya claras. El texto no se reescribe.</p>

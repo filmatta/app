@@ -14,7 +14,6 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, analysi
   onEnsureCurrentSaved?: () => Promise<void>;
 }) {
   const pulse = useWriterNarrativePulse({ scriptId, enabled: active });
-  const [expanded, setExpanded] = useState(false);
   const [selectedMilestoneId, setSelectedMilestoneId] = useState<string | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualScene, setManualScene] = useState(selectedSceneId ?? scenes[0]?.sourceId ?? "");
@@ -73,11 +72,10 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, analysi
     }
   }
 
-  return <div className={`writer-pulse${expanded ? " is-expanded" : ""}`} aria-busy={pulse.analyzing || savePhase === "saving"}>
+  return <div className="writer-pulse" aria-busy={pulse.analyzing || savePhase === "saving"}>
     <section className="writer-pulse-intro">
       <div><p className="timeline-eyebrow">Lectura descriptiva</p><h1>Intensidad narrativa</h1><p>Compara cambios dentro de este guion. No es una puntuación de calidad, ritmo ni estructura.</p></div>
       <div className="writer-pulse-actions">
-        <button type="button" onClick={() => setExpanded((value) => !value)}>{expanded ? "Reducir" : "Expandir"}</button>
         {pulse.analyzing ? <button type="button" onClick={pulse.cancel}>Cancelar</button> : <button type="button" disabled={!analysisEnabled || savePhase === "saving" || scenes.length < WRITER_NARRATIVE_PULSE_MIN_SCENES} onClick={() => void saveThenAnalyze()}><SmartFeatureIndicator label={pulse.analysis ? "Actualizar Narrative Pulse" : "Analizar Narrative Pulse"} /></button>}
       </div>
     </section>

@@ -51,6 +51,8 @@ type WriterTimelineViewProps = {
   pulseReadinessNotice?: ReactNode;
   pulseAvailable?: boolean;
   onEnsureCurrentSaved?: () => Promise<void>;
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
 };
 
 export default function WriterTimelineView({
@@ -71,6 +73,8 @@ export default function WriterTimelineView({
   pulseReadinessNotice,
   pulseAvailable = true,
   onEnsureCurrentSaved,
+  expanded = false,
+  onToggleExpanded,
 }: WriterTimelineViewProps) {
   const [timeline, setTimeline] = useState<WriterTimeline | null>(initialTimeline);
   const [selectedSceneKey, setSelectedSceneKey] = useState<string | null>(null);
@@ -314,7 +318,7 @@ export default function WriterTimelineView({
   }
 
   return (
-    <Root ref={setRootRef} className={`timeline-page${variant === "embedded" ? " timeline-page--embedded" : ""}`}>
+    <Root ref={setRootRef} className={`timeline-page${variant === "embedded" ? " timeline-page--embedded" : ""}${expanded ? " is-workspace-expanded" : ""}`}>
       <header className="timeline-header">
         <div className="timeline-brand">
           <Link href="/" aria-label="FILMATTA — Inicio">FILMATTA</Link>
@@ -334,6 +338,7 @@ export default function WriterTimelineView({
           {panelView === "timeline" && <button className="timeline-refresh" type="button" onClick={() => void refreshTimeline()} disabled={refreshing}>
             {refreshing ? "Actualizando…" : "Actualizar Timeline"}
           </button>}
+          {onToggleExpanded && <button className="timeline-expand" type="button" onClick={onToggleExpanded} aria-pressed={expanded} title={expanded ? "Contraer vista" : "Expandir vista"}>{expanded ? "⛶ Contraer" : "⛶ Expandir"}</button>}
           {onClose && <button className="timeline-close" type="button" onClick={onClose}>Cerrar</button>}
         </div>
       </header>

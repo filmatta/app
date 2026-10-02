@@ -27,6 +27,7 @@ export default function WriterGuidedWriting({
   onSend,
   onCancel,
   onReference,
+  suggestedQuestion = "",
 }: {
   scope: WriterGuidedWritingScope;
   sceneNumber: number | null;
@@ -40,8 +41,9 @@ export default function WriterGuidedWriting({
   onSend: (question: string) => Promise<boolean>;
   onCancel: () => void;
   onReference: (reference: WriterGuidedReference) => void;
+  suggestedQuestion?: string;
 }) {
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(suggestedQuestion);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

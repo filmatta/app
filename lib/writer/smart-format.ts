@@ -12,6 +12,7 @@ import {
 } from "./import.ts";
 import { WRITER_NARRATIVE_PULSE_MIN_SCENES } from "./narrative-pulse.ts";
 import { isClearlyNonCharacterLine } from "./character-cues.ts";
+import { countRedundantWriterBlankBlocks } from "./spacing.ts";
 
 export const WRITER_SIGNIFICANT_PASTE_MIN_CHARACTERS = 120;
 export const WRITER_SIGNIFICANT_PASTE_MIN_LINES = 4;
@@ -76,6 +77,7 @@ export type WriterAutoFormatPlan = {
   blockIds: string[];
   changes: WriterAutoFormatChange[];
   summary: ReturnType<typeof writerImportSummary>;
+  redundantBlankBlocks: number;
   alreadyFormatted: boolean;
 };
 
@@ -230,6 +232,7 @@ export function createWriterAutoFormatPlan(
   const sourceText = targets.map(blockText).join("\n");
   const staging = analyzePastedWriterText(sourceText, "Formato automático");
   const changes: WriterAutoFormatChange[] = [];
+  const redundantBlankBlocks = countRedundantWriterBlankBlocks(document, input.blockIds);
 
   for (const detected of staging.blocks) {
     const target = targets[detected.sourceStartLine - 1];
@@ -244,7 +247,8 @@ export function createWriterAutoFormatPlan(
     blockIds: targets.map((block) => block.attrs.id),
     changes,
     summary: writerImportSummary(staging.blocks),
-    alreadyFormatted: changes.length === 0,
+    redundantBlankBlocks,
+    alreadyFormatted: changes.length === 0 && redundantBlankBlocks === 0,
   };
 }
 
@@ -382,7 +386,7 @@ export function mergeWriterAutoFormatClassifications(
       needsReview,
       distinctCharacterNames: Math.max(plan.summary.distinctCharacterNames, characterNames.size),
     },
-    alreadyFormatted: changes.length === 0,
+    alreadyFormatted: changes.length === 0 && plan.redundantBlankBlocks === 0,
   };
 }
 
