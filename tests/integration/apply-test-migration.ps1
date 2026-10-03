@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][ValidatePattern('^202609[0-9]{8}$')][string]$Version)
+param([Parameter(Mandatory=$true)][ValidatePattern('^20[0-9]{12}$')][string]$Version)
 $ErrorActionPreference = 'Stop'
 $testRef = 'ezlycwkuzkwcnhrhiruv'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
