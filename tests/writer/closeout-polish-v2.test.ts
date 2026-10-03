@@ -36,8 +36,10 @@ test("recognized characters render one appearance navigator instead of one butto
 
 test("Pulse observes its real container and uses one geometry for line and hit targets", () => {
   const component = fs.readFileSync("components/writer/WriterNarrativePulse.tsx", "utf8");
+  const timelineCss = fs.readFileSync("app/writer/[id]/timeline/timeline.css", "utf8");
   assert.match(component, /new ResizeObserver\(measure\)/u);
   assert.match(component, /writerPulsePlotPoints\(displayPoints, graphWidth, graphHeight, 24\)/u);
   assert.match(component, /data-plot-x/u);
   assert.doesNotMatch(component, /const x = 24 \+ \(index/u);
+  assert.match(timelineCss, /data-writer-skin="cream"\] \.writer-pulse-milestone \{ color:#17475a!important; \}/u);
 });
