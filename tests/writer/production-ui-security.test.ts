@@ -6,6 +6,7 @@ const workspace = readFileSync("components/shotlist/ShotlistWorkspace.tsx", "utf
 const shotCss = readFileSync("app/shotlists/shotlist.css", "utf8");
 const breakdown = readFileSync("components/writer/WriterBreakdownPanel.tsx", "utf8");
 const ai = readFileSync("lib/writer/production-ai-server.ts", "utf8");
+const productionServer = readFileSync("lib/writer/production-server.ts", "utf8");
 const assetRoute = readFileSync("app/api/writer/production-assets/route.ts", "utf8");
 const importFlow = readFileSync("components/writer/WriterImportFlow.tsx", "utf8");
 
@@ -53,4 +54,12 @@ test("production AI and assets fail closed and never expose screenplay content i
   assert.match(assetRoute, /limitInputPixels: 40_000_000/);
   assert.match(importFlow, /destination === "writer"/);
   assert.match(importFlow, /router\.push\(`\/shotlists\/\$\{payload\.id\}`\)/);
+});
+
+test("reanalyzing a newer revision stales only automated evidence from older revisions", () => {
+  assert.match(productionServer, /\.neq\("source", "user"\)/);
+  assert.match(productionServer, /\.lt\("source_revision", script\.revision\)/);
+  assert.match(productionServer, /update\(\{ stale: true/);
+  assert.match(productionServer, /options\.sceneIds\?\.size/);
+  assert.match(breakdown, /appearance\.stale \? "Referencia obsoleta" : "Ir al fragmento"/);
 });

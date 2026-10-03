@@ -177,6 +177,28 @@ export async function detectAndStoreWriterBreakdown(
     }, { onConflict: "element_id,block_id,from_offset,nature" });
     if (appearance.error) throw new WriterProductionError("storage", "No pudimos guardar la evidencia de los elementos detectados.", 500);
   }
+  const automatedElements = await db.from("writer_breakdown_elements")
+    .select("id")
+    .eq("owner_id", userId)
+    .eq("script_id", scriptId)
+    .neq("source", "user");
+  if (automatedElements.error) {
+    throw new WriterProductionError("storage", "No pudimos reconciliar la evidencia anterior.", 500);
+  }
+  const automatedElementIds = (automatedElements.data ?? []).map((row) => String(row.id));
+  if (automatedElementIds.length) {
+    let staleQuery = db.from("writer_breakdown_appearances")
+      .update({ stale: true, updated_at: new Date().toISOString() })
+      .eq("owner_id", userId)
+      .eq("script_id", scriptId)
+      .in("element_id", automatedElementIds)
+      .lt("source_revision", script.revision);
+    if (options.sceneIds?.size) staleQuery = staleQuery.in("scene_id", [...options.sceneIds]);
+    const staleResult = await staleQuery;
+    if (staleResult.error) {
+      throw new WriterProductionError("storage", "No pudimos reconciliar la evidencia anterior.", 500);
+    }
+  }
   if (operationId) {
     const completed = await db.from("writer_production_operations").update({
       status: "completed", actual_cost_microusd: 0, settled_at: new Date().toISOString(), updated_at: new Date().toISOString(),
