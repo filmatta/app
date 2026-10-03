@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import CreateHome from "@/components/create/CreateHome";
 import SiteHeader from "@/components/SiteHeader";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getOwnedProfessionalProfile } from "@/lib/profiles/data";
@@ -8,13 +9,29 @@ import { homeProfileAction, onboardingPath } from "@/lib/profiles/activation";
 import { activationCompletion } from "@/lib/profiles/activation-completion";
 import ActivationLink from "@/components/profiles/ActivationLink";
 import type { MediaItem } from "@/lib/profiles/media";
+import { PUBLIC_HOME_VARIANT } from "@/lib/create/experience";
 import "./home.css";
-export const metadata = {
-  title: "El ecosistema de la industria audiovisual",
-  description:
-    "Crea tu presencia profesional, muestra tu trabajo y conecta con la comunidad audiovisual. Perfiles, proyectos, locaciones y aprendizaje en FILMATTA.",
-};
+export const metadata = PUBLIC_HOME_VARIANT === "create"
+  ? {
+      title: "FILMATTA CREATE · De la primera página al set",
+      description:
+        "Escribe en Writer, convierte escenas en planos con Shotlist y conoce la visión de Storyboard, Production y REC.",
+    }
+  : {
+      title: "El ecosistema de la industria audiovisual",
+      description:
+        "Crea tu presencia profesional, muestra tu trabajo y conecta con la comunidad audiovisual.",
+    };
+
 export default async function Home() {
+  if (PUBLIC_HOME_VARIANT === "create") {
+    return <CreateHome />;
+  }
+
+  return <LegacyHome />;
+}
+
+async function LegacyHome() {
   const viewer = await getViewer();
   const profile = viewer ? await getOwnedProfessionalProfile(viewer.id) : null;
   const db = await createClient();

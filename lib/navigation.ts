@@ -1,125 +1,56 @@
+import { surfacesFor } from "./create/catalog";
+
 export type NavigationLink = {
   label: string;
   href: string;
   description?: string;
 };
+
 export type NavigationItem = NavigationLink & { children?: NavigationLink[] };
 
-// Enable destinations in the checkpoint that delivers them.
 export const navigationFeatures = {
-  landings: true,
-  talent: true,
-  opportunityFilters: true,
-  marketplace: true,
-  jobs: true,
-  tools: true,
+  createExperience: true,
 } as const;
 
-export function getPrimaryNavigation(authenticated: boolean): NavigationItem[] {
-  const destination = (name: string, catalog: string) =>
-    !authenticated && navigationFeatures.landings
-      ? `/descubre/${name}`
-      : catalog;
+export function getPrimaryNavigation(_authenticated: boolean): NavigationItem[] {
+  void _authenticated;
+  const tools = surfacesFor("navbar")
+    .filter((surface) => surface.id !== "learn")
+    .map<NavigationLink>((surface) => ({
+      label: surface.name,
+      href: surface.href ?? `/#${surface.id}`,
+      description: `${surface.eyebrow} · ${surface.statusLabel}`,
+    }));
+
   return [
     {
-      label: "Perfiles",
-      href: destination("perfiles", "/perfiles"),
-      children: [
-        ...(navigationFeatures.talent
-          ? [
-              {
-                label: "Buscar talento",
-                href: "/talento",
-                description: "Ir directamente al catálogo de talento.",
-              },
-            ]
-          : []),
-        {
-          label: "Profesionales",
-          href: destination("perfiles", "/perfiles"),
-          description: "Reel, experiencia y disciplinas audiovisuales.",
-        },
-        ...(navigationFeatures.talent
-          ? [
-              {
-                label: "Talento",
-                href: "/descubre/talento",
-                description: "Actuación y modelaje, con una misma identidad.",
-              },
-            ]
-          : []),
-      ],
+      label: "Herramientas",
+      href: "/#herramientas",
+      children: tools,
     },
-    {
-      label: "Oportunidades",
-      href: destination("oportunidades", "/oportunidades"),
-      children: [
-        {
-          label: "Todas",
-          href: destination("oportunidades", "/oportunidades"),
-          description: "Convocatorias para hacer posibles los proyectos.",
-        },
-        ...(navigationFeatures.jobs
-          ? [{ label: "Jobs", href: destination("jobs", "/jobs") }]
-          : []),
-        ...(navigationFeatures.opportunityFilters
-          ? [
-              { label: "Casting", href: "/oportunidades?category=casting" },
-              { label: "Crew", href: "/oportunidades?category=crew" },
-              {
-                label: "Colaboraciones",
-                href: "/oportunidades?category=collaboration",
-              },
-            ]
-          : []),
-      ],
-    },
-    { label: "Locaciones", href: destination("locaciones", "/locaciones") },
-    ...(navigationFeatures.marketplace
-      ? [
-          {
-            label: "Marketplace",
-            href: destination("marketplace", "/marketplace"),
-          },
-        ]
-      : []),
-    { label: "Learn", href: destination("learn", "/cursos") },
-    ...(navigationFeatures.tools
-      ? [
-          {
-            label: "Tools",
-            href: "/tools",
-            children: [
-              { label: "Todas las herramientas", href: "/tools" },
-              { label: "FILMATTA Writer", href: "/writer" },
-              {
-                label: "Production Assistant",
-                href: "/tools/production-assistant",
-              },
-              {
-                label: "Calculadoras y conversores",
-                href: "/tools/utilidades",
-              },
-            ],
-          },
-        ]
-      : []),
-    { label: "Planes", href: "/planes" },
+    { label: "Learn", href: "/cursos" },
   ];
 }
-
+export function getCreateNavigation(): NavigationLink[] {
+  return surfacesFor("create").flatMap((surface) =>
+    surface.href
+      ? [{
+          label: surface.id === "writer" ? "Nuevo guion" : "Nueva shotlist",
+          href: surface.id === "writer" ? "/writer" : "/shotlists",
+          description: surface.id === "writer"
+            ? "Escribe o importa un guion."
+            : "Crea una shotlist libre o desde Writer.",
+        }]
+      : [],
+  );
+}
 export function getAccountNavigation(role: string): NavigationLink[] {
   return [
-    { label: "Cuenta", href: "/cuenta" },
-    { label: "Mi perfil profesional", href: "/mi-perfil" },
-    { label: "Contactos", href: "/cuenta/contactos" },
-    { label: "Mi red", href: "/mi-red" },
-    { label: "Mis proyectos", href: "/mis-proyectos" },
+    { label: "Dashboard", href: "/cuenta" },
+    { label: "Mis guiones", href: "/writer" },
+    { label: "Mis shotlists", href: "/shotlists" },
     { label: "Mi aprendizaje", href: "/cuenta/configuracion#mis-cursos" },
-    { label: "Mis locaciones", href: "/mis-locaciones" },
-    { label: "Mis publicaciones", href: "/mis-oportunidades" },
-    { label: "Mis servicios", href: "/mis-servicios" },
-    { label: "Consultas de servicios y Jobs", href: "/mis-servicios/consultas" },
+    { label: "Mi perfil profesional", href: "/mi-perfil" },
     { label: "Mi suscripción", href: "/cuenta/suscripcion" },
     { label: "Ajustes", href: "/cuenta/configuracion#configuracion" },
     ...(role === "admin"
@@ -128,7 +59,9 @@ export function getAccountNavigation(role: string): NavigationLink[] {
   ];
 }
 
-export const publishingNavigation: NavigationLink[] = [
+// Legacy publishing destinations remain addressable, but are intentionally not
+// consumed by the CREATE navigation. Keeping them here makes rollback explicit.
+export const legacyPublishingNavigation: NavigationLink[] = [
   { label: "Completar mi perfil", href: "/mi-perfil" },
   { label: "Nuevo proyecto", href: "/mis-proyectos/nuevo" },
   { label: "Nueva locación", href: "/mis-locaciones/nueva" },

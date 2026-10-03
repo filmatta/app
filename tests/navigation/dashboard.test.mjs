@@ -1,16 +1,74 @@
-import assert from 'node:assert/strict';import test from 'node:test';import fs from 'node:fs';import load from '../load.mjs';
-const read=p=>fs.readFileSync(p,'utf8');
-test('dashboard uses owned exact counts, handles empty and partial data without inventing metrics',async()=>{
- let fail=false;const filters=[];
- const client={from(table){const chain={select(){return chain},eq(k,v){filters.push([table,k,v]);return chain},neq(k,v){filters.push([table,k,v]);return chain},order(){return chain},limit(){return chain},maybeSingle(){return chain},then(resolve){return Promise.resolve(resolve(fail?{data:null,count:null,error:{code:'offline'}}:{data:null,count:0,error:null}))}};return chain},rpc:async()=>fail?{error:{code:'offline'}}:{data:{followers:0,following:0,pending_received:0,unread:0},error:null}};
- const {getAccountDashboard}=load('lib/account/dashboard.ts',{'@/lib/supabase/server':{createClient:async()=>client}});
- let d=await getAccountDashboard('qa-owner');assert.equal(d.active,0);assert.equal(d.pending,0);assert.equal(d.profile,null);assert.equal(d.latest,null);assert.equal(d.partial,false);
- assert.ok(filters.filter(x=>x[0]==='projects'&&x[1]==='owner_id').every(x=>x[2]==='qa-owner'));
- fail=true;d=await getAccountDashboard('qa-owner');assert.equal(d.active,null);assert.equal(d.profile,undefined);assert.equal(d.summary,null);assert.equal(d.partial,true);
+import assert from "node:assert/strict";
+import test from "node:test";
+import fs from "node:fs";
+import load from "../load.mjs";
+
+const read = (path) => fs.readFileSync(path, "utf8");
+
+test("dashboard reads only owned Writer and Shotlist documents", async () => {
+  const filters = [];
+  const records = {
+    writer_scripts: [{ id: "script", title: "La Frecuencia", updated_at: "2026-10-02T10:00:00Z" }],
+    writer_shotlists: [{ id: "shots", script_id: "script", title: "Cobertura", updated_at: "2026-10-02T11:00:00Z" }],
+  };
+  const client = {
+    from(table) {
+      const chain = {
+        select() { return chain; },
+        eq(key, value) { filters.push([table, key, value]); return chain; },
+        order() { return chain; },
+        limit() { return Promise.resolve({ data: records[table], error: null }); },
+      };
+      return chain;
+    },
+  };
+  const { getAccountDashboard } = load("lib/account/dashboard.ts", {
+    "@/lib/supabase/server": { createClient: async () => client },
+  });
+  const result = await getAccountDashboard("qa-owner");
+  assert.equal(result.scripts.length, 1);
+  assert.equal(result.shotlists.length, 1);
+  assert.equal(result.recent[0].kind, "shotlist");
+  assert.equal(result.shotlists[0].relation, "Vinculada a Writer");
+  assert.ok(filters.every(([, key, value]) => key === "owner_id" && value === "qa-owner"));
 });
-test('dashboard routes are real, privacy-gated, compact and not Learn-centric',()=>{
- const p=read('app/cuenta/page.tsx');assert.match(p,/if\(!viewer\)redirect/);
- for(const href of ['/mi-perfil','/mis-proyectos','/cuenta/contactos','/mi-red','/mis-locaciones','/cuenta/configuracion#mis-cursos','/cuenta/configuracion#configuracion','/cuenta/configuracion#seguridad','/cuenta/suscripcion']){assert.ok(p.includes('href="'+href+'"'));assert.ok(fs.existsSync('app'+href.split('#')[0]+'/page.tsx'));}
- assert.match(p,/Accesos rápidos/);assert.doesNotMatch(p,/FILMATTA Learn|Tu próxima historia|course_enrollments|viewer.email/);
- assert.match(p,/d.latest&&/);assert.match(p,/billing.plan&&/);
+test("dashboard fails soft without inventing progress or last-opened state", async () => {
+  const client = {
+    from() {
+      const chain = {
+        select() { return chain; },
+        eq() { return chain; },
+        order() { return chain; },
+        limit() { return Promise.resolve({ data: null, error: { code: "offline" } }); },
+      };
+      return chain;
+    },
+  };
+  const { getAccountDashboard } = load("lib/account/dashboard.ts", {
+    "@/lib/supabase/server": { createClient: async () => client },
+  });
+  const result = await getAccountDashboard("qa-owner");
+  assert.equal(result.recent.length, 0);
+  assert.equal(result.partial, true);
+  const page = read("app/cuenta/page.tsx");
+  assert.match(page, /Editado /);
+  assert.doesNotMatch(page, /último abierto|\d+%/i);
+});
+
+test("CREATE dashboard keeps real account, learning and subscription routes", () => {
+  const page = read("app/cuenta/page.tsx");
+  assert.match(page, /if \(!viewer\) redirect/);
+  for (const href of [
+    "/writer",
+    "/shotlists",
+    "/cursos",
+    "/cuenta/configuracion#configuracion",
+    "/cuenta/configuracion#seguridad",
+    "/cuenta/suscripcion",
+  ]) {
+    assert.ok(page.includes(`href="${href}"`) || page.includes(`href={surface.href!}`));
+  }
+  assert.match(page, /FILMATTA<\/span> CREATE/);
+  assert.match(page, /¿En qué vas a trabajar hoy\?/);
+  assert.doesNotMatch(page, /Mis locaciones|Solicitudes \/ Contactos|Mi red/);
 });
