@@ -28,14 +28,19 @@ Los seis altos restantes pertenecen a la cadena de lint/desarrollo: `eslint-conf
 | Navigation / CREATE | PASS | 19/19 unitarias + 4/4 E2E dirigidas |
 | Writer | PASS con nota ambiental | 304/305 en corrida general; el único fallo fue permiso de sandbox del worker PDF, y la repetición aislada pasó 2/2 |
 | Writer E2E dirigido | REVIEW por deuda de base | 12/13; guardado, recarga, PDF, importación y responsive pasaron. La altura inicial esperaba 360 y recibe 440 tanto en 16.3.8 como en Foundation 16.3.4 |
+| Writer PDF / FDX dirigido | PASS local | 15/15 sobre snapshot sintético; PDF E2E incluido en la selección anterior |
 | Storyboard / Sketcher | PASS local | 11/11 |
 | Production / Shotlist / Breakdown | PASS | 24/24, incluido dataset de 150 escenas y 3,000 planos |
 | Tools | PASS | 8/8 |
 | Supabase Test Production | PASS | 6/6, usuarios temporales eliminados |
 | Supabase Test Writer | PASS | 1/1, usuarios temporales eliminados |
 | Supabase Test Storyboard heredado | BLOQUEADO POR ENTORNO | faltó `FILMATTA_TEST_ENV_FILE`; se detuvo antes de crear datos |
+| Preview Production / Auth | PASS | 12/12, 6 capturas, cero consola y cero 5xx; login, Admin rechazado y logout comprobados |
+| Preview Storyboard / Sketcher | PASS | dibujar, guardar, recargar, PNG, aprobación, lease entre pestañas, 1920/834/768/390 y dataset de 3,000 planos |
 
-La corrida E2E general se detuvo después de 47/103 casos al acumular fallos preexistentes fuera del alcance (menú de cuenta, perfiles y headers). No se presenta como PASS. La selección dirigida posterior cubrió CREATE y Writer; el único fallo dirigido fue reproducido idénticamente en Foundation.
+La corrida E2E general se detuvo después de 47/103 casos: 36 pasaron, 11 fallaron y 56 no se ejecutaron. Los fallos generales de menú de cuenta, perfiles y headers no se clasificaron ni se presentan como deuda previa. La selección dirigida posterior cubrió CREATE y Writer; su único fallo dirigido sí fue reproducido idénticamente en Foundation.
+
+El helper remoto heredado de outputs Writer no llegó a exportar: primero encontró dos indicadores de guardado y, tras acotar ese selector, eligió una conversión a Transición deshabilitada. Ambos intentos retiraron su usuario temporal. No se cuentan como PASS remoto; PDF/FDX se sostienen en las pruebas locales anteriores.
 
 ## Datos
 
@@ -47,4 +52,10 @@ La corrida E2E general se detuvo después de 47/103 casos al acumular fallos pre
 
 ## Preview
 
-Pendiente de completar tras desplegar y recorrer el commit final. El Preview Foundation y su alias no se modifican.
+- Deployment candidato verificado: `dpl_JB267mzj6fvS5nocqW6Z7g7pQ4A7`, `https://app-qfb4emucc-filmatta.vercel.app`, SHA `4ebe2fdf00cdb6368d86eaa267cb0816fc20229b`.
+- Target: Preview; backend: Supabase Test `ezlycwkuzkwcnhrhiruv`; billing desactivado.
+- Log remoto: Next 16.3.8, build optimizado y TypeScript PASS.
+- Shareable Link oficial creado para ese deployment; el token se conserva fuera del repositorio.
+- Las capturas publicables están en `public/review/production-readiness-v1/`.
+
+La evidencia fue capturada contra ese candidato antes de incorporarla al commit final; el deployment inmutable del SHA final se registra en la entrega. El Preview Foundation y su alias no se modificaron.

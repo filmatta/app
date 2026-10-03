@@ -146,6 +146,25 @@ try {
   await page.screenshot({ path: path.join(evidence, "05-mobile-tasks.png"), fullPage: true });
   checks.push("mobile Production task view renders in an ordinary session");
 
+  await page.setViewportSize({ width: 1536, height: 1000 });
+  await page.goto(`${preview.origin}/writer/${manifest.scriptId}`, { waitUntil: "networkidle" });
+  await page.locator(".writer-paper .tiptap").waitFor({ state: "visible", timeout: 45_000 });
+  await page.screenshot({ path: path.join(evidence, "06-writer.png"), fullPage: true });
+  checks.push("ordinary session opens the persisted Writer review document");
+
+  await page.goto(`${preview.origin}/admin`, { waitUntil: "networkidle" });
+  assert.equal(new URL(page.url()).pathname, "/", "A non-admin QA account reached the Admin surface.");
+  checks.push("ordinary account is rejected from Admin");
+
+  await page.goto(`${preview.origin}/cuenta/configuracion`, { waitUntil: "networkidle" });
+  await Promise.all([
+    page.waitForURL((url) => url.pathname === "/", { timeout: 45_000 }),
+    page.getByRole("button", { name: "Cerrar sesión", exact: true }).click(),
+  ]);
+  await page.goto(`${preview.origin}/production/${manifest.populatedProductionId}`, { waitUntil: "networkidle" });
+  assert.equal(new URL(page.url()).pathname, "/login", "Logout did not invalidate protected Production access.");
+  checks.push("logout invalidates protected access");
+
   assert.deepEqual(serverErrors, []);
   assert.deepEqual(consoleErrors, []);
 } finally {
@@ -156,6 +175,6 @@ try {
   await browser.close();
 }
 
-const report = { generatedAt: new Date().toISOString(), preview: preview.origin, project: TEST_REF, ordinaryLoginVerified: true, preservedProductions: [manifest.emptyProductionId, manifest.populatedProductionId], checks, screenshots: ["01-empty-production.png", "02-populated-overview.png", "03-horizontal-timeline.png", "04-requirement-coverage.png", "05-mobile-tasks.png"], consoleErrors: consoleErrors.length, serverErrors: serverErrors.length };
+const report = { generatedAt: new Date().toISOString(), preview: preview.origin, project: TEST_REF, ordinaryLoginVerified: true, preservedProductions: [manifest.emptyProductionId, manifest.populatedProductionId], checks, screenshots: ["01-empty-production.png", "02-populated-overview.png", "03-horizontal-timeline.png", "04-requirement-coverage.png", "05-mobile-tasks.png", "06-writer.png"], consoleErrors: consoleErrors.length, serverErrors: serverErrors.length };
 fs.writeFileSync(path.join(evidence, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify({ passed: checks.length, screenshots: report.screenshots.length, temporaryProductionRemoved: true, preservedProductions: 2 }));
