@@ -7,6 +7,8 @@ test("Assistant surface has one clear name, four complete tabs and contextual he
   const workspace = fs.readFileSync("components/writer/WriterWorkspace.tsx", "utf8");
   assert.match(panel, /SmartFeatureIndicator label="Asistente"/u);
   for (const label of ["Formato", "O-O-C", "Setup \/ Payoff", "Guía"]) assert.match(panel, new RegExp(`>${label}<`, "u"));
+  assert.match(panel, /<section aria-label="Formato">\s*<WriterAssistantSectionHeading title="FORMATO"/u);
+  assert.match(panel, /No hay ajustes de formato pendientes en este documento\./u);
   assert.doesNotMatch(panel, /<small>Revisión<\/small>|<small>Assistant<\/small>|<small>Relaciones<\/small>/u);
   assert.match(workspace, /SmartFeatureIndicator label=\{`Asistente/u);
 });

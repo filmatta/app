@@ -210,9 +210,9 @@ export default function WriterObservationsPanel({
           <span><strong>Mostrar ajustes en documento</strong><small>{formatReviewPersistent ? "Los revisados no reaparecen al recargar en este navegador." : "La revisión durará sólo durante esta sesión."}</small></span>
         </label>}
 
-        {formatGroups.length > 0 && (
-          <section aria-label="Formato">
-            <WriterAssistantSectionHeading title="FORMATO" count={formatObservations.length} help="Revisa cómo están identificados los encabezados, acciones, personajes y diálogos. Los cambios de formato se aplican cuando tú los eliges." />
+        <section aria-label="Formato">
+          <WriterAssistantSectionHeading title="FORMATO" count={formatObservations.length} help="Revisa cómo están identificados los encabezados, acciones, personajes y diálogos. Los cambios de formato se aplican cuando tú los eliges." />
+          {formatGroups.length > 0 ? <>
             <div className="writer-format-summaries">
               {formatGroups.map((group) => {
                 const labels = FORMAT_LABELS[group.kind];
@@ -251,8 +251,8 @@ export default function WriterObservationsPanel({
                 <div className="writer-format-review-navigation"><button type="button" onClick={() => moveFormat(-1)} disabled={activeIndex === 0}>← Anterior</button><button type="button" onClick={() => moveFormat(1)} disabled={activeIndex >= activeGroup.observations.length - 1}>Ver siguiente →</button></div>
               </article>
             )}
-          </section>
-        )}
+          </> : <p className="writer-observations-empty">No hay ajustes de formato pendientes en este documento.</p>}
+        </section>
 
         <section aria-labelledby="writer-observations-review-heading">
           <div className="writer-observations-section-heading"><h3 id="writer-observations-review-heading">Personajes por revisar</h3><span>{pending.length}</span></div>
