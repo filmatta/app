@@ -61,13 +61,15 @@ export async function POST(request: Request) {
 }
 
 async function removeIfUnused(admin: ReturnType<typeof createAdminClient>, ownerId: string, assetId: string) {
-  const [elements, shots] = await Promise.all([
+  const [elements, shots, storyboardRevisions, storyboardRenders] = await Promise.all([
     admin.from("writer_breakdown_elements").select("id", { count: "exact", head: true }).eq("owner_id", ownerId).eq("asset_id", assetId),
     admin.from("writer_shotlist_shots").select("id", { count: "exact", head: true }).eq("owner_id", ownerId).eq("asset_id", assetId),
+    admin.from("storyboard_panel_revisions").select("id", { count: "exact", head: true }).eq("owner_id", ownerId).eq("base_asset_id", assetId),
+    admin.from("storyboard_panel_renders").select("id", { count: "exact", head: true }).eq("owner_id", ownerId).eq("asset_id", assetId),
   ]);
-  if ((elements.count ?? 0) + (shots.count ?? 0) > 0) return;
-  const asset = await admin.from("writer_production_assets").select("storage_path").eq("id", assetId).eq("owner_id", ownerId).maybeSingle();
+  if ((elements.count ?? 0) + (shots.count ?? 0) + (storyboardRevisions.count ?? 0) + (storyboardRenders.count ?? 0) > 0) return;
+  const asset = await admin.from("writer_production_assets").select("storage_path,original_storage_path").eq("id", assetId).eq("owner_id", ownerId).maybeSingle();
   if (!asset.data) return;
-  await admin.storage.from(BUCKET).remove([String(asset.data.storage_path)]);
+  await admin.storage.from(BUCKET).remove([String(asset.data.storage_path), ...(asset.data.original_storage_path ? [String(asset.data.original_storage_path)] : [])]);
   await admin.from("writer_production_assets").delete().eq("id", assetId).eq("owner_id", ownerId);
 }
