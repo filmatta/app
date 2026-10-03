@@ -304,6 +304,83 @@ create policy production_tasks_owner_all on public.production_tasks
   using (owner_id = (select auth.uid()))
   with check (owner_id = (select auth.uid()));
 
+create or replace function public.production_move_schedule_item(
+  p_production_id uuid,
+  p_item_id uuid,
+  p_expected_revision integer,
+  p_direction integer
+)
+returns boolean
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  actor_id uuid := auth.uid();
+  target_item public.production_schedule_items%rowtype;
+  neighbor_item public.production_schedule_items%rowtype;
+begin
+  if actor_id is null or p_direction not in (-1, 1) then
+    return false;
+  end if;
+
+  select * into target_item
+  from public.production_schedule_items
+  where id = p_item_id
+    and production_id = p_production_id
+    and owner_id = actor_id
+    and revision = p_expected_revision
+  for update;
+
+  if not found then
+    return false;
+  end if;
+
+  if p_direction = -1 then
+    select * into neighbor_item
+    from public.production_schedule_items
+    where production_id = target_item.production_id
+      and owner_id = target_item.owner_id
+      and day_id is not distinct from target_item.day_id
+      and position < target_item.position
+    order by position desc, created_at desc
+    limit 1
+    for update;
+  else
+    select * into neighbor_item
+    from public.production_schedule_items
+    where production_id = target_item.production_id
+      and owner_id = target_item.owner_id
+      and day_id is not distinct from target_item.day_id
+      and position > target_item.position
+    order by position asc, created_at asc
+    limit 1
+    for update;
+  end if;
+
+  if not found then
+    return true;
+  end if;
+
+  update public.production_schedule_items
+    set position = neighbor_item.position,
+        revision = revision + 1,
+        updated_at = clock_timestamp()
+    where id = target_item.id;
+
+  update public.production_schedule_items
+    set position = target_item.position,
+        revision = revision + 1,
+        updated_at = clock_timestamp()
+    where id = neighbor_item.id;
+
+  return true;
+end;
+$$;
+
+revoke all on function public.production_move_schedule_item(uuid, uuid, integer, integer) from public, anon;
+grant execute on function public.production_move_schedule_item(uuid, uuid, integer, integer) to authenticated, service_role;
+
 create or replace function private.production_day_date_changed()
 returns trigger
 language plpgsql

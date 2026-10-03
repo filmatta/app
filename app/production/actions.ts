@@ -303,6 +303,24 @@ export async function moveScheduleItemAction(input: { productionId: string; item
   } catch (cause) { return actionFailure(cause); }
 }
 
+export async function reorderScheduleItemAction(input: { productionId: string; itemId: string; expectedRevision: number; direction: -1 | 1 }): Promise<ActionResult> {
+  try {
+    const { db, userId } = await session();
+    if (![input.productionId, input.itemId].every(validUuid) || !positiveInteger(input.expectedRevision) || ![-1, 1].includes(input.direction)) invalid();
+    const result = await db.rpc("production_move_schedule_item", {
+      p_production_id: input.productionId,
+      p_item_id: input.itemId,
+      p_expected_revision: input.expectedRevision,
+      p_direction: input.direction,
+    });
+    if (result.error) storage("No pudimos cambiar el orden del bloque.");
+    if (!result.data) conflict();
+    await touch(db, userId, input.productionId);
+    refresh(input.productionId);
+    return { ok: true, data: undefined };
+  } catch (cause) { return actionFailure(cause); }
+}
+
 export async function deleteScheduleItemAction(input: { productionId: string; itemId: string; expectedRevision: number }): Promise<ActionResult> {
   return deleteVersioned("production_schedule_items", input, "itemId", "No pudimos retirar el bloque de la programación.");
 }
@@ -331,6 +349,22 @@ export async function createRequirementAction(input: { productionId: string; nam
   } catch (cause) { return actionFailure(cause); }
 }
 
+export async function updateRequirementAction(input: { productionId: string; requirementId: string; expectedRevision: number; name: string; category: RequirementCategory; notes?: string | null }): Promise<ActionResult> {
+  try {
+    const { db, userId } = await session();
+    if (![input.productionId, input.requirementId].every(validUuid) || !positiveInteger(input.expectedRevision) || !clean(input.name, 160)
+      || !REQUIREMENT_CATEGORIES.has(input.category) || !optionalText(input.notes, 4000)) invalid();
+    const result = await db.from("production_requirements").update({
+      name: input.name.trim(), category: input.category, notes: cleanNull(input.notes), revision: input.expectedRevision + 1, updated_at: now(),
+    }).eq("id", input.requirementId).eq("production_id", input.productionId).eq("owner_id", userId).eq("origin", "manual")
+      .eq("revision", input.expectedRevision).select("id").maybeSingle();
+    if (result.error) storage("No pudimos guardar la necesidad.");
+    if (!result.data) conflict();
+    await touch(db, userId, input.productionId); refresh(input.productionId);
+    return { ok: true, data: undefined };
+  } catch (cause) { return actionFailure(cause); }
+}
+
 export async function createResourceAction(input: {
   productionId: string;
   name: string;
@@ -352,6 +386,34 @@ export async function createResourceAction(input: {
     if (result.error || !result.data) storage("No pudimos crear el recurso.");
     await touch(db, userId, input.productionId); refresh(input.productionId);
     return { ok: true, data: { id: String(result.data.id) } };
+  } catch (cause) { return actionFailure(cause); }
+}
+
+export async function updateResourceAction(input: {
+  productionId: string;
+  resourceId: string;
+  expectedRevision: number;
+  name: string;
+  resourceType: ResourceType;
+  contact?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  availabilityNotes?: string | null;
+}): Promise<ActionResult> {
+  try {
+    const { db, userId } = await session();
+    if (![input.productionId, input.resourceId].every(validUuid) || !positiveInteger(input.expectedRevision) || !clean(input.name, 160)
+      || !RESOURCE_TYPES.has(input.resourceType) || !optionalText(input.contact, 500) || !optionalText(input.address, 1000)
+      || !optionalText(input.notes, 4000) || !optionalText(input.availabilityNotes, 2000)) invalid();
+    const result = await db.from("production_resources").update({
+      name: input.name.trim(), resource_type: input.resourceType, contact: cleanNull(input.contact), address: cleanNull(input.address),
+      notes: cleanNull(input.notes), availability_notes: cleanNull(input.availabilityNotes), revision: input.expectedRevision + 1, updated_at: now(),
+    }).eq("id", input.resourceId).eq("production_id", input.productionId).eq("owner_id", userId).eq("revision", input.expectedRevision)
+      .select("id").maybeSingle();
+    if (result.error) storage("No pudimos guardar el recurso.");
+    if (!result.data) conflict();
+    await touch(db, userId, input.productionId); refresh(input.productionId);
+    return { ok: true, data: undefined };
   } catch (cause) { return actionFailure(cause); }
 }
 
@@ -449,6 +511,34 @@ export async function updateTaskStatusAction(input: { productionId: string; task
     const result = await db.from("production_tasks").update({ status: input.status, revision: input.expectedRevision + 1, updated_at: now() })
       .eq("id", input.taskId).eq("production_id", input.productionId).eq("owner_id", userId).eq("revision", input.expectedRevision).select("id").maybeSingle();
     if (result.error) storage("No pudimos actualizar la tarea.");
+    if (!result.data) conflict();
+    await touch(db, userId, input.productionId); refresh(input.productionId);
+    return { ok: true, data: undefined };
+  } catch (cause) { return actionFailure(cause); }
+}
+
+export async function updateTaskAction(input: {
+  productionId: string;
+  taskId: string;
+  expectedRevision: number;
+  title: string;
+  priority: "low" | "medium" | "high";
+  assigneeText?: string | null;
+  dueDate?: string | null;
+  department?: string | null;
+  notes?: string | null;
+}): Promise<ActionResult> {
+  try {
+    const { db, userId } = await session();
+    if (![input.productionId, input.taskId].every(validUuid) || !positiveInteger(input.expectedRevision) || !clean(input.title, 240)
+      || !["low", "medium", "high"].includes(input.priority) || !optionalText(input.assigneeText, 160)
+      || !optionalDate(input.dueDate) || !optionalText(input.department, 120) || !optionalText(input.notes, 4000)) invalid();
+    const result = await db.from("production_tasks").update({
+      title: input.title.trim(), priority: input.priority, assignee_text: cleanNull(input.assigneeText), due_date: emptyToNull(input.dueDate),
+      department: cleanNull(input.department), notes: cleanNull(input.notes), revision: input.expectedRevision + 1, updated_at: now(),
+    }).eq("id", input.taskId).eq("production_id", input.productionId).eq("owner_id", userId).eq("revision", input.expectedRevision)
+      .select("id").maybeSingle();
+    if (result.error) storage("No pudimos guardar la tarea.");
     if (!result.data) conflict();
     await touch(db, userId, input.productionId); refresh(input.productionId);
     return { ok: true, data: undefined };

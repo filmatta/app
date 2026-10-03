@@ -51,6 +51,14 @@ test("the same source shot cannot be scheduled twice in one production", async (
   await assert.rejects(db.query("insert into production_schedule_items(owner_id,production_id,day_id,position,item_type,title,source_group_id,source_shot_id) values($1,$2,$3,2,'shot','Duplicado',$4,$5)", [owner, production, day, "99999999-9999-4999-8999-999999999999", shot]), /duplicate key/u);
 });
 
+test("schedule reordering swaps adjacent positions atomically", async () => {
+  await as("authenticated", owner);
+  const target = (await db.query<{ id: string }>("select id from production_schedule_items where production_id=$1 and position=1", [production])).rows[0];
+  assert.ok(target);
+  assert.equal((await db.query<{ production_move_schedule_item: boolean }>("select production_move_schedule_item($1,$2,1,-1)", [production, target.id])).rows[0]?.production_move_schedule_item, true);
+  assert.equal((await db.query<{ position: number }>("select position from production_schedule_items where id=$1", [target.id])).rows[0]?.position, 0);
+});
+
 test("changing the date makes confirmed coverage tentative and requires reconfirmation", async () => {
   await as("authenticated", owner);
   await db.query("update production_days set shoot_date='2026-10-04' where id=$1", [day]);
