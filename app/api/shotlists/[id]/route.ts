@@ -4,6 +4,8 @@ import { assertOwnedWriterScript } from "@/lib/writer/production-server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deriveWriterSceneSources } from "@/lib/writer/script-assistant";
+import { deleteShotsWithStoryboard, storyboardDeleteImpact } from "@/lib/storyboard/server";
+import { runStoryboardAssetCleanup } from "@/lib/storyboard/assets";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +66,29 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   if (body.value.action === "deleteShots" && Array.isArray(body.value.shotIds)
     && body.value.shotIds.length > 0 && body.value.shotIds.length <= 500 && body.value.shotIds.every(validUuid)) {
+    const impact = await storyboardDeleteImpact(session.supabase, session.user.id, id, body.value.shotIds);
+    if (impact.panels > 0) {
+      if (body.value.deleteStoryboard !== true) {
+        return writerJson({
+          error: `Estos planos tienen ${impact.panels} panel(es) de storyboard y ${impact.approvals} aprobación(es).`,
+          code: "storyboard_dependencies",
+          impact,
+        }, 409);
+      }
+      try {
+        const result = await deleteShotsWithStoryboard({
+          db: session.supabase,
+          userId: session.user.id,
+          shotlistId: id,
+          shotIds: body.value.shotIds,
+        });
+        const { assetIds, ...deleted } = result;
+        const cleanup = await runStoryboardAssetCleanup(session.user.id, assetIds);
+        return writerJson({ saved: true, deleted, cleanup });
+      } catch (cause) {
+        return productionError(cause);
+      }
+    }
     return rpcResult(session.supabase, "writer_delete_shots", { p_shotlist_id: id, p_shot_ids: body.value.shotIds });
   }
   if (body.value.action === "updateShot" && validUuid(body.value.shotId)

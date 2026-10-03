@@ -4,16 +4,20 @@ import { validUuid, writerApiSession, writerJson } from "@/lib/writer/api";
 export const dynamic = "force-dynamic";
 const BUCKET = "writer-production-assets";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ assetId: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ assetId: string }> }) {
   const session = await writerApiSession();
   if (!session) return writerJson({ error: "Inicia sesión.", code: "unauthorized" }, 401);
   const { assetId } = await params;
   if (!validUuid(assetId)) return writerJson({ error: "Solicitud inválida.", code: "invalid" }, 400);
   const admin = createAdminClient();
-  const asset = await admin.from("writer_production_assets").select("storage_path")
+  const asset = await admin.from("writer_production_assets").select("storage_path,original_storage_path")
     .eq("id", assetId).eq("owner_id", session.user.id).maybeSingle();
   if (asset.error || !asset.data) return writerJson({ error: "Imagen no encontrada.", code: "not_found" }, 404);
-  const signed = await admin.storage.from(BUCKET).createSignedUrl(String(asset.data.storage_path), 60);
+  const variant = new URL(request.url).searchParams.get("variant");
+  const storagePath = variant === "original" && asset.data.original_storage_path
+    ? String(asset.data.original_storage_path)
+    : String(asset.data.storage_path);
+  const signed = await admin.storage.from(BUCKET).createSignedUrl(storagePath, 60);
   if (signed.error || !signed.data) return writerJson({ error: "No pudimos abrir la imagen.", code: "storage" }, 500);
   return Response.redirect(signed.data.signedUrl, 302);
 }
@@ -25,7 +29,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ a
   if (!validUuid(assetId)) return writerJson({ error: "Solicitud inválida.", code: "invalid" }, 400);
   const admin = createAdminClient();
   let unlinkPerformed = false;
-  const asset = await admin.from("writer_production_assets").select("storage_path").eq("id", assetId).eq("owner_id", session.user.id).maybeSingle();
+  const asset = await admin.from("writer_production_assets").select("storage_path,original_storage_path").eq("id", assetId).eq("owner_id", session.user.id).maybeSingle();
   if (asset.error || !asset.data) return writerJson({ error: "Imagen no encontrada.", code: "not_found" }, 404);
   const url = new URL(request.url);
   const targetType = url.searchParams.get("targetType");
@@ -40,15 +44,17 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ a
     if (unlinked.error || !unlinked.data) return writerJson({ error: "El elemento cambió antes de quitar la imagen.", code: "conflict" }, 409);
     unlinkPerformed = true;
   }
-  const [elements, shots] = await Promise.all([
+  const [elements, shots, storyboardRevisions, storyboardRenders] = await Promise.all([
     admin.from("writer_breakdown_elements").select("id", { count: "exact", head: true }).eq("owner_id", session.user.id).eq("asset_id", assetId),
     admin.from("writer_shotlist_shots").select("id", { count: "exact", head: true }).eq("owner_id", session.user.id).eq("asset_id", assetId),
+    admin.from("storyboard_panel_revisions").select("id", { count: "exact", head: true }).eq("owner_id", session.user.id).eq("base_asset_id", assetId),
+    admin.from("storyboard_panel_renders").select("id", { count: "exact", head: true }).eq("owner_id", session.user.id).eq("asset_id", assetId),
   ]);
-  if ((elements.count ?? 0) + (shots.count ?? 0) > 0) {
+  if ((elements.count ?? 0) + (shots.count ?? 0) + (storyboardRevisions.count ?? 0) + (storyboardRenders.count ?? 0) > 0) {
     return unlinkPerformed ? new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } })
       : writerJson({ error: "Quita primero la imagen del elemento o plano.", code: "in_use" }, 409);
   }
-  const removed = await admin.storage.from(BUCKET).remove([String(asset.data.storage_path)]);
+  const removed = await admin.storage.from(BUCKET).remove([String(asset.data.storage_path), ...(asset.data.original_storage_path ? [String(asset.data.original_storage_path)] : [])]);
   if (removed.error) return writerJson({ error: "No pudimos eliminar la imagen.", code: "storage" }, 500);
   await admin.from("writer_production_assets").delete().eq("id", assetId).eq("owner_id", session.user.id);
   return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
