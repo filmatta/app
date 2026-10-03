@@ -43,4 +43,6 @@ test("workspace exposes persisted panel toggles and accessible horizontal splitt
   assert.match(css, /--writer-character-panel-height: 440px/u);
   assert.match(css, /writer-breakdown \{[^}]*minmax\(0,1fr\)[^}]*height: calc\(100% - 15px\)/u);
   assert.match(css, /writer-breakdown-title>div>span \{ display:none; \}/u);
+  assert.match(css, /writer-breakdown-title \{ grid-template-columns:auto minmax\(0,1fr\); padding:2px 4px; \}/u);
+  assert.match(css, /writer-breakdown-head \{ grid-template-columns:minmax\(0,1fr\) auto; padding:4px 7px; \}/u);
 });
