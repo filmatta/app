@@ -181,7 +181,7 @@
 .writer-scene-nickname-input { grid-column: 2 / 5; width: calc(100% - 4px); min-width: 0; margin: 5px 0; padding: 7px 8px; border: 1px solid rgba(237,90,85,.5); border-radius: 5px; color: #fff; background: #0d1115; font-size: .7rem; }
 .writer-sidebar-empty { margin: 0 8px; color: rgba(241,239,233,.36); font-size: .72rem; line-height: 1.5; }
 .writer-character-section ul { display: grid; gap: 2px; margin: 0; padding: 0 8px; list-style: none; }
-.writer-character-section { container-name: writer-breakdown; container-type: inline-size; }
+.writer-character-section { width:100%; max-width:100%; min-width:0; box-sizing:border-box; container-name:writer-breakdown; container-type:inline-size; }
 .writer-breakdown { display: grid; grid-template-rows: auto auto auto auto minmax(0,1fr) auto; height: calc(100% - 22px); min-height: 0; margin-top: 9px; }
 .writer-breakdown-title { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:7px; padding:8px 4px; border-bottom:1px solid var(--writer-border); }
 .writer-breakdown-title>div { position:relative; display:flex; min-width:0; align-items:center; gap:5px; }
