@@ -14,8 +14,20 @@ fs.mkdirSync(outputDir, { recursive: true });
 
 const systemChrome = process.env.FILMATTA_STORYBOARD_QA_BROWSER ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
 assert.ok(fs.existsSync(systemChrome), "A local Chromium browser is required for visual QA.");
+const protectionBypass = process.env.FILMATTA_STORYBOARD_QA_BYPASS;
 const browser = await chromium.launch({ headless: true, executablePath: systemChrome });
-const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
+const context = await browser.newContext({
+  viewport: { width: 1440, height: 1000 },
+  acceptDownloads: true,
+  ...(protectionBypass
+    ? {
+        extraHTTPHeaders: {
+          "x-vercel-protection-bypass": protectionBypass,
+          "x-vercel-set-bypass-cookie": "true",
+        },
+      }
+    : {}),
+});
 const page = await context.newPage();
 const consoleErrors = [];
 page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
