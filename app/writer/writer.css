@@ -909,6 +909,13 @@
   .writer-paper .tiptap { padding-inline: 48px; }
 }
 
+@media (min-width: 901px) and (max-width: 1050px) {
+  .writer-header-actions { gap: 3px; padding-right: 4px; }
+  .writer-header-actions > button,
+  .writer-export-wrap > button { padding-inline: 7px; }
+  .writer-save-status { max-width: 100px; }
+}
+
 .writer-context-menu,
 .writer-insert-panel { position: fixed; z-index: 120; width: min(290px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow-y: auto; padding: 7px; border: 1px solid var(--writer-border); border-radius: var(--writer-radius-card); color: #f1efe9; background: #11161b; box-shadow: 0 22px 70px rgba(0,0,0,.52); }
 .writer-context-menu-label { margin: 7px 9px; color: var(--writer-muted); font-size: .62rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }

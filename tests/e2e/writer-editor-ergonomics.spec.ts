@@ -174,11 +174,25 @@ test("toolbar and visible Writer regions remain inside the viewport across the f
           })
           .map((element) => element.getAttribute("aria-label") ?? element.textContent?.trim() ?? element.tagName)
         : [];
-      return { offenders, regions, timelineActions, scrollWidth: document.documentElement.scrollWidth, viewport };
+      const header = document.querySelector<HTMLElement>(".writer-header");
+      const headerActions = header
+        ? [...header.querySelectorAll<HTMLElement>("button, .writer-export-wrap")]
+          .filter((element) => {
+            const style = getComputedStyle(element);
+            return style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0;
+          })
+          .filter((element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.left < -1 || rect.right > viewport + 1 || rect.width > viewport + 1;
+          })
+          .map((element) => element.getAttribute("aria-label") ?? element.textContent?.trim() ?? element.tagName)
+        : [];
+      return { offenders, regions, timelineActions, headerActions, scrollWidth: document.documentElement.scrollWidth, viewport };
     });
     expect(geometry.offenders, `toolbar overflow at ${width}px`).toEqual([]);
     expect(geometry.regions, `visible region overflow at ${width}px`).toEqual([]);
     expect(geometry.timelineActions, `Timeline action overflow at ${width}px`).toEqual([]);
+    expect(geometry.headerActions, `Writer header overflow at ${width}px`).toEqual([]);
     expect(geometry.scrollWidth, `document overflow at ${width}px`).toBeLessThanOrEqual(geometry.viewport + 1);
   }
 });
