@@ -131,6 +131,7 @@ test("direct catalogs stay public, distinguish missing schema and support empty 
   page,
   request,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
   for (const route of [
     "/perfiles",
     "/talento",
@@ -153,10 +154,14 @@ test("direct catalogs stay public, distinguish missing schema and support empty 
   await request.get("http://127.0.0.1:54329/__scenario?value=published");
   await page.goto("/perfiles");
   await expect(page.getByRole("link", { name: /Persona P\./ })).toBeVisible();
-  await page.getByLabel("Ciudad", { exact: true }).fill("Sin resultados");
-  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "Ciudad", exact: true })
+    .selectOption("Sin resultados");
+  await page.getByRole("button", { name: "Aplicar filtros", exact: true }).click();
   await expect(
-    page.getByText("No hay perfiles para esta selección."),
+    page.getByRole("heading", {
+      name: "No encontramos perfiles con estos filtros.",
+    }),
   ).toBeVisible();
   await expect(page).toHaveURL(/city=Sin\+resultados/);
 });
@@ -211,9 +216,6 @@ test("member can submit a draft through the real server action with local transp
 }) => {
   await session(context, "user");
   await page.goto("/mis-oportunidades/nueva");
-  await page
-    .getByLabel("Título público del proyecto")
-    .fill("Producción local de prueba");
   await page.getByLabel("Título", { exact: true }).fill("Convocatoria local");
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -232,12 +234,12 @@ test("member can submit a draft through the real server action with local transp
   await expect(page).toHaveURL(/\/mis-oportunidades\?saved=1/);
 });
 
-test("authenticated header stays usable at every requested width", async ({
-  page,
-  context,
-}) => {
-  await session(context, "user");
-  for (const width of [360, 390, 768, 1024, 1280, 1440, 1920]) {
+for (const width of [360, 390, 768, 1024, 1280, 1440, 1920])
+  test(`authenticated header stays usable at ${width}px`, async ({
+    page,
+    context,
+  }) => {
+    await session(context, "user");
     await page.setViewportSize({ width, height: 1000 });
     await page.goto("/perfiles");
     expect(
@@ -247,14 +249,26 @@ test("authenticated header stays usable at every requested width", async ({
     ).toBe(true);
     if (width >= 1280) {
       await page.getByRole("button", { name: "Cuenta", exact: true }).click();
-      await expect(page.getByRole("navigation", { name: "Menú de cuenta", exact: true }).getByRole("link", { name: "Mis servicios", exact: true })).toBeVisible();
+      await expect(
+        page
+          .getByRole("navigation", { name: "Menú de cuenta", exact: true })
+          .getByRole("link", { name: "Mis guiones", exact: true }),
+      ).toHaveAttribute("href", "/writer");
     } else {
       await page.getByRole("button", { name: "Menú", exact: false }).click();
-      await expect(page.getByRole("dialog").getByRole("link", { name: "Mis publicaciones", exact: true })).toBeVisible();
+      const mobileNavigation = page
+        .getByRole("dialog")
+        .getByRole("navigation", { name: "Navegación móvil" });
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await expect(
+        mobileNavigation.getByRole("link", { name: "Mis guiones", exact: true }),
+      ).toHaveAttribute("href", "/writer");
+      await expect(
+        mobileNavigation.getByRole("link", { name: "Mis shotlists", exact: true }),
+      ).toHaveAttribute("href", "/shotlists");
     }
     await page.keyboard.press("Escape");
-  }
-});
+  });
 
 test("non-admin cannot open admin and another owner editor is not exposed", async ({
   page,
@@ -278,9 +292,6 @@ test("publishing validation preserves the entered draft", async ({
   await session(context, "user");
   await page.goto("/mis-oportunidades/nueva");
   await page
-    .getByLabel("Título público del proyecto")
-    .fill("Proyecto que no debe perderse");
-  await page
     .getByLabel("Título", { exact: true })
     .fill("Convocatoria conservada");
   await page.getByLabel("Estado", { exact: true }).selectOption("published");
@@ -290,9 +301,6 @@ test("publishing validation preserves the entered draft", async ({
   );
   await expect(page.getByLabel("Título", { exact: true })).toHaveValue(
     "Convocatoria conservada",
-  );
-  await expect(page.getByLabel("Título público del proyecto")).toHaveValue(
-    "Proyecto que no debe perderse",
   );
 });
 

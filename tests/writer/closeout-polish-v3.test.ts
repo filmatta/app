@@ -51,4 +51,8 @@ test("Help geometry is invariant and Cream separates button states from the warm
   assert.match(css, /--writer-paper:#efede7;/u);
   assert.match(css, /--writer-button-bg:#f4eee4;[^}]*--writer-button-bg-hover:#e7ddd0;[^}]*--writer-button-border:rgba\(70,54,39,\.36\);[^}]*--writer-button-border-hover:rgba\(70,54,39,\.4\);/u);
   assert.match(css, /data-writer-skin="cream"\] button:hover:not\(:disabled\)\{border-color:var\(--writer-button-border-hover\);background-color:var\(--writer-button-bg-hover\)\}/u);
+  assert.match(css, /--writer-chrome-text: #f1efe9;/u);
+  assert.match(css, /data-writer-skin="cream"\][^\n]*--writer-chrome-text:#28221d;/u);
+  assert.match(css, /writer-breakdown-title details p \{[^}]*color:var\(--writer-chrome-text\);[^}]*background:var\(--writer-panel-raised\);/u);
+  assert.match(css, /writer-assistant-help p \{[^}]*color:inherit;/u);
 });

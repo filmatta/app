@@ -83,7 +83,7 @@ test("desktop dropdown switching, outside click and Escape stay predictable", as
   const account = await openPanel(page, "Cuenta");
   await expect(tools.panel).toBeHidden();
   await expect(account.panel).toBeVisible();
-  await page.locator("main").click({ position: { x: 20, y: 200 } });
+  await page.getByRole("main").first().click({ position: { x: 20, y: 200 } });
   await expect(account.panel).toBeHidden();
   const reopenedAccount = await openPanel(page, "Cuenta");
   await expect(reopenedAccount.panel.getByText("Preview User", { exact: true })).toBeVisible();

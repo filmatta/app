@@ -223,7 +223,7 @@ http
       if (url.pathname.endsWith("search_public_professional_profiles"))
         return res.end(
           JSON.stringify(
-            body.p_city === "Sin resultados"
+            body.p_city === "Sin resultados" || body.p_query === "Sin resultados"
               ? []
               : [
                   {
@@ -237,11 +237,18 @@ http
         );
       if (url.pathname.endsWith("get_public_profile_search_facets"))
         return res.end(
-          JSON.stringify({ cities: ["México"], skills: ["Actuación"] }),
+          JSON.stringify({
+            cities: ["México", "Sin resultados"],
+            skills: ["Actuación"],
+          }),
         );
       if (url.pathname.endsWith("get_public_professional_portfolio"))
         return res.end(
           JSON.stringify(body.p_slug === profile.slug ? [profile] : []),
+        );
+      if (url.pathname.endsWith("get_public_location"))
+        return res.end(
+          JSON.stringify(body.p_slug === location.slug ? location : null),
         );
       if (url.pathname.endsWith("list_public_opportunities"))
         return res.end(

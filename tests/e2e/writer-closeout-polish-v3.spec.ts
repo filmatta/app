@@ -83,6 +83,7 @@ test("Cream keeps button borders visible and uses a distinct warm-gray screenpla
   await openWriter(page, context);
   await page.getByRole("button", { name: "Apariencia de Writer" }).click();
   await page.getByRole("dialog", { name: "Apariencia de Writer" }).getByRole("radio", { name: "Cream" }).click();
+  await page.keyboard.press("Escape");
   const button = page.getByRole("banner").getByRole("button", { name: "Timeline", exact: true });
   const before = await button.evaluate((node) => ({ border: getComputedStyle(node).borderColor, background: getComputedStyle(node).backgroundColor }));
   await button.hover();
