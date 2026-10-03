@@ -1,8 +1,12 @@
 import {
   blockText,
-  deriveCharacters,
   type WriterDocument,
 } from "./document.ts";
+import {
+  isClearlyNonCharacterLine,
+  normalizeWriterCharacterText,
+  parseWriterCharacterCue,
+} from "./character-cues.ts";
 
 export const WRITER_CHARACTER_RULE_VERSION = "es-v0.2";
 
@@ -18,6 +22,7 @@ export type WriterKnownCharacterIdentity = {
   key: string;
   name: string;
   source: "characterBlock" | "confirmedAction" | "manual" | "imported";
+  variants?: string[];
 };
 
 export type WriterCharacterObservation = {
@@ -87,18 +92,16 @@ const NAME_PHRASE = String.raw`${NAME_TOKEN}(?:\s+${NAME_TOKEN}){0,2}`;
 const VERB_PATTERN = ACTION_VERBS.join("|");
 const PARTICIPANT_PATTERN = PARTICIPANT_NOUNS.map((noun) => `${escapeRegExp(noun)}s?`).join("|");
 const DETERMINER = /^(?:UN|UNA|EL|LA|LOS|LAS|DOS|TRES|VARIOS|VARIAS|OTRO|OTRA|OTROS|OTRAS)\s+/u;
-const CHARACTER_SUFFIX = /\s*\((?:V\.?\s*O\.?|O\.?\s*S\.?|OFF|CONT(?:INUED|INUADO|['’]?D|\.)?)\)\s*$/iu;
-
 export function normalizeWriterCharacterIdentity(value: string) {
-  return value.trim().replace(/\s+/gu, " ").normalize("NFKC").toLocaleUpperCase("es-MX");
+  return normalizeWriterCharacterText(value);
 }
 
 export function stripWriterCharacterSuffix(value: string) {
-  return value.replace(CHARACTER_SUFFIX, "").trim();
+  return parseWriterCharacterCue(value).name;
 }
 
 export function writerCharacterIdentityKey(value: string) {
-  return stripWriterCharacterSuffix(normalizeWriterCharacterIdentity(value));
+  return parseWriterCharacterCue(value).key;
 }
 
 export function writerParticipantRoleKey(value: string) {
@@ -115,18 +118,38 @@ export function deriveWriterKnownCharacterIdentities(
   local: readonly Omit<WriterKnownCharacterIdentity, "key">[] = [],
 ) {
   const identities = new Map<string, WriterKnownCharacterIdentity>();
-  for (const character of deriveCharacters(document)) {
-    const key = writerCharacterIdentityKey(character.name);
-    identities.set(key, {
-      key,
-      name: stripWriterCharacterSuffix(character.name),
+  for (const block of document.content) {
+    if (block.attrs.kind !== "character") continue;
+    const variant = blockText(block).trim().replace(/\s+/gu, " ");
+    if (!variant || isClearlyNonCharacterLine(variant)) continue;
+    const parsed = parseWriterCharacterCue(variant);
+    if (!parsed.key) continue;
+    const current = identities.get(parsed.key);
+    identities.set(parsed.key, {
+      key: parsed.key,
+      name: parsed.name,
       source: "characterBlock",
+      variants: [...new Set([...(current?.variants ?? []), ...parsed.modalities])],
     });
   }
   for (const identity of local) {
     const key = writerCharacterIdentityKey(identity.name);
-    if (!key || identities.has(key)) continue;
-    identities.set(key, { ...identity, key });
+    if (!key || isClearlyNonCharacterLine(identity.name)) continue;
+    const parsed = parseWriterCharacterCue(identity.name);
+    const current = identities.get(key);
+    if (current) {
+      identities.set(key, {
+        ...current,
+        variants: [...new Set([...(current.variants ?? []), ...(identity.variants ?? []), ...parsed.modalities])],
+      });
+      continue;
+    }
+    identities.set(key, {
+      ...identity,
+      key,
+      name: parsed.name,
+      variants: [...new Set([...(identity.variants ?? []), ...parsed.modalities])],
+    });
   }
   return [...identities.values()];
 }
@@ -395,7 +418,7 @@ function knownReferencePreservesIdentitySignal(text: string, start: number, surf
 
 function isPlausibleName(value: string) {
   const normalized = normalizeWriterCharacterIdentity(value);
-  if (!normalized || NAME_STOP_WORDS.has(normalized)) return false;
+  if (!normalized || NAME_STOP_WORDS.has(normalized) || isClearlyNonCharacterLine(value)) return false;
   return normalized.length <= 64 && /[\p{L}\p{N}]/u.test(normalized);
 }
 

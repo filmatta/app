@@ -5,6 +5,7 @@ import {
   type WriterCharacterObservation,
   type WriterKnownCharacterIdentity,
 } from "./character-observations.ts";
+import { isClearlyNonCharacterLine, parseWriterCharacterCue } from "./character-cues.ts";
 
 export type WriterFormatObservation = {
   id: string;
@@ -58,11 +59,13 @@ export function parsePersistedWriterImportAnalysis(value: unknown, document: Wri
   const blocks = new Map(document.content.map((block) => [block.attrs.id, block]));
   const parsedIdentities = value.analysis.identities.flatMap((candidate) => {
     if (!isRecord(candidate) || typeof candidate.key !== "string" || typeof candidate.name !== "string") return [];
-    const key = candidate.key.trim().slice(0, 128);
-    const name = candidate.name.trim().replace(/\s+/gu, " ").slice(0, 64);
-    return key && name ? [{
+    const key = normalizePersistedIdentityKey(candidate.key.trim().slice(0, 128));
+    const rawName = candidate.name.trim().replace(/\s+/gu, " ").slice(0, 64);
+    const parsed = parseWriterCharacterCue(rawName);
+    return key && parsed.name && !isClearlyNonCharacterLine(rawName) ? [{
       key,
-      name,
+      name: parsed.name,
+      variants: parsed.modalities,
       source: "imported" as const,
       importedSource: typeof candidate.source === "string" ? candidate.source : "rule",
       accepted: typeof candidate.accepted === "boolean" ? candidate.accepted : undefined,
@@ -73,6 +76,7 @@ export function parsePersistedWriterImportAnalysis(value: unknown, document: Wri
       || typeof candidate.identity !== "string" || typeof candidate.blockId !== "string"
       || typeof candidate.start !== "number" || typeof candidate.end !== "number"
       || typeof candidate.blockHash !== "string" || typeof candidate.reason !== "string") return [];
+    if (isClearlyNonCharacterLine(candidate.identity)) return [];
     const block = blocks.get(candidate.blockId);
     if (!block) return [];
     const excerpt = blockText(block);
@@ -81,10 +85,11 @@ export function parsePersistedWriterImportAnalysis(value: unknown, document: Wri
     if (!["intervention", "actionReference", "mention", "indeterminate"].includes(String(relation))) return [];
     const confidence = ["high", "medium", "review"].includes(String(candidate.confidence))
       ? candidate.confidence as WriterCharacterObservation["confidence"] : "review";
+    const parsedIdentity = parseWriterCharacterCue(candidate.identity);
     return [{
       id: `import:${candidate.fingerprint}`,
-      identityKey: candidate.identityKey,
-      identity: candidate.identity,
+      identityKey: normalizePersistedIdentityKey(candidate.identityKey),
+      identity: parsedIdentity.name,
       blockId: candidate.blockId,
       sceneId: typeof candidate.sceneId === "string" ? candidate.sceneId : null,
       start: candidate.start,
@@ -125,12 +130,18 @@ export function parsePersistedWriterImportAnalysis(value: unknown, document: Wri
   const decisions = value.decisions.flatMap((candidate) => {
     if (!isRecord(candidate) || typeof candidate.fingerprint !== "string" || typeof candidate.block_id !== "string"
       || !["confirmed", "linked", "ignored"].includes(String(candidate.decision))) return [];
+    const decisionIdentity = typeof candidate.identity_name === "string"
+      ? parseWriterCharacterCue(candidate.identity_name)
+      : null;
+    const decisionKey = typeof candidate.identity_key === "string"
+      ? normalizePersistedIdentityKey(candidate.identity_key)
+      : undefined;
     return [{
       fingerprint: candidate.fingerprint,
       blockId: candidate.block_id,
       state: candidate.decision as "confirmed" | "linked" | "ignored",
-      ...(typeof candidate.identity_key === "string" ? { identityKey: candidate.identity_key } : {}),
-      ...(typeof candidate.identity_name === "string" ? { identityName: candidate.identity_name } : {}),
+      ...(decisionKey ? { identityKey: decisionKey } : {}),
+      ...(decisionIdentity?.name ? { identityName: decisionIdentity.name } : {}),
       decidedAt: Date.parse(String(candidate.decided_at)) || Date.now(),
     }];
   });
@@ -169,6 +180,12 @@ export function parsePersistedWriterImportAnalysis(value: unknown, document: Wri
     persistent: true,
     compatibleRevision: value.compatibleRevision === true,
   };
+}
+
+function normalizePersistedIdentityKey(value: string) {
+  const key = value.trim().slice(0, 128);
+  if (!key || key.startsWith("ROLE:")) return key;
+  return parseWriterCharacterCue(key).key || key;
 }
 
 export function writerFormatObservationState(

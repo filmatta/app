@@ -5,13 +5,21 @@ import {
   analyzeWriterCharacterObservations,
   deriveWriterKnownCharacterIdentities,
   normalizeWriterCharacterIdentity,
+  writerCharacterIdentityKey,
 } from "../../lib/writer/character-observations.ts";
+import {
+  isClearlyNonCharacterLine,
+  isWriterDateLine,
+  isWriterTimeLine,
+  parseWriterCharacterCue,
+} from "../../lib/writer/character-cues.ts";
 import {
   emptyWriterCharacterDecisionState,
   parseWriterCharacterDecisionState,
   writerCharacterDecisionStorageKey,
 } from "../../lib/writer/character-observation-storage.ts";
 import { createBlock, type WriterDocument } from "../../lib/writer/document.ts";
+import { LA_FRECUENCIA_CHARACTER_DOCUMENT } from "./fixtures/character-review.ts";
 
 function documentWith(...actions: string[]): WriterDocument {
   return {
@@ -65,6 +73,68 @@ test("abstains from inanimate nouns and unresolved pronouns", () => {
   );
   const result = analyzeWriterCharacterObservations(document, []);
   assert.deepEqual(result.observations, []);
+});
+
+test("filters dates, times and structural labels before character review", () => {
+  for (const value of [
+    "17 DE NOVIEMBRE DE 2004",
+    "12 DE MARZO",
+    "3 ENERO 1999",
+    "NOVEMBER 17, 2004",
+  ]) {
+    assert.equal(isWriterDateLine(value), true, value);
+    assert.equal(isClearlyNonCharacterLine(value), true, value);
+  }
+  assert.equal(isWriterTimeLine("3:45 AM"), true);
+  assert.equal(isClearlyNonCharacterLine("CORTE A:"), true);
+  assert.equal(isClearlyNonCharacterLine("INT. RADIO - NOCHE"), true);
+  assert.equal(isClearlyNonCharacterLine("MARA"), false);
+});
+
+test("known cue modalities collapse to one base identity without changing cue text", () => {
+  const values = ["PADRE", "PADRE (GRABACIÓN)", "PADRE (VIDEO)", "RUBÉN", "RUBÉN (ALTAVOCES)"];
+  const document: WriterDocument = { type: "doc", content: values.map((value) => createBlock("character", value)) };
+  const identities = deriveWriterKnownCharacterIdentities(document);
+  assert.deepEqual(identities.map((identity) => identity.name), ["PADRE", "RUBÉN"]);
+  assert.deepEqual(identities.find((identity) => identity.key === "PADRE")?.variants, ["GRABACIÓN", "VIDEO"]);
+  assert.deepEqual(identities.find((identity) => identity.key === "RUBÉN")?.variants, ["ALTAVOCES"]);
+  assert.equal(writerCharacterIdentityKey("PADRE (TELÉFONO)"), "PADRE");
+  assert.equal(parseWriterCharacterCue("RUBÉN (V.O.)").name, "RUBÉN");
+  assert.deepEqual(document.content.map((block) => block.content?.[0]?.type === "text" ? block.content[0].text : ""), values);
+});
+
+test("LA FRECUENCIA recognizes the five real identities and excludes the date", () => {
+  const identities = deriveWriterKnownCharacterIdentities(LA_FRECUENCIA_CHARACTER_DOCUMENT);
+  assert.deepEqual(identities.map((identity) => identity.name), ["MARA", "TOMÁS", "IRIS", "RUBÉN", "PADRE"]);
+  assert.deepEqual(identities.find((identity) => identity.name === "RUBÉN")?.variants, ["ALTAVOCES"]);
+  assert.deepEqual(identities.find((identity) => identity.name === "PADRE")?.variants, ["GRABACIÓN", "VIDEO"]);
+  assert.equal(identities.some((identity) => identity.name.includes("NOVIEMBRE")), false);
+  assert.equal(LA_FRECUENCIA_CHARACTER_DOCUMENT.content[1]?.attrs.kind, "action");
+});
+
+test("unknown parentheticals remain part of the identity and are not over-merged", () => {
+  assert.equal(writerCharacterIdentityKey("ALEX (MAYOR)"), "ALEX (MAYOR)");
+  assert.notEqual(writerCharacterIdentityKey("ALEX"), writerCharacterIdentityKey("ALEX (MAYOR)"));
+});
+
+test("NADIE remains an ambiguous human-review candidate and ignored decisions stay authoritative", () => {
+  const document = documentWith("Nadie habla.");
+  const observation = analyzeWriterCharacterObservations(document, []).observations.find((item) => item.identity === "Nadie");
+  assert.ok(observation);
+  assert.equal(observation.known, false);
+  assert.equal(observation.confidence, "medium");
+  const ignored = parseWriterCharacterDecisionState({
+    version: 1,
+    identities: [],
+    decisions: [{
+      fingerprint: observation.fingerprint,
+      blockId: observation.blockId,
+      state: "ignored",
+      decidedAt: 1,
+    }],
+  });
+  assert.equal(ignored.decisions[0]?.state, "ignored");
+  assert.equal(ignored.decisions[0]?.fingerprint, observation.fingerprint);
 });
 
 test("distinguishes known references, mentions, roles by scene, and incremental cache reuse", () => {

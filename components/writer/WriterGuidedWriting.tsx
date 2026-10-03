@@ -6,6 +6,7 @@ import type {
   WriterGuidedWritingMessage,
   WriterGuidedWritingScope,
 } from "@/lib/writer/guided-writing";
+import WriterAssistantSectionHeading from "./WriterAssistantSectionHeading";
 
 const QUICK_STARTS = [
   "Siento que esta escena no avanza.",
@@ -26,6 +27,7 @@ export default function WriterGuidedWriting({
   onSend,
   onCancel,
   onReference,
+  suggestedQuestion = "",
 }: {
   scope: WriterGuidedWritingScope;
   sceneNumber: number | null;
@@ -39,8 +41,9 @@ export default function WriterGuidedWriting({
   onSend: (question: string) => Promise<boolean>;
   onCancel: () => void;
   onReference: (reference: WriterGuidedReference) => void;
+  suggestedQuestion?: string;
 }) {
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(suggestedQuestion);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,7 +61,7 @@ export default function WriterGuidedWriting({
   return (
     <div className="writer-guided-writing" aria-busy={sending}>
       <header className="writer-guided-heading">
-        <p className="writer-eyebrow">Guided Writing</p>
+        <WriterAssistantSectionHeading title="GUÍA · PENSARLO JUNTOS" help="Piensa opciones sobre una escena o el guion completo. Te ayuda a decidir sin reescribir el documento automáticamente." />
         <h3>¿Qué estás intentando resolver?</h3>
         <p>Puedo ayudarte a pensar escenas, personajes y estructura sin escribir el guion por ti.</p>
       </header>

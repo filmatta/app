@@ -29,6 +29,7 @@ export default async function WriterDocumentPage({ params }: { params: Promise<{
   return (
     <WriterWorkspace
       userId={viewer.id}
+      previewNoCredits={process.env.VERCEL_ENV !== "production"}
       script={{
         id: result.data.id,
         title: result.data.title,

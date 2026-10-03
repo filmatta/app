@@ -164,6 +164,28 @@ Acción exportable.
     .some((item) => item.runs.some((run) => run.text.includes("NOTA DEL AUTOR"))), false);
 });
 
+test("deterministic date and time lines never enter assisted model batches", () => {
+  const staging = prepareAssistedImportStaging({
+    format: "pasted",
+    title: "Fechas",
+    sourceText: `INT. RADIO - NOCHE
+
+17 DE NOVIEMBRE DE 2004
+
+3:45 AM
+
+MARA
+La frecuencia volvió.
+
+Una operadora observa la consola.`,
+  });
+  const modelTexts = buildAssistedImportBatches(staging).flatMap((batch) => batch.blocks.map((block) => block.originalText));
+  assert.equal(modelTexts.includes("17 DE NOVIEMBRE DE 2004"), false);
+  assert.equal(modelTexts.includes("3:45 AM"), false);
+  assert.equal(modelTexts.includes("MARA"), true);
+  assert.equal(modelTexts.includes("Una operadora observa la consola."), true);
+});
+
 test("validation uses source casing and narrative agency without noun blacklists", () => {
   const source = `INT. SALA - DÍA
 La esperanza desaparece.

@@ -5,6 +5,7 @@ import {
   type ScreenplayKind,
   type WriterDocument,
 } from "./document.ts";
+import { isClearlyNonCharacterLine, isWriterDateLine, isWriterTimeLine } from "./character-cues.ts";
 
 export const WRITER_IMPORT_MAX_FILE_BYTES = 5_000_000;
 export const WRITER_IMPORT_MAX_TEXT_CHARACTERS = 1_500_000;
@@ -235,7 +236,11 @@ function analyzePlainText(
     const originalText = lines[index];
     const trimmed = originalText.trim();
     if (!trimmed) {
-      dialogueContext = false;
+      // Screenplays commonly leave a visual blank line between a character cue,
+      // a parenthetical and the spoken line. Keep that pending turn alive until
+      // the next meaningful line. Once dialogue has started, a blank line closes
+      // the turn so subsequent prose remains Action.
+      if (blocks.at(-1)?.proposedKind === "dialogue") dialogueContext = false;
       continue;
     }
     const previousBlank = index === 0 || !lines[index - 1].trim();
@@ -319,15 +324,32 @@ function classifyPlainTextLine(input: {
     };
   }
 
+  if (isWriterDateLine(trimmed) || isWriterTimeLine(trimmed)) {
+    return {
+      proposedKind: "action",
+      confidence: "high",
+      signals: ["Fecha u hora reconocible; no es un encabezado de personaje."],
+    };
+  }
+
+  if (isClearlyNonCharacterLine(trimmed)) {
+    return {
+      proposedKind: "action",
+      confidence: "high",
+      signals: ["Patrón determinista incompatible con un encabezado de personaje."],
+    };
+  }
+
   const short = [...trimmed].length <= 42;
   const uppercase = hasLetters(trimmed) && trimmed === normalizedUpper;
+  const hasTerminalSentencePunctuation = /[.!?…,:;]$/u.test(trimmed);
   const nextCanBeDialogue = Boolean(nextText)
     && !SCENE_HEADING.test(nextText)
     && !TRANSITIONS.has(nextText.normalize("NFKC").toLocaleUpperCase("es-MX"));
-  if (short && uppercase && previousBlank && nextCanBeDialogue) {
+  if (short && uppercase && !hasTerminalSentencePunctuation && previousBlank && nextCanBeDialogue) {
     return {
       proposedKind: "character",
-      confidence: "medium",
+      confidence: "high",
       signals: [
         "Línea corta en mayúsculas.",
         "Separada del bloque anterior y seguida de texto compatible con diálogo.",

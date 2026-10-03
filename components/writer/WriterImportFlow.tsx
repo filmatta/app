@@ -32,7 +32,7 @@ type Filter = "all" | "review" | ScreenplayKind;
 type Busy = "basic" | "creating" | "assisted" | null;
 type Availability = { enabled: boolean; reason: string | null; operationId?: string; limits?: { maxBytes: number; maxWords: number; maxSourceTokens: number } };
 
-export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: () => void; beforeCreate?: () => Promise<void> }) {
+export default function WriterImportFlow({ onClose, beforeCreate, destination = "writer" }: { onClose: () => void; beforeCreate?: () => Promise<void>; destination?: "writer" | "shotlist" }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const operationIdRef = useRef<string | null>(null);
@@ -66,6 +66,21 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
       : !sourceReady
         ? "Añade texto o selecciona un archivo TXT/FDX."
         : availability.enabled ? null : availability.reason;
+
+  async function openImported(scriptId: string, writerQuery: string) {
+    if (destination === "writer") {
+      router.push(`/writer/${scriptId}${writerQuery}`);
+      return;
+    }
+    setStage("Creando Shotlist desde el guion importado…");
+    const response = await fetch(`/api/writer/scripts/${scriptId}/shotlists`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operationId: crypto.randomUUID(), title: `${title.trim().slice(0, 145) || "Borrador importado"} — Shotlist` }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || typeof payload.id !== "string") throw new Error(payload.error ?? "El guion se importó, pero no pudimos crear su Shotlist.");
+    router.push(`/shotlists/${payload.id}`);
+  }
 
   useEffect(() => {
     let active = true;
@@ -185,7 +200,7 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
         : payload.recoverySkippedReason === "recovery_call_limit_unavailable"
           ? "&recovery=calls"
           : "";
-      router.push(`/writer/${payload.script.id}?imported=ai&analysis=${analysis}&identities=${identities}&observations=${Number(payload.observations ?? 0)}${recoveryLimit}`);
+      await openImported(payload.script.id, `?imported=ai&analysis=${analysis}&identities=${identities}&observations=${Number(payload.observations ?? 0)}${recoveryLimit}`);
     } catch (cause) {
       setError(assistedImportError(cause));
       setBusy(null);
@@ -197,7 +212,7 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
   function setBlockKind(block: WriterImportBlock, kind: ScreenplayKind) {
     if (!staging) return;
     if (kind === "character" && /[.!?…]/u.test(block.originalText.trim())) {
-      const proceed = window.confirm("Este tipo crea un encabezado de diálogo y la línea parece una oración de Acción. Acepta sólo si deseas reemplazar su formato; para reconocer una identidad sin cambiar la frase, importa como Acción y usa Observaciones en Writer.");
+      const proceed = window.confirm("Este tipo crea un encabezado de diálogo y la línea parece una oración de Acción. Acepta sólo si deseas reemplazar su formato; para reconocer una identidad sin cambiar la frase, importa como Acción y usa el Asistente en Writer.");
       if (!proceed) return;
     }
     setStaging({ ...staging, blocks: changeWriterImportKind(staging.blocks, new Set([block.id]), kind) });
@@ -233,7 +248,7 @@ export default function WriterImportFlow({ onClose, beforeCreate }: { onClose: (
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "No se pudo crear el guion importado.");
-      router.push(`/writer/${payload.script.id}?imported=basic`);
+      await openImported(payload.script.id, "?imported=basic");
     } catch (cause) {
       setError(importError(cause));
       setBusy(null);

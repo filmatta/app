@@ -1,10 +1,12 @@
 "use client";
 
 import type { Editor } from "@tiptap/core";
+import { closeHistory } from "@tiptap/pm/history";
 import { Fragment, Slice, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { TextSelection, type EditorState } from "@tiptap/pm/state";
-import type { ScreenplayKind } from "./document.ts";
+import type { ScreenplayKind, WriterBlock, WriterDocument } from "./document.ts";
 import { writerCharacterIdentityKey } from "./character-observations.ts";
+import { normalizeWriterPresentationContent, redundantWriterBlankBlockIds } from "./spacing.ts";
 
 export type WriterBlockTarget = {
   id: string;
@@ -42,6 +44,11 @@ export type WriterCharacterRenameInput = {
 };
 
 export type WriterStructuralCommandResult = "applied" | "unchanged" | "missing" | "invalid";
+
+export type WriterAutoFormatMutation = {
+  blockId: string;
+  kind: ScreenplayKind;
+};
 
 export function findWriterBlockAtPosition(doc: ProseMirrorNode, position: number): WriterBlockTarget | null {
   const safePosition = Math.max(0, Math.min(position, doc.content.size));
@@ -118,6 +125,95 @@ export function changeWriterBlockKind(editor: Editor, targetId: string, kind: Sc
   );
   editor.commands.focus();
   return true;
+}
+
+export function applyWriterAutoFormat(
+  editor: Editor,
+  changes: readonly WriterAutoFormatMutation[],
+  options: { blockIds?: readonly string[] } = {},
+): WriterStructuralCommandResult {
+  const requested = new Map(changes.map((change) => [change.blockId, change.kind]));
+  const scope = new Set(options.blockIds ?? requested.keys());
+  const transaction = closeHistory(
+    editor.state.tr.setMeta("writerStructuralOperation", "autoFormat"),
+  );
+  let changed = 0;
+  const document = editor.getJSON() as unknown as WriterDocument;
+  const redundant = new Set(redundantWriterBlankBlockIds(document, [...scope]));
+  const operations: Array<{
+    from: number;
+    to: number;
+    replacement?: ProseMirrorNode;
+  }> = [];
+  editor.state.doc.forEach((node, position) => {
+    const blockId = String(node.attrs.id ?? "");
+    if (!scope.has(blockId)) return;
+    if (redundant.has(blockId)) {
+      operations.push({ from: position, to: position + node.nodeSize });
+      return;
+    }
+    const source = node.toJSON() as WriterBlock;
+    const normalizedContent = normalizeWriterPresentationContent(source);
+    const requestedKind = requested.get(blockId);
+    const nextKind = requestedKind && node.attrs.kind === "action" ? requestedKind : node.attrs.kind;
+    const contentChanged = JSON.stringify(source.content ?? []) !== JSON.stringify(normalizedContent ?? []);
+    const kindChanged = nextKind !== node.attrs.kind;
+    if (!contentChanged && !kindChanged) return;
+    const replacement = node.type.create(
+      { ...node.attrs, kind: nextKind },
+      Fragment.fromJSON(editor.schema, normalizedContent ?? []),
+      node.marks,
+    );
+    operations.push({ from: position, to: position + node.nodeSize, replacement });
+  });
+  for (const operation of operations.sort((left, right) => right.from - left.from)) {
+    if (operation.replacement) transaction.replaceWith(operation.from, operation.to, operation.replacement);
+    else transaction.delete(operation.from, operation.to);
+    changed += 1;
+  }
+  if (!changed) return "unchanged";
+  transaction.setMeta("addToHistory", true).scrollIntoView();
+  editor.view.dispatch(transaction);
+  editor.view.focus();
+  return "applied";
+}
+
+export type WriterTextReplacement = {
+  blockId: string;
+  start: number;
+  end: number;
+  expectedText: string;
+  replacement: string;
+};
+
+export function replaceWriterTextMatches(
+  editor: Editor,
+  replacements: readonly WriterTextReplacement[],
+): { status: WriterStructuralCommandResult; replaced: number } {
+  const byId = new Map<string, WriterBlockTarget>();
+  editor.state.doc.forEach((node, position) => {
+    if (node.type.name !== "screenplayBlock") return;
+    const id = String(node.attrs.id ?? "");
+    byId.set(id, { id, kind: node.attrs.kind as ScreenplayKind, position, text: node.textContent });
+  });
+  const valid = replacements.flatMap((item) => {
+    const block = byId.get(item.blockId);
+    if (!block || item.start < 0 || item.end <= item.start
+      || block.text.slice(item.start, item.end) !== item.expectedText) return [];
+    return [{
+      from: block.position + 1 + item.start,
+      to: block.position + 1 + item.end,
+      replacement: item.replacement,
+    }];
+  }).sort((left, right) => right.from - left.from);
+  if (!valid.length) return { status: "missing", replaced: 0 };
+  const transaction = closeHistory(editor.state.tr)
+    .setMeta("writerStructuralOperation", "replaceAll")
+    .setMeta("addToHistory", true);
+  for (const item of valid) transaction.insertText(item.replacement, item.from, item.to);
+  editor.view.dispatch(transaction.scrollIntoView());
+  editor.view.focus();
+  return { status: "applied", replaced: valid.length };
 }
 
 export function writerSceneIds(doc: ProseMirrorNode) {
@@ -358,6 +454,26 @@ export function insertWriterBlock(
   transaction.setSelection(TextSelection.near(transaction.doc.resolve(selectionPosition)));
   editor.view.dispatch(transaction.scrollIntoView());
   editor.commands.focus();
+  return true;
+}
+
+export function insertWriterEmptyBlock(
+  editor: Editor,
+  targetId: string,
+  kind: ScreenplayKind,
+): boolean {
+  const target = findWriterBlockById(editor, targetId);
+  if (!target) return false;
+  const node = editor.state.doc.nodeAt(target.position);
+  const screenplayBlock = editor.state.schema.nodes.screenplayBlock;
+  if (!node || !screenplayBlock) return false;
+
+  const inserted = screenplayBlock.create({ id: crypto.randomUUID(), kind });
+  const insertAt = target.position + node.nodeSize;
+  const transaction = editor.state.tr.insert(insertAt, inserted);
+  transaction.setSelection(TextSelection.near(transaction.doc.resolve(insertAt + 1)));
+  editor.view.dispatch(transaction.scrollIntoView());
+  editor.view.focus();
   return true;
 }
 

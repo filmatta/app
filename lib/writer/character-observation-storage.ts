@@ -1,6 +1,7 @@
 "use client";
 
-import { normalizeWriterCharacterIdentity } from "./character-observations.ts";
+import { writerCharacterIdentityKey } from "./character-observations.ts";
+import { isClearlyNonCharacterLine, parseWriterCharacterCue } from "./character-cues.ts";
 
 export const WRITER_CHARACTER_DECISIONS_VERSION = 1;
 
@@ -63,8 +64,9 @@ export function parseWriterCharacterDecisionState(value: unknown): WriterCharact
         || typeof candidate.name !== "string"
         || (candidate.source !== "confirmedAction" && candidate.source !== "manual")
         || typeof candidate.createdAt !== "number") return [];
-      const name = candidate.name.trim().replace(/\s+/gu, " ").slice(0, 64);
-      if (!name) return [];
+      const rawName = candidate.name.trim().replace(/\s+/gu, " ").slice(0, 64);
+      const name = parseWriterCharacterCue(rawName).name;
+      if (!name || isClearlyNonCharacterLine(rawName)) return [];
       return [{
         id: candidate.id,
         name,
@@ -85,7 +87,7 @@ export function parseWriterCharacterDecisionState(value: unknown): WriterCharact
         ? candidate.identityId
         : undefined;
       const identityKey = typeof candidate.identityKey === "string"
-        ? normalizeWriterCharacterIdentity(candidate.identityKey)
+        ? writerCharacterIdentityKey(candidate.identityKey)
         : undefined;
       if (candidate.state !== "ignored" && !identityId && !identityKey) return [];
       return [{

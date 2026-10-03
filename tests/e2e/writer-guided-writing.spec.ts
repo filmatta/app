@@ -71,9 +71,9 @@ test("desktop sends an explicit scene question, follows a stable reference and p
   const api = await mockGuidedWriting(page);
   await page.goto(`/writer/${scriptId}`);
   await page.getByRole("button", { name: /^1 INT\. ESTUDIO/u }).click();
-  await page.getByRole("button", { name: /^Observaciones/ }).click();
+  await page.getByRole("button", { name: /^Asistente/ }).click();
   const panel = page.locator(".writer-observations-panel");
-  await panel.getByRole("button", { name: /Pensarlo juntos/ }).click();
+  await panel.getByRole("button", { name: "Guía", exact: true }).click();
   await expect(panel.getByRole("heading", { name: "¿Qué estás intentando resolver?" })).toBeVisible();
   await expect(panel.getByText(/Contexto:.*Escena 1/u)).toBeVisible();
   await panel.getByRole("button", { name: "Siento que esta escena no avanza." }).click();
@@ -89,8 +89,8 @@ test("desktop sends an explicit scene question, follows a stable reference and p
   await page.getByRole("button", { name: /^1 INT\. ESTUDIO/u }).click();
   await page.reload();
   await page.getByRole("button", { name: /^1 INT\. ESTUDIO/u }).click();
-  await page.getByRole("button", { name: /^Observaciones/ }).click();
-  await page.locator(".writer-observations-panel").getByRole("button", { name: /Pensarlo juntos/ }).click();
+  await page.getByRole("button", { name: /^Asistente/ }).click();
+  await page.locator(".writer-observations-panel").getByRole("button", { name: "Guía", exact: true }).click();
   await expect(page.locator(".writer-observations-panel").getByText("Crear sospecha")).toBeVisible();
 });
 
@@ -100,8 +100,9 @@ test("mobile switches to document scope, submits with Enter and keeps the panel 
   await mockGuidedWriting(page);
   await page.goto(`/writer/${scriptId}`);
   await page.getByRole("button", { name: /^Navegar/ }).click();
-  await page.getByRole("dialog", { name: "Navegar por el guion" }).getByRole("button", { name: "Guided Writing" }).click();
+  await page.getByRole("dialog", { name: "Navegar por el guion" }).getByRole("button", { name: /Asistente/ }).click();
   const panel = page.locator(".writer-observations-panel");
+  await panel.getByRole("button", { name: "Guía", exact: true }).click();
   await panel.getByRole("button", { name: "Todo el guion" }).click();
   await expect(panel.getByText(/Todo el guion · estructura/u)).toBeVisible();
   const input = panel.getByLabel("Cuéntame qué decisión estás intentando tomar.");

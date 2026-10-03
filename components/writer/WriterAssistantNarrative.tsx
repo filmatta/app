@@ -8,6 +8,8 @@ import {
   type WriterSceneAssistantStatus,
   type WriterSceneOverride,
 } from "@/lib/writer/script-assistant";
+import { SmartFeatureIndicator } from "./WriterSmartFormatting";
+import WriterAssistantSectionHeading from "./WriterAssistantSectionHeading";
 
 const FIELD_LABELS = { objective: "Objetivo", obstacle: "Obstáculo", change: "Cambio" } as const;
 const STATUS_LABELS: Record<WriterSceneAssistantStatus, string> = {
@@ -55,6 +57,7 @@ export default function WriterAssistantNarrative({
 
   return (
     <div className="writer-assistant-narrative">
+      <WriterAssistantSectionHeading title="O-O-C · POR ESCENA" help="Revisa el objetivo, el obstáculo y el cambio de la escena activa. La lectura es una propuesta que puedes corregir." />
       <label className="writer-assistant-toggle">
         <span><strong>O-O-C · Por escena</strong><small>Objective, Obstacle y Change de la escena activa guardada.</small></span>
         <input type="checkbox" checked={enabled} onChange={(event) => onToggle(event.target.checked)} />
@@ -103,7 +106,7 @@ export default function WriterAssistantNarrative({
 
           <div className="writer-assistant-analyze-row">
             <button type="button" onClick={onAnalyze} disabled={status === "ANALYZING"}>
-              {status === "ANALYZING" ? "Analizando…" : status === "UNANALYZED" ? "Analizar escena" : "Actualizar análisis"}
+              {status === "ANALYZING" ? "Analizando…" : <SmartFeatureIndicator label={status === "UNANALYZED" ? "Analizar escena" : "Actualizar análisis"} />}
             </button>
             <small>Terra · análisis por escena</small>
           </div>

@@ -47,13 +47,49 @@ import {
   writerTimelineRestoresAfterFocus,
   writerTimelineStartsOpen,
 } from "@/lib/writer/workspace-ui";
+import {
+  WRITER_PANEL_LAYOUT_DEFAULTS,
+  fitWriterPanelLayout,
+  parseWriterPanelLayout,
+  writerPanelStorageKey,
+  type WriterPanelLayout,
+  type WriterPanelSide,
+} from "@/lib/writer/panel-layout";
+import {
+  WRITER_WORKSPACE_LAYOUT_DEFAULTS,
+  legacyWriterWorkspaceLayoutStorageKey,
+  migrateWriterWorkspaceLayout,
+  parseWriterWorkspaceLayout,
+  writerWorkspaceLayoutStorageKey,
+  type WriterWorkspaceLayout,
+} from "@/lib/writer/workspace-layout";
+import {
+  WRITER_APPEARANCE_DEFAULTS,
+  parseWriterAppearance,
+  writerAppearanceStorageKey,
+  type WriterAppearance,
+  type WriterSkin,
+} from "@/lib/writer/appearance";
+import { WRITER_KIND_SHORTCUTS, writerKindShortcut, writerShortcutLabel } from "@/lib/writer/shortcuts";
 import WriterImportFlow from "./WriterImportFlow";
+import WriterBreakdownPanel from "./WriterBreakdownPanel";
 import WriterAssistantNarrative from "./WriterAssistantNarrative";
 import WriterGuidedWriting from "./WriterGuidedWriting";
 import WriterObservationsPanel, { type WriterObservationsSection } from "./WriterObservationsPanel";
+import WriterPanelResizeHandle from "./WriterPanelResizeHandle";
+import WriterHorizontalResizeHandle from "./WriterHorizontalResizeHandle";
 import WriterSetupPayoff from "./WriterSetupPayoff";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
 import WriterTimelineView from "./WriterTimeline";
+import WriterIcon from "./WriterIcon";
+import { useWriterPopoverDismissal } from "./useWriterPopoverDismissal";
+import { WriterIdeasPanel, WriterSearchPanel, WriterVersionsPanel } from "./WriterErgonomicTools";
+import {
+  SmartFeatureIndicator,
+  WriterAutoFormatFlow,
+  WriterPasteFormatPrompt,
+  WriterReadinessNotice,
+} from "./WriterSmartFormatting";
 import {
   WriterContextMenu,
   WriterInsertPanel,
@@ -64,6 +100,7 @@ import {
 import {
   currentWriterBlock,
   captureWriterSelectionTarget,
+  applyWriterAutoFormat,
   changeWriterBlockKind,
   findWriterBlockById,
   selectionSpansWriterBlocks,
@@ -73,6 +110,7 @@ import {
   moveWriterScene,
   renameWriterCharacter,
   renameWriterSceneNickname,
+  replaceWriterTextMatches,
   writerSceneIds,
   type WriterCharacterReference,
   type WriterSceneMovePosition,
@@ -86,14 +124,44 @@ import {
   type WriterAutocompleteSuggestion,
 } from "@/lib/writer/autocomplete";
 import {
+  assessWriterPaste,
+  canUseStructuredFeature,
+  createWriterAutoFormatPlan,
+  mergeWriterAutoFormatClassifications,
+  resolveWriterAutoFormatChanges,
+  writerAutoFormatCandidates,
+  type WriterAutoFormatPlan,
+  type WriterStructuredFeature,
+} from "@/lib/writer/smart-format";
+import {
+  createWriterFormatBaseline,
+  invalidateWriterFormatBaseline,
+  loadWriterFormatBaseline,
+  resolveWriterFormatBaseline,
+  saveWriterFormatBaseline,
+  writerReadinessWithFormatBaseline,
+  type WriterFormatBaseline,
+} from "@/lib/writer/format-baseline";
+import { createWriterCheckpoint, writerCheckpointLabel } from "@/lib/writer/checkpoints";
+import type { WriterSearchResult, WriterSearchScope } from "@/lib/writer/search";
+import type { WriterIdea } from "@/lib/writer/ideas";
+import {
+  isWriterTextInputKey,
+  loadWriterTypewriterSoundPreference,
+  playWriterTypewriterClick,
+  primeWriterTypewriterSound,
+  saveWriterTypewriterSoundPreference,
+} from "@/lib/writer/typewriter-sound";
+import { classifyWriterAutoFormat } from "@/lib/writer/auto-format-client";
+import {
   analyzeWriterCharacterObservations,
   deriveWriterKnownCharacterIdentities,
-  normalizeWriterCharacterIdentity,
   writerCharacterIdentityKey,
   writerObservationTextHash,
   type WriterCharacterAnalysisCache,
   type WriterCharacterObservation,
 } from "@/lib/writer/character-observations";
+import { isClearlyNonCharacterLine, parseWriterCharacterCue } from "@/lib/writer/character-cues";
 import {
   emptyWriterCharacterDecisionState,
   loadWriterCharacterDecisionState,
@@ -158,6 +226,11 @@ type WriterStructuralToast = {
   token: number;
 };
 
+type WriterPasteAssistState = {
+  step: "offer" | "consequence";
+  blockIds: string[];
+};
+
 const initialSaveState: WriterPersistenceState = {
   status: "cloud",
   revision: 1,
@@ -167,9 +240,11 @@ const initialSaveState: WriterPersistenceState = {
 export default function WriterWorkspace({
   script,
   userId,
+  previewNoCredits,
 }: {
   script: ScriptInput;
   userId: string;
+  previewNoCredits: boolean;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(script.title);
@@ -197,11 +272,26 @@ export default function WriterWorkspace({
   const [draggedSceneId, setDraggedSceneId] = useState<string | null>(null);
   const [sceneDropTarget, setSceneDropTarget] = useState<{ sceneId: string; position: WriterSceneMovePosition } | null>(null);
   const [navigationDepth, setNavigationDepth] = useState(0);
+  const [shotlistReturnPath] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const value = new URLSearchParams(window.location.search).get("return");
+    return value?.startsWith("/shotlists/") ? value : null;
+  });
   const [structuralToast, setStructuralToast] = useState<WriterStructuralToast | null>(null);
   const [exportMenu, setExportMenu] = useState(false);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [observationsOpen, setObservationsOpen] = useState(false);
+  const [pasteAssist, setPasteAssist] = useState<WriterPasteAssistState | null>(null);
+  const [autoFormatPlan, setAutoFormatPlan] = useState<WriterAutoFormatPlan | null>(null);
+  const [autoFormatResolving, setAutoFormatResolving] = useState(false);
+  const [autoFormatFallback, setAutoFormatFallback] = useState<string | null>(null);
+  const [dismissedReadiness, setDismissedReadiness] = useState<Set<WriterStructuredFeature>>(() => new Set());
+  const [observationsOpen, setObservationsOpen] = useState(true);
+  const [panelLayout, setPanelLayout] = useState<WriterPanelLayout>(WRITER_PANEL_LAYOUT_DEFAULTS);
+  const [workspaceLayout, setWorkspaceLayout] = useState<WriterWorkspaceLayout>(WRITER_WORKSPACE_LAYOUT_DEFAULTS);
+  const [appearance, setAppearance] = useState<WriterAppearance>(WRITER_APPEARANCE_DEFAULTS);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [observationsSection, setObservationsSection] = useState<WriterObservationsSection>("review");
   const [selectedObservationBlockId, setSelectedObservationBlockId] = useState<string | null>(null);
   const [selectedAssistantObservationId, setSelectedAssistantObservationId] = useState<string | null>(null);
@@ -220,8 +310,21 @@ export default function WriterWorkspace({
   const [timelineMounted, setTimelineMounted] = useState(false);
   const [timelineRefreshToken, setTimelineRefreshToken] = useState(0);
   const [timelineRequestedScene, setTimelineRequestedScene] = useState<string | null>(null);
+  const [timelineRequestedView, setTimelineRequestedView] = useState<"timeline" | "pulse" | null>(null);
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
+  const [charactersCollapsed, setCharactersCollapsed] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchReplaceMode, setSearchReplaceMode] = useState(false);
+  const [ideasOpen, setIdeasOpen] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [guidedIdeaQuestion, setGuidedIdeaQuestion] = useState("");
+  const [formatBaseline, setFormatBaseline] = useState<WriterFormatBaseline | null>(null);
+  const [typewriterSoundEnabled, setTypewriterSoundEnabled] = useState(false);
   const [autocomplete, setAutocomplete] = useState<WriterAutocompleteState | null>(null);
   const [conflictBusy, setConflictBusy] = useState(false);
+  const [shotlistBusy, setShotlistBusy] = useState(false);
+  const [shotlistModalOpen, setShotlistModalOpen] = useState(false);
+  const [shotlists, setShotlists] = useState<Array<{ id: string; title?: string }>>([]);
   const [feedback, setFeedback] = useState<string | null>(null);
   const controllerRef = useRef<WriterPersistenceController | null>(null);
   const documentRef = useRef(script.document);
@@ -230,7 +333,10 @@ export default function WriterWorkspace({
   const toastTimeoutRef = useRef<number | null>(null);
   const leaseRef = useRef<WriterTabLease | null>(null);
   const exportButtonRef = useRef<HTMLButtonElement>(null);
+  const shotlistTriggerRef = useRef<HTMLButtonElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const appearanceRootRef = useRef<HTMLDivElement>(null);
+  const appearanceButtonRef = useRef<HTMLButtonElement>(null);
   const paperRef = useRef<HTMLDivElement>(null);
   const nativeFullscreenRef = useRef(false);
   const pointerRef = useRef<{ type: string; at: number }>({ type: "mouse", at: 0 });
@@ -240,6 +346,7 @@ export default function WriterWorkspace({
   const importNoticeHandledRef = useRef(false);
   const highlightTimeoutRef = useRef<number | null>(null);
   const autocompleteRef = useRef<WriterAutocompleteState | null>(null);
+  const autoFormatRequestRef = useRef(0);
   const acceptAutocompleteRef = useRef<((suggestion: WriterAutocompleteSuggestion) => boolean) | null>(null);
   const confirmedTimelineRevisionRef = useRef(script.revision);
   const timelineRequestedRevisionRef = useRef(script.revision);
@@ -247,12 +354,15 @@ export default function WriterWorkspace({
   const timelineInitialOpenHandledRef = useRef<string | null>(null);
   const timelineBeforeFocusRef = useRef(false);
   const observationsBeforeFocusRef = useRef(false);
+  const observationsExplicitRef = useRef(false);
   const observationsInitialOpenHandledRef = useRef<string | null>(null);
   const saveStateRef = useRef(saveState);
   const characterDecisionsRef = useRef(characterDecisions);
   const characterAnalysisCacheRef = useRef<WriterCharacterAnalysisCache>(new Map());
   const localAutocompleteCharactersRef = useRef<string[]>([]);
   const composingRef = useRef(false);
+  const formatBaselineRef = useRef<WriterFormatBaseline | null>(null);
+  const typewriterSoundEnabledRef = useRef(false);
   const observationsButtonRef = useRef<HTMLButtonElement>(null);
   const mobileObservationsButtonRef = useRef<HTMLButtonElement>(null);
   const formatObservationsRef = useRef<WriterFormatObservation[]>([]);
@@ -340,6 +450,122 @@ export default function WriterWorkspace({
     enabled: observationsOpen && observationsSection === "guided" && !focusMode,
   });
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const restored = loadWriterFormatBaseline(window.location.origin, userId, script.id);
+      formatBaselineRef.current = restored;
+      setFormatBaseline(restored);
+      const sound = loadWriterTypewriterSoundPreference(userId);
+      typewriterSoundEnabledRef.current = sound;
+      setTypewriterSoundEnabled(sound);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [script.id, userId]);
+
+  const panelLayoutStorageKey = useMemo(() => writerPanelStorageKey(userId), [userId]);
+  const workspaceLayoutStorageKey = useMemo(() => writerWorkspaceLayoutStorageKey(userId), [userId]);
+  const appearanceStorageKey = useMemo(() => writerAppearanceStorageKey(userId), [userId]);
+  const closeAppearance = useCallback(() => setAppearanceOpen(false), []);
+  useWriterPopoverDismissal({
+    open: appearanceOpen,
+    rootRef: appearanceRootRef,
+    triggerRef: appearanceButtonRef,
+    onDismiss: closeAppearance,
+  });
+  const commitPanelWidth = useCallback((side: WriterPanelSide, value: number) => {
+    setPanelLayout((current) => {
+      const next = { ...current, [side]: value };
+      try {
+        window.localStorage.setItem(panelLayoutStorageKey, JSON.stringify(next));
+      } catch {
+        // Layout preferences are best-effort and never block Writer.
+      }
+      return next;
+    });
+  }, [panelLayoutStorageKey]);
+
+  const commitWorkspaceLayout = useCallback((patch: Partial<WriterWorkspaceLayout>) => {
+    setWorkspaceLayout((current) => {
+      const next = { ...current, ...patch };
+      try {
+        window.localStorage.setItem(workspaceLayoutStorageKey, JSON.stringify(next));
+      } catch {
+        // Workspace preferences are best-effort and never block Writer.
+      }
+      return next;
+    });
+  }, [workspaceLayoutStorageKey]);
+
+  const setLeftSidebarVisible = useCallback((visible: boolean) => {
+    commitWorkspaceLayout({ leftSidebarVisible: visible });
+  }, [commitWorkspaceLayout]);
+
+  const setRightSidebarVisible = useCallback((visible: boolean) => {
+    observationsExplicitRef.current = true;
+    setObservationsOpen(visible);
+    commitWorkspaceLayout({ rightSidebarVisible: visible });
+  }, [commitWorkspaceLayout]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      let restored = { ...WRITER_WORKSPACE_LAYOUT_DEFAULTS };
+      try {
+        const current = window.localStorage.getItem(workspaceLayoutStorageKey);
+        if (current) restored = parseWriterWorkspaceLayout(current);
+        else {
+          const legacy = window.localStorage.getItem(legacyWriterWorkspaceLayoutStorageKey(userId));
+          restored = migrateWriterWorkspaceLayout(legacy);
+          if (legacy) window.localStorage.setItem(workspaceLayoutStorageKey, JSON.stringify(restored));
+        }
+      } catch {
+        // Private browsing or disabled storage keeps the product defaults.
+      }
+      setWorkspaceLayout(restored);
+      if (window.matchMedia("(min-width: 901px)").matches) setObservationsOpen(restored.rightSidebarVisible);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [userId, workspaceLayoutStorageKey]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      try { setAppearance(parseWriterAppearance(window.localStorage.getItem(appearanceStorageKey))); }
+      catch { setAppearance({ ...WRITER_APPEARANCE_DEFAULTS }); }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [appearanceStorageKey]);
+
+  const commitAppearance = useCallback((patch: Partial<WriterAppearance>) => {
+    setAppearance((current) => {
+      const next = { ...current, ...patch };
+      try { window.localStorage.setItem(appearanceStorageKey, JSON.stringify(next)); } catch { /* visual preference stays local */ }
+      return next;
+    });
+  }, [appearanceStorageKey]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      let restored = { ...WRITER_PANEL_LAYOUT_DEFAULTS };
+      try {
+        restored = parseWriterPanelLayout(window.localStorage.getItem(panelLayoutStorageKey));
+      } catch {
+        // Private browsing or disabled storage keeps the exact product defaults.
+      }
+      setPanelLayout(fitWriterPanelLayout(restored, window.innerWidth, observationsOpen));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [observationsOpen, panelLayoutStorageKey]);
+
+  useEffect(() => {
+    const fit = () => setPanelLayout((current) => fitWriterPanelLayout(
+      current,
+      workspaceRef.current?.clientWidth ?? window.innerWidth,
+      observationsOpen && !focusMode,
+    ));
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [focusMode, observationsOpen]);
+
   const editor = useEditor({
     immediatelyRender: false,
     shouldRerenderOnTransaction: false,
@@ -376,13 +602,33 @@ export default function WriterWorkspace({
           view.dispatch(view.state.tr.insertText(text));
           return true;
         }
-        const blocks = text.split(/\r?\n/).map((line) =>
+        const assessment = assessWriterPaste(text);
+        const blockIds: string[] = [];
+        const blocks = text.split(/\r?\n/).map((line) => {
+          const id = crypto.randomUUID();
+          blockIds.push(id);
+          return (
           view.state.schema.nodes.screenplayBlock.create(
-            { id: crypto.randomUUID(), kind: "action" },
+            { id, kind: "action" },
             line ? view.state.schema.text(line) : undefined,
-          ),
-        );
+          ));
+        });
         view.dispatch(view.state.tr.replaceSelection(new Slice(Fragment.fromArray(blocks), 0, 0)).scrollIntoView());
+        if (assessment.qualifies) {
+          window.queueMicrotask(() => {
+            const nextBaseline = invalidateWriterFormatBaseline(formatBaselineRef.current, {
+              kind: "structural",
+              reason: "significantPaste",
+              affectedBlockIds: blockIds,
+            });
+            formatBaselineRef.current = nextBaseline;
+            setFormatBaseline(nextBaseline);
+            if (nextBaseline) {
+              try { saveWriterFormatBaseline(window.location.origin, userId, script.id, nextBaseline); } catch { /* best-effort local baseline */ }
+            }
+            setPasteAssist({ step: "offer", blockIds });
+          });
+        }
         return true;
       },
       handleDOMEvents: {
@@ -399,6 +645,7 @@ export default function WriterWorkspace({
         pointerdown: (_view, event) => {
           const pointerEvent = event as PointerEvent;
           pointerRef.current = { type: pointerEvent.pointerType || "mouse", at: Date.now() };
+          if (typewriterSoundEnabledRef.current) void primeWriterTypewriterSound();
           if (pointerEvent.button === 2 && pointerRef.current.type === "mouse") {
             rightClickSelectionRef.current = activeWriterSelectionRef.current
               ? captureWriterSelectionTarget(_view.state)
@@ -422,6 +669,7 @@ export default function WriterWorkspace({
         },
       },
       handleKeyDown: (view, event) => {
+        if (typewriterSoundEnabledRef.current && isWriterTextInputKey(event)) playWriterTypewriterClick();
         const autocompleteMenu = autocompleteRef.current;
         if (!view.composing && !event.isComposing && autocompleteMenu) {
           const action = writerAutocompleteKeyAction(event.key, view.composing || event.isComposing, autocompleteMenu.explicitlySelected);
@@ -504,6 +752,34 @@ export default function WriterWorkspace({
   });
 
   useEffect(() => {
+    if (!editor) return;
+    const applyKindShortcut = (event: KeyboardEvent) => {
+      const kind = writerKindShortcut(event, navigator.platform);
+      if (!kind || composingRef.current || !editor.isFocused) return;
+      const target = event.target;
+      if (!(target instanceof Node) || !editor.view.dom.contains(target)) return;
+      if (window.document.querySelector('[role="dialog"]')) return;
+      const block = currentWriterBlock(editor);
+      if (!block) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (changeWriterBlockKind(editor, block.id, kind)) setFeedback(`Tipo cambiado a ${WRITER_KIND_LABELS[kind]}.`);
+    };
+    window.addEventListener("keydown", applyKindShortcut, true);
+    return () => window.removeEventListener("keydown", applyKindShortcut, true);
+  }, [editor]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`/api/writer/scripts/${script.id}/shotlists`, { cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.shotlists)) setShotlists(data.shotlists);
+      });
+    return () => { cancelled = true; };
+  }, [script.id]);
+
+  useEffect(() => {
     if (timelineInitialOpenHandledRef.current === script.id) return;
     timelineInitialOpenHandledRef.current = script.id;
     const shouldOpen = initialTimeline.ok
@@ -512,6 +788,16 @@ export default function WriterWorkspace({
     setTimelineMounted(shouldOpen);
     setTimelineOpen(shouldOpen);
   }, [initialTimeline, script.id]);
+
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 900px)");
+    const keepMobileDrawerClosed = () => {
+      if (mobile.matches && !observationsExplicitRef.current) setObservationsOpen(false);
+    };
+    keepMobileDrawerClosed();
+    mobile.addEventListener("change", keepMobileDrawerClosed);
+    return () => mobile.removeEventListener("change", keepMobileDrawerClosed);
+  }, [script.id]);
 
   useEffect(() => {
     const phone = window.matchMedia("(max-width: 600px)");
@@ -564,6 +850,10 @@ export default function WriterWorkspace({
   }, [editor]);
 
   const scenes = useMemo(() => deriveScenes(document), [document]);
+  const readiness = useMemo(
+    () => writerReadinessWithFormatBaseline(document, formatBaseline),
+    [document, formatBaseline],
+  );
   const sceneMetadata = useMemo(() => deriveWriterSceneMetadata(document), [document]);
   const knownCharacterIdentities = useMemo(() => {
     const retiredKeys = new Set(Object.entries(structuralMetadata.characterAliases)
@@ -581,6 +871,7 @@ export default function WriterWorkspace({
           .map((identity) => ({
             name: identity.name,
             source: identity.source,
+            variants: identity.variants,
           })) ?? []),
       ],
     );
@@ -593,15 +884,31 @@ export default function WriterWorkspace({
   const currentBlocksById = useMemo(() => new Map(document.content.map((block) => [block.attrs.id, block])), [document]);
   const combinedCharacterObservations = useMemo(() => {
     const byEvidence = new Map<string, WriterCharacterObservation>();
+    const decisionByFingerprint = new Map(characterDecisions.decisions.map((decision) => [decision.fingerprint, decision]));
     for (const observation of [...characterObservations, ...(persistedImportAnalysis?.observations ?? [])]) {
+      if (isClearlyNonCharacterLine(observation.identity)) continue;
       const currentBlock = currentBlocksById.get(observation.blockId);
       if (!currentBlock || writerObservationTextHash(blockText(currentBlock)) !== observation.blockHash) continue;
       const key = [observation.identityKey, observation.blockId, observation.start, observation.end, observation.evidence].join("|");
       const current = byEvidence.get(key);
-      if (!current || observation.source === "ai" || observation.source === "explicit") byEvidence.set(key, observation);
+      if (current && observation.source !== "ai" && observation.source !== "explicit") continue;
+      const decision = decisionByFingerprint.get(observation.fingerprint);
+      const decidedIdentity = decision?.identityId
+        ? characterDecisions.identities.find((identity) => identity.id === decision.identityId)
+        : null;
+      const decidedKey = decision?.identityKey ?? (decidedIdentity ? writerCharacterIdentityKey(decidedIdentity.name) : null);
+      const knownIdentity = decidedKey
+        ? knownCharacterIdentities.find((identity) => identity.key === decidedKey)
+        : null;
+      byEvidence.set(key, decision && decision.state !== "ignored" && decidedKey ? {
+        ...observation,
+        identityKey: decidedKey,
+        identity: decidedIdentity?.name ?? knownIdentity?.name ?? observation.identity,
+        known: true,
+      } : observation);
     }
     return [...byEvidence.values()];
-  }, [characterObservations, currentBlocksById, persistedImportAnalysis?.observations]);
+  }, [characterDecisions.decisions, characterDecisions.identities, characterObservations, currentBlocksById, knownCharacterIdentities, persistedImportAnalysis?.observations]);
   const characterActivity = useMemo(
     () => deriveAcceptedCharacterActivity(document, knownCharacterIdentities, combinedCharacterObservations),
     [combinedCharacterObservations, document, knownCharacterIdentities],
@@ -832,6 +1139,7 @@ export default function WriterWorkspace({
       counts.set(observation.blockId, (counts.get(observation.blockId) ?? 0) + 1);
     }
     setWriterObservationMarkers(editor, counts, (blockId) => {
+      observationsExplicitRef.current = true;
       setSelectedObservationBlockId(blockId);
       setObservationsOpen(true);
     });
@@ -846,6 +1154,7 @@ export default function WriterWorkspace({
       return;
     }
     setWriterAssistantMarkers(editor, assistant.markers, (item) => {
+      observationsExplicitRef.current = true;
       setActiveScene(item.sceneId);
       setSelectedAssistantObservationId(item.observationId);
       setObservationsSection("assistant");
@@ -897,6 +1206,7 @@ export default function WriterWorkspace({
       setFeedback("Este fragmento cambió y la observación de importación quedó desactualizada.");
       return;
     }
+    observationsExplicitRef.current = true;
     setActiveFormatObservationId(observation.id);
     setSelectedObservationBlockId(observation.blockId);
     setObservationsOpen(true);
@@ -948,6 +1258,34 @@ export default function WriterWorkspace({
       return true;
     }
     return false;
+  }, [clearSceneHighlight, editor, recordCurrentNavigation]);
+
+  const navigateToWriterReference = useCallback((reference: {
+    sceneId: string;
+    blockId?: string | null;
+    fromOffset?: number;
+    toOffset?: number;
+  }) => {
+    if (!editor) return false;
+    const target = findWriterBlockById(editor, reference.blockId ?? reference.sceneId)
+      ?? findWriterBlockById(editor, reference.sceneId);
+    if (!target) return false;
+    recordCurrentNavigation();
+    const start = target.position + 1 + Math.max(0, reference.fromOffset ?? 0);
+    const maximum = target.position + 1 + target.text.length;
+    const from = Math.min(start, maximum);
+    const to = Math.min(maximum, Math.max(from, target.position + 1 + (reference.toOffset ?? reference.fromOffset ?? 0)));
+    editor.view.dispatch(editor.state.tr
+      .setSelection(TextSelection.create(editor.state.doc, from, to))
+      .scrollIntoView());
+    editor.view.focus();
+    setActiveScene(reference.sceneId);
+    setMobileSidebar(null);
+    clearSceneHighlight();
+    setWriterSceneHighlight(editor, target.id);
+    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
+    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
+    return true;
   }, [clearSceneHighlight, editor, recordCurrentNavigation]);
 
   const navigateBack = useCallback(() => {
@@ -1059,9 +1397,15 @@ export default function WriterWorkspace({
 
     const online = () => void controllerRef.current?.flush();
     const keyboard = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === "s") {
         event.preventDefault();
         void controllerRef.current?.flush();
+      } else if (key === "f" || (key === "h" && event.ctrlKey && !event.metaKey)) {
+        event.preventDefault();
+        setSearchReplaceMode(key === "h");
+        setSearchOpen(true);
       }
     };
     window.addEventListener("online", online);
@@ -1101,7 +1445,7 @@ export default function WriterWorkspace({
     const updateScale = () => {
       const exteriorMargin = window.innerWidth <= 600 ? 20 : 80;
       const available = Math.max(0, paper.clientWidth - exteriorMargin);
-      const next = Math.max(1, Math.min(1.15, available / 880));
+      const next = Math.max(1, Math.min(1.15, available / 960));
       setFocusScale(Math.round(next * 1_000) / 1_000);
     };
     updateScale();
@@ -1114,17 +1458,27 @@ export default function WriterWorkspace({
     const closeSurfaceOrFocus = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (importOpen) return;
-      if (observationsOpen) {
-        setObservationsOpen(false);
-        focusObservationsTrigger();
-        return;
-      }
+      if (shotlistModalOpen && !shotlistBusy) return setShotlistModalOpen(false);
+      if (shortcutsOpen) return setShortcutsOpen(false);
+      if (appearanceOpen) return setAppearanceOpen(false);
+      if (searchOpen) return setSearchOpen(false);
+      if (ideasOpen) return setIdeasOpen(false);
+      if (versionsOpen) return setVersionsOpen(false);
+      if (autoFormatPlan) return closeAutoFormat();
+      if (pasteAssist) return setPasteAssist(null);
       if (contextMenu) return setContextMenu(null);
       if (insertState) return setInsertState(null);
       if (mobileMoreOpen) return setMobileMoreOpen(false);
       if (mobileNavigateOpen) return setMobileNavigateOpen(false);
       if (exportMenu) return setExportMenu(false);
       if (pdfExportOpen) return setPdfExportOpen(false);
+      if (feedback) return setFeedback(null);
+      if (timelineExpanded) return setTimelineExpanded(false);
+      if (observationsOpen) {
+        setObservationsOpen(false);
+        focusObservationsTrigger();
+        return;
+      }
       if (timelineOpen) {
         timelineOpenRef.current = false;
         setTimelineOpen(false);
@@ -1138,7 +1492,7 @@ export default function WriterWorkspace({
     };
     window.addEventListener("keydown", closeSurfaceOrFocus);
     return () => window.removeEventListener("keydown", closeSurfaceOrFocus);
-  }, [contextMenu, exportMenu, focusMode, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pdfExportOpen, restoreTimelineAfterFocus, timelineOpen]);
+  }, [appearanceOpen, autoFormatPlan, contextMenu, exportMenu, feedback, focusMode, ideasOpen, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pasteAssist, pdfExportOpen, restoreTimelineAfterFocus, searchOpen, shortcutsOpen, shotlistBusy, shotlistModalOpen, timelineExpanded, timelineOpen, versionsOpen]);
 
   useEffect(() => {
     if (!editor || !ready || deepLinkHandledRef.current) return;
@@ -1288,7 +1642,7 @@ export default function WriterWorkspace({
     router.push(`/writer/${data.script.id}`);
   }
 
-  function openTimeline(sceneId: string | null = null) {
+  function openTimeline(sceneId: string | null = null, view: "timeline" | "pulse" | null = null) {
     setExportMenu(false);
     setContextMenu(null);
     setInsertState(null);
@@ -1296,6 +1650,7 @@ export default function WriterWorkspace({
     setMobileNavigateOpen(false);
     setMobileMoreOpen(false);
     setTimelineRequestedScene(sceneId);
+    setTimelineRequestedView(view);
     setTimelineMounted(true);
     timelineRequestedRevisionRef.current = confirmedTimelineRevisionRef.current;
     setTimelineRefreshToken((value) => value + 1);
@@ -1365,27 +1720,6 @@ export default function WriterWorkspace({
     setImportOpen(true);
   }
 
-  function openTouchWriterActions() {
-    if (!editor) return;
-    const target = activeWriterSelectionRef.current
-      && writerSelectionTargetIsCurrent(editor.state, activeWriterSelectionRef.current)
-      ? activeWriterSelectionRef.current
-      : captureWriterSelectionTarget(editor.state);
-    const scene = target ? writerSceneForSelection(editor.state) : {
-      sceneId: null,
-      reason: "Coloca el cursor en el guion para abrir una escena en Timeline.",
-    };
-    setMobileMoreOpen(false);
-    setContextMenu({
-      target,
-      x: 8,
-      y: window.innerHeight - 420,
-      sceneId: scene.sceneId,
-      timelineReason: scene.reason,
-      touch: true,
-    });
-  }
-
   function dismissMobileNotice() {
     try {
       window.localStorage.setItem(`filmatta.writer.mobile-notice.v1:${userId}`, "dismissed");
@@ -1397,6 +1731,7 @@ export default function WriterWorkspace({
 
   function closeTimeline() {
     timelineOpenRef.current = false;
+    setTimelineExpanded(false);
     setTimelineOpen(false);
   }
 
@@ -1415,7 +1750,42 @@ export default function WriterWorkspace({
       if (saveStateRef.current.status === "local") await controller.flush();
     }
     if (saveStateRef.current.status !== "cloud") {
-      throw new Error("Guarda el documento actual en la nube antes de crear el guion importado.");
+      throw new Error("No pudimos guardar los últimos cambios.");
+    }
+  }
+
+  function openShotlistFlow() {
+    if (shotlistBusy) return;
+    if (shotlists.length === 1) {
+      router.push(`/shotlists/${shotlists[0].id}`);
+      return;
+    }
+    if (shotlists.length > 1) {
+      router.push("/shotlists");
+      return;
+    }
+    setShotlistModalOpen(true);
+  }
+
+  async function createShotlist(mode: "manual" | "suggested") {
+    if (shotlistBusy) return;
+    setShotlistBusy(true);
+    setFeedback(null);
+    try {
+      await ensureCurrentDocumentSaved();
+      const createResponse = await fetch(`/api/writer/scripts/${script.id}/shotlists`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operationId: crypto.randomUUID(), title: `${title.trim() || "Guion sin título"} — Shotlist` }),
+      });
+      const created = await createResponse.json();
+      if (!createResponse.ok || typeof created.id !== "string") throw new Error(created.error ?? "No pudimos crear la Shotlist.");
+      setShotlistModalOpen(false);
+      setShotlists([{ id: created.id, title: `${title.trim() || "Guion sin título"} — Shotlist` }]);
+      router.push(`/shotlists/${created.id}${mode === "suggested" ? "?mode=suggested" : ""}`);
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No pudimos abrir la Shotlist.");
+      setShotlistBusy(false);
     }
   }
 
@@ -1428,11 +1798,12 @@ export default function WriterWorkspace({
   }
 
   function confirmCharacterObservation(observation: WriterCharacterObservation, value: string) {
-    const name = value.trim().replace(/\s+/gu, " ").slice(0, 64);
-    if (!name) return;
-    const key = normalizeWriterCharacterIdentity(name);
+    const candidate = value.trim().replace(/\s+/gu, " ").slice(0, 64);
+    const name = parseWriterCharacterCue(candidate).name;
+    if (!name || isClearlyNonCharacterLine(candidate)) return;
+    const key = writerCharacterIdentityKey(name);
     const existing = characterDecisionsRef.current.identities.find(
-      (identity) => normalizeWriterCharacterIdentity(identity.name) === key,
+      (identity) => writerCharacterIdentityKey(identity.name) === key,
     );
     const identityId = existing?.id ?? crypto.randomUUID();
     updateCharacterDecisions((current) => ({
@@ -1465,9 +1836,11 @@ export default function WriterWorkspace({
   }
 
   function addManualCharacter(value: string) {
-    const name = value.trim().replace(/\s+/gu, " ").slice(0, 64);
-    const key = normalizeWriterCharacterIdentity(name);
-    if (!key || knownCharacterIdentities.some((identity) => identity.key === key)) return;
+    const candidate = value.trim().replace(/\s+/gu, " ").slice(0, 64);
+    const name = parseWriterCharacterCue(candidate).name;
+    const key = writerCharacterIdentityKey(name);
+    if (!key || isClearlyNonCharacterLine(candidate)
+      || knownCharacterIdentities.some((identity) => identity.key === key)) return;
     updateCharacterDecisions((current) => ({
       ...current,
       identities: [...current.identities, {
@@ -1480,42 +1853,27 @@ export default function WriterWorkspace({
   }
 
   function viewNarrativeObservation(observation: WriterNarrativeObservation) {
-    if (!editor || !activeScene) return;
+    if (!activeScene) return;
     const blockId = observation.evidence[0]?.blockId ?? activeScene;
-    const target = findWriterBlockById(editor, blockId);
-    if (!target) {
+    if (!navigateToWriterReference({ sceneId: activeScene, blockId })) {
       setFeedback("La evidencia ya no existe en la escena actual.");
       return;
     }
     setSelectedAssistantObservationId(observation.id);
-    recordCurrentNavigation();
-    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(target.position + 1))).scrollIntoView());
-    clearSceneHighlight();
-    setWriterSceneHighlight(editor, blockId);
-    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
-    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
   }
 
   function viewSetupPayoffElement(element: WriterNarrativeElement) {
-    if (!editor) return;
-    const target = findWriterBlockById(editor, element.blockId ?? element.sceneId)
-      ?? findWriterBlockById(editor, element.sceneId);
-    if (!target) {
+    if (!navigateToWriterReference({ sceneId: element.sceneId, blockId: element.blockId })) {
       setFeedback("La escena vinculada ya no existe. La relación se conserva para revisión.");
-      return;
     }
-    recordCurrentNavigation();
-    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, target.position + 1)).scrollIntoView());
-    editor.view.focus();
-    setActiveScene(element.sceneId);
-    clearSceneHighlight();
-    setWriterSceneHighlight(editor, target.id);
-    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
-    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
   }
 
   function viewGuidedReference(reference: WriterGuidedReference) {
     if (!editor) return;
+    if (reference.type === "pulse") {
+      openTimeline(reference.sceneId, "pulse");
+      return;
+    }
     if (reference.type === "setup" || reference.type === "payoff") {
       const element = setupPayoff.elements.find((item) => item.id === reference.targetId);
       if (!element) {
@@ -1527,46 +1885,36 @@ export default function WriterWorkspace({
       return;
     }
     if (reference.type === "scene") {
-      if (!navigateToScene(reference.sceneId, true, true)) setFeedback("La escena referenciada ya no existe.");
+      if (!navigateToWriterReference({ sceneId: reference.sceneId })) setFeedback("La escena referenciada ya no existe.");
     } else {
-      const target = findWriterBlockById(editor, reference.blockId ?? reference.sceneId)
-        ?? findWriterBlockById(editor, reference.sceneId);
-      if (!target) {
+      if (!navigateToWriterReference({ sceneId: reference.sceneId, blockId: reference.blockId })) {
         setFeedback("La evidencia referenciada ya no existe.");
         return;
       }
-      recordCurrentNavigation();
-      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, target.position + 1)).scrollIntoView());
-      editor.view.focus();
-      setActiveScene(reference.sceneId);
       setObservationsSection("assistant");
       if (reference.type === "observation") setSelectedAssistantObservationId(reference.targetId);
-      clearSceneHighlight();
-      setWriterSceneHighlight(editor, target.id);
-      highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
     }
-    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
   }
 
   function viewCharacterObservation(observation: WriterCharacterObservation) {
     if (!editor) return;
+    setSelectedObservationBlockId(observation.blockId);
     const target = findWriterBlockById(editor, observation.blockId);
     if (!target || writerObservationTextHash(target.text) !== observation.blockHash) {
-      setFeedback("La evidencia cambió y ya no se puede abrir. Las observaciones se actualizarán con el texto actual.");
+      setFeedback("Este fragmento cambió desde la revisión.");
       setAnalysisEpoch((value) => value + 1);
+      if (observation.sceneId) navigateToWriterReference({ sceneId: observation.sceneId });
+      if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
       return;
     }
-    recordCurrentNavigation();
-    editor.view.dispatch(
-      editor.state.tr
-        .setSelection(TextSelection.create(editor.state.doc, target.position + 1 + observation.start, target.position + 1 + observation.end))
-        .scrollIntoView(),
-    );
-    editor.view.focus();
-    setActiveScene(findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId));
-    clearSceneHighlight();
-    setWriterSceneHighlight(editor, observation.blockId);
-    highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
+    const sceneId = observation.sceneId
+      ?? findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId);
+    if (!sceneId || !navigateToWriterReference({
+      sceneId,
+      blockId: observation.blockId,
+      fromOffset: observation.start,
+      toOffset: observation.end,
+    })) setFeedback("Este fragmento cambió desde la revisión.");
     if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
   }
 
@@ -1738,10 +2086,222 @@ export default function WriterWorkspace({
     showStructuralUndo("Personaje renombrado");
   }
 
+  async function startAutoFormat(scope: "document" | "partial" | "paste", blockIds?: readonly string[]) {
+    if (!editor) return;
+    if (readiness.state === "EMPTY" && scope !== "paste") {
+      setFeedback("Añade contenido antes de aplicar Formato Automático.");
+      return;
+    }
+    try {
+      const ids = scope === "partial" ? readiness.suspiciousBlockIds : blockIds;
+      const sourceDocument = editor.getJSON() as unknown as WriterDocument;
+      const plan = createWriterAutoFormatPlan(
+        sourceDocument,
+        { scope, ...(ids ? { blockIds: ids } : {}) },
+      );
+      const candidates = writerAutoFormatCandidates(sourceDocument, plan);
+      const request = ++autoFormatRequestRef.current;
+      setAutoFormatPlan(plan);
+      setAutoFormatFallback(null);
+      setAutoFormatResolving(candidates.length > 0);
+      setPasteAssist(null);
+      if (candidates.length === 0) return;
+      try {
+        await ensureCurrentDocumentSaved();
+        const classifications = await classifyWriterAutoFormat(script.id, {
+          scope,
+          blockIds: plan.blockIds,
+        });
+        if (autoFormatRequestRef.current !== request) return;
+        setAutoFormatPlan(mergeWriterAutoFormatClassifications(plan, classifications));
+      } catch {
+        if (autoFormatRequestRef.current !== request) return;
+        setAutoFormatFallback("No pudimos resolver todas las ambigüedades con clasificación contextual. Puedes aplicar la detección local y revisar los elementos pendientes.");
+      } finally {
+        if (autoFormatRequestRef.current === request) setAutoFormatResolving(false);
+      }
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No se pudo detectar la estructura del texto.");
+    }
+  }
+
+  function closeAutoFormat() {
+    autoFormatRequestRef.current += 1;
+    setAutoFormatResolving(false);
+    setAutoFormatFallback(null);
+    setAutoFormatPlan(null);
+  }
+
+  async function applyAutoFormatPlan(choices: Readonly<Record<string, ScreenplayKind>>, reviewAll: boolean) {
+    if (!editor || !autoFormatPlan) return;
+    try {
+      await createWriterCheckpoint(script.id, {
+        kind: "before_auto_format",
+        label: writerCheckpointLabel("before_auto_format"),
+        snapshot: currentSnapshot(),
+        sourceRevision: Math.max(1, saveStateRef.current.revision),
+      });
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No pudimos crear la versión de seguridad.");
+      return;
+    }
+    const plan = autoFormatPlan;
+    const mutations = [
+      ...plan.blockIds.map((blockId) => ({ blockId, kind: "action" as const })),
+      ...resolveWriterAutoFormatChanges(plan, choices, reviewAll),
+    ];
+    const result = applyWriterAutoFormat(editor, mutations, { blockIds: plan.blockIds });
+    closeAutoFormat();
+    if (result === "applied") {
+      refreshWriterDerivedStateAfterFormatting();
+      const validated = validateWriterDocument(editor.getJSON() as unknown as WriterDocument);
+      if (validated.ok) {
+        const nextBaseline = resolveWriterFormatBaseline(
+          formatBaselineRef.current,
+          validated.document,
+          plan.blockIds,
+          Math.max(1, saveStateRef.current.revision),
+        );
+        persistFormatBaseline(nextBaseline);
+      }
+      setFeedback(`Formato aplicado. El texto se conservó y la estructura de Writer se actualizó.${plan.redundantBlankBlocks ? ` ${plan.redundantBlankBlocks} espacios redundantes normalizados.` : ""}`);
+      showStructuralUndo("Formato Automático aplicado");
+    } else {
+      const nextBaseline = createWriterFormatBaseline(documentRef.current, Math.max(1, saveStateRef.current.revision));
+      persistFormatBaseline(nextBaseline);
+      setFeedback("Este documento ya parece estar correctamente formateado como guion.");
+    }
+  }
+
+  function persistFormatBaseline(next: WriterFormatBaseline) {
+    formatBaselineRef.current = next;
+    setFormatBaseline(next);
+    try { saveWriterFormatBaseline(window.location.origin, userId, script.id, next); } catch { /* local baseline is best-effort */ }
+  }
+
+  function navigateSearchResult(result: WriterSearchResult) {
+    setTimelineExpanded(false);
+    if (!result.sceneId || !navigateToWriterReference({
+      sceneId: result.sceneId,
+      blockId: result.blockId,
+      fromOffset: result.start,
+      toOffset: result.end,
+    })) setFeedback("El fragmento ya no existe en el documento actual.");
+  }
+
+  function replaceSearchResult(result: WriterSearchResult, replacement: string) {
+    if (!editor) return false;
+    return replaceWriterTextMatches(editor, [{
+      blockId: result.blockId,
+      start: result.start,
+      end: result.end,
+      expectedText: result.text,
+      replacement,
+    }]).status === "applied";
+  }
+
+  async function replaceAllSearchResults(results: WriterSearchResult[], replacement: string) {
+    if (!editor || !results.length) return 0;
+    try {
+      await createWriterCheckpoint(script.id, {
+        kind: "before_replace_all",
+        label: writerCheckpointLabel("before_replace_all"),
+        snapshot: currentSnapshot(),
+        sourceRevision: Math.max(1, saveStateRef.current.revision),
+      });
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No pudimos crear la versión de seguridad.");
+      return 0;
+    }
+    const result = replaceWriterTextMatches(editor, results.map((item) => ({
+      blockId: item.blockId,
+      start: item.start,
+      end: item.end,
+      expectedText: item.text,
+      replacement,
+    })));
+    if (result.status === "applied" && result.replaced >= 8) {
+      const nextBaseline = invalidateWriterFormatBaseline(formatBaselineRef.current, {
+        kind: "structural",
+        reason: "largeReplace",
+        affectedBlockIds: [...new Set(results.map((item) => item.blockId))],
+        replacementCount: result.replaced,
+      });
+      if (nextBaseline) persistFormatBaseline(nextBaseline);
+    }
+    return result.replaced;
+  }
+
+  async function restoreWriterCheckpoint(snapshot: WriterSnapshot) {
+    if (!editor) return;
+    await createWriterCheckpoint(script.id, {
+      kind: "before_restore",
+      label: writerCheckpointLabel("before_restore"),
+      snapshot: currentSnapshot(),
+      sourceRevision: Math.max(1, saveStateRef.current.revision),
+    });
+    editor.commands.setContent(snapshot.document, { emitUpdate: false });
+    titleRef.current = snapshot.title;
+    setTitle(snapshot.title);
+    documentRef.current = snapshot.document;
+    setDocument(snapshot.document);
+    controllerRef.current?.markChanged(snapshot);
+    const nextBaseline = createWriterFormatBaseline(snapshot.document, Math.max(1, saveStateRef.current.revision));
+    persistFormatBaseline(nextBaseline);
+  }
+
+  function thinkTogetherFromIdea(idea: WriterIdea, scope: WriterSearchScope) {
+    setIdeasOpen(false);
+    setGuidedIdeaQuestion(`${idea.title}: ${idea.direction} Consecuencia posible: ${idea.consequence}`);
+    guidedWriting.setScope(scope);
+    setObservationsSection("guided");
+    setObservationsOpen(true);
+  }
+
+  function toggleTypewriterSound() {
+    const next = !typewriterSoundEnabledRef.current;
+    typewriterSoundEnabledRef.current = next;
+    setTypewriterSoundEnabled(next);
+    saveWriterTypewriterSoundPreference(userId, next);
+    if (next) void primeWriterTypewriterSound();
+  }
+
+  function refreshWriterDerivedStateAfterFormatting() {
+    if (!editor || editor.isDestroyed) return;
+    const validated = validateWriterDocument(editor.getJSON() as unknown as WriterDocument);
+    if (!validated.ok) {
+      setFeedback(validated.reason);
+      return;
+    }
+    const canonical = canonicalWriterDocument(validated.document);
+    if (JSON.stringify(canonical) !== JSON.stringify(documentRef.current)) {
+      documentRef.current = canonical;
+      controllerRef.current?.markChanged({
+        title: titleRef.current,
+        document: canonical,
+        schemaVersion: WRITER_SCHEMA_VERSION,
+      });
+    }
+    setDocument(canonical);
+    setDismissedReadiness(new Set());
+    setAnalysisEpoch((value) => value + 1);
+  }
+
+  function readinessNotice(feature: WriterStructuredFeature) {
+    if (dismissedReadiness.has(feature)) return null;
+    return <WriterReadinessNotice
+      feature={feature}
+      readiness={readiness}
+      onFormat={(scope) => startAutoFormat(scope)}
+      onDismiss={() => setDismissedReadiness((current) => new Set(current).add(feature))}
+    />;
+  }
+
   async function enterFocus() {
     timelineBeforeFocusRef.current = timelineOpenRef.current;
     observationsBeforeFocusRef.current = observationsOpen;
     timelineOpenRef.current = false;
+    setTimelineExpanded(false);
     setTimelineOpen(false);
     setObservationsOpen(false);
     setSelectedObservationBlockId(null);
@@ -1778,10 +2338,19 @@ export default function WriterWorkspace({
   return (
     <div
       ref={workspaceRef}
-      className={`writer-workspace${focusMode ? " writer-workspace--focus" : ""}${timelineOpen ? " writer-workspace--timeline" : ""}${observationsOpen && !focusMode ? " writer-workspace--observations" : ""}`}
+      className={`writer-workspace${focusMode ? " writer-workspace--focus" : ""}${timelineOpen ? " writer-workspace--timeline" : ""}${timelineExpanded ? " writer-workspace--timeline-expanded" : ""}${observationsOpen && !focusMode ? " writer-workspace--observations" : ""}${!workspaceLayout.leftSidebarVisible && !focusMode ? " writer-workspace--left-hidden" : ""}${charactersCollapsed ? " writer-workspace--characters-collapsed" : ""}`}
+      data-writer-skin={appearance.skin}
+      data-writer-warm-filter={appearance.warmFilter ? "true" : "false"}
       data-focus-scale={focusScale.toFixed(3)}
       data-structural-metadata-persistent={structuralMetadataPersistent ? "true" : "false"}
-      style={{ "--writer-focus-scale": focusScale } as CSSProperties}
+      style={{
+        "--writer-focus-scale": focusScale,
+        "--writer-left-panel-width": `${panelLayout.left}px`,
+        "--writer-right-panel-width": `${panelLayout.right}px`,
+        "--writer-timeline-panel-height": `${workspaceLayout.timelineHeight}px`,
+        "--writer-character-panel-height": `${workspaceLayout.charactersHeight}px`,
+        "--writer-warm-intensity": appearance.warmIntensity / 100,
+      } as CSSProperties}
     >
       <header className="writer-header">
         <div className="writer-header-brand">
@@ -1809,7 +2378,34 @@ export default function WriterWorkspace({
           disabled={!ready || saveState.status === "tabBlocked"}
         />
         <div className="writer-header-actions">
+          <div className="writer-panel-toggles" role="group" aria-label="Paneles de Writer">
+            <button
+              type="button"
+              aria-label={workspaceLayout.leftSidebarVisible ? "Ocultar panel izquierdo" : "Mostrar panel izquierdo"}
+              aria-pressed={workspaceLayout.leftSidebarVisible}
+              title={workspaceLayout.leftSidebarVisible ? "Ocultar escenas y personajes" : "Mostrar escenas y personajes"}
+              onClick={() => setLeftSidebarVisible(!workspaceLayout.leftSidebarVisible)}
+            ><WriterIcon name="panelLeft" /></button>
+            <button
+              type="button"
+              aria-label={observationsOpen ? "Ocultar Asistente" : "Mostrar Asistente"}
+              aria-pressed={observationsOpen}
+            title={observationsOpen ? "Ocultar Asistente" : "Mostrar Asistente"}
+              onClick={() => setRightSidebarVisible(!observationsOpen)}
+            ><WriterIcon name="panelRight" /></button>
+          </div>
           <SaveStatus state={saveState} />
+          <div ref={appearanceRootRef} className="writer-appearance">
+            <button ref={appearanceButtonRef} className="writer-appearance-button" type="button" aria-label="Apariencia de Writer" aria-expanded={appearanceOpen} onClick={() => setAppearanceOpen((open) => !open)}><WriterIcon name="eye" /></button>
+            {appearanceOpen && <div className="writer-appearance-popover" role="dialog" aria-label="Apariencia de Writer">
+              <strong>Apariencia</strong>
+              <div className="writer-skin-options" role="radiogroup" aria-label="Skin de Writer">{(["carbon", "navy", "cream"] as WriterSkin[]).map((skin) => <button key={skin} type="button" role="radio" aria-checked={appearance.skin === skin} onClick={() => commitAppearance({ skin })}><span className={`writer-skin-swatch is-${skin}`} />{skin === "carbon" ? "Carbon" : skin === "navy" ? "Marino" : "Cream"}</button>)}</div>
+              <label className="writer-warm-toggle"><input type="checkbox" checked={appearance.warmFilter} onChange={(event) => commitAppearance({ warmFilter: event.target.checked })} />Confort visual / filtro cálido</label>
+              {appearance.warmFilter && <label className="writer-warm-intensity">Intensidad<input type="range" min="4" max="14" value={appearance.warmIntensity} onChange={(event) => commitAppearance({ warmIntensity: Number(event.target.value) })} /></label>}
+              <small>El filtro cálido altera temporalmente la percepción del color. No cambia el guion ni sus exports.</small>
+              <button type="button" onClick={() => { setAppearanceOpen(false); setShortcutsOpen(true); }}>Atajos de teclado</button>
+            </div>}
+          </div>
           <button
             className="writer-import-open-button"
             type="button"
@@ -1820,9 +2416,9 @@ export default function WriterWorkspace({
             ref={observationsButtonRef}
             className="writer-observations-open-button"
             type="button"
-            onClick={() => { setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen((open) => !open); }}
+            onClick={() => { setSelectedObservationBlockId(null); setObservationsSection("review"); setRightSidebarVisible(true); }}
             aria-expanded={observationsOpen}
-          >Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
+          ><SmartFeatureIndicator label={`Asistente${pendingObservationCount ? ` (${pendingObservationCount})` : ""}`} /></button>
           <button
             className="writer-timeline-button"
             type="button"
@@ -1831,6 +2427,7 @@ export default function WriterWorkspace({
             onClick={() => timelineOpen ? closeTimeline() : openTimeline()}
             disabled={!initialTimeline.ok}
           >Timeline</button>
+          <button className="writer-versions-button" type="button" onClick={() => setVersionsOpen(true)}><WriterIcon name="history" /><span>Versiones</span></button>
           <div className="writer-export-wrap">
             <button
               ref={exportButtonRef}
@@ -1870,10 +2467,7 @@ export default function WriterWorkspace({
             <div className="writer-mobile-nav-tabs" role="group" aria-label="Secciones de Writer">
               <button type="button" onClick={() => { setMobileSidebar("scenes"); setMobileNavigateOpen(false); }}>Escenas</button>
               <button type="button" onClick={() => { setMobileSidebar("characters"); setMobileNavigateOpen(false); }}>Personajes</button>
-              <button ref={mobileObservationsButtonRef} type="button" onClick={() => { setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
-              <button type="button" onClick={() => { setObservationsSection("assistant"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Assistant</button>
-              <button type="button" onClick={() => { setObservationsSection("setupPayoff"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Setup / Payoff</button>
-              <button type="button" onClick={() => { setObservationsSection("guided"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Guided Writing</button>
+              <button ref={mobileObservationsButtonRef} type="button" onClick={() => { observationsExplicitRef.current = true; setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen(true); setMobileNavigateOpen(false); }}><SmartFeatureIndicator label={`Asistente${pendingObservationCount ? ` (${pendingObservationCount})` : ""}`} /></button>
               <button type="button" disabled={!initialTimeline.ok} onClick={() => openTimeline()}>Timeline</button>
             </div>
           </div>
@@ -1882,6 +2476,12 @@ export default function WriterWorkspace({
           <div className="writer-mobile-sheet writer-mobile-more-sheet" role="dialog" aria-label="Más acciones de Writer">
             <div className="writer-mobile-sheet-head"><strong>Writer</strong><button type="button" onClick={() => setMobileMoreOpen(false)}>Cerrar</button></div>
             <button type="button" onClick={openImportFlow}>Importar borrador</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setAppearanceOpen(true); }}>Apariencia y atajos</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document"); }}><SmartFeatureIndicator label="FORMATO AUTOMÁTICO" /></button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setSearchReplaceMode(false); setSearchOpen(true); }}><WriterIcon name="search" /> Buscar</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setIdeasOpen(true); }}><WriterIcon name="ideas" /> Ideas</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); setVersionsOpen(true); }}><WriterIcon name="history" /> Versiones</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); toggleTypewriterSound(); }}><WriterIcon name={typewriterSoundEnabled ? "soundOn" : "soundOff"} /> {typewriterSoundEnabled ? "Desactivar sonido" : "Activar sonido"}</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setPdfExportOpen(true); }}>Exportar PDF</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); downloadBackup("json"); }}>Exportar JSON</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); downloadBackup("fdx"); }}>Exportar FDX</button>
@@ -1900,7 +2500,7 @@ export default function WriterWorkspace({
           <small>Guion</small>
           <strong>{title || "Guion sin título"}</strong>
         </div>
-        <nav aria-label="Escenas del guion">
+        <nav className="writer-scene-region" aria-label="Escenas del guion" tabIndex={0}>
           <p className="writer-sidebar-heading">Escenas <span>{scenes.length}</span></p>
           {scenes.length ? (
             <ol className="writer-scene-list">
@@ -1974,10 +2574,34 @@ export default function WriterWorkspace({
             </ol>
           ) : <p className="writer-sidebar-empty">Añade un encabezado para crear una escena.</p>}
         </nav>
-        <section className="writer-character-section" aria-labelledby="writer-character-heading">
-          <p id="writer-character-heading" className="writer-sidebar-heading">Personajes <span>{characterRows.length}</span></p>
-          {characterRows.length ? (
-            <ul>{characterRows.map((character) => (
+        {!charactersCollapsed && (
+          <WriterHorizontalResizeHandle
+            panel="characters"
+            value={workspaceLayout.charactersHeight}
+            workspaceRef={workspaceRef}
+            onCommit={(charactersHeight) => commitWorkspaceLayout({ charactersHeight })}
+          />
+        )}
+        <section className={`writer-character-section${charactersCollapsed ? " is-collapsed" : ""}`} aria-labelledby="writer-character-heading">
+          <button className="writer-character-section-toggle" type="button" aria-expanded={!charactersCollapsed} onClick={() => setCharactersCollapsed((value) => !value)}>
+            <span id="writer-character-heading" className="writer-sidebar-heading">Elementos detectados</span><span aria-hidden="true">{charactersCollapsed ? "⌄" : "⌃"}</span>
+          </button>
+          {!charactersCollapsed && <WriterBreakdownPanel
+            scriptId={script.id}
+            activeSceneId={activeScene}
+            characterCount={characterRows.length}
+            onEnsureSaved={ensureCurrentDocumentSaved}
+            onNavigate={(reference) => {
+              if (!reference.sceneId) return;
+              navigateToWriterReference({
+                sceneId: reference.sceneId,
+                blockId: reference.blockId,
+                fromOffset: reference.fromOffset ?? undefined,
+                toOffset: reference.toOffset ?? undefined,
+              });
+            }}
+            characters={characterRows.length ? (
+            <ul aria-label="Personajes del guion" tabIndex={0}>{characterRows.map((character) => (
               <li key={character.identityId} className="writer-character-item">
                 {editingCharacterId === character.identityId ? (
                   <input
@@ -2023,14 +2647,30 @@ export default function WriterWorkspace({
               </li>
             ))}</ul>
           ) : <p className="writer-sidebar-empty">Los personajes aceptados aparecerán aquí.</p>}
+          />}
         </section>
       </aside>
+
+      {!focusMode && workspaceLayout.leftSidebarVisible && (
+        <WriterPanelResizeHandle
+          side="left"
+          value={panelLayout.left}
+          otherValue={panelLayout.right}
+          otherVisible={observationsOpen}
+          workspaceRef={workspaceRef}
+          onCommit={(value) => commitPanelWidth("left", value)}
+        />
+      )}
 
       <main className="writer-editor-area">
         <WriterToolbar
           editor={editor}
           words={words}
-          onWriterActions={openTouchWriterActions}
+          onAutoFormat={() => startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document")}
+          onSearch={() => { setSearchReplaceMode(false); setSearchOpen(true); }}
+          onIdeas={() => setIdeasOpen(true)}
+          soundEnabled={typewriterSoundEnabled}
+          onToggleSound={toggleTypewriterSound}
           onInsert={(next) => {
             setExportMenu(false);
             setContextMenu(null);
@@ -2043,6 +2683,7 @@ export default function WriterWorkspace({
           }}
         />
         <div className="writer-editor-notices">
+          {!focusMode && shotlistReturnPath && <Link className="writer-navigation-back" href={shotlistReturnPath}>← Volver a Shotlist</Link>}
           {!focusMode && navigationDepth > 0 && <button className="writer-navigation-back" type="button" onClick={navigateBack}>← Volver</button>}
           {feedback && <div className="writer-editor-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback(null)}>Cerrar</button></div>}
         </div>
@@ -2088,31 +2729,22 @@ export default function WriterWorkspace({
         )}
       </main>
 
+      {observationsOpen && !focusMode && (
+        <WriterPanelResizeHandle
+          side="right"
+          value={panelLayout.right}
+          otherValue={workspaceLayout.leftSidebarVisible ? panelLayout.left : 0}
+          otherVisible={workspaceLayout.leftSidebarVisible}
+          workspaceRef={workspaceRef}
+          onCommit={(value) => commitPanelWidth("right", value)}
+        />
+      )}
+
       {editor && contextMenu && (
         <WriterContextMenu
           editor={editor}
           state={contextMenu}
           onClose={() => setContextMenu(null)}
-          onInsert={(view) => {
-            const snapshot = contextMenu.target;
-            if (!snapshot || !writerSelectionTargetIsCurrent(editor.state, snapshot)) {
-              setFeedback("El cursor o el documento cambió. Abre de nuevo el menú en el destino actual.");
-              return setContextMenu(null);
-            }
-            setInsertState({
-              targetId: snapshot.targetId,
-              x: contextMenu.x,
-              y: contextMenu.y,
-              view,
-              intent: "insert",
-              expectedKind: snapshot.kind,
-              expectedText: snapshot.text,
-              selectionFrom: snapshot.from,
-              selectionTo: snapshot.to,
-              documentAtOpen: snapshot.document,
-            });
-            setContextMenu(null);
-          }}
           onConvertSceneHeading={() => {
             const snapshot = contextMenu.target;
             if (!snapshot || !writerSelectionTargetIsCurrent(editor.state, snapshot)) {
@@ -2150,6 +2782,14 @@ export default function WriterWorkspace({
           aria-label="Timeline del guion"
           hidden={!timelineOpen}
         >
+          {!timelineExpanded && (
+            <WriterHorizontalResizeHandle
+              panel="timeline"
+              value={workspaceLayout.timelineHeight}
+              workspaceRef={workspaceRef}
+              onCommit={(timelineHeight) => commitWorkspaceLayout({ timelineHeight })}
+            />
+          )}
           <WriterTimelineView
             initialTimeline={initialTimeline.timeline}
             variant="embedded"
@@ -2157,23 +2797,31 @@ export default function WriterWorkspace({
             confirmedRevision={saveState.revision}
             active={timelineOpen}
             requestedSceneId={timelineRequestedScene}
+            requestedView={timelineRequestedView}
+            timelineReadinessNotice={readinessNotice("timeline")}
+            pulseReadinessNotice={readinessNotice("pulse")}
+            pulseAvailable={canUseStructuredFeature(readiness, "pulse").available}
+            onEnsureCurrentSaved={ensureCurrentDocumentSaved}
             refreshToken={timelineRefreshToken}
             activeSceneId={activeScene}
             sceneNicknames={structuralMetadata.sceneNicknames}
             onMoveScene={handleMoveScene}
             onClose={closeTimeline}
-            onGoToWriter={(sceneId) => {
+            expanded={timelineExpanded}
+            onToggleExpanded={() => setTimelineExpanded((value) => !value)}
+            onGoToWriter={(sceneId, options) => {
+              if (!options?.preservePanel) setTimelineExpanded(false);
               if (!editor) {
                 setFeedback("El editor todavía no está preparado.");
                 return;
               }
               const target = findWriterBlockById(editor, sceneId);
-              if (!target || target.kind !== "sceneHeading" || !navigateToScene(sceneId, true, true)) {
+              if (!target || target.kind !== "sceneHeading" || !navigateToWriterReference({ sceneId })) {
                 setFeedback("Timeline está desactualizado: la escena ya no existe o dejó de ser un encabezado.");
                 return;
               }
               setFeedback(null);
-              if (window.matchMedia("(max-width: 900px)").matches) setTimelineOpen(false);
+              if (!options?.preservePanel && window.matchMedia("(max-width: 900px)").matches) setTimelineOpen(false);
             }}
           />
         </section>
@@ -2185,6 +2833,33 @@ export default function WriterWorkspace({
           <button type="button" onClick={() => leaseRef.current?.takeOver()}>Editar aquí</button>
         </div>
       )}
+
+      {searchOpen && <WriterSearchPanel
+        scriptId={script.id}
+        document={document}
+        activeSceneId={activeScene}
+        initialReplace={searchReplaceMode}
+        onClose={() => setSearchOpen(false)}
+        onNavigate={navigateSearchResult}
+        onReplace={replaceSearchResult}
+        onReplaceAll={replaceAllSearchResults}
+      />}
+
+      {ideasOpen && <WriterIdeasPanel
+        scriptId={script.id}
+        activeSceneId={activeScene}
+        onClose={() => setIdeasOpen(false)}
+        onNavigate={navigateSearchResult}
+        onThinkTogether={thinkTogetherFromIdea}
+      />}
+
+      {versionsOpen && <WriterVersionsPanel
+        scriptId={script.id}
+        snapshot={currentSnapshot()}
+        revision={Math.max(1, saveState.revision)}
+        onClose={() => setVersionsOpen(false)}
+        onRestore={restoreWriterCheckpoint}
+      />}
 
       {pdfExportOpen && (
         <WriterPdfExportDialog
@@ -2202,6 +2877,32 @@ export default function WriterWorkspace({
         />
       )}
 
+      {autoFormatPlan && (
+        <WriterAutoFormatFlow
+          plan={autoFormatPlan}
+          resolving={autoFormatResolving}
+          fallbackNotice={autoFormatFallback}
+          onApply={applyAutoFormatPlan}
+          onClose={closeAutoFormat}
+        />
+      )}
+
+      {pasteAssist && !autoFormatPlan && (
+        <WriterPasteFormatPrompt
+          step={pasteAssist.step}
+          onFormat={() => startAutoFormat("paste", pasteAssist.blockIds)}
+          onContinue={() => {
+            if (pasteAssist.step === "offer") {
+              setPasteAssist((current) => current ? { ...current, step: "consequence" } : null);
+            } else {
+              setPasteAssist(null);
+            }
+          }}
+          onBack={() => setPasteAssist((current) => current ? { ...current, step: "offer" } : null)}
+          onClose={() => setPasteAssist(null)}
+        />
+      )}
+
       {mobileNoticeOpen && !focusMode && (
         <div className="writer-mobile-notice" role="dialog" aria-labelledby="writer-mobile-notice-title">
           <strong id="writer-mobile-notice-title">Writer en móvil</strong>
@@ -2213,7 +2914,15 @@ export default function WriterWorkspace({
       <WriterObservationsPanel
         hidden={!observationsOpen || focusMode}
         section={observationsSection}
-        onSectionChange={setObservationsSection}
+        readinessNotice={readinessNotice(observationsSection === "review"
+          ? "review"
+          : observationsSection === "assistant"
+            ? (readiness.sceneCount > 0 && !canUseStructuredFeature(readiness, "ooc").available ? "ooc" : "assistant")
+            : observationsSection === "setupPayoff" ? "setupPayoff" : "guided")}
+        onSectionChange={(section) => {
+          observationsExplicitRef.current = true;
+          setObservationsSection(section);
+        }}
         assistantPanel={(
           <WriterAssistantNarrative
             enabled={assistant.enabled}
@@ -2251,6 +2960,7 @@ export default function WriterWorkspace({
             feedback={setupPayoff.feedback}
             onAnalyze={() => void analyzeSetupPayoff()}
             onView={viewSetupPayoffElement}
+            onViewPulse={(sceneId) => openTimeline(sceneId, "pulse")}
             onElementStatus={(element, status) => void setupPayoff.setElementStatus(element.id, status)}
             onLinkStatus={(link, status) => void setupPayoff.setLinkStatus(link.id, status)}
             onCreateElement={setupPayoff.createElement}
@@ -2259,6 +2969,7 @@ export default function WriterWorkspace({
         )}
         guidedWritingPanel={(
           <WriterGuidedWriting
+            key={guidedIdeaQuestion}
             scope={guidedWriting.scope}
             sceneNumber={activeScene ? (scenes.find((scene) => scene.id === activeScene)?.order ?? null) : null}
             sceneTitle={activeScene ? (structuralMetadata.sceneNicknames[activeScene]
@@ -2272,10 +2983,13 @@ export default function WriterWorkspace({
             onSend={sendGuidedWriting}
             onCancel={guidedWriting.cancel}
             onReference={viewGuidedReference}
+            suggestedQuestion={guidedIdeaQuestion}
           />
         )}
+        footer={<button ref={shotlistTriggerRef} className="writer-shotlist-footer-button" type="button" disabled={!ready || shotlistBusy} onClick={openShotlistFlow}><SmartFeatureIndicator label={shotlistBusy ? "GUARDANDO…" : shotlists.length ? "ABRIR SHOTLIST" : "GENERAR SHOTLIST"} /></button>}
         observations={combinedCharacterObservations}
         knownIdentities={knownCharacterIdentities}
+        knownCharacterActivity={characterRows}
         decisions={characterDecisions}
         storagePersistent={characterStoragePersistent}
         importedAnalysisPersistent={Boolean(persistedImportAnalysis)}
@@ -2285,9 +2999,11 @@ export default function WriterWorkspace({
         showHighlights={showImportReviewHighlights}
         formatReviewPersistent={formatReviewStoragePersistent}
         sceneCount={scenes.length}
+        sceneOrder={scenes.map((scene) => scene.id)}
+        activeSceneId={activeScene}
         selectedBlockId={selectedObservationBlockId}
         onClose={() => {
-            setObservationsOpen(false);
+            setRightSidebarVisible(false);
             focusObservationsTrigger();
         }}
         onConfirm={confirmCharacterObservation}
@@ -2318,6 +3034,27 @@ export default function WriterWorkspace({
         onChangeFormat={changeFormatObservation}
         onToggleHighlights={setShowImportReviewHighlights}
       />
+
+      {shotlistModalOpen && !focusMode && <div className="writer-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !shotlistBusy) setShotlistModalOpen(false); }}>
+        <section className="writer-modal writer-shotlist-modal" role="dialog" aria-modal="true" aria-labelledby="writer-shotlist-modal-title">
+          <p className="writer-eyebrow">Preproducción</p>
+          <h2 id="writer-shotlist-modal-title">Generar Shotlist</h2>
+          <p>Puedes crear una base desde las escenas de tu guion o pedir una propuesta de planos con IA.</p>
+          <p className="writer-shotlist-credit-note">{previewNoCredits ? "Esta prueba no descontará créditos." : "La generación sugerida está sujeta a la política generativa disponible para tu cuenta."}</p>
+          <div className="writer-shotlist-modal-actions"><button className="writer-satin-button writer-satin-button--primary" type="button" autoFocus disabled={shotlistBusy} onClick={() => void createShotlist("suggested")}><SmartFeatureIndicator label="Generar sugerida" /></button><button className="writer-satin-button" type="button" disabled={shotlistBusy} onClick={() => void createShotlist("manual")}>Continuar sin IA</button><button type="button" disabled={shotlistBusy} onClick={() => { setShotlistModalOpen(false); window.requestAnimationFrame(() => shotlistTriggerRef.current?.focus()); }}>Cancelar</button></div>
+          <small>La opción sugerida abre Shotlist en modo Sugerido. La IA sólo se ejecuta allí con otra confirmación explícita.</small>
+        </section>
+      </div>}
+
+      {shortcutsOpen && !focusMode && <div className="writer-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShortcutsOpen(false); }}>
+        <section className="writer-modal writer-shortcuts-modal" role="dialog" aria-modal="true" aria-labelledby="writer-shortcuts-title">
+          <p className="writer-eyebrow">Escritura</p><h2 id="writer-shortcuts-title">Atajos de teclado</h2>
+          <p>Estos atajos cambian el tipo del bloque actual; no insertan ni borran texto.</p>
+          <dl>{WRITER_KIND_SHORTCUTS.map((item) => <div key={item.digit}><dt>{item.label}</dt><dd><kbd>{writerShortcutLabel(item.digit, typeof navigator === "undefined" ? "" : navigator.platform)}</kbd></dd></div>)}</dl>
+          <p><kbd>Enter</kbd> crea el siguiente bloque según el contexto. <kbd>Tab</kbd> sólo cambia un bloque vacío cuando Writer reconoce una transición segura.</p>
+          <button type="button" autoFocus onClick={() => setShortcutsOpen(false)}>Cerrar</button>
+        </section>
+      </div>}
 
       {structuralToast && !focusMode && (
         <div className="writer-structural-toast" role="status" aria-live="polite">
@@ -2393,17 +3130,40 @@ function WriterAutocompleteMenu({
 function WriterToolbar({
   editor,
   words,
-  onWriterActions,
+  onAutoFormat,
+  onSearch,
+  onIdeas,
+  soundEnabled,
+  onToggleSound,
   onInsert,
   onConvertSceneHeading,
 }: {
   editor: Editor | null;
   words: number;
-  onWriterActions: () => void;
+  onAutoFormat: () => void;
+  onSearch: () => void;
+  onIdeas: () => void;
+  soundEnabled: boolean;
+  onToggleSound: () => void;
   onInsert: (state: WriterInsertState) => void;
   onConvertSceneHeading: (state: WriterInsertState) => void;
 }) {
   const [formatOpen, setFormatOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [toolbarMode, setToolbarMode] = useState<"wide" | "compact" | "minimal">("wide");
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+    const update = () => {
+      const width = toolbar.clientWidth;
+      setToolbarMode(width >= 860 ? "wide" : width >= 620 ? "compact" : "minimal");
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, []);
   const state = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
@@ -2419,7 +3179,7 @@ function WriterToolbar({
   if (!editor || !state) return <div className="writer-toolbar" aria-hidden="true" />;
   const preserveSelection = (event: React.MouseEvent) => event.preventDefault();
   return (
-    <div className="writer-toolbar" role="toolbar" aria-label="Formato del guion">
+    <div ref={toolbarRef} className="writer-toolbar" role="toolbar" aria-label="Formato del guion" data-toolbar-mode={toolbarMode}>
       <select
         aria-label="Tipo de bloque"
         value={state.kind}
@@ -2471,15 +3231,28 @@ function WriterToolbar({
           });
         }}
         aria-label="Insertar en el guion"
-      >Insertar</button>
+        title="Insertar"
+      ><WriterIcon name="insert" /><span className="writer-toolbar-label">Insertar</span><WriterIcon className="writer-insert-chevron" name="chevronDown" size={14} /></button>
+      <button className="writer-auto-format-button" type="button" onMouseDown={preserveSelection} onClick={onAutoFormat}>
+        <SmartFeatureIndicator label="FORMATO AUTOMÁTICO" />
+      </button>
       <div className="writer-toolbar-desktop-actions">
+        <div className="writer-toolbar-formatting-actions">
         <span className="writer-toolbar-divider" aria-hidden="true" />
         <button type="button" aria-label="Negrita" aria-pressed={state.bold} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleBold().run()}><strong>B</strong></button>
         <button type="button" aria-label="Cursiva" aria-pressed={state.italic} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleItalic().run()}><em>I</em></button>
         <button type="button" aria-label="Subrayado" aria-pressed={state.underline} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().toggleUnderline().run()}><u>U</u></button>
+        </div>
+        <div className="writer-toolbar-history-actions">
         <span className="writer-toolbar-divider" aria-hidden="true" />
-        <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().undo().run()} disabled={!state.canUndo} aria-label="Deshacer">↶</button>
-        <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().redo().run()} disabled={!state.canRedo} aria-label="Rehacer">↷</button>
+        <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().undo().run()} disabled={!state.canUndo} aria-label="Deshacer" title="Deshacer"><WriterIcon name="undo" /></button>
+        <button type="button" onMouseDown={preserveSelection} onClick={() => editor.chain().focus().redo().run()} disabled={!state.canRedo} aria-label="Rehacer" title="Rehacer"><WriterIcon name="redo" /></button>
+        </div>
+        <div className="writer-toolbar-secondary-actions">
+        <span className="writer-toolbar-divider" aria-hidden="true" />
+        <button className="writer-search-button" type="button" aria-label="Buscar" onMouseDown={preserveSelection} onClick={onSearch} title="Buscar · Ctrl/Cmd+F"><WriterIcon name="search" /><span className="writer-toolbar-label">Buscar</span></button>
+        {toolbarMode !== "minimal" && <button className="writer-ideas-button" type="button" aria-label="Ideas" onMouseDown={preserveSelection} onClick={onIdeas} title="Ideas narrativas"><WriterIcon name="ideas" /><span className="writer-toolbar-label">Ideas</span></button>}
+        </div>
       </div>
       <div className="writer-format-wrap">
         <button className="writer-format-button" type="button" aria-label="Formato de texto" aria-expanded={formatOpen} onMouseDown={preserveSelection} onClick={() => setFormatOpen((open) => !open)}>Aa</button>
@@ -2491,8 +3264,16 @@ function WriterToolbar({
           <button type="button" role="menuitem" disabled={!state.canRedo} onMouseDown={preserveSelection} onClick={() => editor.chain().focus().redo().run()}>Rehacer</button>
         </div>}
       </div>
-      <button className="writer-touch-actions" type="button" aria-label="Acciones Writer en el cursor" onMouseDown={preserveSelection} onClick={onWriterActions}>⋯ Writer</button>
-      <span className="writer-word-count">{words.toLocaleString("es-MX")} palabras</span>
+      {toolbarMode === "wide" && <span className="writer-word-count">{words.toLocaleString("es-MX")} palabras</span>}
+      {toolbarMode !== "minimal" && <button className="writer-sound-button" type="button" aria-label="Sonido de máquina de escribir" aria-pressed={soundEnabled} title="Sonido de máquina de escribir" onMouseDown={preserveSelection} onClick={onToggleSound}><WriterIcon name={soundEnabled ? "soundOn" : "soundOff"} /></button>}
+      {toolbarMode === "minimal" && <div className="writer-toolbar-overflow-wrap">
+        <button className="writer-toolbar-overflow-button" type="button" aria-label="Más acciones" aria-expanded={overflowOpen} title="Más acciones" onMouseDown={preserveSelection} onClick={() => setOverflowOpen((open) => !open)}><WriterIcon name="more" /></button>
+        {overflowOpen && <div className="writer-toolbar-overflow-menu" role="menu">
+          <button type="button" role="menuitem" onClick={() => { setOverflowOpen(false); onIdeas(); }}><WriterIcon name="ideas" /> Ideas</button>
+          <button type="button" role="menuitem" onClick={() => { setOverflowOpen(false); onToggleSound(); }}><WriterIcon name={soundEnabled ? "soundOn" : "soundOff"} /> {soundEnabled ? "Desactivar sonido" : "Activar sonido"}</button>
+          <span>{words.toLocaleString("es-MX")} palabras</span>
+        </div>}
+      </div>}
     </div>
   );
 }

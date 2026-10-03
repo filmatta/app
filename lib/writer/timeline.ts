@@ -1,4 +1,5 @@
 import { SCREENPLAY_KINDS, WRITER_SCHEMA_VERSION, type ScreenplayKind } from "./document.ts";
+import { parseWriterCharacterCue } from "./character-cues.ts";
 
 export type TimelineEnvironment = "interior" | "exterior" | "mixed" | "unknown";
 export type TimelineMomentCategory = "day" | "night" | "other" | "unspecified";
@@ -91,9 +92,6 @@ const EXTENSION_KINDS = new Set<ScreenplayKind>([
   "parenthetical",
   "transition",
 ]);
-
-// Only well-known screenplay suffixes are removed. Arbitrary parentheticals remain part of the name.
-const CHARACTER_SUFFIX = /\s*\((?:V\.?\s*O\.?|O\.?\s*S\.?|OFF|CONT(?:INUED|INUADO|['’]?D|\.)?)\)\s*$/iu;
 
 const MOMENTS: ReadonlyArray<{ values: string[]; category: TimelineMomentCategory }> = [
   { values: ["DÍA", "DIA", "DAY"], category: "day" },
@@ -311,14 +309,8 @@ function inlineText(value: unknown): string | null {
 }
 
 function characterIdentity(variant: string) {
-  let name = variant;
-  let previous = "";
-  while (previous !== name) {
-    previous = name;
-    name = name.replace(CHARACTER_SUFFIX, "").trim();
-  }
-  if (!name) name = variant;
-  return { name, key: normalizeKey(name) };
+  const parsed = parseWriterCharacterCue(variant);
+  return { name: parsed.name || variant, key: parsed.key || normalizeKey(variant) };
 }
 
 function recognizeMoment(value: string) {

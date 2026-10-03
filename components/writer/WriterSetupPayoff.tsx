@@ -2,12 +2,14 @@
 
 import { useMemo, useState } from "react";
 import type { WriterNarrativeElement, WriterNarrativeLink } from "@/lib/writer/setup-payoff";
+import { SmartFeatureIndicator } from "./WriterSmartFormatting";
+import WriterAssistantSectionHeading from "./WriterAssistantSectionHeading";
 
 type SceneOption = { id: string; order: number; title: string };
 
 export default function WriterSetupPayoff({
   elements, links, scenes, activeSceneId, current, loaded, analyzing, feedback,
-  onAnalyze, onView, onElementStatus, onLinkStatus, onCreateElement, onCreateLink,
+  onAnalyze, onView, onViewPulse, onElementStatus, onLinkStatus, onCreateElement, onCreateLink,
 }: {
   elements: WriterNarrativeElement[];
   links: WriterNarrativeLink[];
@@ -19,6 +21,7 @@ export default function WriterSetupPayoff({
   feedback: string | null;
   onAnalyze: () => void;
   onView: (element: WriterNarrativeElement) => void;
+  onViewPulse?: (sceneId: string) => void;
   onElementStatus: (element: WriterNarrativeElement, status: "confirmed" | "dismissed") => void;
   onLinkStatus: (link: WriterNarrativeLink, status: "confirmed" | "dismissed") => void;
   onCreateElement: (input: { sceneId: string; blockId: string | null; elementType: "setup" | "payoff"; label: string; excerpt: string }) => Promise<boolean>;
@@ -80,10 +83,8 @@ export default function WriterSetupPayoff({
 
   return (
     <div className="writer-setup-payoff" aria-busy={analyzing}>
-      <header className="writer-setup-payoff-heading">
-        <div><p className="writer-eyebrow">Análisis narrativo</p><h3>Setup / Payoff</h3><small>FILMATTA propone relaciones; tú decides cuáles existen.</small></div>
-        <span>{activeElements.length}</span>
-      </header>
+      <WriterAssistantSectionHeading title="SETUP / PAYOFF" count={activeElements.length} help="Explora posibles vínculos entre elementos que se preparan y sus consecuencias, revelaciones o resoluciones." />
+      <p className="writer-assistant-section-intro">FILMATTA propone relaciones; tú decides cuáles existen.</p>
       <div className="writer-setup-payoff-summary" aria-label="Resumen Setup / Payoff">
         <div><strong>{setups.length}</strong><span>setups</span></div>
         <div><strong>{confirmed}</strong><span>confirmados</span></div>
@@ -91,7 +92,7 @@ export default function WriterSetupPayoff({
         <div><strong>{review}</strong><span>por revisar</span></div>
       </div>
       <div className="writer-assistant-analyze-row">
-        <button type="button" onClick={onAnalyze} disabled={analyzing || scenes.length < 2}>{analyzing ? "Analizando setups y payoffs…" : current ? "Actualizar análisis" : "Analizar Setup / Payoff"}</button>
+        <button type="button" onClick={onAnalyze} disabled={analyzing || scenes.length < 2}>{analyzing ? "Analizando setups y payoffs…" : <SmartFeatureIndicator label={current ? "Actualizar análisis" : "Analizar Setup / Payoff"} />}</button>
         <small>{current ? "Actualizado" : loaded ? "Análisis explícito · Terra" : "Cargando…"}</small>
       </div>
       {scenes.length < 2 && <p className="writer-observations-empty">Añade al menos dos escenas para buscar relaciones narrativas.</p>}
@@ -102,9 +103,17 @@ export default function WriterSetupPayoff({
           {activeLinks.map((link) => {
             const setup = elementById.get(link.setupElementId)!;
             const payoff = elementById.get(link.payoffElementId)!;
-            return <button key={link.id} type="button" className={selectedLink?.id === link.id ? "is-selected" : ""} onClick={() => { setSelectedLinkId(link.id); setSelectedElementId(null); }}>
-              <span data-status={link.status}>{statusSymbol(link.status)}</span><strong>{setup.label}</strong><small>→ {sceneLabel(payoff.sceneId)}</small>
-            </button>;
+            const expanded = selectedLink?.id === link.id;
+            return <article key={link.id} className={`writer-setup-payoff-accordion${expanded ? " is-expanded" : ""}`}>
+              <div className="writer-setup-payoff-row">
+                <button type="button" className="writer-setup-payoff-expand" aria-expanded={expanded} aria-controls={`writer-setup-link-${link.id}`} onClick={() => { setSelectedLinkId(expanded ? null : link.id); setSelectedElementId(null); }}>
+                  <span data-status={link.status}>{statusSymbol(link.status)}</span><strong>{setup.label}</strong><b aria-hidden="true">{expanded ? "▴" : "▾"}</b>
+                </button>
+                <button type="button" className="writer-setup-payoff-reference" onClick={() => onView(payoff)} disabled={!sceneById.has(payoff.sceneId)}>→ {sceneLabel(payoff.sceneId)}</button>
+              </div>
+              {expanded && <div id={`writer-setup-link-${link.id}`}><RelationDetail link={link} setup={setup} payoff={payoff}
+                sceneLabel={sceneLabel} sceneExists={(id) => sceneById.has(id)} onView={onView} onViewPulse={onViewPulse} onStatus={onLinkStatus} onChange={changeLink} /></div>}
+            </article>;
           })}
           {!activeLinks.length && <p className="writer-observations-empty">Todavía no hay relaciones. Puedes analizar el guion o vincular elementos manualmente.</p>}
         </div>
@@ -114,18 +123,20 @@ export default function WriterSetupPayoff({
         <div className="writer-observations-section-heading"><h3 id="writer-setup-payoff-elements">Elementos sin relación confirmada</h3><span>{activeElements.length}</span></div>
         <div className="writer-setup-payoff-list">
           {activeElements.filter((element) => !activeLinks.some((link) => link.setupElementId === element.id || link.payoffElementId === element.id)
-            || ["unresolved", "orphan", "needs_review"].includes(element.status)).map((element) => (
-            <button key={element.id} type="button" className={selectedElement?.id === element.id ? "is-selected" : ""} onClick={() => { setSelectedElementId(element.id); setSelectedLinkId(null); }}>
-              <span data-status={element.status}>{element.type === "setup" ? "S" : "P"}</span><strong>{element.label}</strong><small>{element.status === "unresolved" ? "Sin payoff encontrado" : element.status === "orphan" ? "Posible payoff sin setup" : sceneLabel(element.sceneId)}</small>
-            </button>
-          ))}
+            || ["unresolved", "orphan", "needs_review"].includes(element.status)).map((element) => {
+            const expanded = selectedElement?.id === element.id;
+            return <article key={element.id} className={`writer-setup-payoff-accordion${expanded ? " is-expanded" : ""}`}>
+              <div className="writer-setup-payoff-row">
+                <button type="button" className="writer-setup-payoff-expand" aria-expanded={expanded} aria-controls={`writer-setup-element-${element.id}`} onClick={() => { setSelectedElementId(expanded ? null : element.id); setSelectedLinkId(null); }}>
+                  <span data-status={element.status}>{element.type === "setup" ? "S" : "P"}</span><strong>{element.label}</strong><b aria-hidden="true">{expanded ? "▴" : "▾"}</b>
+                </button>
+                <button type="button" className="writer-setup-payoff-reference" onClick={() => onView(element)} disabled={!sceneById.has(element.sceneId)}>{element.status === "unresolved" ? "Sin payoff encontrado" : element.status === "orphan" ? "Posible payoff sin setup" : sceneLabel(element.sceneId)}</button>
+              </div>
+              {expanded && <div id={`writer-setup-element-${element.id}`}><ElementDetail element={element} sceneLabel={sceneLabel} sceneExists={sceneById.has(element.sceneId)} onView={onView} onViewPulse={onViewPulse} onStatus={onElementStatus} /></div>}
+            </article>;
+          })}
         </div>
       </section>
-
-      {selectedLink && <RelationDetail link={selectedLink} setup={elementById.get(selectedLink.setupElementId)!} payoff={elementById.get(selectedLink.payoffElementId)!}
-        sceneLabel={sceneLabel} sceneExists={(id) => sceneById.has(id)} onView={onView} onStatus={onLinkStatus} onChange={changeLink} />}
-      {selectedElement && <ElementDetail element={selectedElement} sceneLabel={sceneLabel} sceneExists={sceneById.has(selectedElement.sceneId)}
-        onView={onView} onStatus={onElementStatus} />}
 
       <section className="writer-setup-payoff-manual" aria-labelledby="writer-setup-payoff-manual-heading">
         <div className="writer-observations-section-heading"><h3 id="writer-setup-payoff-manual-heading">Decisión manual</h3><span>Sin IA</span></div>
@@ -148,7 +159,7 @@ export default function WriterSetupPayoff({
   );
 }
 
-function RelationDetail({ link, setup, payoff, sceneLabel, sceneExists, onView, onStatus, onChange }: { link: WriterNarrativeLink; setup: WriterNarrativeElement; payoff: WriterNarrativeElement; sceneLabel: (id: string) => string; sceneExists: (id: string) => boolean; onView: (element: WriterNarrativeElement) => void; onStatus: (link: WriterNarrativeLink, status: "confirmed" | "dismissed") => void; onChange: (link: WriterNarrativeLink) => void }) {
+function RelationDetail({ link, setup, payoff, sceneLabel, sceneExists, onView, onViewPulse, onStatus, onChange }: { link: WriterNarrativeLink; setup: WriterNarrativeElement; payoff: WriterNarrativeElement; sceneLabel: (id: string) => string; sceneExists: (id: string) => boolean; onView: (element: WriterNarrativeElement) => void; onViewPulse?: (sceneId: string) => void; onStatus: (link: WriterNarrativeLink, status: "confirmed" | "dismissed") => void; onChange: (link: WriterNarrativeLink) => void }) {
   return <article className="writer-setup-payoff-detail" data-status={link.status}>
     <div><small>SETUP</small><strong>{sceneLabel(setup.sceneId)}</strong><blockquote>“{setup.excerpt}”</blockquote></div>
     <span aria-hidden="true">↓</span>
@@ -161,11 +172,12 @@ function RelationDetail({ link, setup, payoff, sceneLabel, sceneExists, onView, 
       <button type="button" onClick={() => onChange(link)}>Cambiar vínculo</button>
       <button type="button" onClick={() => onView(setup)} disabled={!sceneExists(setup.sceneId)}>Ir a Setup</button>
       <button type="button" onClick={() => onView(payoff)} disabled={!sceneExists(payoff.sceneId)}>Ir a Payoff</button>
+      {onViewPulse && <button type="button" onClick={() => onViewPulse(payoff.sceneId)} disabled={!sceneExists(payoff.sceneId)}>Ver en Narrative Pulse →</button>}
     </div>
   </article>;
 }
 
-function ElementDetail({ element, sceneLabel, sceneExists, onView, onStatus }: { element: WriterNarrativeElement; sceneLabel: (id: string) => string; sceneExists: boolean; onView: (element: WriterNarrativeElement) => void; onStatus: (element: WriterNarrativeElement, status: "confirmed" | "dismissed") => void }) {
+function ElementDetail({ element, sceneLabel, sceneExists, onView, onViewPulse, onStatus }: { element: WriterNarrativeElement; sceneLabel: (id: string) => string; sceneExists: boolean; onView: (element: WriterNarrativeElement) => void; onViewPulse?: (sceneId: string) => void; onStatus: (element: WriterNarrativeElement, status: "confirmed" | "dismissed") => void }) {
   return <article className="writer-setup-payoff-detail" data-status={element.status}>
     <div><small>{element.type.toLocaleUpperCase("es-MX")}</small><strong>{sceneLabel(element.sceneId)}</strong><blockquote>“{element.excerpt}”</blockquote></div>
     {element.explanation && <p>{element.explanation}</p>}
@@ -176,6 +188,7 @@ function ElementDetail({ element, sceneLabel, sceneExists, onView, onStatus }: {
       {element.status !== "confirmed" && <button type="button" onClick={() => onStatus(element, "confirmed")}>Confirmar</button>}
       <button type="button" onClick={() => onStatus(element, "dismissed")}>Descartar</button>
       <button type="button" onClick={() => onView(element)} disabled={!sceneExists}>Ir a escena</button>
+      {onViewPulse && <button type="button" onClick={() => onViewPulse(element.sceneId)} disabled={!sceneExists}>Ver en Narrative Pulse →</button>}
     </div>
   </article>;
 }

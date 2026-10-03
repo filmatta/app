@@ -52,9 +52,9 @@ test("context actions, assisted insertion, live metrics and reload use the canon
   await page.getByRole("button", { name: "Deshacer" }).click();
   await expect(action).toHaveAttribute("data-screenplay-kind", "transition");
 
-  await action.click({ button: "right" });
-  await menu.getByRole("menuitem", { name: /Nueva escena/ }).click();
-  await page.getByRole("button", { name: /Nueva escena/ }).click();
+  await action.click();
+  await page.getByRole("button", { name: "Insertar en el guion" }).click();
+  await page.getByRole("dialog", { name: "Insertar en el guion" }).getByRole("button", { name: /Encabezado de escena/ }).click();
   const dialog = page.getByRole("dialog", { name: "Nueva escena" });
   await dialog.getByLabel("Lugar").fill("Cocina");
   await dialog.getByLabel("Momento").selectOption("NOCHE");
@@ -65,7 +65,7 @@ test("context actions, assisted insertion, live metrics and reload use the canon
 
   const ana = page.getByRole("button", { name: /ANA 1 evidencia/ });
   await ana.click();
-  await expect(page.getByRole("heading", { name: "Observaciones" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Asistente" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Personajes reconocidos" })).toBeVisible();
   await page.locator(".writer-observations-panel").getByRole("button", { name: "Cerrar", exact: true }).click();
 
@@ -277,7 +277,7 @@ test("writing presentation uses a stable mobile shell without toolbar overflow",
       expect(await toolbar.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
       expect(await page.locator(".writer-workspace").evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
       await expect(page.getByRole("button", { name: "Formato de texto" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Acciones Writer en el cursor" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Más acciones" })).toBeVisible();
 
       if (width === 430) {
         const notice = page.getByRole("dialog", { name: "Writer en móvil" });
@@ -304,11 +304,11 @@ test("writing presentation uses a stable mobile shell without toolbar overflow",
 
       const editor = page.getByLabel("Editor de guion");
       await editor.locator('[data-block-id$="02"]').click();
-      await page.getByRole("button", { name: "Acciones Writer en el cursor" }).click();
-      const writerActions = page.getByRole("menu", { name: "Acciones del bloque" });
-      await expect(writerActions).toBeVisible();
-      await expect(writerActions.getByRole("menuitem", { name: /Cortar|Copiar|Pegar/ })).toHaveCount(0);
-      await writerActions.getByRole("button", { name: "Cerrar" }).click();
+      await page.getByRole("button", { name: "Insertar en el guion" }).click();
+      const insert = page.getByRole("dialog", { name: "Insertar en el guion" });
+      await expect(insert.getByRole("button", { name: /Acción/ })).toBeVisible();
+      await expect(insert.getByRole("button", { name: /Convenciones/ })).toBeVisible();
+      await insert.getByRole("button", { name: "Cerrar" }).click();
 
       const appBarBefore = await page.getByRole("navigation", { name: "Navegación de Writer" }).boundingBox();
       await page.locator(".writer-paper").evaluate((element) => { element.scrollTop = 500; });
@@ -319,7 +319,32 @@ test("writing presentation uses a stable mobile shell without toolbar overflow",
   }
 });
 
-test("touch pointer keeps native context behavior while dedicated Writer actions use the active caret", async ({ page }) => {
+test("unified Insert exposes seven canonical elements, conventions and container-responsive labels", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await page.goto(`/writer/${scriptId}`);
+  const insertButton = page.getByRole("button", { name: "Insertar en el guion" });
+  await expect(insertButton.locator(".writer-toolbar-label")).toBeVisible();
+  await page.getByLabel("Editor de guion").locator('[data-block-id$="02"]').click();
+  await insertButton.click();
+  const panel = page.getByRole("dialog", { name: "Insertar en el guion" });
+  for (const label of ["Encabezado de escena", "Acción", "Personaje", "Diálogo", "Acotación", "Transición", "Nota del autor"]) {
+    await expect(panel.getByRole("button", { name: new RegExp(label) })).toBeVisible();
+  }
+  await panel.getByRole("button", { name: /Convenciones/ }).click();
+  await expect(panel.getByRole("button", { name: /FADE IN:/ })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /CUT TO:/ })).toBeVisible();
+  await panel.getByRole("button", { name: "Cerrar" }).click();
+  await expect(page.getByRole("button", { name: "Acciones Writer en el cursor" })).toHaveCount(0);
+
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await expect(insertButton.locator(".writer-toolbar-label")).toBeHidden();
+  await expect(insertButton).toHaveAttribute("title", "Insertar");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(insertButton.locator(".writer-toolbar-label")).toBeHidden();
+  await expect(insertButton).toBeVisible();
+});
+
+test("touch pointer keeps native context behavior while unified Insert uses the active caret", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => localStorage.setItem(`filmatta.writer.mobile-notice.v1:${"11111111-1111-4111-8111-111111111111"}`, "dismissed"));
   await page.goto(`/writer/${scriptId}`);
@@ -328,10 +353,10 @@ test("touch pointer keeps native context behavior while dedicated Writer actions
   await block.dispatchEvent("pointerdown", { pointerType: "touch", button: 0 });
   await block.dispatchEvent("contextmenu", { button: 0 });
   await expect(page.getByRole("menu", { name: "Acciones del bloque" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Acciones Writer en el cursor" }).click();
-  const menu = page.getByRole("menu", { name: "Acciones del bloque" });
-  await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitemradio", { name: /Acción — actual/ })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("button", { name: "Insertar en el guion" }).click();
+  const insert = page.getByRole("dialog", { name: "Insertar en el guion" });
+  await expect(insert.getByRole("button", { name: /Acción/ })).toBeVisible();
+  await expect(insert.getByRole("button", { name: /Convenciones/ })).toBeVisible();
 });
 
 test("assisted import shows immediate indeterminate progress, blocks duplicates, and preserves source on error", async ({ page }) => {
@@ -366,7 +391,7 @@ test("assisted import shows immediate indeterminate progress, blocks duplicates,
   await expect(dialog.getByRole("button", { name: /Detener|Cancelar procesamiento/ })).toHaveCount(0);
 });
 
-test("observations aggregate format review in one detail and desktop workspace spans Timeline below both columns", async ({ page }) => {
+test("observations aggregate format review while Timeline stays below center and the right sidebar stays full-height", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
       configurable: true,
@@ -433,7 +458,7 @@ test("observations aggregate format review in one detail and desktop workspace s
   await observations.getByRole("button", { name: "Ver siguiente →" }).click();
   await expect(observations.locator(".writer-format-review")).toContainText("Acciones · 2 de 2");
   await observations.getByRole("button", { name: "Cerrar", exact: true }).click();
-  await page.locator(".writer-header").getByRole("button", { name: /Observaciones/ }).click();
+  await page.getByRole("button", { name: "Mostrar Asistente", exact: true }).click();
   await expect(observations.locator(".writer-format-review")).toContainText("Acciones · 2 de 2");
   await observations.getByRole("button", { name: "← Anterior" }).click();
   await observations.locator(".writer-format-review select").selectOption("transition");
@@ -446,12 +471,17 @@ test("observations aggregate format review in one detail and desktop workspace s
 
   const timeline = page.locator(".writer-timeline-panel");
   await expect(timeline).toBeVisible();
-  const [timelineBox, observationsBox] = await Promise.all([timeline.boundingBox(), observations.boundingBox()]);
+  const workspace = page.locator(".writer-workspace");
+  const [timelineBox, observationsBox, workspaceBox] = await Promise.all([
+    timeline.boundingBox(), observations.boundingBox(), workspace.boundingBox(),
+  ]);
   expect(timelineBox).not.toBeNull();
   expect(observationsBox).not.toBeNull();
+  expect(workspaceBox).not.toBeNull();
   expect(timelineBox!.x).toBeLessThan(observationsBox!.x);
-  expect(timelineBox!.x + timelineBox!.width).toBeGreaterThanOrEqual(observationsBox!.x + observationsBox!.width - 1);
-  expect(timelineBox!.y).toBeGreaterThanOrEqual(observationsBox!.y + observationsBox!.height - 1);
+  expect(timelineBox!.x + timelineBox!.width).toBeLessThanOrEqual(observationsBox!.x + 1);
+  expect(Math.abs(observationsBox!.y + observationsBox!.height - workspaceBox!.y - workspaceBox!.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(timelineBox!.y + timelineBox!.height - workspaceBox!.y - workspaceBox!.height)).toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "Focus" }).click();
   await expect(observations).toBeHidden();
@@ -556,7 +586,7 @@ test("Script Assistant stays incremental, opens markers in one click, survives F
   await marker.click();
   const panel = page.locator(".writer-observations-panel");
   await expect(panel).toBeVisible();
-  await expect(panel.getByRole("button", { name: /Assistant Narrativa/ })).toHaveAttribute("aria-current", "page");
+  await expect(panel.getByRole("button", { name: "O-O-C", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(panel.getByText("¿Qué dificulta lo que Ana busca aquí?")).toBeVisible();
   await expect(page.locator('[data-block-id$="02"]')).toHaveClass(/writer-scene-target-highlight/);
 
