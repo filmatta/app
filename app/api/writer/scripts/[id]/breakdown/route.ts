@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isRecord, readWriterJson, validUuid, writerApiSession, writerJson } from "@/lib/writer/api";
 import {
@@ -13,6 +13,7 @@ import {
   WriterProductionError,
 } from "@/lib/writer/production-server";
 import { analyzeBreakdownWithAi, WriterProductionAiError } from "@/lib/writer/production-ai-server";
+import { deriveWriterSceneSources } from "@/lib/writer/script-assistant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   try {
     return writerJson(await loadWriterBreakdown(createAdminClient(), session.user.id, id));
   } catch (cause) {
-    return productionError(cause, "No pudimos cargar el Breakdown.");
+    return productionError(cause, "No pudimos cargar los elementos detectados.");
   }
 }
 
@@ -38,6 +39,62 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return body.ok ? writerJson({ error: "Solicitud inválida.", code: "invalid" }, 400) : body.response;
   }
   try {
+    if (body.value.action === "detectAll" && validUuid(body.value.operationId)) {
+      const script = await assertOwnedWriterScript(session.supabase, session.user.id, id);
+      const db = createAdminClient();
+      const local = await detectAndStoreWriterBreakdown(db, session.user.id, id, {
+        scope: "document",
+        recordLocalRun: true,
+      });
+      const sceneIds = deriveWriterSceneSources(script.document).map((scene) => scene.sceneId);
+      const batches = Array.from({ length: Math.ceil(sceneIds.length / 12) }, (_, index) => sceneIds.slice(index * 12, index * 12 + 12));
+      let processedScenes = 0;
+      let costMicrousd = 0;
+      let latencyMs = 0;
+      const candidates = [];
+      let errorCode: string | null = null;
+      for (let index = 0; index < batches.length; index += 1) {
+        const batch = batches[index];
+        const childOperationId = deterministicBatchId(String(body.value.operationId), index);
+        try {
+          const analysis = await analyzeBreakdownWithAi({
+            userId: session.user.id,
+            scriptId: id,
+            sceneIds: batch,
+            operationId: childOperationId,
+            readDb: session.supabase,
+            signal: request.signal,
+          });
+          candidates.push(...analysis.candidates);
+          costMicrousd += Number(analysis.costMicrousd ?? 0);
+          latencyMs += Number(analysis.latencyMs ?? 0);
+          processedScenes += batch.length;
+          await detectAndStoreWriterBreakdown(db, session.user.id, id, {
+            sceneIds: new Set(batch),
+            extraCandidates: analysis.candidates,
+            includeRules: false,
+          });
+        } catch (cause) {
+          errorCode = cause instanceof WriterProductionAiError ? cause.code : "server_error";
+          await db.from("writer_production_operations").update({
+            status: "partial",
+            error_code: `partial:${processedScenes}:${sceneIds.length}:${errorCode}`,
+            updated_at: new Date().toISOString(),
+          }).eq("id", childOperationId).eq("owner_id", session.user.id);
+          break;
+        }
+      }
+      return writerJson({
+        ...local,
+        candidates,
+        processedScenes,
+        totalScenes: sceneIds.length,
+        partial: processedScenes < sceneIds.length,
+        errorCode,
+        metrics: { costMicrousd, latencyMs },
+        breakdown: await loadWriterBreakdown(db, session.user.id, id),
+      });
+    }
     if (body.value.action === "detect") {
       if (!['scene', 'changed', 'document'].includes(String(body.value.scope))) {
         return writerJson({ error: "Ámbito no válido.", code: "invalid" }, 400);
@@ -93,7 +150,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return writerJson({ error: "Solicitud inválida.", code: "invalid" }, 400);
   } catch (cause) {
     if (cause instanceof WriterProductionAiError) return writerJson({ error: cause.message, code: cause.code }, cause.status);
-    return productionError(cause, "No pudimos actualizar el Breakdown.");
+    return productionError(cause, "No pudimos actualizar los elementos detectados.");
   }
 }
 
@@ -156,6 +213,14 @@ function isCategory(value: unknown): value is WriterBreakdownCategory {
 
 function clean(value: unknown, max: number) {
   return typeof value === "string" && value.trim().length >= 1 && value.trim().length <= max;
+}
+
+function deterministicBatchId(operationId: string, index: number) {
+  const bytes = Buffer.from(createHash("sha256").update(`${operationId}:${index}`).digest("hex").slice(0, 32), "hex");
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function productionError(cause: unknown, fallback: string) {

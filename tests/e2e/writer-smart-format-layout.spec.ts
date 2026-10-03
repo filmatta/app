@@ -181,12 +181,12 @@ No abras la puerta.`);
   const editor = page.getByLabel("Editor de guion");
   await expect(editor.locator('[data-screenplay-kind="action"]', { hasText: "17 DE NOVIEMBRE DE 2004" })).toHaveCount(1);
   await expect(editor.locator('[data-screenplay-kind="character"]')).toHaveCount(7);
-  const sidebar = page.getByRole("region", { name: /^Personajes 5$/ });
+  const sidebar = page.getByRole("region", { name: "Elementos detectados" });
   for (const name of ["MARA", "TOMÁS", "IRIS", "RUBÉN", "PADRE"]) {
     await expect(sidebar.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
   }
   await expect(sidebar.getByText("17 DE NOVIEMBRE DE 2004", { exact: true })).toHaveCount(0);
-  await page.locator(".writer-header").getByRole("button", { name: /Observaciones/ }).click();
+  await page.locator(".writer-header").getByRole("button", { name: "Asistente", exact: true }).click();
   const observations = page.locator(".writer-observations-panel");
   await expect(observations.getByText("17 DE NOVIEMBRE DE 2004", { exact: true })).toHaveCount(0);
   await expect(observations.getByText("PADRE (VIDEO)", { exact: true })).toHaveCount(0);

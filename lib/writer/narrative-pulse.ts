@@ -1,7 +1,7 @@
 import type { WriterDocument } from "./document.ts";
 import { deriveWriterSceneSources, writerSceneCanonicalSource, type WriterSceneSource } from "./script-assistant.ts";
 
-export const WRITER_NARRATIVE_PULSE_VERSION = "narrative-pulse-v2" as const;
+export const WRITER_NARRATIVE_PULSE_VERSION = "narrative-pulse-v3" as const;
 export const WRITER_NARRATIVE_PULSE_MODEL = "gpt-5.6-terra" as const;
 export const WRITER_NARRATIVE_PULSE_MIN_SCENES = 4;
 
@@ -19,6 +19,7 @@ export type WriterNarrativePulsePayload = { scenes: WriterPulsePointCandidate[];
 export type WriterPulseAnalysis = { id: string; sourceHash: string; analysisVersion: string; model: string; status: "analyzing" | "fresh" | "error" | "uncertain"; errorCode: string | null; updatedAt: string } | null;
 export type WriterPulsePoint = WriterPulsePointCandidate & { id: string; analysisId: string };
 export type WriterPulseDisplayPoint = { rawIntensity: number; displayIntensity: number };
+export type WriterPulsePlotPoint = WriterPulseDisplayPoint & { x: number; y: number };
 export type WriterPulseDisplayStats = {
   rawMin: number;
   rawMax: number;
@@ -130,7 +131,7 @@ export function writerPulseDisplaySeries(points: ReadonlyArray<{ intensity: numb
     ? Math.max(2, range)
     : range < 12
       ? Math.min(18, range * 1.5)
-      : Math.min(76, Math.max(42, range * 2.2));
+      : Math.min(80, Math.max(65, range * 2.2));
   const lowerBound = (100 - targetSpan) / 2;
   const gamma = range >= 12 ? 0.92 : 1;
   return raw.map((rawIntensity) => {
@@ -159,13 +160,25 @@ export function writerPulseDisplayStats(points: ReadonlyArray<{ intensity: numbe
 }
 
 export function writerPulsePath(points: ReadonlyArray<{ displayIntensity: number }>, width: number, height: number, inset = 20) {
-  if (!points.length) return "";
+  return writerPulsePlotPoints(points, width, height, inset)
+    .map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(2)},${point.y.toFixed(2)}`)
+    .join(" ");
+}
+
+export function writerPulsePlotPoints(
+  points: ReadonlyArray<WriterPulseDisplayPoint | { displayIntensity: number; rawIntensity?: number }>,
+  width: number,
+  height: number,
+  inset = 20,
+): WriterPulsePlotPoint[] {
+  if (!points.length) return [];
   const span = Math.max(1, points.length - 1);
-  return points.map((point, index) => {
-    const x = inset + (index / span) * Math.max(0, width - inset * 2);
-    const y = inset + (1 - point.displayIntensity / 100) * Math.max(0, height - inset * 2);
-    return `${index ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`;
-  }).join(" ");
+  return points.map((point, index) => ({
+    rawIntensity: "rawIntensity" in point && typeof point.rawIntensity === "number" ? point.rawIntensity : point.displayIntensity,
+    displayIntensity: point.displayIntensity,
+    x: inset + (index / span) * Math.max(0, width - inset * 2),
+    y: inset + (1 - point.displayIntensity / 100) * Math.max(0, height - inset * 2),
+  }));
 }
 
 export function writerPulseMilestoneLabel(type: WriterPulseMilestoneType) {

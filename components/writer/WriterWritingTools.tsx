@@ -248,7 +248,7 @@ export function WriterContextMenu({
         <span>Analizar escena</span><small>Objective · Obstacle · Change</small>
       </button>
       <button type="button" role="menuitem" disabled={!hasValidTarget || !state.sceneId} title={state.timelineReason ?? undefined} onClick={() => state.sceneId && (contextIsCurrent() ? onAssistant(state.sceneId) : staleContext())}>
-        <span>Ver Assistant</span><small>Abrir observaciones narrativas</small>
+        <span>Ver Asistente</span><small>Abrir O-O-C y observaciones narrativas</small>
       </button>
       <button type="button" role="menuitem" disabled={!hasValidTarget || !state.sceneId} title={state.timelineReason ?? undefined} onClick={() => state.sceneId && (contextIsCurrent() ? onTimeline(state.sceneId) : staleContext())}>
         <span>Ver en línea de tiempo</span><small>{state.timelineReason ?? "Abrir la escena guardada"}</small>

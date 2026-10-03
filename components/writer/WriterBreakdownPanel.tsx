@@ -40,7 +40,7 @@ export default function WriterBreakdownPanel({
   const [elements, setElements] = useState<WriterBreakdownElement[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [scope, setScope] = useState<"scene" | "changed" | "document">("scene");
+  const [displayScope, setDisplayScope] = useState<"scene" | "document">("document");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<BreakdownAnalysis>(null);
@@ -62,27 +62,29 @@ export default function WriterBreakdownPanel({
         setElements(data.elements ?? []);
         setPendingCount(Number(data.pendingCount ?? 0));
         setAnalysis(data.analysis ?? null);
-        if (!data.analysis) setScope("document");
         setLoadError(false);
       });
     return () => { cancelled = true; };
   }, [scriptId]);
-  async function detect(useAi = false) {
+  async function detect() {
     if (busy) return;
-    if (useAi && !window.confirm("Ejecutar detección asistida para este ámbito? Sólo se enviarán las escenas seleccionadas y las propuestas quedarán por revisar.")) return;
     setBusy(true); setMessage(null); setDetectionIssue(null);
     try {
       await onEnsureSaved();
       const response = await fetch(`/api/writer/scripts/${scriptId}/breakdown`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: useAi ? "detectAi" : "detect", scope, sceneId: scope === "scene" ? activeSceneId : null, ...(useAi ? { operationId: crypto.randomUUID() } : {}) }),
+        body: JSON.stringify({ action: "detectAll", scope: "document", operationId: crypto.randomUUID() }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "No pudimos detectar el Breakdown.");
+      if (!response.ok) throw new Error(data.error ?? "No pudimos detectar los elementos.");
       setElements(data.breakdown.elements); setPendingCount(data.breakdown.pendingCount);
-      setAnalysis(data.breakdown.analysis ?? { status: "completed", stale: false, sourceRevision: data.revision, scope, errorCode: null, model: useAi ? "provider" : "local-rules-v1", updatedAt: new Date().toISOString() });
-      setMessage(useAi ? `${data.candidates?.length ?? 0} propuestas asistidas validadas contra el guion.` : `${data.detected} referencias verificables procesadas con reglas locales.`);
-    } catch (cause) { const text = cause instanceof Error ? cause.message : "No pudimos detectar el Breakdown."; setMessage(text); setDetectionIssue(/no está habilitada|proveedor|asistencia/iu.test(text) ? "provider" : "error"); }
+      setAnalysis(data.partial
+        ? { status: "partial", stale: false, sourceRevision: data.revision, scope: "document", errorCode: data.errorCode ?? null, model: "hybrid", updatedAt: new Date().toISOString() }
+        : data.breakdown.analysis ?? { status: "completed", stale: false, sourceRevision: data.revision, scope: "document", errorCode: null, model: "hybrid", updatedAt: new Date().toISOString() });
+      setMessage(data.partial
+        ? `Detección parcial: ${data.processedScenes ?? 0} de ${data.totalScenes ?? 0} escenas procesadas con asistencia. El inventario local y los resultados válidos se conservaron.`
+        : `${data.detected ?? 0} referencias verificables procesadas; ${data.candidates?.length ?? 0} propuestas asistidas validadas.`);
+    } catch (cause) { const text = cause instanceof Error ? cause.message : "No pudimos detectar los elementos."; setMessage(text); setDetectionIssue(/no está habilitada|proveedor|asistencia/iu.test(text) ? "provider" : "error"); }
     finally { setBusy(false); }
   }
   async function mutate(element: WriterBreakdownElement, body: Record<string, unknown>) {
@@ -137,20 +139,31 @@ export default function WriterBreakdownPanel({
     finally { setBusy(false); }
   }
 
-  const visible = useMemo(() => elements.filter((element) => showDismissed
+  const visible = useMemo(() => elements.filter((element) => (displayScope === "document" || element.appearances.some((appearance) => appearance.sceneId === activeSceneId)) && (showDismissed
     ? element.status === "dismissed"
     : reviewMode ? element.status === "suggested"
     : category === "other" ? OTHER.has(element.category) && element.status !== "dismissed"
-      : element.category === category && element.status !== "dismissed"), [category, elements, reviewMode, showDismissed]);
+      : element.category === category && element.status !== "dismissed")), [activeSceneId, category, displayScope, elements, reviewMode, showDismissed]);
   const countFor = (id: WriterBreakdownCategory) => id === "character" ? characterCount
     : elements.filter((element) => (id === "other" ? OTHER.has(element.category) : element.category === id) && element.status !== "dismissed").length;
+  const chooseCategory = (id: WriterBreakdownCategory) => {
+    setReviewMode(false);
+    setShowDismissed(false);
+    setCategory(id);
+    setSelectedId(null);
+  };
 
   return <div className="writer-breakdown">
-    <div className="writer-breakdown-tabs" role="tablist" aria-label="Categorías de Breakdown">
-      {PRIMARY.map((item) => <button key={item.id} type="button" role="tab" aria-selected={!reviewMode && !showDismissed && category === item.id} aria-label={WRITER_BREAKDOWN_CATEGORY_LABELS[item.id]} title={WRITER_BREAKDOWN_CATEGORY_LABELS[item.id]} onClick={() => { setReviewMode(false); setShowDismissed(false); setCategory(item.id); setSelectedId(null); }}><span>{item.icon}</span><b>{countFor(item.id)}</b></button>)}
+    <div className="writer-breakdown-tabs" role="tablist" aria-label="Categorías de elementos detectados">
+      {PRIMARY.map((item) => <button key={item.id} type="button" role="tab" aria-selected={!reviewMode && !showDismissed && category === item.id} aria-label={WRITER_BREAKDOWN_CATEGORY_LABELS[item.id]} title={WRITER_BREAKDOWN_CATEGORY_LABELS[item.id]} onClick={() => chooseCategory(item.id)}><span>{item.icon}</span><b>{countFor(item.id)}</b></button>)}
+      <details className="writer-breakdown-more">
+        <summary>Más</summary>
+        <div>{PRIMARY.map((item) => <button key={item.id} type="button" aria-current={category === item.id ? "true" : undefined} onClick={(event) => { chooseCategory(item.id); event.currentTarget.closest("details")?.removeAttribute("open"); }}><span aria-hidden="true">{item.icon}</span><span>{WRITER_BREAKDOWN_CATEGORY_LABELS[item.id]}</span><b>{countFor(item.id)}</b></button>)}</div>
+      </details>
     </div>
-    <div className="writer-breakdown-head"><div><small>BREAKDOWN</small><strong>{showDismissed ? "Descartados" : reviewMode ? "Por revisar" : WRITER_BREAKDOWN_CATEGORY_LABELS[category]} <b>{showDismissed ? visible.length : reviewMode ? pendingCount : countFor(category)}</b></strong></div><div className="writer-breakdown-head-actions"><button type="button" onClick={() => void detect(false)} disabled={busy || (scope === "scene" && !activeSceneId)}><SmartFeatureIndicator label={busy ? "Detectando…" : "Detectar elementos"} /></button><button type="button" onClick={() => { setReviewMode(true); setShowDismissed(false); setSelectedId(null); }} aria-pressed={reviewMode}>Por revisar {pendingCount}</button><details><summary aria-label="Más opciones">···</summary><button type="button" onClick={() => { setReviewMode(false); setShowDismissed(true); setSelectedId(null); }}>Ver descartados ({elements.filter((element) => element.status === "dismissed").length})</button><button type="button" onClick={() => void addManual()} disabled={busy || category === "character"}>Añadir manualmente</button></details></div></div>
-    <div className={`writer-breakdown-analysis is-${loadError || detectionIssue ? "error" : busy ? "analyzing" : !analysis ? "never" : analysis.stale ? "stale" : analysis.status === "completed" ? "complete" : "error"}`} role={loadError || detectionIssue ? "alert" : "status"}>{loadError ? "No pudimos cargar el estado de detección." : detectionIssue === "provider" ? "Proveedor o configuración asistida no disponible. La detección local sigue disponible." : detectionIssue === "error" ? "La última detección falló. El inventario anterior permanece intacto." : busy ? "Analizando el ámbito seleccionado…" : !analysis ? "Nunca analizado. Empieza por Todo el guion." : analysis.stale ? "El resultado corresponde a una revisión anterior." : analysis.status === "completed" ? (elements.length ? `Analizado · ${elements.filter((item) => item.status !== "dismissed").length} elementos en inventario.` : "Analizado sin elementos adicionales.") : "La última detección no pudo completarse."}</div>
+    <div className="writer-breakdown-title"><div><span>ELEMENTOS DETECTADOS</span><details><summary aria-label="Ayuda sobre Elementos detectados">?</summary><p>Revisa todo el guion con IA para encontrar elementos de producción. El filtro Mostrar no cambia el alcance del análisis.</p></details></div><button type="button" title="Revisa todo el guion guardado con IA" onClick={() => void detect()} disabled={busy}><SmartFeatureIndicator label={busy ? "Detectando…" : "Detectar elementos"} /></button></div>
+    <div className="writer-breakdown-head"><div><small>INVENTARIO</small><strong>{showDismissed ? "Descartados" : reviewMode ? "Por revisar" : WRITER_BREAKDOWN_CATEGORY_LABELS[category]} <b>{showDismissed ? visible.length : reviewMode ? pendingCount : countFor(category)}</b></strong></div><div className="writer-breakdown-head-actions"><button type="button" onClick={() => { setReviewMode(true); setShowDismissed(false); setSelectedId(null); }} aria-pressed={reviewMode}>Por revisar {pendingCount}</button><details><summary aria-label="Más opciones">···</summary><button type="button" onClick={() => { setReviewMode(false); setShowDismissed(true); setSelectedId(null); }}>Ver descartados ({elements.filter((element) => element.status === "dismissed").length})</button><button type="button" onClick={() => void addManual()} disabled={busy || category === "character"}>Añadir manualmente</button></details></div></div>
+    <div className={`writer-breakdown-analysis is-${loadError || detectionIssue ? "error" : busy ? "analyzing" : !analysis ? "never" : analysis.stale ? "stale" : analysis.status === "partial" || analysis.model === "local-rules-v1" ? "partial" : analysis.status === "completed" ? "complete" : "error"}`} role={loadError || detectionIssue ? "alert" : "status"}>{loadError ? "No pudimos cargar el estado de detección." : detectionIssue === "provider" ? "La asistencia no está disponible. El inventario local verificable permanece visible." : detectionIssue === "error" ? "La última detección falló. El inventario anterior permanece intacto." : busy ? "Analizando el guion guardado: reglas locales y asistencia por lotes…" : !analysis ? "Aún no se ejecutó la detección completa. El inventario local puede ser parcial." : analysis.stale ? "El resultado corresponde a una revisión anterior." : analysis.status === "partial" ? "Análisis asistido parcial. Se conservaron los lotes válidos y el inventario local." : analysis.model === "local-rules-v1" ? "Detección local completada. La cobertura asistida de todo el guion sigue pendiente." : analysis.status === "completed" ? (elements.length ? `Análisis completo · ${elements.filter((item) => item.status !== "dismissed").length} elementos en inventario.` : "Análisis completo sin elementos adicionales.") : "La última detección no pudo completarse."}</div>
     {category === "character" && !reviewMode && !showDismissed ? characters : <div className="writer-breakdown-list" role="tabpanel">
       {visible.map((element) => <article key={element.id} className={selectedId === element.id ? "is-selected" : ""}>
         <button className="writer-breakdown-item" type="button" onClick={() => setSelectedId((current) => current === element.id ? null : element.id)}><span className={`writer-breakdown-check is-${element.status}`}>{element.status === "confirmed" ? "✓" : element.status === "suggested" ? "?" : "×"}</span><span><strong>{element.name}</strong><small>{element.status === "confirmed" ? "Confirmado" : element.status === "suggested" ? "Detectado · sin confirmar" : "Descartado"} · {element.appearances.some((item) => item.stale) ? "revisar aparición" : element.appearances.length ? `${element.appearances.length} ${element.appearances.length === 1 ? "aparición" : "apariciones"}` : "sin aparición vinculada"}</small></span><b>Ver</b></button>
@@ -158,8 +171,8 @@ export default function WriterBreakdownPanel({
         {showDismissed && <div className="writer-breakdown-review"><p>Este candidato fue descartado y no reaparecerá en una nueva detección.</p><blockquote>{element.appearances[0]?.excerpt ?? "Sin fragmento vinculado"}</blockquote><div><button type="button" onClick={() => void mutate(element, { action: "status", status: "suggested" })}>Recuperar</button></div></div>}
         {selectedId === element.id && !showDismissed && <div className="writer-breakdown-detail">{element.assetId && <img className="writer-breakdown-thumbnail" src={`/api/writer/production-assets/${element.assetId}`} alt="Referencia visual privada" />}<label>Nombre<input defaultValue={element.name} onBlur={(event) => { const name = event.target.value.trim(); if (name && name !== element.name) void mutate(element, { action: "edit", name }); }} /></label><label>Categoría<select value={element.category} onChange={(event) => void mutate(element, { action: "edit", category: event.target.value })}>{WRITER_BREAKDOWN_CATEGORIES.filter((value) => value !== "character").map((value) => <option key={value} value={value}>{WRITER_BREAKDOWN_CATEGORY_LABELS[value]}</option>)}</select></label><label>Nota<textarea defaultValue={element.note ?? ""} placeholder="Nota de producción" onBlur={(event) => { if (event.target.value !== (element.note ?? "")) void mutate(element, { action: "edit", note: event.target.value }); }} /></label><h4>Apariciones</h4>{element.appearances.length ? <ul>{element.appearances.map((appearance) => <li key={appearance.id}><p>{appearance.excerpt}</p><button type="button" disabled={appearance.stale} onClick={() => onNavigate({ sceneId: appearance.sceneId, blockId: appearance.blockId, fromOffset: appearance.fromOffset, toOffset: appearance.toOffset })}>{appearance.stale ? "Referencia obsoleta" : "Ir al fragmento"}</button></li>)}</ul> : <p>Sin aparición vinculada.</p>}<label className="writer-breakdown-image">{element.assetId ? "Cambiar imagen" : "Añadir imagen"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(element, file); event.target.value = ""; }} /></label>{element.assetId && <button className="writer-breakdown-remove-image" type="button" disabled={busy} onClick={() => void removeImage(element)}>Quitar imagen</button>}</div>}
       </article>)}
-      {!visible.length && <div className="writer-sidebar-empty"><p>{showDismissed ? "No hay descartes que recuperar." : reviewMode ? "No hay elementos pendientes." : analysis ? "No hay elementos de esta categoría en el último análisis." : "Esta categoría todavía no fue analizada."}</p>{!analysis && <button type="button" onClick={() => void detect(false)}><SmartFeatureIndicator label="Detectar elementos" /></button>}</div>}
+      {!visible.length && <div className="writer-sidebar-empty"><p>{showDismissed ? "No hay descartes que recuperar." : reviewMode ? "No hay elementos pendientes." : analysis ? "No hay elementos de esta categoría en el último análisis." : "Esta categoría todavía no fue analizada."}</p></div>}
     </div>}
-    <div className="writer-breakdown-detect"><select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} aria-label="Ámbito del Breakdown"><option value="scene">Escena actual</option><option value="changed">Escenas nuevas/modificadas</option><option value="document">Todo el guion</option></select><button type="button" onClick={() => void detect(true)} disabled={busy || (scope === "scene" && !activeSceneId)} title="Acción explícita; usa IA sólo si está habilitada en este Preview">Detectar con asistencia</button>{message && <p role="status">{message}</p>}</div>
+    <div className="writer-breakdown-detect"><label>Mostrar<select value={displayScope} onChange={(event) => setDisplayScope(event.target.value as typeof displayScope)} aria-label="Mostrar elementos detectados"><option value="document">Todo el guion</option><option value="scene">Escena actual</option></select></label>{message && <p role="status">{message}</p>}</div>
   </div>;
 }

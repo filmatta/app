@@ -71,10 +71,10 @@ test("desktop confirms, persists and navigates a suggested relation without edit
   await page.setViewportSize({ width: 1440, height: 900 });
   await mockSetupPayoff(page);
   await page.goto(`/writer/${scriptId}`);
-  await page.getByRole("button", { name: /^Observaciones/ }).click();
+  await page.getByRole("button", { name: /^Asistente/ }).click();
+  await page.locator(".writer-observations-panel").getByRole("button", { name: "Setup / Payoff", exact: true }).click();
   const panel = page.locator(".writer-observations-panel");
-  await panel.getByRole("button", { name: /Setup \/ Payoff/ }).click();
-  await expect(panel.getByRole("heading", { name: "Setup / Payoff" })).toBeVisible();
+  await expect(panel.getByRole("heading", { name: /SETUP \/ PAYOFF/i })).toBeVisible();
   await panel.getByRole("button", { name: /Ventana observada/ }).click();
   await expect(panel.getByText("Estado: Sugerido")).toBeVisible();
   await panel.getByRole("button", { name: "Confirmar relación" }).click();
@@ -82,8 +82,8 @@ test("desktop confirms, persists and navigates a suggested relation without edit
   await panel.getByRole("button", { name: "Ir a Payoff" }).click();
   await expect(page.locator(`[data-block-id="${blockB}"]`)).toHaveClass(/writer-scene-target-highlight/);
   await page.reload();
-  await page.getByRole("button", { name: /^Observaciones/ }).click();
-  await page.locator(".writer-observations-panel").getByRole("button", { name: /Setup \/ Payoff/ }).click();
+  await page.getByRole("button", { name: /^Asistente/ }).click();
+  await page.locator(".writer-observations-panel").getByRole("button", { name: "Setup / Payoff", exact: true }).click();
   await page.locator(".writer-observations-panel").getByRole("button", { name: /Ventana observada/ }).click();
   await expect(page.locator(".writer-observations-panel").getByText("Estado: Confirmado")).toBeVisible();
 });
@@ -94,9 +94,10 @@ test("mobile exposes list, unresolved/orphan detail and manual linking without h
   await mockSetupPayoff(page);
   await page.goto(`/writer/${scriptId}`);
   await page.getByRole("button", { name: /^Navegar/ }).click();
-  await page.getByRole("dialog", { name: "Navegar por el guion" }).getByRole("button", { name: "Setup / Payoff" }).click();
+  await page.getByRole("dialog", { name: "Navegar por el guion" }).getByRole("button", { name: /Asistente/ }).click();
   const panel = page.locator(".writer-observations-panel");
-  await expect(panel.getByRole("heading", { name: "Setup / Payoff" })).toBeVisible();
+  await panel.getByRole("button", { name: "Setup / Payoff", exact: true }).click();
+  await expect(panel.getByRole("heading", { name: /SETUP \/ PAYOFF/i })).toBeVisible();
   await panel.getByRole("button", { name: /Promesa pendiente/ }).click();
   await expect(panel.getByText(/no encontramos una resolución posterior/)).toBeVisible();
   await panel.getByRole("button", { name: /Momento no preparado/ }).click();

@@ -57,8 +57,8 @@ test("desktop splitters drag, persist, reset, protect the editor and survive Foc
   });
   expect(desktopLayout.sidebar, JSON.stringify(desktopLayout)).toBeGreaterThan(330);
 
-  const right = page.getByRole("separator", { name: "Cambiar ancho del panel de observaciones" });
-  if (!await right.isVisible()) await page.getByRole("button", { name: /Observaciones/ }).click();
+  const right = page.getByRole("separator", { name: "Cambiar ancho del Asistente" });
+  if (!await right.isVisible()) await page.getByRole("button", { name: "Asistente", exact: true }).click();
   await expect(right).toBeVisible();
   await right.focus();
   await page.keyboard.press("ArrowLeft");
@@ -70,14 +70,14 @@ test("desktop splitters drag, persist, reset, protect the editor and survive Foc
 
   await page.reload();
   await expect(page.getByLabel("Editor de guion")).toBeVisible();
-  const restoredRight = page.getByRole("separator", { name: "Cambiar ancho del panel de observaciones" });
-  if (!await restoredRight.isVisible()) await page.getByRole("button", { name: /Observaciones/ }).click();
+  const restoredRight = page.getByRole("separator", { name: "Cambiar ancho del Asistente" });
+  if (!await restoredRight.isVisible()) await page.getByRole("button", { name: "Asistente", exact: true }).click();
   await expect.poll(() => width(page, ".writer-sidebar")).toBeGreaterThan(330);
   await expect(restoredRight).toHaveAttribute("aria-valuenow", "376");
 
   await page.getByRole("separator", { name: "Cambiar ancho del panel de escenas" }).dblclick();
   await expect.poll(() => width(page, ".writer-sidebar")).toBe(264);
-  await page.getByRole("separator", { name: "Cambiar ancho del panel de observaciones" }).dblclick();
+  await page.getByRole("separator", { name: "Cambiar ancho del Asistente" }).dblclick();
   await expect.poll(() => width(page, ".writer-observations-panel")).toBe(360);
 
   await page.getByRole("button", { name: "Focus", exact: true }).click();

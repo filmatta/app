@@ -5,6 +5,7 @@ import { createBlock, type WriterDocument } from "../../lib/writer/document.ts";
 import {
   detectWriterBreakdownRules,
   sceneLocationLabel,
+  validateWriterBreakdownCandidates,
   writerShotlistCsv,
   writerShotlistSummary,
   type WriterShotlist,
@@ -25,6 +26,23 @@ test("Breakdown rules retain exact evidence and avoid metaphor/mention invention
   assert.equal(props[0]?.blockId, action.attrs.id);
   assert.equal(props[0]?.nature, "used");
   assert.equal(action.content?.[0]?.type === "text" ? action.content[0].text.slice(props[0]!.fromOffset, props[0]!.toOffset) : "", "pistola");
+});
+
+test("hybrid evidence validation accepts exact wardrobe and prop references without fixture dictionaries", () => {
+  const heading = createBlock("sceneHeading", "EXT. BOSQUE - NOCHE", "51111111-1111-4111-8111-111111111111");
+  const action = createBlock("action", "Mara entra con un abrigo rojo. Rubén saca una pistola y apunta a Mara.", "52222222-2222-4222-8222-222222222222");
+  const variant = createBlock("action", "Inés deja su impermeable amarillo y levanta una linterna vieja.", "53333333-3333-4333-8333-333333333333");
+  const document: WriterDocument = { type: "doc", content: [heading, action, variant] };
+  const candidates = validateWriterBreakdownCandidates([
+    { name: "abrigo rojo", category: "wardrobe", sceneId: heading.attrs.id, blockId: action.attrs.id, excerpt: "Mara entra con un abrigo rojo.", nature: "present" },
+    { name: "pistola", category: "prop", sceneId: heading.attrs.id, blockId: action.attrs.id, excerpt: "Rubén saca una pistola y apunta a Mara.", nature: "used" },
+    { name: "impermeable amarillo", category: "wardrobe", sceneId: heading.attrs.id, blockId: variant.attrs.id, excerpt: "Inés deja su impermeable amarillo", nature: "present" },
+    { name: "linterna vieja", category: "prop", sceneId: heading.attrs.id, blockId: variant.attrs.id, excerpt: "levanta una linterna vieja.", nature: "used" },
+    { name: "objeto inventado", category: "prop", sceneId: heading.attrs.id, blockId: variant.attrs.id, excerpt: "texto que no existe", nature: "inferred" },
+  ], document);
+  assert.deepEqual(candidates.map((candidate) => [candidate.name, candidate.category]), [
+    ["abrigo rojo", "wardrobe"], ["pistola", "prop"], ["impermeable amarillo", "wardrobe"], ["linterna vieja", "prop"],
+  ]);
 });
 
 test("scene locations preserve hierarchy", () => {

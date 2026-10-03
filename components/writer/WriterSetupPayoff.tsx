@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { WriterNarrativeElement, WriterNarrativeLink } from "@/lib/writer/setup-payoff";
 import { SmartFeatureIndicator } from "./WriterSmartFormatting";
+import WriterAssistantSectionHeading from "./WriterAssistantSectionHeading";
 
 type SceneOption = { id: string; order: number; title: string };
 
@@ -82,10 +83,8 @@ export default function WriterSetupPayoff({
 
   return (
     <div className="writer-setup-payoff" aria-busy={analyzing}>
-      <header className="writer-setup-payoff-heading">
-        <div><p className="writer-eyebrow">Análisis narrativo</p><h3>Setup / Payoff</h3><small>FILMATTA propone relaciones; tú decides cuáles existen.</small></div>
-        <span>{activeElements.length}</span>
-      </header>
+      <WriterAssistantSectionHeading title="SETUP / PAYOFF" count={activeElements.length} help="Explora posibles vínculos entre elementos que se preparan y sus consecuencias, revelaciones o resoluciones." />
+      <p className="writer-assistant-section-intro">FILMATTA propone relaciones; tú decides cuáles existen.</p>
       <div className="writer-setup-payoff-summary" aria-label="Resumen Setup / Payoff">
         <div><strong>{setups.length}</strong><span>setups</span></div>
         <div><strong>{confirmed}</strong><span>confirmados</span></div>

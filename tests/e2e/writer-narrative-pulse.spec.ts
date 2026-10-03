@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
+import { expect, test, type BrowserContext, type Locator, type Page, type Route } from "@playwright/test";
 
 const scriptId = "11111111-1111-4111-8111-111111111111";
 const sceneA = "11111111-1111-4111-8111-111111111101";
@@ -15,14 +15,14 @@ test("desktop keeps Observations active while splitters and Timeline Pulse switc
   const posts=await mockPulse(page);
   await page.goto(`/writer/${scriptId}`);
 
-  const observationsButton=page.getByRole("button",{name:/Observaciones/});
-  const observations=page.getByRole("complementary",{name:"Observaciones"});
-  const reviewTab=page.getByRole("navigation",{name:"Secciones de Observaciones"}).getByRole("button",{name:/Revisión/});
+  const observationsButton=page.getByRole("button",{name:"Asistente",exact:true});
+  const observations=page.getByRole("complementary",{name:"Asistente"});
+  const reviewTab=page.getByRole("navigation",{name:"Secciones del Asistente"}).getByRole("button",{name:"Formato"});
   await expect(observationsButton).toHaveAttribute("aria-expanded","true");
   await expect(observations).toBeVisible();
   await expect(reviewTab).toHaveAttribute("aria-current","page");
 
-  const rightSplitter=page.getByRole("separator",{name:"Cambiar ancho del panel de observaciones"});
+  const rightSplitter=page.getByRole("separator",{name:"Cambiar ancho del Asistente"});
   await expect(rightSplitter).toHaveAttribute("aria-valuenow","360");
   await rightSplitter.focus();
   await page.keyboard.press("ArrowLeft");
@@ -37,6 +37,26 @@ test("desktop keeps Observations active while splitters and Timeline Pulse switc
   await expect(panel.locator(".writer-pulse-point").last()).toHaveAttribute("data-raw-intensity", "76");
   const displayed = await panel.locator(".writer-pulse-point").evaluateAll((nodes) => nodes.map((node) => Number((node as HTMLElement).dataset.displayIntensity)));
   expect(displayed[1] - displayed[0]).toBeGreaterThanOrEqual(65);
+  await expect.poll(() => pulseAlignmentError(panel)).toBeLessThan(1);
+  await panel.locator(".writer-pulse-point").first().click();
+  await expect(panel.locator(".writer-pulse-detail").getByRole("heading", { name: /INT\. ESTUDIO/ })).toBeVisible();
+  const timelineSplitter = page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" });
+  for (let cycle = 0; cycle < 10; cycle += 1) {
+    await page.getByRole("button", { name: "Ocultar Asistente" }).click();
+    await expect(observations).toBeHidden();
+    await expect.poll(() => pulseAlignmentError(panel)).toBeLessThan(1);
+    await page.getByRole("button", { name: "Mostrar Asistente" }).click();
+    await expect(observations).toBeVisible();
+    await timelineSplitter.focus();
+    await page.keyboard.press("ArrowUp");
+    await expect.poll(() => pulseAlignmentError(panel)).toBeLessThan(1);
+    await page.keyboard.press("ArrowDown");
+    await panel.getByRole("button", { name: "Expandir vista" }).click();
+    await expect.poll(() => pulseAlignmentError(panel)).toBeLessThan(1);
+    await panel.getByRole("button", { name: "Contraer vista" }).click();
+    await panel.locator(".writer-pulse-point").first().press("Enter");
+    await expect(panel.locator(".writer-pulse-detail").getByRole("heading", { name: /INT\. ESTUDIO/ })).toBeVisible();
+  }
   await expect(observations).toBeVisible();
   await expect(reviewTab).toHaveAttribute("aria-current","page");
   await expect(rightSplitter).toHaveAttribute("aria-valuenow","376");
@@ -58,4 +78,17 @@ test("desktop keeps Observations active while splitters and Timeline Pulse switc
   await expect(panel.locator(".writer-pulse-milestone-list").getByRole("button",{name:/Primera decisión irreversible/})).toBeVisible();
 });
 
-test("mobile Pulse fits, keeps drawer behavior and navigates by tap",async({page})=>{await page.setViewportSize({width:390,height:844});await page.addInitScript(()=>localStorage.setItem("filmatta.writer.mobile-notice.v1:11111111-1111-4111-8111-111111111111","dismissed"));await mockPulse(page);await page.goto(`/writer/${scriptId}`);const observations=page.getByRole("complementary",{name:"Observaciones"});await expect(observations).toBeHidden();await expect(page.getByRole("separator").first()).toBeHidden();await page.getByRole("button",{name:/Navegar/}).click();let navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:/Observaciones/}).click();await expect(observations).toBeVisible();await observations.getByRole("button",{name:"Cerrar",exact:true}).click();await page.getByRole("button",{name:/Navegar/}).click();navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:"Timeline"}).click();const panel=page.locator("#writer-timeline-panel");await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();await expect.poll(()=>panel.evaluate((element)=>element.scrollWidth<=element.clientWidth+1)).toBe(true);await panel.getByRole("button",{name:/Escena 1: INT\. ESTUDIO/}).press("Enter");await expect(page.locator(`[data-block-id="${sceneA}"]`)).toHaveClass(/writer-scene-target-highlight/);});
+test("mobile Pulse fits, keeps drawer behavior and navigates by tap",async({page})=>{await page.setViewportSize({width:390,height:844});await page.addInitScript(()=>localStorage.setItem("filmatta.writer.mobile-notice.v1:11111111-1111-4111-8111-111111111111","dismissed"));await mockPulse(page);await page.goto(`/writer/${scriptId}`);const observations=page.getByRole("complementary",{name:"Asistente"});await expect(observations).toBeHidden();await expect(page.getByRole("separator").first()).toBeHidden();await page.getByRole("button",{name:/Navegar/}).click();let navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:/Asistente/}).click();await expect(observations).toBeVisible();await observations.getByRole("button",{name:"Cerrar",exact:true}).click();await page.getByRole("button",{name:/Navegar/}).click();navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:"Timeline"}).click();const panel=page.locator("#writer-timeline-panel");await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();await expect.poll(()=>panel.evaluate((element)=>element.scrollWidth<=element.clientWidth+1)).toBe(true);await panel.getByRole("button",{name:/Escena 1: INT\. ESTUDIO/}).press("Enter");await expect(page.locator(`[data-block-id="${sceneA}"]`)).toHaveClass(/writer-scene-target-highlight/);});
+
+async function pulseAlignmentError(panel: Locator) {
+  return panel.locator(".writer-pulse-canvas").evaluate((canvas) => {
+    const path = canvas.querySelector<SVGPathElement>(".writer-pulse-curve")?.getAttribute("d") ?? "";
+    const coordinates = [...path.matchAll(/[ML]([\d.]+),([\d.]+)/gu)].map((match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+    const bounds = canvas.getBoundingClientRect();
+    const points = [...canvas.querySelectorAll<HTMLElement>(".writer-pulse-point")].map((point) => {
+      const rect = point.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2 - bounds.left + canvas.scrollLeft, y: rect.top + rect.height / 2 - bounds.top };
+    });
+    return Math.max(0, ...points.map((point, index) => Math.hypot(point.x - coordinates[index].x, point.y - coordinates[index].y)));
+  });
+}

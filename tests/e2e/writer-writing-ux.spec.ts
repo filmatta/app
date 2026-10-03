@@ -65,7 +65,7 @@ test("context actions, assisted insertion, live metrics and reload use the canon
 
   const ana = page.getByRole("button", { name: /ANA 1 evidencia/ });
   await ana.click();
-  await expect(page.getByRole("heading", { name: "Observaciones" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Asistente" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Personajes reconocidos" })).toBeVisible();
   await page.locator(".writer-observations-panel").getByRole("button", { name: "Cerrar", exact: true }).click();
 
@@ -458,7 +458,7 @@ test("observations aggregate format review while Timeline stays below center and
   await observations.getByRole("button", { name: "Ver siguiente →" }).click();
   await expect(observations.locator(".writer-format-review")).toContainText("Acciones · 2 de 2");
   await observations.getByRole("button", { name: "Cerrar", exact: true }).click();
-  await page.locator(".writer-header").getByRole("button", { name: /Observaciones/ }).click();
+  await page.getByRole("button", { name: "Mostrar Asistente", exact: true }).click();
   await expect(observations.locator(".writer-format-review")).toContainText("Acciones · 2 de 2");
   await observations.getByRole("button", { name: "← Anterior" }).click();
   await observations.locator(".writer-format-review select").selectOption("transition");
@@ -586,7 +586,7 @@ test("Script Assistant stays incremental, opens markers in one click, survives F
   await marker.click();
   const panel = page.locator(".writer-observations-panel");
   await expect(panel).toBeVisible();
-  await expect(panel.getByRole("button", { name: /Assistant Narrativa/ })).toHaveAttribute("aria-current", "page");
+  await expect(panel.getByRole("button", { name: "O-O-C", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(panel.getByText("¿Qué dificulta lo que Ana busca aquí?")).toBeVisible();
   await expect(page.locator('[data-block-id$="02"]')).toHaveClass(/writer-scene-target-highlight/);
 

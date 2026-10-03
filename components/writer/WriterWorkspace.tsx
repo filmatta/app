@@ -2378,9 +2378,9 @@ export default function WriterWorkspace({
             ><WriterIcon name="panelLeft" /></button>
             <button
               type="button"
-              aria-label={observationsOpen ? "Ocultar panel derecho" : "Mostrar panel derecho"}
+              aria-label={observationsOpen ? "Ocultar Asistente" : "Mostrar Asistente"}
               aria-pressed={observationsOpen}
-              title={observationsOpen ? "Ocultar revisión y Assistant" : "Mostrar revisión y Assistant"}
+            title={observationsOpen ? "Ocultar Asistente" : "Mostrar Asistente"}
               onClick={() => setRightSidebarVisible(!observationsOpen)}
             ><WriterIcon name="panelRight" /></button>
           </div>
@@ -2406,7 +2406,7 @@ export default function WriterWorkspace({
             type="button"
             onClick={() => { setSelectedObservationBlockId(null); setObservationsSection("review"); setRightSidebarVisible(true); }}
             aria-expanded={observationsOpen}
-          >Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
+          ><SmartFeatureIndicator label={`Asistente${pendingObservationCount ? ` (${pendingObservationCount})` : ""}`} /></button>
           <button
             className="writer-timeline-button"
             type="button"
@@ -2455,10 +2455,7 @@ export default function WriterWorkspace({
             <div className="writer-mobile-nav-tabs" role="group" aria-label="Secciones de Writer">
               <button type="button" onClick={() => { setMobileSidebar("scenes"); setMobileNavigateOpen(false); }}>Escenas</button>
               <button type="button" onClick={() => { setMobileSidebar("characters"); setMobileNavigateOpen(false); }}>Personajes</button>
-              <button ref={mobileObservationsButtonRef} type="button" onClick={() => { observationsExplicitRef.current = true; setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Observaciones{pendingObservationCount ? ` (${pendingObservationCount})` : ""}</button>
-              <button type="button" onClick={() => { observationsExplicitRef.current = true; setObservationsSection("assistant"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Assistant</button>
-              <button type="button" onClick={() => { observationsExplicitRef.current = true; setObservationsSection("setupPayoff"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Setup / Payoff</button>
-              <button type="button" onClick={() => { observationsExplicitRef.current = true; setObservationsSection("guided"); setObservationsOpen(true); setMobileNavigateOpen(false); }}>Guided Writing</button>
+              <button ref={mobileObservationsButtonRef} type="button" onClick={() => { observationsExplicitRef.current = true; setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen(true); setMobileNavigateOpen(false); }}><SmartFeatureIndicator label={`Asistente${pendingObservationCount ? ` (${pendingObservationCount})` : ""}`} /></button>
               <button type="button" disabled={!initialTimeline.ok} onClick={() => openTimeline()}>Timeline</button>
             </div>
           </div>
@@ -2575,7 +2572,7 @@ export default function WriterWorkspace({
         )}
         <section className={`writer-character-section${charactersCollapsed ? " is-collapsed" : ""}`} aria-labelledby="writer-character-heading">
           <button className="writer-character-section-toggle" type="button" aria-expanded={!charactersCollapsed} onClick={() => setCharactersCollapsed((value) => !value)}>
-            <span id="writer-character-heading" className="writer-sidebar-heading">Breakdown</span><span aria-hidden="true">{charactersCollapsed ? "⌄" : "⌃"}</span>
+            <span id="writer-character-heading" className="writer-sidebar-heading">Elementos detectados</span><span aria-hidden="true">{charactersCollapsed ? "⌄" : "⌃"}</span>
           </button>
           {!charactersCollapsed && <WriterBreakdownPanel
             scriptId={script.id}
@@ -2990,6 +2987,8 @@ export default function WriterWorkspace({
         showHighlights={showImportReviewHighlights}
         formatReviewPersistent={formatReviewStoragePersistent}
         sceneCount={scenes.length}
+        sceneOrder={scenes.map((scene) => scene.id)}
+        activeSceneId={activeScene}
         selectedBlockId={selectedObservationBlockId}
         onClose={() => {
             setRightSidebarVisible(false);

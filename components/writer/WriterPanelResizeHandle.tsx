@@ -88,7 +88,7 @@ export default function WriterPanelResizeHandle({
   }
 
   const limits = WRITER_PANEL_LIMITS[side];
-  const label = side === "left" ? "Cambiar ancho del panel de escenas" : "Cambiar ancho del panel de observaciones";
+  const label = side === "left" ? "Cambiar ancho del panel de escenas" : "Cambiar ancho del Asistente";
 
   return (
     <div

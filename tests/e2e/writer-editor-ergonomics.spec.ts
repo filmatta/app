@@ -25,7 +25,7 @@ test("150-scene Writer keeps independent navigation, expandable analysis and loc
   await openLongWriter(page, context);
   const geometry = await page.evaluate(() => {
     const scenes = document.querySelector<HTMLElement>(".writer-scene-region")!;
-    const characters = document.querySelector<HTMLElement>(".writer-character-section > ul")!;
+    const characters = document.querySelector<HTMLElement>('[aria-label="Personajes del guion"]')!;
     const thumb = getComputedStyle(scenes, "::-webkit-scrollbar-thumb");
     const sceneMax = scenes.scrollHeight - scenes.clientHeight;
     scenes.scrollTop = sceneMax / 2;
@@ -209,30 +209,30 @@ test("desktop panel toggles and horizontal heights persist, reset and restore ar
   await page.getByRole("button", { name: "Ocultar panel izquierdo" }).click();
   await expect(workspace).toHaveClass(/writer-workspace--left-hidden/);
   await expect(page.locator(".writer-sidebar")).toBeHidden();
-  await page.getByRole("button", { name: "Ocultar panel derecho" }).click();
-  await expect(page.getByRole("complementary", { name: "Observaciones" })).toBeHidden();
+  await page.getByRole("button", { name: "Ocultar Asistente" }).click();
+  await expect(page.getByRole("complementary", { name: "Asistente" })).toBeHidden();
   await page.reload();
   await expect(page.getByRole("button", { name: "Mostrar panel izquierdo" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Mostrar panel derecho" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mostrar Asistente" })).toBeVisible();
 
   await page.getByRole("button", { name: "Mostrar panel izquierdo" }).click();
-  await page.getByRole("button", { name: "Mostrar panel derecho" }).click();
+  await page.getByRole("button", { name: "Mostrar Asistente" }).click();
   const characters = page.getByRole("separator", { name: "Cambiar altura del panel de personajes" });
   const timeline = page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" });
-  await expect(characters).toHaveAttribute("aria-valuenow", "260");
+  await expect(characters).toHaveAttribute("aria-valuenow", "360");
   await expect(timeline).toHaveAttribute("aria-valuenow", "260");
   await characters.focus();
   await page.keyboard.press("ArrowUp");
   await timeline.focus();
   await page.keyboard.press("ArrowDown");
-  await expect(characters).toHaveAttribute("aria-valuenow", "276");
+  await expect(characters).toHaveAttribute("aria-valuenow", "376");
   await expect(timeline).toHaveAttribute("aria-valuenow", "244");
   await page.reload();
-  await expect(page.getByRole("separator", { name: "Cambiar altura del panel de personajes" })).toHaveAttribute("aria-valuenow", "276");
+  await expect(page.getByRole("separator", { name: "Cambiar altura del panel de personajes" })).toHaveAttribute("aria-valuenow", "376");
   await expect(page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" })).toHaveAttribute("aria-valuenow", "244");
   await page.getByRole("separator", { name: "Cambiar altura del panel de personajes" }).dblclick();
   await page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" }).dblclick();
-  await expect(page.getByRole("separator", { name: "Cambiar altura del panel de personajes" })).toHaveAttribute("aria-valuenow", "260");
+  await expect(page.getByRole("separator", { name: "Cambiar altura del panel de personajes" })).toHaveAttribute("aria-valuenow", "360");
   await expect(page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" })).toHaveAttribute("aria-valuenow", "260");
 
   const normalPaper = await page.locator(".writer-paper-sheet").boundingBox();

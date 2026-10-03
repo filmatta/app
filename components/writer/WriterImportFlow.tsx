@@ -212,7 +212,7 @@ export default function WriterImportFlow({ onClose, beforeCreate, destination = 
   function setBlockKind(block: WriterImportBlock, kind: ScreenplayKind) {
     if (!staging) return;
     if (kind === "character" && /[.!?…]/u.test(block.originalText.trim())) {
-      const proceed = window.confirm("Este tipo crea un encabezado de diálogo y la línea parece una oración de Acción. Acepta sólo si deseas reemplazar su formato; para reconocer una identidad sin cambiar la frase, importa como Acción y usa Observaciones en Writer.");
+      const proceed = window.confirm("Este tipo crea un encabezado de diálogo y la línea parece una oración de Acción. Acepta sólo si deseas reemplazar su formato; para reconocer una identidad sin cambiar la frase, importa como Acción y usa el Asistente en Writer.");
       if (!proceed) return;
     }
     setStaging({ ...staging, blocks: changeWriterImportKind(staging.blocks, new Set([block.id]), kind) });

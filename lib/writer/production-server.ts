@@ -56,7 +56,7 @@ export async function loadWriterBreakdown(db: SupabaseClient, userId: string, sc
       .order("updated_at", { ascending: false }).limit(1),
   ]);
   if (elementsResult.error || appearancesResult.error || operationResult.error) {
-    throw new WriterProductionError("storage", "No pudimos cargar el Breakdown.", 500);
+    throw new WriterProductionError("storage", "No pudimos cargar los elementos detectados.", 500);
   }
   const appearancesByElement = new Map<string, WriterBreakdownAppearance[]>();
   for (const row of appearancesResult.data ?? []) {
@@ -107,7 +107,7 @@ export async function detectAndStoreWriterBreakdown(
   db: SupabaseClient,
   userId: string,
   scriptId: string,
-  options: { sceneIds?: ReadonlySet<string>; extraCandidates?: WriterBreakdownCandidate[]; scope?: "scene" | "changed" | "document"; recordLocalRun?: boolean } = {},
+  options: { sceneIds?: ReadonlySet<string>; extraCandidates?: WriterBreakdownCandidate[]; scope?: "scene" | "changed" | "document"; recordLocalRun?: boolean; includeRules?: boolean } = {},
 ) {
   const script = await assertOwnedWriterScript(db, userId, scriptId);
   const operationId = options.recordLocalRun ? randomUUID() : null;
@@ -123,7 +123,7 @@ export async function detectAndStoreWriterBreakdown(
     if (operation.error) throw new WriterProductionError("storage", "No pudimos registrar la detección.", 500);
   }
   const candidates = [
-    ...detectWriterBreakdownRules(script.document, options.sceneIds),
+    ...(options.includeRules === false ? [] : detectWriterBreakdownRules(script.document, options.sceneIds)),
     ...(options.extraCandidates ?? []),
   ].filter((candidate) => candidate.category !== "character");
   const fingerprints = [...new Set(candidates.map((candidate) => candidate.fingerprint))];
@@ -142,7 +142,7 @@ export async function detectAndStoreWriterBreakdown(
       .select("id,status")
       .eq("owner_id", userId).eq("script_id", scriptId).eq("fingerprint", candidate.fingerprint)
       .maybeSingle();
-    if (existing.error) throw new WriterProductionError("storage", "No pudimos guardar el Breakdown.", 500);
+    if (existing.error) throw new WriterProductionError("storage", "No pudimos guardar los elementos detectados.", 500);
     let elementId = existing.data?.id ? String(existing.data.id) : null;
     if (!elementId) {
       const created = await db.from("writer_breakdown_elements").insert({
@@ -156,7 +156,7 @@ export async function detectAndStoreWriterBreakdown(
         canonical_identity_key: candidate.canonicalIdentityKey ?? null,
         fingerprint: candidate.fingerprint,
       }).select("id").single();
-      if (created.error || !created.data) throw new WriterProductionError("storage", "No pudimos guardar el Breakdown.", 500);
+      if (created.error || !created.data) throw new WriterProductionError("storage", "No pudimos guardar los elementos detectados.", 500);
       elementId = String(created.data.id);
     }
     const sourceHash = createHash("sha256").update(candidate.excerpt).digest("hex");
@@ -175,7 +175,7 @@ export async function detectAndStoreWriterBreakdown(
       stale: false,
       updated_at: new Date().toISOString(),
     }, { onConflict: "element_id,block_id,from_offset,nature" });
-    if (appearance.error) throw new WriterProductionError("storage", "No pudimos guardar la evidencia del Breakdown.", 500);
+    if (appearance.error) throw new WriterProductionError("storage", "No pudimos guardar la evidencia de los elementos detectados.", 500);
   }
   if (operationId) {
     const completed = await db.from("writer_production_operations").update({

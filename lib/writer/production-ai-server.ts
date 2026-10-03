@@ -89,8 +89,9 @@ export async function loadProposals(db: SupabaseClient, userId: string, shotlist
 }
 
 async function executeOperation(input: { userId: string; scriptId?: string | null; sourceRevision?: number | null; shotlistId?: string; kind: string; scope: string; source: string; instructions: string; schema: Record<string, unknown>; operationId?: string; signal?: AbortSignal }) {
-  const sourceHash = sha256(input.source); const requestHash = sha256(`${VERSION}:${WRITER_SCRIPT_ASSISTANT_MODEL}:${input.instructions}:${input.source}`);
+  const sourceHash = sha256(input.source);
   let operationId = input.operationId ?? randomUUID();
+  const requestHash = sha256(`${VERSION}:${WRITER_SCRIPT_ASSISTANT_MODEL}:${operationId}:${input.instructions}:${input.source}`);
   const estimated = estimateWriterSceneAnalysisMaximumCost(countWriterSceneAnalysisTokens(`${input.instructions}\n${input.source}`), MAX_OUTPUT_TOKENS);
   if (estimated > MAX_OPERATION_COST_MICRO_USD) throw new WriterProductionAiError("budget", "La operación excede el límite técnico de US$0.20.", 413);
   const admin = createAdminClient();

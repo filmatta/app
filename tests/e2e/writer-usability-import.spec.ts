@@ -112,7 +112,7 @@ test("saved revisions auto-refresh an open Timeline once, preserve state, and st
   await expect(panel.getByText(/revisión 1/)).toBeVisible();
   await panel.getByLabel("Entorno").selectOption("interior");
   await panel.locator('[data-timeline-scene-id$="01"]').click();
-  await page.waitForLoadState("networkidle");
+  await expect(panel.locator('[data-timeline-scene-id$="01"]')).toHaveAttribute("aria-pressed", "true");
 
   const before = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json();
   expect(before.saves).toBe(0);
@@ -275,7 +275,7 @@ test("character observations are revealed on demand, local, reversible, and abse
   await marker.click();
   const panel = page.locator(".writer-observations-panel");
   await expect(panel.getByText("¿“UN ROBOT” es un personaje?")).toBeVisible();
-  await expect(panel.getByText("Un robot observa a ANA.", { exact: false })).toBeVisible();
+  await expect(panel.locator(".writer-character-review-card blockquote").getByText("Un robot observa a ANA.", { exact: false })).toBeVisible();
   await panel.getByRole("button", { name: "No", exact: true }).click();
   await expect(panel.getByText("No hay posibles personajes pendientes en el texto actual.")).toBeVisible();
   await panel.getByText(/Ignoradas \(1\)/).click();
@@ -308,7 +308,7 @@ test("character observations are revealed on demand, local, reversible, and abse
   await panel.getByRole("button", { name: "Cerrar" }).click();
   await page.reload();
   await expect(editor).toBeVisible();
-  await page.locator(".writer-header").getByRole("button", { name: /Observaciones/ }).click();
+  await page.locator(".writer-header").getByRole("button", { name: "Asistente", exact: true }).click();
   await expect(page.locator(".writer-observations-panel").getByText("Un guardia", { exact: true })).toBeVisible();
   await page.locator(".writer-observations-panel").getByRole("button", { name: "Cerrar" }).click();
 
@@ -324,7 +324,7 @@ test("character observations are revealed on demand, local, reversible, and abse
   await page.locator(".writer-observations-panel").getByRole("button", { name: "Cerrar" }).click();
   await page.reload();
   await expect(editor).toBeVisible();
-  await page.locator(".writer-header").getByRole("button", { name: /Observaciones/ }).click();
+  await page.locator(".writer-header").getByRole("button", { name: "Asistente", exact: true }).click();
   await expect(page.locator(".writer-observations-panel").getByText("¿“NADIE” es un personaje?")).toHaveCount(0);
   await page.locator(".writer-observations-panel").getByRole("button", { name: "Cerrar" }).click();
 

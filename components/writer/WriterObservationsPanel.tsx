@@ -16,6 +16,9 @@ import {
   writerObservationExcerpt,
   type WriterFormatObservation,
 } from "@/lib/writer/import-analysis";
+import { orderedCharacterAppearances, nearestCharacterAppearanceIndex } from "@/lib/writer/character-appearance-navigation";
+import WriterAssistantSectionHeading from "./WriterAssistantSectionHeading";
+import { SmartFeatureIndicator } from "./WriterSmartFormatting";
 
 export type WriterObservationsSection = "review" | "assistant" | "setupPayoff" | "guided";
 
@@ -39,7 +42,7 @@ const FORMAT_LABELS: Record<ScreenplayKind, { plural: string; singular: string; 
 export default function WriterObservationsPanel({
   observations, knownIdentities, knownCharacterActivity, decisions, storagePersistent, importedAnalysisPersistent,
   formatObservations, reviewedFormatIds, activeFormatObservationId, showHighlights, formatReviewPersistent,
-  sceneCount, selectedBlockId, hidden, section, readinessNotice, assistantPanel, setupPayoffPanel, guidedWritingPanel, footer, onSectionChange, onClose, onConfirm, onLink, onIgnore,
+  sceneCount, sceneOrder, activeSceneId, selectedBlockId, hidden, section, readinessNotice, assistantPanel, setupPayoffPanel, guidedWritingPanel, footer, onSectionChange, onClose, onConfirm, onLink, onIgnore,
   onRestore, onAddManual, onView, onViewFormat, onReviewFormat, onChangeFormat, onToggleHighlights,
 }: {
   observations: WriterCharacterObservation[];
@@ -54,6 +57,8 @@ export default function WriterObservationsPanel({
   showHighlights: boolean;
   formatReviewPersistent: boolean;
   sceneCount: number;
+  sceneOrder: string[];
+  activeSceneId: string | null;
   selectedBlockId: string | null;
   hidden: boolean;
   section: WriterObservationsSection;
@@ -80,6 +85,7 @@ export default function WriterObservationsPanel({
   const [manualName, setManualName] = useState("");
   const [activeKind, setActiveKind] = useState<ScreenplayKind | null>(null);
   const [indexByKind, setIndexByKind] = useState<Partial<Record<ScreenplayKind, number>>>({});
+  const [appearanceByIdentity, setAppearanceByIdentity] = useState<Record<string, string>>({});
   const decisionByFingerprint = useMemo(
     () => new Map(decisions.decisions.map((decision) => [decision.fingerprint, decision])),
     [decisions.decisions],
@@ -174,18 +180,18 @@ export default function WriterObservationsPanel({
     }}>
       <header>
         <div>
-          <p className="writer-eyebrow">Revisión</p>
-          <h2 id="writer-observations-title">Observaciones</h2>
+          <p className="writer-eyebrow">Writer</p>
+          <h2 id="writer-observations-title"><SmartFeatureIndicator label="Asistente" /></h2>
           <p>{sceneCount} escenas · {knownIdentities.length} personajes · {formatObservations.length} clasificaciones de formato</p>
         </div>
         <button type="button" onClick={onClose}>Cerrar</button>
       </header>
 
-      <nav className="writer-observations-tabs" aria-label="Secciones de Observaciones">
-        <button type="button" aria-current={section === "review" ? "page" : undefined} onClick={() => onSectionChange("review")}><small>Revisión</small><strong>Formato y personajes</strong></button>
-        <button type="button" aria-current={section === "assistant" ? "page" : undefined} onClick={() => onSectionChange("assistant")}><small>Assistant</small><strong>Narrativa</strong></button>
-        <button type="button" aria-current={section === "setupPayoff" ? "page" : undefined} onClick={() => onSectionChange("setupPayoff")}><small>Relaciones</small><strong>Setup / Payoff</strong></button>
-        <button type="button" aria-current={section === "guided" ? "page" : undefined} onClick={() => onSectionChange("guided")}><small>Guía</small><strong>Pensarlo juntos</strong></button>
+      <nav className="writer-observations-tabs" aria-label="Secciones del Asistente">
+        <button type="button" aria-current={section === "review" ? "page" : undefined} onClick={() => onSectionChange("review")}><strong>Formato</strong></button>
+        <button type="button" aria-current={section === "assistant" ? "page" : undefined} onClick={() => onSectionChange("assistant")}><strong>O-O-C</strong></button>
+        <button type="button" aria-current={section === "setupPayoff" ? "page" : undefined} onClick={() => onSectionChange("setupPayoff")}><strong>Setup / Payoff</strong></button>
+        <button type="button" aria-current={section === "guided" ? "page" : undefined} onClick={() => onSectionChange("guided")}><strong>Guía</strong></button>
       </nav>
 
       <div className="writer-observations-scroll">
@@ -205,8 +211,8 @@ export default function WriterObservationsPanel({
         </label>}
 
         {formatGroups.length > 0 && (
-          <section aria-labelledby="writer-observations-format-heading">
-            <div className="writer-observations-section-heading"><h3 id="writer-observations-format-heading">Formato</h3><span>{formatObservations.length}</span></div>
+          <section aria-label="Formato">
+            <WriterAssistantSectionHeading title="FORMATO" count={formatObservations.length} help="Revisa cómo están identificados los encabezados, acciones, personajes y diálogos. Los cambios de formato se aplican cuando tú los eliges." />
             <div className="writer-format-summaries">
               {formatGroups.map((group) => {
                 const labels = FORMAT_LABELS[group.kind];
@@ -277,14 +283,26 @@ export default function WriterObservationsPanel({
         <section aria-labelledby="writer-observations-known-heading">
           <div className="writer-observations-section-heading"><h3 id="writer-observations-known-heading">Personajes reconocidos</h3><span>{knownIdentities.length}</span></div>
           {knownIdentities.length ? <ul className="writer-observations-known">{knownIdentities.map((identity) => {
-            const references = observations.filter((observation) => observation.identityKey === identity.key);
+            const references = orderedCharacterAppearances(observations.filter((observation) => observation.identityKey === identity.key), sceneOrder);
             const activity = activityByKey.get(identity.key);
             const appearanceCount = activity?.evidenceCount ?? references.length;
             const variants = identity.variants?.filter(Boolean) ?? [];
+            const requestedAppearanceIndex = references.findIndex((reference) => reference.id === appearanceByIdentity[identity.key]);
+            const selectedAppearanceMissing = Boolean(appearanceByIdentity[identity.key]) && requestedAppearanceIndex < 0;
+            const activeAppearanceIndex = requestedAppearanceIndex >= 0
+              ? requestedAppearanceIndex
+              : nearestCharacterAppearanceIndex(references, activeSceneId, selectedBlockId, sceneOrder);
+            const activeAppearance = references[activeAppearanceIndex] ?? null;
             return <li key={`${identity.source}:${identity.key}`}>
               {references.length ? <details>
                 <summary><span><strong>{identity.name}</strong><small>{recognizedCharacterSummary(appearanceCount, variants, identity.source)}</small></span><span aria-hidden="true">⌄</span></summary>
-                <div className="writer-character-appearances">{references.slice(0, 12).map((reference, index) => <button className="writer-fragment-link" type="button" key={reference.id} onClick={() => onView(reference)}>Aparición {index + 1} <span aria-hidden="true">→</span></button>)}</div>
+                {activeAppearance && <div className="writer-character-appearance-navigator">
+                  {selectedAppearanceMissing && <small role="status">La aparición seleccionada ya no existe. Mostramos la referencia válida más cercana.</small>}
+                  <button className="writer-fragment-link" type="button" onClick={() => onView(activeAppearance)}>Ver dónde aparece <span aria-hidden="true">→</span></button>
+                  <blockquote>“{writerObservationExcerpt(activeAppearance.excerpt, 150)}”</blockquote>
+                  <small>{EVIDENCE_LABELS[activeAppearance.evidence]}{activeAppearance.sceneId ? ` · Escena ${Math.max(1, sceneOrder.indexOf(activeAppearance.sceneId) + 1)}` : ""}</small>
+                  <div><button type="button" disabled={activeAppearanceIndex === 0} onClick={() => { const target = references[activeAppearanceIndex - 1]; setAppearanceByIdentity((current) => ({ ...current, [identity.key]: target.id })); onView(target); }}>Anterior</button><span>Aparición {activeAppearanceIndex + 1} de {references.length}</span><button type="button" disabled={activeAppearanceIndex >= references.length - 1} onClick={() => { const target = references[activeAppearanceIndex + 1]; setAppearanceByIdentity((current) => ({ ...current, [identity.key]: target.id })); onView(target); }}>Siguiente</button></div>
+                </div>}
               </details> : <div><strong>{identity.name}</strong><small>{recognizedCharacterSummary(appearanceCount, variants, identity.source)}</small></div>}
             </li>;
           })}</ul> : <p className="writer-observations-empty">Todavía no hay identidades reconocidas.</p>}

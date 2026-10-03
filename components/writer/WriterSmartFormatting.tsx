@@ -154,9 +154,9 @@ export function WriterPasteFormatPrompt({
 function readinessCopy(feature: WriterStructuredFeature) {
   const copies: Record<WriterStructuredFeature, { title: string; body: string }> = {
     review: { title: "Las herramientas de revisión necesitan identificar la estructura del guion.", body: "Podemos reconocer escenas, personajes, diálogos y acciones sin cambiar lo que escribiste." },
-    assistant: { title: "El Assistant necesita escenas y bloques identificados.", body: "La estructura permite utilizar correctamente el contexto del guion." },
+    assistant: { title: "El Asistente necesita escenas y bloques identificados.", body: "La estructura permite utilizar correctamente el contexto del guion." },
     setupPayoff: { title: "Setup / Payoff necesita estructura narrativa.", body: "Primero necesitamos identificar escenas y bloques para relacionar referencias." },
-    guided: { title: "Guided Writing necesita contexto estructurado.", body: "Identifica las escenas para pensar con el contexto correcto." },
+    guided: { title: "La Guía necesita contexto estructurado.", body: "Identifica las escenas para pensar con el contexto correcto." },
     timeline: { title: "Timeline necesita escenas identificadas.", body: "No encontramos una estructura de escenas en este documento." },
     pulse: { title: "Narrative Pulse necesita un guion estructurado.", body: "Primero necesitamos identificar las escenas del documento." },
     ooc: { title: "O-O-C necesita personajes y diálogos identificados.", body: "Timeline y Pulse pueden seguir disponibles con las escenas actuales." },

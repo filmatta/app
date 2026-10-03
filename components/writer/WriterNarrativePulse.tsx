@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type RefObject } from "react";
-import { PULSE_DIMENSIONS, WRITER_NARRATIVE_PULSE_MIN_SCENES, writerPulseDisplaySeries, writerPulseMilestoneLabel, writerPulsePath, type WriterPulseMilestone, type WriterPulseMilestoneType } from "@/lib/writer/narrative-pulse";
+import { PULSE_DIMENSIONS, WRITER_NARRATIVE_PULSE_MIN_SCENES, writerPulseDisplaySeries, writerPulseMilestoneLabel, writerPulsePlotPoints, type WriterPulseMilestone, type WriterPulseMilestoneType } from "@/lib/writer/narrative-pulse";
 import { useWriterNarrativePulse } from "@/lib/writer/narrative-pulse-client";
 import type { TimelineScene } from "@/lib/writer/timeline";
 import { SmartFeatureIndicator } from "./WriterSmartFormatting";
@@ -24,6 +24,7 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
   const [moveScene, setMoveScene] = useState("");
   const [renameLabel, setRenameLabel] = useState("");
   const [savePhase, setSavePhase] = useState<"idle" | "saving" | "error">("idle");
+  const [viewportWidth, setViewportWidth] = useState(0);
   const orderedPoints = useMemo(() => scenes.flatMap((scene) => {
     const point = pulse.points.find((item) => item.sceneId === scene.sourceId);
     return point ? [{ scene, point }] : [];
@@ -33,13 +34,26 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
   const visibleMilestones = pulse.milestones.filter((item) => item.status !== "dismissed");
   const selectedMilestone = visibleMilestones.find((item) => item.id === selectedMilestoneId) ?? null;
   const current = Boolean(pulse.analysis && pulse.currentSourceHash === pulse.analysis.sourceHash && pulse.analysis.status === "fresh");
-  const graphWidth = Math.max(320, scenes.length * columnWidth);
+  const graphWidth = Math.max(320, viewportWidth, scenes.length * columnWidth);
   const graphHeight = expanded ? 320 : 230;
   const displayPoints = useMemo(() => writerPulseDisplaySeries(orderedPoints.map((item) => item.point)), [orderedPoints]);
-  const path = writerPulsePath(displayPoints, graphWidth, graphHeight, 24);
-  const areaPath = path ? `${path} L${graphWidth - 24},${graphHeight - 24} L24,${graphHeight - 24} Z` : "";
+  const plotPoints = useMemo(() => writerPulsePlotPoints(displayPoints, graphWidth, graphHeight, 24), [displayPoints, graphHeight, graphWidth]);
+  const path = plotPoints.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+  const areaPath = path && plotPoints.length
+    ? `${path} L${plotPoints.at(-1)!.x.toFixed(2)},${graphHeight - 24} L${plotPoints[0].x.toFixed(2)},${graphHeight - 24} Z`
+    : "";
 
   useEffect(() => { onMilestonesChange?.(pulse.milestones); }, [onMilestonesChange, pulse.milestones]);
+  useEffect(() => {
+    if (!active) return;
+    const container = scrollRef.current;
+    if (!container) return;
+    const measure = () => setViewportWidth(Math.max(0, Math.floor(container.clientWidth)));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [active, scrollRef]);
   useEffect(() => {
     if (!active || !selectedPulseSceneId) return;
     const clear = (event: KeyboardEvent) => {
@@ -119,14 +133,16 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
             <path className="writer-pulse-curve" d={path} />
           </svg>
           {orderedPoints.map(({ scene, point }, index) => {
-            const x = 24 + (index / Math.max(1, orderedPoints.length - 1)) * Math.max(0, graphWidth - 48);
-            const displayIntensity = displayPoints[index]?.displayIntensity ?? point.intensity;
-            const y = 24 + (1 - displayIntensity / 100) * Math.max(0, graphHeight - 48);
-            return <button key={scene.key} type="button" data-pulse-scene-id={scene.sourceId ?? undefined} data-raw-intensity={point.intensity} data-display-intensity={displayIntensity.toFixed(2)} className={`writer-pulse-point${selectedPulseSceneId === scene.sourceId ? " is-selected" : ""}`} style={{ left: x, top: y }} onClick={() => selectPoint(scene)} aria-label={`Escena ${scene.order}: ${scene.heading}. ${point.note}`}><span aria-hidden="true" /></button>;
+            const plotted = plotPoints[index];
+            if (!plotted) return null;
+            return <button key={scene.key} type="button" data-pulse-scene-id={scene.sourceId ?? undefined} data-raw-intensity={point.intensity} data-display-intensity={plotted.displayIntensity.toFixed(2)} data-plot-x={plotted.x.toFixed(2)} data-plot-y={plotted.y.toFixed(2)} className={`writer-pulse-point${selectedPulseSceneId === scene.sourceId ? " is-selected" : ""}`} style={{ left: plotted.x, top: plotted.y }} onClick={() => selectPoint(scene)} aria-label={`Escena ${scene.order}: ${scene.heading}. ${point.note}`}><span aria-hidden="true" /></button>;
           })}
           {visibleMilestones.map((milestone) => {
             const index = scenes.findIndex((scene) => scene.sourceId === milestone.sceneId); if (index < 0) return null;
-            const x = 24 + (index / Math.max(1, scenes.length - 1)) * Math.max(0, graphWidth - 48);
+            const orderedIndex = orderedPoints.findIndex(({ scene }) => scene.sourceId === milestone.sceneId);
+            const x = orderedIndex >= 0 && plotPoints[orderedIndex]
+              ? plotPoints[orderedIndex].x
+              : 24 + (index / Math.max(1, scenes.length - 1)) * Math.max(0, graphWidth - 48);
             return <button key={milestone.id} type="button" className={`writer-pulse-milestone${milestone.status === "needs_review" ? " needs-review" : ""}`} style={{ left: x }} onClick={() => { selectMilestone(milestone); const scene = scenes[index]; if (scene) selectPoint(scene); }} title={`${milestone.label} · Escena ${index + 1}`}><span aria-hidden="true" />{milestone.label}</button>;
           })}
           <div className="writer-pulse-scene-axis" style={{ gridTemplateColumns: `repeat(${Math.max(1, scenes.length)}, ${columnWidth}px)` }}>{scenes.map((scene) => <button key={scene.key} type="button" onClick={() => selectPoint(scene)} aria-current={selectedPulseSceneId === scene.sourceId ? "true" : undefined}>{scene.order}</button>)}</div>
