@@ -511,7 +511,12 @@ export default function WriterWorkspace({
       let restored = { ...WRITER_WORKSPACE_LAYOUT_DEFAULTS };
       try {
         const current = window.localStorage.getItem(workspaceLayoutStorageKey);
-        if (current) restored = parseWriterWorkspaceLayout(current);
+        if (current) {
+          restored = migrateWriterWorkspaceLayout(current);
+          if (JSON.stringify(restored) !== JSON.stringify(parseWriterWorkspaceLayout(current))) {
+            window.localStorage.setItem(workspaceLayoutStorageKey, JSON.stringify(restored));
+          }
+        }
         else {
           const legacy = window.localStorage.getItem(legacyWriterWorkspaceLayoutStorageKey(userId));
           restored = migrateWriterWorkspaceLayout(legacy);

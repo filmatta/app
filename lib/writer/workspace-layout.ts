@@ -9,7 +9,7 @@ export const WRITER_WORKSPACE_LAYOUT_DEFAULTS: WriterWorkspaceLayout = {
   leftSidebarVisible: true,
   rightSidebarVisible: true,
   timelineHeight: 260,
-  charactersHeight: 360,
+  charactersHeight: 440,
 };
 
 export const WRITER_HORIZONTAL_PANEL_LIMITS = {
@@ -29,9 +29,12 @@ export function legacyWriterWorkspaceLayoutStorageKey(userId: string) {
 
 export function migrateWriterWorkspaceLayout(value: string | null): WriterWorkspaceLayout {
   const parsed = parseWriterWorkspaceLayout(value);
-  // v1 persisted 260px even when the user never moved the splitter. Only that exact
-  // legacy default is migrated; every other saved height is treated as deliberate.
-  return parsed.charactersHeight === 260 ? { ...parsed, charactersHeight: 360 } : parsed;
+  // Earlier releases persisted 260px and later 360px even when the user never moved
+  // the splitter. Only those exact product defaults migrate; every other saved height
+  // remains a deliberate preference.
+  return parsed.charactersHeight === 260 || parsed.charactersHeight === 360
+    ? { ...parsed, charactersHeight: WRITER_WORKSPACE_LAYOUT_DEFAULTS.charactersHeight }
+    : parsed;
 }
 
 export function clampWriterHorizontalPanelHeight(panel: WriterHorizontalPanel, value: number) {
