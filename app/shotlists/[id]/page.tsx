@@ -12,15 +12,15 @@ export default async function ShotlistPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ mode?: string | string[] }>;
+  searchParams: Promise<{ mode?: string | string[]; shot?: string | string[] }>;
 }) {
   const viewer = await getViewer();
   const { id } = await params;
-  const { mode } = await searchParams;
+  const { mode, shot } = await searchParams;
   if (!viewer) redirect(`/login?next=/shotlists/${encodeURIComponent(id)}`);
   const state = await loadShotlistOrNull(viewer.id, id);
   if (!state) notFound();
-  return <ShotlistWorkspace initialState={state} initialMode={mode === "suggested" ? "suggested" : "manual"} />;
+  return <ShotlistWorkspace initialState={state} initialMode={mode === "suggested" ? "suggested" : "manual"} initialShotId={typeof shot === "string" ? shot : undefined} />;
 }
 
 async function loadShotlistOrNull(userId: string, id: string) {

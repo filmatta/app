@@ -20,16 +20,19 @@ type ShotProposal = { id: string; group_id: string; payload: Partial<WriterShot>
 export default function ShotlistWorkspace({
   initialState,
   initialMode = "manual",
+  initialShotId,
 }: {
   initialState: { shotlist: WriterShotlist; sourceChanges: SourceChanges };
   initialMode?: Mode;
+  initialShotId?: string;
 }) {
   const [shotlist, setShotlist] = useState(initialState.shotlist);
   const [sourceChanges, setSourceChanges] = useState(initialState.sourceChanges);
   const [mode, setMode] = useState<Mode>(initialMode);
   const [expanded, setExpanded] = useState(() => new Set(initialState.shotlist.groups.slice(0, 2).map((group) => group.id)));
-  const [activeGroupId, setActiveGroupId] = useState<string | null>(initialState.shotlist.groups[0]?.id ?? null);
-  const [selectedShotId, setSelectedShotId] = useState<string | null>(initialState.shotlist.groups.flatMap((group) => group.shots)[0]?.id ?? null);
+  const initialShot = initialState.shotlist.groups.flatMap((group) => group.shots).find((shot) => shot.id === initialShotId) ?? initialState.shotlist.groups.flatMap((group) => group.shots)[0];
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(initialShot?.groupId ?? initialState.shotlist.groups[0]?.id ?? null);
+  const [selectedShotId, setSelectedShotId] = useState<string | null>(initialShot?.id ?? null);
   const [selectedIds, setSelectedIds] = useState(() => new Set<string>());
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [search, setSearch] = useState("");
@@ -213,7 +216,18 @@ export default function ShotlistWorkspace({
   async function deleteSelected() {
     const ids = selectedIds.size ? [...selectedIds] : selectedShot ? [selectedShot.id] : [];
     if (!ids.length || !window.confirm(`Eliminar ${ids.length === 1 ? "este plano" : `${ids.length} planos`}?`)) return;
-    try { await api({ action: "deleteShots", shotIds: ids }); setSelectedIds(new Set()); setSelectedShotId(null); await reload(); }
+    try {
+      let response = await fetch(`/api/shotlists/${shotlist.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deleteShots", shotIds: ids }) });
+      let data = await response.json();
+      if (response.status === 409 && data.code === "storyboard_dependencies") {
+        const impact = data.impact as { panels: number; approvals: number };
+        if (!window.confirm(`Estos planos tienen ${impact.panels} panel(es) de storyboard y ${impact.approvals} aprobación(es). ¿Eliminar planos y storyboard de forma definitiva?`)) return;
+        response = await fetch(`/api/shotlists/${shotlist.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deleteShots", shotIds: ids, deleteStoryboard: true }) });
+        data = await response.json();
+      }
+      if (!response.ok) throw new Error(data.error ?? "No pudimos eliminar la selección.");
+      setSelectedIds(new Set()); setSelectedShotId(null); await reload();
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos eliminar la selección."); }
   }
 
@@ -230,7 +244,7 @@ export default function ShotlistWorkspace({
     <div className={`shotlist-workspace${inspectorOpen ? " has-inspector" : ""}`}>
       <header className="shotlist-header">
         <div className="shotlist-brand"><Link href="/">FILMATTA</Link><span /><Link href="/shotlists">Shotlist V1</Link><i>•</i><input aria-label="Nombre de la shotlist" defaultValue={shotlist.title} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== shotlist.title) void api({ action: "rename", title }).then(() => setShotlist((value) => ({ ...value, title }))).catch((cause) => setError(cause.message)); }} /></div>
-        <div className="shotlist-header-actions"><span className={`shotlist-save is-${saveState}`}>♧ {saveState === "saved" ? "Guardado en la nube" : saveState === "saving" ? "Guardando…" : "Error al guardar"}</span><button type="button" onClick={() => void navigator.clipboard.writeText(location.href)}>⌘ Copiar enlace privado</button><a href={`/api/shotlists/${shotlist.id}/csv`}>⇧ Exportar CSV</a><span className="shotlist-avatar">{shotlist.title.slice(0, 2).toUpperCase()}</span></div>
+        <div className="shotlist-header-actions"><span className={`shotlist-save is-${saveState}`}>♧ {saveState === "saved" ? "Guardado en la nube" : saveState === "saving" ? "Guardando…" : "Error al guardar"}</span><Link href={`/shotlists/${shotlist.id}/storyboard`}>▧ Abrir Storyboard</Link><button type="button" onClick={() => void navigator.clipboard.writeText(location.href)}>⌘ Copiar enlace privado</button><a href={`/api/shotlists/${shotlist.id}/csv`}>⇧ Exportar CSV</a><span className="shotlist-avatar">{shotlist.title.slice(0, 2).toUpperCase()}</span></div>
       </header>
       <div className="shotlist-workbar">
         <div className="shotlist-modes" role="group" aria-label="Modo de trabajo">{(["manual", "assisted", "suggested"] as const).map((value) => <button key={value} type="button" aria-pressed={mode === value} onClick={() => setMode(value)}>{value === "manual" ? "✎ Libre" : value === "assisted" ? "◉ Asistido" : "✦ Sugerido"}</button>)}</div>
@@ -276,7 +290,7 @@ export default function ShotlistWorkspace({
               <input key={`${shot.id}-setup-${shot.revision}`} aria-label="Setup" defaultValue={shot.setup ?? ""} onClick={(event) => event.stopPropagation()} onBlur={(event) => { if (event.target.value !== (shot.setup ?? "")) void saveShot(shot, { setup: event.target.value || null }); }} placeholder="—" />
               <input key={`${shot.id}-duration-${shot.revision}`} aria-label="Duración" type="number" min="0" defaultValue={shot.durationSeconds ?? ""} onClick={(event) => event.stopPropagation()} onBlur={(event) => { const value = event.target.value === "" ? null : Number(event.target.value); if (value !== shot.durationSeconds) void saveShot(shot, { durationSeconds: value }); }} placeholder="—" /></>}
               <select aria-label="Estado" value={shot.status} onClick={(event) => event.stopPropagation()} onChange={(event) => void saveShot(shot, { status: event.target.value as WriterShot["status"] })}><option value="pending">● Pendiente</option><option value="ready">● Listo</option></select>
-              {showSecondaryColumns && <button type="button" className="shotlist-story-cell" onClick={(event) => { event.stopPropagation(); selectShot(shot); }}>▧</button>}
+              {showSecondaryColumns && <Link href={`/shotlists/${shotlist.id}/storyboard#story-shot-${shot.id}`} className="shotlist-story-cell" onClick={(event) => event.stopPropagation()} aria-label={`Abrir storyboard del plano ${visibleNumber(shot.id)}`}>▧</Link>}
             </div>)}
           </section>)}
           {!visibleGroups.length && <p className="shotlist-no-results">No hay escenas o planos que coincidan.</p>}
@@ -294,7 +308,7 @@ export default function ShotlistWorkspace({
         <ShotField label="Intención narrativa"><textarea key={`${selectedShot.id}-inspector-intention-${selectedShot.revision}`} defaultValue={selectedShot.intention ?? ""} onBlur={(event) => { if (event.target.value !== (selectedShot.intention ?? "")) void saveShot(selectedShot, { intention: event.target.value || null }); }} /></ShotField>
         <ShotField label="Notas"><textarea key={`${selectedShot.id}-inspector-notes-${selectedShot.revision}`} defaultValue={selectedShot.notes ?? ""} onBlur={(event) => { if (event.target.value !== (selectedShot.notes ?? "")) void saveShot(selectedShot, { notes: event.target.value || null }); }} /></ShotField>
         {shotlist.scriptId && <Link className="shotlist-edit-writer" href={`/writer/${shotlist.scriptId}?scene=${selectedGroup.sourceSceneId ?? ""}&return=/shotlists/${shotlist.id}&shot=${selectedShot.id}`}>Editar guion ↗</Link>}
-        <div className="shotlist-storyboard"><h3>Storyboard / referencia</h3><div>{selectedShot.assetId ? <a href={`/api/writer/production-assets/${selectedShot.assetId}`} target="_blank" rel="noreferrer" title="Abrir referencia"><img src={`/api/writer/production-assets/${selectedShot.assetId}`} alt="Referencia visual privada del plano" /></a> : <span>▧</span>}<strong>{selectedShot.assetId ? "Referencia privada" : "Sin imagen"}</strong><p>Sube una referencia visual manual.</p><em>Generación de storyboard: próxima etapa</em><label>⇧ {selectedShot.assetId ? "Cambiar imagen" : "Subir imagen"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadShotImage(selectedShot, file); event.target.value = ""; }} /></label>{selectedShot.assetId && <button type="button" className="shotlist-remove-image" onClick={() => void removeShotImage(selectedShot)}>Quitar referencia</button>}</div></div>
+        <div className="shotlist-storyboard"><h3>Storyboard / referencia</h3><div>{selectedShot.assetId ? <a href={`/api/writer/production-assets/${selectedShot.assetId}`} target="_blank" rel="noreferrer" title="Abrir referencia"><img src={`/api/writer/production-assets/${selectedShot.assetId}`} alt="Referencia visual privada del plano" /></a> : <span>▧</span>}<strong>{selectedShot.assetId ? "Referencia privada del plano" : "Sin referencia de plano"}</strong><p>La Shotlist decide qué filmar; Storyboard ayuda a visualizar este plano.</p><Link href={`/shotlists/${shotlist.id}/storyboard#story-shot-${selectedShot.id}`}>Abrir Storyboard</Link><label>⇧ {selectedShot.assetId ? "Cambiar referencia" : "Subir referencia de plano"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadShotImage(selectedShot, file); event.target.value = ""; }} /></label>{selectedShot.assetId && <button type="button" className="shotlist-remove-image" onClick={() => void removeShotImage(selectedShot)}>Quitar referencia</button>}</div></div>
         <div className="shotlist-inspector-actions"><button type="button" disabled={Boolean(search.trim()) || groupFilter !== "all" || selectedGroup.shots[0]?.id === selectedShot.id} title={search.trim() || groupFilter !== "all" ? "Quita los filtros para reordenar" : "Mover plano arriba"} onClick={() => void moveShot(-1)}>↑ Subir</button><button type="button" disabled={Boolean(search.trim()) || groupFilter !== "all" || selectedGroup.shots.at(-1)?.id === selectedShot.id} title={search.trim() || groupFilter !== "all" ? "Quita los filtros para reordenar" : "Mover plano abajo"} onClick={() => void moveShot(1)}>↓ Bajar</button><button type="button" onClick={() => void duplicateShot()}>Duplicar</button><button type="button" onClick={() => void deleteSelected()}>Eliminar</button></div>
       </> : <div className="shotlist-inspector-empty"><button type="button" onClick={() => setInspectorOpen(false)}>×</button><p>Selecciona un plano para editarlo.</p></div>}</aside>}
       {!inspectorOpen && <button type="button" className="shotlist-open-inspector" onClick={() => setInspectorOpen(true)}>Abrir inspector</button>}

@@ -29,7 +29,7 @@ test("Libre, Asistido, and Sugerido remain distinct and AI requires an explicit 
 
 test("Storyboard and sharing disclose the private V1 contract instead of faking features", () => {
   assert.match(workspace, /Copiar enlace privado/);
-  assert.match(workspace, /Generación de storyboard: próxima etapa/);
+  assert.match(workspace, /Abrir Storyboard/);
   assert.doesNotMatch(workspace, />Generar storyboard</);
   assert.match(workspace, /Quitar referencia/);
 });
