@@ -344,7 +344,7 @@ export default function StoryboardSketcher({ initialState, initialPanelId, userI
       <div className={styles.saveCluster}><span data-state={saveState}>{saveState === "saving" ? "Guardando…" : saveState === "error" ? "Error de guardado" : "Guardado"}</span>{thumbnailError && <em title={thumbnailError}>Miniatura pendiente</em>}{stale && <button type="button" className={styles.staleButton} onClick={() => void acknowledge()}>Plano cambió · Revisar</button>}<button type="button" onClick={() => void exportPng()}>Exportar PNG</button><button type="button" className={styles.approveButton} disabled={storyboardContentKind(drawing) === "empty" || isApproved} onClick={() => void approve()}>{isApproved ? "✓ Aprobado" : "Aprobar revisión"}</button></div>
     </header>
     {error && <div className={styles.errorBanner} role="alert">{error}<div><button type="button" onClick={() => void flush()}>Reintentar</button><button type="button" onClick={() => setError(null)}>Cerrar</button></div></div>}
-    {tabBlocked && <div className={styles.leaseBanner}>Otra pestaña está editando este panel. Aquí queda en sólo lectura.<button type="button" onClick={() => leaseRef.current?.takeOver()}>Editar en esta pestaña</button></div>}
+    {tabBlocked && <div className={styles.leaseBanner}><span>Otra pestaña está editando este panel. Aquí queda en sólo lectura.</span><button type="button" onClick={() => leaseRef.current?.takeOver()}>Editar en esta pestaña</button></div>}
     <div className={styles.sketcherWorkspace}>
       <aside className={`${styles.briefPanel} ${briefOpen ? "" : styles.collapsedPanel}`}>
         <button type="button" className={styles.panelToggle} onClick={() => setBriefOpen((value) => !value)}>BRIEF DEL PLANO <span>{briefOpen ? "−" : "+"}</span></button>
