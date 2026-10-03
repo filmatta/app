@@ -1,0 +1,30 @@
+{
+  "generatedAt": "2026-10-03T09:58:56.258Z",
+  "preview": "https://production-assistant-v1-filmatta.vercel.app",
+  "project": "ezlycwkuzkwcnhrhiruv",
+  "ordinaryLoginVerified": true,
+  "preservedProductions": [
+    "7f94bb79-2c64-466f-b85a-e153a4a102f7",
+    "81fa6983-d1b5-462f-99be-68ef03657c4b"
+  ],
+  "checks": [
+    "empty production is not presented as ready",
+    "ordinary Preview session creates structure from an existing source without AI",
+    "populated overview preserves two days, tasks, sources and coverage state",
+    "horizontal day timeline distinguishes screen duration from shoot minutes and shows overnight wrap",
+    "shot scheduling persists and unique source-shot enforcement prevents duplicates",
+    "resource assignment and confirmation are scoped to the selected day; unresolved Llaves remains visible",
+    "changing a day date requests reconfirmation",
+    "task creation/completion survives reload",
+    "mobile Production task view renders in an ordinary session"
+  ],
+  "screenshots": [
+    "01-empty-production.png",
+    "02-populated-overview.png",
+    "03-horizontal-timeline.png",
+    "04-requirement-coverage.png",
+    "05-mobile-tasks.png"
+  ],
+  "consoleErrors": 0,
+  "serverErrors": 0
+}
