@@ -1003,8 +1003,8 @@
   .writer-observations-open-button { display: none; }
   .writer-title-input { grid-column: 2; grid-row: 1; padding-inline: 14px; }
   .writer-mobile-navigate { display: inline-flex; grid-column: 1; grid-row: 1; min-height: 36px; align-items: center; justify-content: center; margin: 8px 0 8px 10px; padding-inline: 12px; border-color: rgba(255,255,255,.12); color: rgba(241,239,233,.76); font-size: .68rem; }
-  .writer-header-actions { display: grid; grid-column: 1 / -1; grid-row: 2; grid-template-columns: minmax(0, 1fr) auto auto auto auto; min-width: 0; border-top: 1px solid var(--writer-border); }
-  .writer-save-status { min-width: 0; max-width: none; overflow: hidden; }
+  .writer-header-actions { display: flex; grid-column: 1 / -1; grid-row: 2; min-width: 0; border-top: 1px solid var(--writer-border); }
+  .writer-save-status { min-width: 0; max-width: none; flex: 1; overflow: hidden; }
   .writer-export-wrap { min-width: 0; }
   .writer-header-actions { padding-right: 8px; }
   .writer-header-actions > button,

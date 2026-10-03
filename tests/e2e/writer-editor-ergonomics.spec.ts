@@ -183,7 +183,9 @@ test("toolbar and visible Writer regions remain inside the viewport across the f
           })
           .filter((element) => {
             const rect = element.getBoundingClientRect();
-            return rect.left < -1 || rect.right > viewport + 1 || rect.width > viewport + 1;
+            const headerRect = header.getBoundingClientRect();
+            return rect.left < -1 || rect.right > viewport + 1 || rect.width > viewport + 1
+              || rect.top < headerRect.top - 1 || rect.bottom > headerRect.bottom + 1;
           })
           .map((element) => element.getAttribute("aria-label") ?? element.textContent?.trim() ?? element.tagName)
         : [];
