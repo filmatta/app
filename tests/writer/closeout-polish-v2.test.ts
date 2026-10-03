@@ -21,7 +21,7 @@ test("Breakdown exposes one full-document detection action and a presentation-on
   assert.match(panel, /<label>Mostrar<select/u);
   assert.match(panel, /className="writer-breakdown-more"/u);
   assert.match(fs.readFileSync("app/writer/writer.css", "utf8"), /\.writer-character-section \{[^}]*width:100%;[^}]*max-width:100%;[^}]*min-width:0;/u);
-  assert.match(fs.readFileSync("app/writer/writer.css", "utf8"), /\.writer-sidebar \{[^}]*min-width:0;[^}]*grid-template-columns:minmax\(0,1fr\);/u);
+  assert.match(fs.readFileSync("app/writer/writer.css", "utf8"), /\.writer-sidebar \{[^}]*min-width:\s*0;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/u);
   assert.doesNotMatch(panel, /Detectar con asistencia|Escenas nuevas\/modificadas/u);
   assert.match(route, /Math\.ceil\(sceneIds\.length \/ 12\)/u);
   assert.match(route, /includeRules: false/u);
