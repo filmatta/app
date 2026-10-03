@@ -1,0 +1,12 @@
+{
+  "project": "ezlycwkuzkwcnhrhiruv",
+  "checks": [
+    "owner CRUD and overnight times persist",
+    "atomic schedule reorder persists",
+    "A/B RLS blocks reads and writes",
+    "date changes invalidate prior confirmation",
+    "day deletion preserves sources and unschedules blocks",
+    "all eight production tables have RLS enabled"
+  ],
+  "passed": 6
+}
