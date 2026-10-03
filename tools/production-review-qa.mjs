@@ -31,7 +31,9 @@ const admin = createClient(dbUrl, serviceKey, clientOptions);
 const ordinary = createClient(dbUrl, publishableKey, clientOptions);
 assert.equal((await ordinary.auth.signInWithPassword({ email: manifest.email, password: manifest.password })).error, null);
 
-const evidence = path.resolve("public", "review", "production-assistant-v1");
+const evidence = path.resolve(
+  process.env.FILMATTA_PRODUCTION_EVIDENCE ?? path.join("public", "review", "production-assistant-v1"),
+);
 fs.mkdirSync(evidence, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1536, height: 1000 }, deviceScaleFactor: 1 });

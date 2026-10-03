@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-10-03",
+  "node": "24.20.0",
+  "npm": "11.19.0",
+  "lockfileGitBlob": "131dd3cbbf064da3f3b7da9d3ffefb61b4826bad",
+  "command": "npm audit --json",
+  "metadata": {
+    "total": 7,
+    "critical": 1,
+    "high": 6,
+    "productionOnlyTotal": 1,
+    "productionOnlyCritical": 1
+  },
+  "advisories": [
+    {
+      "package": "next",
+      "version": "16.3.4",
+      "direct": true,
+      "severity": "critical",
+      "advisory": "GHSA-vcvr-r3jv-pc5j",
+      "range": ">=16.2.0 <16.3.6",
+      "fixed": "16.3.6",
+      "classification": "runtime/build dependency"
+    },
+    {
+      "package": "brace-expansion",
+      "versions": ["1.1.18", "5.0.9"],
+      "direct": false,
+      "severity": "high",
+      "advisories": ["GHSA-6j4f-fj2g-mc7p", "GHSA-qhr7-859c-m2p7", "GHSA-q2hr-2g5m-vwhr"],
+      "classification": "development/CI glob processing"
+    },
+    {
+      "package": "braces",
+      "version": "3.0.3",
+      "direct": false,
+      "severity": "high",
+      "advisory": "GHSA-vfj7-8cjw-p6xm",
+      "classification": "development/CI through micromatch"
+    }
+  ],
+  "derivedFindings": [
+    "micromatch -> braces",
+    "fast-glob -> micromatch -> braces",
+    "@next/eslint-plugin-next -> fast-glob -> micromatch -> braces",
+    "eslint-config-next -> @next/eslint-plugin-next -> fast-glob -> micromatch -> braces"
+  ]
+}

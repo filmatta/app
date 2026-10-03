@@ -112,6 +112,8 @@ try {
 
   const outputDir = path.resolve("tmp/pdfs");
   fs.mkdirSync(outputDir, { recursive: true });
+  const evidenceDir = path.resolve(process.env.FILMATTA_WRITER_QA_EVIDENCE ?? outputDir);
+  fs.mkdirSync(evidenceDir, { recursive: true });
   const pdfPath = path.join(outputDir, "filmatta-writer-boton-real.pdf");
   const pdfDownload = await Promise.all([
     page.waitForEvent("download"),
@@ -122,7 +124,7 @@ try {
   const editorTextAfterPdf = await page.locator(".writer-paper .tiptap").innerText();
   assert.match(editorTextAfterPdf, /SNAPSHOT_ANTES_ñ/);
   assert.match(editorTextAfterPdf, /SNAPSHOT_DESPUES/);
-  await page.screenshot({ path: path.join(outputDir, "writer-output-panel-qa.png"), fullPage: false });
+  await page.screenshot({ path: path.join(evidenceDir, "writer-output-panel-qa.png"), fullPage: false });
 
   await page.getByRole("button", { name: "Cerrar exportación PDF" }).click();
   await page.locator(".writer-save-status--cloud").waitFor({ state: "visible", timeout: 30_000 });
@@ -177,7 +179,7 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await page.getByRole("button", { name: "Insertar en el guion" }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "Exportar" }).waitFor({ state: "visible" });
-    await page.screenshot({ path: path.join(outputDir, `writer-integration-${width}.png`), fullPage: true });
+    await page.screenshot({ path: path.join(evidenceDir, `writer-integration-${width}.png`), fullPage: true });
   }
 
   console.log(JSON.stringify({
