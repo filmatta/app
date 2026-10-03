@@ -60,8 +60,8 @@ try {
   const scriptDocument = {
       type: "doc",
       content: sceneIds.flatMap((sceneId, index) => [
-        { type: "sceneHeading", attrs: { id: sceneId }, content: [{ type: "text", text: `INT. ESTUDIO ${index + 1} - NOCHE` }] },
-        { type: "action", attrs: { id: randomUUID() }, content: [{ type: "text", text: `La acción visual de prueba ${index + 1} avanza frente a cámara.` }] },
+        { type: "screenplayBlock", attrs: { id: sceneId, kind: "sceneHeading" }, content: [{ type: "text", text: `INT. ESTUDIO ${index + 1} - NOCHE` }] },
+        { type: "screenplayBlock", attrs: { id: randomUUID(), kind: "action" }, content: [{ type: "text", text: `La acción visual de prueba ${index + 1} avanza frente a cámara.` }] },
       ]),
   };
   const script = await normal.rpc("writer_create_script", {
