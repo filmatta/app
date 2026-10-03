@@ -82,6 +82,7 @@ import WriterSetupPayoff from "./WriterSetupPayoff";
 import WriterPdfExportDialog from "./WriterPdfExportDialog";
 import WriterTimelineView from "./WriterTimeline";
 import WriterIcon from "./WriterIcon";
+import { useWriterPopoverDismissal } from "./useWriterPopoverDismissal";
 import { WriterIdeasPanel, WriterSearchPanel, WriterVersionsPanel } from "./WriterErgonomicTools";
 import {
   SmartFeatureIndicator,
@@ -334,6 +335,8 @@ export default function WriterWorkspace({
   const exportButtonRef = useRef<HTMLButtonElement>(null);
   const shotlistTriggerRef = useRef<HTMLButtonElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const appearanceRootRef = useRef<HTMLDivElement>(null);
+  const appearanceButtonRef = useRef<HTMLButtonElement>(null);
   const paperRef = useRef<HTMLDivElement>(null);
   const nativeFullscreenRef = useRef(false);
   const pointerRef = useRef<{ type: string; at: number }>({ type: "mouse", at: 0 });
@@ -462,6 +465,13 @@ export default function WriterWorkspace({
   const panelLayoutStorageKey = useMemo(() => writerPanelStorageKey(userId), [userId]);
   const workspaceLayoutStorageKey = useMemo(() => writerWorkspaceLayoutStorageKey(userId), [userId]);
   const appearanceStorageKey = useMemo(() => writerAppearanceStorageKey(userId), [userId]);
+  const closeAppearance = useCallback(() => setAppearanceOpen(false), []);
+  useWriterPopoverDismissal({
+    open: appearanceOpen,
+    rootRef: appearanceRootRef,
+    triggerRef: appearanceButtonRef,
+    onDismiss: closeAppearance,
+  });
   const commitPanelWidth = useCallback((side: WriterPanelSide, value: number) => {
     setPanelLayout((current) => {
       const next = { ...current, [side]: value };
@@ -2385,15 +2395,17 @@ export default function WriterWorkspace({
             ><WriterIcon name="panelRight" /></button>
           </div>
           <SaveStatus state={saveState} />
-          <button className="writer-appearance-button" type="button" aria-label="Apariencia de Writer" aria-expanded={appearanceOpen} onClick={() => setAppearanceOpen((open) => !open)}><WriterIcon name="eye" /></button>
-          {appearanceOpen && <div className="writer-appearance-popover" role="dialog" aria-label="Apariencia de Writer">
-            <strong>Apariencia</strong>
-            <div className="writer-skin-options" role="radiogroup" aria-label="Skin de Writer">{(["carbon", "navy", "cream"] as WriterSkin[]).map((skin) => <button key={skin} type="button" role="radio" aria-checked={appearance.skin === skin} onClick={() => commitAppearance({ skin })}><span className={`writer-skin-swatch is-${skin}`} />{skin === "carbon" ? "Carbon" : skin === "navy" ? "Marino" : "Cream"}</button>)}</div>
-            <label className="writer-warm-toggle"><input type="checkbox" checked={appearance.warmFilter} onChange={(event) => commitAppearance({ warmFilter: event.target.checked })} />Confort visual / filtro cálido</label>
-            {appearance.warmFilter && <label className="writer-warm-intensity">Intensidad<input type="range" min="4" max="14" value={appearance.warmIntensity} onChange={(event) => commitAppearance({ warmIntensity: Number(event.target.value) })} /></label>}
-            <small>El filtro cálido altera temporalmente la percepción del color. No cambia el guion ni sus exports.</small>
-            <button type="button" onClick={() => { setAppearanceOpen(false); setShortcutsOpen(true); }}>Atajos de teclado</button>
-          </div>}
+          <div ref={appearanceRootRef} className="writer-appearance">
+            <button ref={appearanceButtonRef} className="writer-appearance-button" type="button" aria-label="Apariencia de Writer" aria-expanded={appearanceOpen} onClick={() => setAppearanceOpen((open) => !open)}><WriterIcon name="eye" /></button>
+            {appearanceOpen && <div className="writer-appearance-popover" role="dialog" aria-label="Apariencia de Writer">
+              <strong>Apariencia</strong>
+              <div className="writer-skin-options" role="radiogroup" aria-label="Skin de Writer">{(["carbon", "navy", "cream"] as WriterSkin[]).map((skin) => <button key={skin} type="button" role="radio" aria-checked={appearance.skin === skin} onClick={() => commitAppearance({ skin })}><span className={`writer-skin-swatch is-${skin}`} />{skin === "carbon" ? "Carbon" : skin === "navy" ? "Marino" : "Cream"}</button>)}</div>
+              <label className="writer-warm-toggle"><input type="checkbox" checked={appearance.warmFilter} onChange={(event) => commitAppearance({ warmFilter: event.target.checked })} />Confort visual / filtro cálido</label>
+              {appearance.warmFilter && <label className="writer-warm-intensity">Intensidad<input type="range" min="4" max="14" value={appearance.warmIntensity} onChange={(event) => commitAppearance({ warmIntensity: Number(event.target.value) })} /></label>}
+              <small>El filtro cálido altera temporalmente la percepción del color. No cambia el guion ni sus exports.</small>
+              <button type="button" onClick={() => { setAppearanceOpen(false); setShortcutsOpen(true); }}>Atajos de teclado</button>
+            </div>}
+          </div>
           <button
             className="writer-import-open-button"
             type="button"
@@ -2797,8 +2809,8 @@ export default function WriterWorkspace({
             onClose={closeTimeline}
             expanded={timelineExpanded}
             onToggleExpanded={() => setTimelineExpanded((value) => !value)}
-            onGoToWriter={(sceneId) => {
-              setTimelineExpanded(false);
+            onGoToWriter={(sceneId, options) => {
+              if (!options?.preservePanel) setTimelineExpanded(false);
               if (!editor) {
                 setFeedback("El editor todavía no está preparado.");
                 return;
@@ -2809,7 +2821,7 @@ export default function WriterWorkspace({
                 return;
               }
               setFeedback(null);
-              if (window.matchMedia("(max-width: 900px)").matches) setTimelineOpen(false);
+              if (!options?.preservePanel && window.matchMedia("(max-width: 900px)").matches) setTimelineOpen(false);
             }}
           />
         </section>

@@ -38,8 +38,22 @@ test("desktop keeps Observations active while splitters and Timeline Pulse switc
   const displayed = await panel.locator(".writer-pulse-point").evaluateAll((nodes) => nodes.map((node) => Number((node as HTMLElement).dataset.displayIntensity)));
   expect(displayed[1] - displayed[0]).toBeGreaterThanOrEqual(65);
   await expect.poll(() => pulseAlignmentError(panel)).toBeLessThan(1);
-  await panel.locator(".writer-pulse-point").first().click();
+  const pulsePoints = panel.locator(".writer-pulse-point");
+  await pulsePoints.first().click();
   await expect(panel.locator(".writer-pulse-detail").getByRole("heading", { name: /INT\. ESTUDIO/ })).toBeVisible();
+  await expect(page.locator(".writer-scene-list > li").first()).toHaveClass(/is-active/);
+  await expect(page.locator(`[data-block-id="${sceneA}"]`)).toHaveClass(/writer-scene-target-highlight/);
+  await expect(panel.getByRole("heading", { name: "Intensidad narrativa" })).toBeVisible();
+  await pulsePoints.last().press("Space");
+  await expect(page.locator(".writer-scene-list > li").nth(1)).toHaveClass(/is-active/);
+  await expect(page.locator(`[data-block-id="${sceneB}"]`)).toHaveClass(/writer-scene-target-highlight/);
+  await panel.locator(".writer-pulse-canvas").click({ position: { x: 8, y: 8 } });
+  await expect(pulsePoints.last()).not.toHaveClass(/is-selected/);
+  await expect(page.locator(".writer-scene-list > li").nth(1)).toHaveClass(/is-active/);
+  await pulsePoints.first().press("Enter");
+  await page.keyboard.press("Escape");
+  await expect(pulsePoints.first()).not.toHaveClass(/is-selected/);
+  await expect(page.locator(".writer-scene-list > li").first()).toHaveClass(/is-active/);
   const timelineSplitter = page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" });
   for (let cycle = 0; cycle < 10; cycle += 1) {
     await page.getByRole("button", { name: "Ocultar Asistente" }).click();
@@ -54,7 +68,7 @@ test("desktop keeps Observations active while splitters and Timeline Pulse switc
     await panel.getByRole("button", { name: "Expandir vista" }).click();
     await expect.poll(() => pulseAlignmentError(panel)).toBeLessThan(1);
     await panel.getByRole("button", { name: "Contraer vista" }).click();
-    await panel.locator(".writer-pulse-point").first().press("Enter");
+    await pulsePoints.first().press("Enter");
     await expect(panel.locator(".writer-pulse-detail").getByRole("heading", { name: /INT\. ESTUDIO/ })).toBeVisible();
   }
   await expect(observations).toBeVisible();
@@ -67,7 +81,7 @@ test("desktop keeps Observations active while splitters and Timeline Pulse switc
   await expect(reviewTab).toHaveAttribute("aria-current","page");
   await expect(rightSplitter).toHaveAttribute("aria-valuenow","376");
   await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();
-  await panel.getByRole("button",{name:/Escena 2: INT\. ESTUDIO/}).press("Enter");
+  await panel.locator(".writer-pulse-point").last().press("Enter");
   await expect(page.locator(`[data-block-id="${sceneB}"]`)).toHaveClass(/writer-scene-target-highlight/);
   await panel.getByRole("button",{name:/Revelación central/}).last().click();
   await panel.getByRole("button",{name:"Confirmar"}).click();
@@ -78,7 +92,7 @@ test("desktop keeps Observations active while splitters and Timeline Pulse switc
   await expect(panel.locator(".writer-pulse-milestone-list").getByRole("button",{name:/Primera decisión irreversible/})).toBeVisible();
 });
 
-test("mobile Pulse fits, keeps drawer behavior and navigates by tap",async({page})=>{await page.setViewportSize({width:390,height:844});await page.addInitScript(()=>localStorage.setItem("filmatta.writer.mobile-notice.v1:11111111-1111-4111-8111-111111111111","dismissed"));await mockPulse(page);await page.goto(`/writer/${scriptId}`);const observations=page.getByRole("complementary",{name:"Asistente"});await expect(observations).toBeHidden();await expect(page.getByRole("separator").first()).toBeHidden();await page.getByRole("button",{name:/Navegar/}).click();let navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:/Asistente/}).click();await expect(observations).toBeVisible();await observations.getByRole("button",{name:"Cerrar",exact:true}).click();await page.getByRole("button",{name:/Navegar/}).click();navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:"Timeline"}).click();const panel=page.locator("#writer-timeline-panel");await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();await expect.poll(()=>panel.evaluate((element)=>element.scrollWidth<=element.clientWidth+1)).toBe(true);await panel.getByRole("button",{name:/Escena 1: INT\. ESTUDIO/}).press("Enter");await expect(page.locator(`[data-block-id="${sceneA}"]`)).toHaveClass(/writer-scene-target-highlight/);});
+test("mobile Pulse fits, keeps drawer behavior and navigates by tap",async({page})=>{await page.setViewportSize({width:390,height:844});await page.addInitScript(()=>localStorage.setItem("filmatta.writer.mobile-notice.v1:11111111-1111-4111-8111-111111111111","dismissed"));await mockPulse(page);await page.goto(`/writer/${scriptId}`);const observations=page.getByRole("complementary",{name:"Asistente"});await expect(observations).toBeHidden();await expect(page.getByRole("separator").first()).toBeHidden();await page.getByRole("button",{name:/Navegar/}).click();let navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:/Asistente/}).click();await expect(observations).toBeVisible();await observations.getByRole("button",{name:"Cerrar",exact:true}).click();await page.getByRole("button",{name:/Navegar/}).click();navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:"Timeline"}).click();const panel=page.locator("#writer-timeline-panel");await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();await expect.poll(()=>panel.evaluate((element)=>element.scrollWidth<=element.clientWidth+1)).toBe(true);await panel.locator(".writer-pulse-point").first().press("Enter");await expect(page.locator(`[data-block-id="${sceneA}"]`)).toHaveClass(/writer-scene-target-highlight/);await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();});
 
 async function pulseAlignmentError(panel: Locator) {
   return panel.locator(".writer-pulse-canvas").evaluate((canvas) => {

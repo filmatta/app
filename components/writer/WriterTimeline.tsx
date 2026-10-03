@@ -43,7 +43,7 @@ type WriterTimelineViewProps = {
   requestedSceneId?: string | null;
   refreshToken?: number;
   onClose?: () => void;
-  onGoToWriter?: (sceneId: string) => void;
+  onGoToWriter?: (sceneId: string, options?: { preservePanel?: boolean }) => void;
   activeSceneId?: string | null;
   sceneNicknames?: Readonly<Record<string, string>>;
   onMoveScene?: (sceneId: string, targetSceneId: string, position: WriterSceneMovePosition) => void;
@@ -303,9 +303,9 @@ export default function WriterTimelineView({
     setVisibleLocations((current) => toggledSet(current, key));
   }
 
-  function activateScene(scene: TimelineScene) {
+  function activateScene(scene: TimelineScene, preservePanel = false) {
     setSelectedSceneKey(scene.key);
-    if (onGoToWriter && scene.sourceId && scene.canDeepLink) onGoToWriter(scene.sourceId);
+    if (onGoToWriter && scene.sourceId && scene.canDeepLink) onGoToWriter(scene.sourceId, { preservePanel });
   }
 
   function changePanelView(next: "timeline" | "pulse") {
@@ -609,7 +609,7 @@ export default function WriterTimelineView({
           selectedSceneId={selectedScene?.sourceId ?? activeSceneId}
           columnWidth={columnWidth}
           scrollRef={pulseScrollRef}
-          onSelectScene={activateScene}
+          onSelectScene={(scene) => activateScene(scene, true)}
           onMilestonesChange={setPulseMilestones}
           onEnsureCurrentSaved={onEnsureCurrentSaved}
         />

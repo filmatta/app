@@ -2,14 +2,16 @@
 
 /* eslint-disable @next/next/no-img-element -- authenticated image route is intentionally not sent through the public optimizer */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   WRITER_BREAKDOWN_CATEGORIES,
   WRITER_BREAKDOWN_CATEGORY_LABELS,
   type WriterBreakdownCategory,
   type WriterBreakdownElement,
 } from "@/lib/writer/production";
+import { writerBreakdownVisibleCategories } from "@/lib/writer/breakdown-responsive";
 import { SmartFeatureIndicator } from "./WriterSmartFormatting";
+import { useWriterPopoverDismissal } from "./useWriterPopoverDismissal";
 
 type BreakdownAnalysis = { status: string; stale: boolean; sourceRevision: number; scope: string; errorCode: string | null; model: string; updatedAt: string } | null;
 
@@ -46,6 +48,28 @@ export default function WriterBreakdownPanel({
   const [analysis, setAnalysis] = useState<BreakdownAnalysis>(null);
   const [loadError, setLoadError] = useState(false);
   const [detectionIssue, setDetectionIssue] = useState<"provider" | "error" | null>(null);
+  const [tabsWidth, setTabsWidth] = useState(Number.POSITIVE_INFINITY);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const moreTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const closeMore = useCallback(() => setMoreOpen(false), []);
+  useWriterPopoverDismissal({ open: moreOpen, rootRef: moreRef, triggerRef: moreTriggerRef, onDismiss: closeMore });
+
+  useEffect(() => {
+    const tabs = tabsRef.current;
+    if (!tabs) return;
+    const measure = () => {
+      const width = Math.floor(tabs.clientWidth);
+      setTabsWidth((current) => current === width ? current : width);
+      setMoreOpen(false);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(tabs);
+    return () => observer.disconnect();
+  }, []);
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/writer/scripts/${scriptId}/breakdown`, { cache: "no-store" });
@@ -151,15 +175,24 @@ export default function WriterBreakdownPanel({
     setShowDismissed(false);
     setCategory(id);
     setSelectedId(null);
+    setMoreOpen(false);
   };
+  const visibleCategories = useMemo(() => {
+    const visible = new Set(writerBreakdownVisibleCategories(tabsWidth, category));
+    return PRIMARY.filter((item) => visible.has(item.id));
+  }, [category, tabsWidth]);
+  const hiddenCategories = useMemo(() => {
+    const visibleIds = new Set(visibleCategories.map((item) => item.id));
+    return PRIMARY.filter((item) => !visibleIds.has(item.id));
+  }, [visibleCategories]);
 
   return <div className="writer-breakdown">
-    <div className="writer-breakdown-tabs" role="tablist" aria-label="Categorías de elementos detectados">
-      {PRIMARY.map((item) => <button key={item.id} type="button" role="tab" aria-selected={!reviewMode && !showDismissed && category === item.id} aria-label={WRITER_BREAKDOWN_CATEGORY_LABELS[item.id]} title={WRITER_BREAKDOWN_CATEGORY_LABELS[item.id]} onClick={() => chooseCategory(item.id)}><span>{item.icon}</span><b>{countFor(item.id)}</b></button>)}
-      <details className="writer-breakdown-more">
-        <summary>Más</summary>
-        <div>{PRIMARY.map((item) => <button key={item.id} type="button" aria-current={category === item.id ? "true" : undefined} onClick={(event) => { chooseCategory(item.id); event.currentTarget.closest("details")?.removeAttribute("open"); }}><span aria-hidden="true">{item.icon}</span><span>{WRITER_BREAKDOWN_CATEGORY_LABELS[item.id]}</span><b>{countFor(item.id)}</b></button>)}</div>
-      </details>
+    <div ref={tabsRef} className="writer-breakdown-tabs" role="tablist" aria-label="Categorías de elementos detectados" data-visible-category-count={visibleCategories.length}>
+      {visibleCategories.map((item) => <button key={item.id} type="button" role="tab" aria-selected={!reviewMode && !showDismissed && category === item.id} aria-label={WRITER_BREAKDOWN_CATEGORY_LABELS[item.id]} title={WRITER_BREAKDOWN_CATEGORY_LABELS[item.id]} onClick={() => chooseCategory(item.id)}><span>{item.icon}</span><b>{countFor(item.id)}</b></button>)}
+      {hiddenCategories.length > 0 && <div ref={moreRef} className="writer-breakdown-more">
+        <button ref={moreTriggerRef} type="button" title="Más categorías" aria-label="Más categorías" aria-haspopup="menu" aria-expanded={moreOpen} onClick={() => setMoreOpen((open) => !open)}><span aria-hidden="true">⋮</span></button>
+        {moreOpen && <div role="menu" aria-label="Más categorías">{hiddenCategories.map((item) => <button key={item.id} type="button" role="menuitemradio" aria-checked={category === item.id} onClick={() => chooseCategory(item.id)}><span aria-hidden="true">{item.icon}</span><span>{WRITER_BREAKDOWN_CATEGORY_LABELS[item.id]}</span><b>{countFor(item.id)}</b></button>)}</div>}
+      </div>}
     </div>
     <div className="writer-breakdown-title"><div><span>ELEMENTOS DETECTADOS</span><details><summary aria-label="Ayuda sobre Elementos detectados">?</summary><p>Revisa todo el guion con IA para encontrar elementos de producción. El filtro Mostrar no cambia el alcance del análisis.</p></details></div><button type="button" title="Revisa todo el guion guardado con IA" onClick={() => void detect()} disabled={busy}><SmartFeatureIndicator label={busy ? "Detectando…" : "Detectar elementos"} /></button></div>
     <div className="writer-breakdown-head"><div><small>INVENTARIO</small><strong>{showDismissed ? "Descartados" : reviewMode ? "Por revisar" : WRITER_BREAKDOWN_CATEGORY_LABELS[category]} <b>{showDismissed ? visible.length : reviewMode ? pendingCount : countFor(category)}</b></strong></div><div className="writer-breakdown-head-actions"><button type="button" onClick={() => { setReviewMode(true); setShowDismissed(false); setSelectedId(null); }} aria-pressed={reviewMode}>Por revisar {pendingCount}</button><details><summary aria-label="Más opciones">···</summary><button type="button" onClick={() => { setReviewMode(false); setShowDismissed(true); setSelectedId(null); }}>Ver descartados ({elements.filter((element) => element.status === "dismissed").length})</button><button type="button" onClick={() => void addManual()} disabled={busy || category === "character"}>Añadir manualmente</button></details></div></div>
