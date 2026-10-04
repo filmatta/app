@@ -976,6 +976,20 @@
 .writer-guided-idea-context details p { margin:7px 0 0; line-height:1.5; }
 .writer-guided-new-response { position:sticky; z-index:2; bottom:8px; justify-self:center; min-height:34px; padding:7px 11px; border-color:var(--writer-intelligence)!important; color:var(--writer-intelligence)!important; background:var(--writer-panel-raised)!important; }
 
+.writer-selection-analysis-backdrop { position:fixed; inset:0; z-index:180; display:grid; place-items:center; padding:18px; background:rgba(0,0,0,.58); }
+.writer-selection-analysis { display:grid; width:min(620px,calc(100vw - 28px)); max-height:min(760px,calc(100dvh - 36px)); overflow:auto; gap:13px; box-sizing:border-box; padding:18px; border:1px solid var(--writer-border); border-radius:var(--writer-radius-dialog); color:var(--writer-chrome-text); background:var(--writer-panel-raised); box-shadow:0 28px 90px rgba(0,0,0,.55); }
+.writer-selection-analysis>header { display:flex; align-items:start; justify-content:space-between; gap:16px; padding-bottom:11px; border-bottom:1px solid var(--writer-border); }
+.writer-selection-analysis h2 { margin:3px 0 0; font-size:1rem; }.writer-selection-analysis header small{color:var(--writer-intelligence);font-size:.58rem;letter-spacing:.12em}.writer-selection-analysis header button{width:34px;height:34px;padding:0;font-size:1.1rem}
+.writer-selection-analysis blockquote { max-height:150px; overflow:auto; margin:0; padding:11px 12px; border-left:2px solid var(--writer-intelligence); color:var(--writer-chrome-text); background:color-mix(in srgb,var(--writer-intelligence) 5%,transparent); font:.7rem/1.55 var(--font-geist-mono); white-space:pre-wrap; }
+.writer-selection-analysis>small { color:var(--writer-muted); font-size:.6rem; }.writer-selection-analysis>label{display:grid;gap:7px;color:var(--writer-muted);font-size:.65rem}.writer-selection-analysis textarea{box-sizing:border-box;width:100%;padding:10px;border:1px solid var(--writer-border);color:var(--writer-chrome-text);background:var(--writer-button-bg);font:inherit}
+.writer-selection-analysis-result { display:grid; gap:7px; }.writer-selection-analysis-result h3{margin:5px 0 0;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase}.writer-selection-analysis-result p,.writer-selection-analysis-result li{margin:0;font-size:.72rem;line-height:1.55}.writer-selection-analysis-result ul{display:grid;gap:5px;margin:0;padding-left:20px}
+.writer-selection-analysis>footer { display:flex; justify-content:flex-end; gap:8px; padding-top:10px; border-top:1px solid var(--writer-border); }
+.writer-import-warnings { padding:11px 13px; border-left:2px solid var(--writer-review); color:var(--writer-chrome-text); background:color-mix(in srgb,var(--writer-review) 6%,transparent); }.writer-import-warnings strong{font-size:.7rem}.writer-import-warnings ul{margin:7px 0 0;padding-left:18px}.writer-import-warnings li{margin:4px 0;color:var(--writer-muted);font-size:.65rem;line-height:1.45}
+
+.writer-workspace[data-writer-skin="cream"] :is(.writer-character-review-card,.writer-observations-scroll article,.writer-observations-known li,.writer-guided-message.is-user,.writer-guided-response,.writer-guided-idea-context,.writer-selection-analysis){color:#28221d;background:var(--writer-panel-raised)!important;background-image:none!important}
+.writer-workspace[data-writer-skin="cream"] :is(.writer-character-review-card blockquote,.writer-observation-evidence p,.writer-guided-message p,.writer-guided-response section>p,.writer-guided-response li,.writer-guided-options p,.writer-guided-response h4){color:#332b24}
+.writer-workspace[data-writer-skin="cream"] .writer-character-review-question>span{color:#6f4a00;background:#f3e5c7}.writer-workspace[data-writer-skin="cream"] .writer-fragment-link{color:#006a85!important}.writer-workspace[data-writer-skin="cream"] .writer-fragment-link:hover{color:#004e62!important}
+
 @media (min-width: 901px) and (max-width: 1199px) {
   .writer-workspace { grid-template-columns: 220px minmax(0, 1fr); }
   .writer-workspace--observations { grid-template-columns: 220px minmax(0, 1fr) 280px; }

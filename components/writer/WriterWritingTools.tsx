@@ -21,6 +21,7 @@ import {
   buildSceneHeading,
 } from "@/lib/writer/writing-ux";
 import { parseSceneHeading } from "@/lib/writer/timeline";
+import WriterIcon from "./WriterIcon";
 
 export const WRITER_KIND_LABELS: Record<ScreenplayKind, string> = {
   sceneHeading: "Encabezado de escena",
@@ -61,6 +62,7 @@ export function WriterContextMenu({
   onConvertSceneHeading,
   onTimeline,
   onAnalyzeScene,
+  onAnalyzeSelection,
   onAssistant,
   onFeedback,
 }: {
@@ -70,6 +72,7 @@ export function WriterContextMenu({
   onConvertSceneHeading: () => void;
   onTimeline: (sceneId: string) => void;
   onAnalyzeScene: (sceneId: string) => void;
+  onAnalyzeSelection: (target: WriterSelectionTarget) => void;
   onAssistant: (sceneId: string) => void;
   onFeedback: (message: string) => void;
 }) {
@@ -244,6 +247,9 @@ export function WriterContextMenu({
         </button>
       ))}
       <div className="writer-context-menu-separator" />
+      {hasSelection && target && <button type="button" role="menuitem" onClick={() => contextIsCurrent() ? onAnalyzeSelection(target) : staleContext()}>
+        <span className="writer-smart-indicator"><WriterIcon name="sparkle" size={14} /><span>Analizar selección</span></span><small>Usar sólo el fragmento y su contexto cercano</small>
+      </button>}
       <button type="button" role="menuitem" disabled={!hasValidTarget || !state.sceneId} title={state.timelineReason ?? undefined} onClick={() => state.sceneId && (contextIsCurrent() ? onAnalyzeScene(state.sceneId) : staleContext())}>
         <span>Analizar escena</span><small>Objective · Obstacle · Change</small>
       </button>

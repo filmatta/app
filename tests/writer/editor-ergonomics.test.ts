@@ -138,24 +138,19 @@ test("Ideas validates provider output against stable screenplay references", () 
   const sceneId = document.content[0]!.attrs.id;
   const source = buildWriterIdeasSourceContext(document, "scene", sceneId);
   const referenceId = source.references.find((reference) => reference.blockKind === "action")!.id;
-  const ideas = validateWriterIdeasOutput({ ideas: [{
-    id: "elevar-costo",
+  const makeIdea = (id: string, reference = referenceId) => ({
+    id,
     title: "Elevar el costo de la decisión",
     direction: "Convertir la elección inmediata en una decisión entre dos valores incompatibles.",
     consequence: "La tensión proviene de lo que el personaje arriesga al elegir.",
     category: "Conflicto",
-    referenceIds: [referenceId],
-  }] }, source);
-  assert.equal(ideas.length, 1);
+    basis: "new_direction",
+    referenceIds: [reference],
+  });
+  const ideas = validateWriterIdeasOutput({ ideas: [makeIdea("elevar-costo"), { ...makeIdea("tensionar"), title: "Tensionar la espera" }, { ...makeIdea("contrastar"), title: "Contrastar decisiones" }] }, source);
+  assert.equal(ideas.length, 3);
   assert.equal(ideas[0]?.references[0]?.id, referenceId);
-  assert.throws(() => validateWriterIdeasOutput({ ideas: [{
-    id: "inventada",
-    title: "Referencia inventada",
-    direction: "No debe aceptar una referencia que el documento no contiene.",
-    consequence: "Evita atribuir evidencia inexistente al guion.",
-    category: "Conflicto",
-    referenceIds: ["block:no-existe"],
-  }] }, source), /writer_ideas_invalid_reference/u);
+  assert.throws(() => validateWriterIdeasOutput({ ideas: [makeIdea("inventada", "block:no-existe"), { ...makeIdea("valida-2"), title: "Válida dos" }, { ...makeIdea("valida-3"), title: "Válida tres" }] }, source), /writer_ideas_invalid_reference/u);
 });
 
 test("typewriter trigger excludes shortcuts, navigation and IME", () => {

@@ -8,6 +8,7 @@ import type {
 } from "@/lib/writer/guided-writing";
 import WriterAssistantSectionHeading from "./WriterAssistantSectionHeading";
 import type { WriterIdeaContext } from "@/lib/writer/ideas";
+import { SmartFeatureIndicator } from "./WriterSmartFormatting";
 
 const QUICK_STARTS = [
   "Siento que esta escena no avanza.",
@@ -109,7 +110,7 @@ export default function WriterGuidedWriting({
   return (
     <div ref={rootRef} className="writer-guided-writing" aria-busy={sending}>
       <header className="writer-guided-heading">
-        <WriterAssistantSectionHeading title="GUÍA · PENSARLO JUNTOS" help="Piensa opciones sobre una escena o el guion completo. Te ayuda a decidir sin reescribir el documento automáticamente." />
+        <WriterAssistantSectionHeading title="GUÍA · ASISTENTE DE ESCRITURA" help="Analiza una pregunta concreta sobre una escena o el guion completo. Te ayuda a decidir sin reescribir el documento automáticamente." />
         <h3>¿Qué estás intentando resolver?</h3>
         <p>Puedo ayudarte a pensar escenas, personajes y estructura sin escribir el guion por ti.</p>
       </header>
@@ -168,7 +169,7 @@ export default function WriterGuidedWriting({
         />
         <div><small>Enter envía · Shift+Enter añade una línea</small>{sending
           ? <button type="button" onClick={onCancel}>Cancelar</button>
-          : <button type="submit" disabled={!question.trim() || !documentHash || (scope === "scene" && !sceneTitle)}>Pensarlo juntos</button>}
+          : <button type="submit" disabled={!question.trim() || !documentHash || (scope === "scene" && !sceneTitle)}><SmartFeatureIndicator label="Analizar" /></button>}
         </div>
       </form>
       {feedback && <p className="writer-assistant-feedback" role="status">{feedback}</p>}
@@ -188,11 +189,11 @@ function GuidedResponse({
   const response = message.response!;
   return <article className="writer-guided-response" data-guided-message-id={message.id}>
     <div className="writer-guided-response-heading"><small>FILMATTA · LECTOR NARRATIVO</small>{changed && <span>El guion cambió desde esta respuesta.</span>}</div>
-    <section><h4>Lo que parece estar ocurriendo</h4><p>{response.summary}</p></section>
+    <section><h4>Conclusión provisional</h4><p>{response.summary}</p></section>
     <section><h4>Preguntas que vale la pena responder</h4><ol>{response.questions.map((question) => <li key={question.id}>{question.text}</li>)}</ol></section>
     {response.options.length > 0 && <section><h4>Decisiones posibles</h4><div className="writer-guided-options">{response.options.map((option) => <div key={option.id}><strong>{option.title}</strong><p>{option.change}</p><small>{option.consequence}</small></div>)}</div></section>}
-    {response.references.length > 0 && <section><h4>Conexiones del guion</h4><div className="writer-guided-references">{response.references.map((reference) => <button key={reference.referenceId} type="button" onClick={() => onReference(reference)}><span>{reference.label}</span><small>{reference.note}</small><b aria-hidden="true">→</b></button>)}</div></section>}
+    {response.references.length > 0 && <section><h4>Evidencia y conexiones</h4><div className="writer-guided-references">{response.references.map((reference) => <button key={reference.referenceId} type="button" onClick={() => onReference(reference)}><span>{reference.label}</span><small>{reference.note}</small><b aria-hidden="true">→</b></button>)}</div></section>}
     {response.redirectedFromWritingRequest && <p className="writer-guided-redirect">Esta respuesta conserva el foco en decisiones narrativas; no escribió la escena por ti.</p>}
-    {response.warnings.map((warning) => <p key={`${warning.code}:${warning.message}`} className="writer-guided-warning">{warning.message}</p>)}
+    {response.warnings.map((warning) => <p key={`${warning.code}:${warning.message}`} className="writer-guided-warning"><strong>Incertidumbre:</strong> {warning.message}</p>)}
   </article>;
 }

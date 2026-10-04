@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { WriterDocument, WriterSnapshot } from "@/lib/writer/document";
-import { WRITER_IDEA_CATEGORIES, type WriterIdea, type WriterIdeaCategory } from "@/lib/writer/ideas";
+import { type WriterIdea } from "@/lib/writer/ideas";
+import { SmartFeatureIndicator } from "./WriterSmartFormatting";
 import { findWriterSmartCandidates, findWriterText, type WriterSearchOptions, type WriterSearchResult, type WriterSearchScope } from "@/lib/writer/search";
 import {
   createWriterCheckpoint,
@@ -14,6 +15,8 @@ import {
 
 type ToolMetrics = {
   inputTokens: number;
+  cachedInputTokens?: number;
+  cacheWriteTokens?: number;
   outputTokens: number;
   costMicrousd: number;
   chunks: number;
@@ -165,7 +168,6 @@ export function WriterIdeasPanel({ scriptId, activeSceneId, confirmedRevision, o
 }) {
   const [scope, setScope] = useState<WriterSearchScope>(activeSceneId ? "scene" : "document");
   const [question, setQuestion] = useState("");
-  const [category, setCategory] = useState<WriterIdeaCategory | null>(null);
   const [ideas, setIdeas] = useState<WriterIdea[]>([]);
   const [sourceRevision, setSourceRevision] = useState<number | null>(null);
   const [sourceContext, setSourceContext] = useState<{ scope: WriterSearchScope; sceneId: string | null } | null>(null);
@@ -174,15 +176,18 @@ export function WriterIdeasPanel({ scriptId, activeSceneId, confirmedRevision, o
   const [message, setMessage] = useState<string | null>(null);
   const [providerUnavailable, setProviderUnavailable] = useState(false);
   const requestRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   async function generate() {
-    if (busy || (!question.trim() && !category) || (scope === "scene" && !activeSceneId)) return;
+    if (busy || (scope === "scene" && !activeSceneId)) return;
     const requestId = ++requestRef.current;
     setBusy(true);
     setMessage(null);
     setProviderUnavailable(false);
     const requestedScope = scope;
     const requestedSceneId = requestedScope === "scene" ? activeSceneId : null;
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       await onEnsureCurrentSaved();
       const response = await fetch(`/api/writer/scripts/${scriptId}/ideas`, {
@@ -192,9 +197,10 @@ export function WriterIdeasPanel({ scriptId, activeSceneId, confirmedRevision, o
           scope: requestedScope,
           sceneId: requestedSceneId,
           question,
-          category,
+          category: null,
           operationId: crypto.randomUUID(),
         }),
+        signal: controller.signal,
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new WriterIdeasClientError(
@@ -208,10 +214,11 @@ export function WriterIdeasPanel({ scriptId, activeSceneId, confirmedRevision, o
       setMetrics(data.metrics ?? null);
     } catch (cause) {
       if (requestId !== requestRef.current) return;
-      const next = cause instanceof Error ? cause.message : "No pudimos preparar ideas.";
+      const next = controller.signal.aborted ? "Generación cancelada." : cause instanceof Error ? cause.message : "No pudimos preparar ideas.";
       setProviderUnavailable(cause instanceof WriterIdeasClientError && cause.code === "provider_unavailable");
       setMessage(next);
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       if (requestId === requestRef.current) setBusy(false);
     }
   }
@@ -223,20 +230,18 @@ export function WriterIdeasPanel({ scriptId, activeSceneId, confirmedRevision, o
         <p className="writer-tool-lead">Explora direcciones narrativas sin bloquear el guion. FILMATTA no insertará texto ni escribirá diálogo.</p>
         <ScopeButtons scope={scope} activeSceneId={activeSceneId} onChange={setScope} />
       </div>
-      <label className="writer-tool-field">¿Qué quieres explorar?
-        <textarea value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} maxLength={500} placeholder="Ejemplo: ¿Cómo hago más incómodo este encuentro sin convertirlo en una pelea?" />
+      <label className="writer-tool-field">Breve opcional
+        <textarea value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} maxLength={500} placeholder="Ejemplo: más tensión sin convertir el encuentro en una pelea" />
       </label>
-      <div className="writer-idea-chips" role="group" aria-label="Categoría de ideas">
-        {WRITER_IDEA_CATEGORIES.map((item) => <button key={item} type="button" aria-pressed={category === item} onClick={() => setCategory((value) => value === item ? null : item)}>{item}</button>)}
-      </div>
-      <button className="writer-tool-primary" type="button" disabled={busy || (!question.trim() && !category) || (scope === "scene" && !activeSceneId)} onClick={() => void generate()}>{busy ? "Explorando…" : "Explorar direcciones"}</button>
+      {busy ? <button className="writer-tool-primary" type="button" onClick={() => abortRef.current?.abort()}>Cancelar</button>
+        : <button className="writer-tool-primary" type="button" disabled={scope === "scene" && !activeSceneId} onClick={() => void generate()}><SmartFeatureIndicator label="Generar ideas" /></button>}
     </div>
     {busy && <p className="writer-ideas-state" role="status">Leyendo la revisión guardada y preparando direcciones distintas…</p>}
-    {!busy && !ideas.length && !message && <p className="writer-ideas-state">Escribe una pregunta o elige una intención. Ideas sólo se ejecuta cuando pulsas “Explorar direcciones”.</p>}
+    {!busy && !ideas.length && !message && <p className="writer-ideas-state">Elige el alcance; el breve es opcional. Ideas sólo se ejecuta cuando pulsas “Generar ideas”.</p>}
     {ideas.length > 0 && <div className="writer-idea-results">
       {stale && <p className="writer-ideas-stale" role="status">Estas ideas corresponden a la revisión {sourceRevision}; el guion guardado ya está en la revisión {confirmedRevision}.</p>}
       {ideas.map((idea) => <article key={idea.id}>
-        <small>{idea.category}</small><h3>{idea.title}</h3><p>{idea.direction}</p><p><strong>Efecto esperado:</strong> {idea.consequence}</p>
+        <small>{idea.category} · {idea.basis === "source_fact" ? "Hecho del guion" : idea.basis === "interpretation" ? "Lectura posible" : "Idea nueva"}</small><h3>{idea.title}</h3><p>{idea.direction}</p><p><strong>Efecto esperado:</strong> {idea.consequence}</p>
         <div className="writer-idea-actions">
           {idea.references.map((reference) => <button key={reference.id} type="button" className="writer-idea-reference" onClick={() => onNavigate(reference)}>Escena {reference.sceneNumber ?? "—"} · Ver en guion →</button>)}
           <button type="button" onClick={() => onThinkTogether(
@@ -244,7 +249,7 @@ export function WriterIdeasPanel({ scriptId, activeSceneId, confirmedRevision, o
             sourceContext?.scope ?? scope,
             sourceContext?.sceneId ?? null,
             sourceRevision ?? confirmedRevision,
-          )}>Pensarlo juntos →</button>
+          )}>Llevar a Guía →</button>
         </div>
       </article>)}
     </div>}

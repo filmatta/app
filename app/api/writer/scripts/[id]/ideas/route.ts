@@ -16,7 +16,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     || (body.value.scope === "document" && body.value.sceneId !== null)
     || typeof body.value.question !== "string" || body.value.question.length > 500
     || (body.value.category !== null && !isWriterIdeaCategory(body.value.category))
-    || (!body.value.question.trim() && body.value.category === null)
     || !validUuid(body.value.operationId)) {
     return body.ok ? writerJson({ error: "Solicitud inválida." }, 400) : body.response;
   }

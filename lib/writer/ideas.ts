@@ -19,6 +19,7 @@ export type WriterIdea = {
   direction: string;
   consequence: string;
   category: WriterIdeaCategory;
+  basis: "source_fact" | "interpretation" | "new_direction";
   references: WriterSearchResult[];
 };
 
@@ -123,13 +124,6 @@ export function writerIdeasProviderInput(input: {
   narrativeContext?: unknown;
 }) {
   return JSON.stringify({
-    request: {
-      userQuestion: input.request.question.trim(),
-      categoryIntent: input.request.category,
-      scope: input.request.scope,
-      sceneId: input.request.sceneId,
-      sourceRevision: input.sourceRevision,
-    },
     screenplay: input.source.scenes,
     narrativeContext: input.narrativeContext ?? null,
     referenceCatalog: input.source.references.map((reference) => ({
@@ -138,18 +132,25 @@ export function writerIdeasProviderInput(input: {
       blockId: reference.blockId,
       label: reference.sceneHeading,
     })),
+    request: {
+      userQuestion: input.request.question.trim(),
+      categoryIntent: input.request.category,
+      scope: input.request.scope,
+      sceneId: input.request.sceneId,
+      sourceRevision: input.sourceRevision,
+    },
   });
 }
 
 export function validateWriterIdeasOutput(value: unknown, source: WriterIdeasSourceContext): WriterIdea[] {
   if (!isRecord(value) || !hasExactKeys(value, ["ideas"]) || !Array.isArray(value.ideas)
-    || value.ideas.length < 1 || value.ideas.length > 5) throw new Error("writer_ideas_invalid_schema");
+    || value.ideas.length < 3 || value.ideas.length > 5) throw new Error("writer_ideas_invalid_schema");
   const catalog = new Map(source.references.map((reference) => [reference.id, reference]));
   const ids = new Set<string>();
   const titles = new Set<string>();
   return value.ideas.map((item) => {
-    if (!isRecord(item) || !hasExactKeys(item, ["id", "title", "direction", "consequence", "category", "referenceIds"])
-      || !isWriterIdeaCategory(item.category) || !Array.isArray(item.referenceIds) || item.referenceIds.length > 4) {
+    if (!isRecord(item) || !hasExactKeys(item, ["id", "title", "direction", "consequence", "category", "basis", "referenceIds"])
+      || !isWriterIdeaCategory(item.category) || !isWriterIdeaBasis(item.basis) || !Array.isArray(item.referenceIds) || item.referenceIds.length > 4) {
       throw new Error("writer_ideas_invalid_item");
     }
     const id = cleanIdeaText(item.id, 64);
@@ -172,6 +173,7 @@ export function validateWriterIdeasOutput(value: unknown, source: WriterIdeasSou
       direction: cleanIdeaText(item.direction, 500),
       consequence: cleanIdeaText(item.consequence, 360),
       category: item.category,
+      basis: item.basis,
       references,
     };
   });
@@ -185,18 +187,19 @@ export function writerIdeasOutputSchema() {
     properties: {
       ideas: {
         type: "array",
-        minItems: 1,
+        minItems: 3,
         maxItems: 5,
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["id", "title", "direction", "consequence", "category", "referenceIds"],
+          required: ["id", "title", "direction", "consequence", "category", "basis", "referenceIds"],
           properties: {
             id: { type: "string", maxLength: 64 },
             title: { type: "string", maxLength: 120 },
             direction: { type: "string", maxLength: 500 },
             consequence: { type: "string", maxLength: 360 },
             category: { type: "string", enum: WRITER_IDEA_CATEGORIES },
+            basis: { type: "string", enum: ["source_fact", "interpretation", "new_direction"] },
             referenceIds: { type: "array", maxItems: 4, items: { type: "string", maxLength: 80 } },
           },
         },
@@ -207,6 +210,10 @@ export function writerIdeasOutputSchema() {
 
 export function isWriterIdeaCategory(value: unknown): value is WriterIdeaCategory {
   return typeof value === "string" && (WRITER_IDEA_CATEGORIES as readonly string[]).includes(value);
+}
+
+function isWriterIdeaBasis(value: unknown): value is WriterIdea["basis"] {
+  return value === "source_fact" || value === "interpretation" || value === "new_direction";
 }
 
 function cleanIdeaText(value: unknown, maximum: number) {

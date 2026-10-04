@@ -21,7 +21,7 @@ Considera amenaza/peligro, conflicto/presión, stakes/consecuencias, intensidad 
 Usa exclusivamente los sceneId recibidos y devuelve exactamente un punto por escena, en el mismo orden. Las notas y explicaciones deben ser breves, descriptivas y sin razonamiento interno. Las relaciones Setup/Payoff confirmadas son hechos; las sugeridas sólo contexto. Los cambios O-O-C son contexto, no una fórmula de intensidad.`;
 
 type Database = ReturnType<typeof createAdminClient>;
-export type WriterPulseProvider = (input: { operationId: string; requestHash: string; context: ReturnType<typeof buildWriterPulseContext>; maxOutputTokens: number; signal?: AbortSignal }) => Promise<{ result: unknown; usage: WriterSceneAnalysisUsage; latencyMs: number; requestId?: string }>;
+export type WriterPulseProvider = (input: { operationId: string; requestHash: string; cacheKey: string; context: ReturnType<typeof buildWriterPulseContext>; maxOutputTokens: number; signal?: AbortSignal }) => Promise<{ result: unknown; usage: WriterSceneAnalysisUsage; latencyMs: number; requestId?: string }>;
 
 export class WriterNarrativePulseError extends Error { constructor(readonly code: string, message: string, readonly status: number) { super(message); } }
 
@@ -56,7 +56,7 @@ export async function executeWriterNarrativePulse(
   if (reserved.status === "uncertain") throw new WriterNarrativePulseError("uncertain", "Una llamada anterior necesita conciliación antes de reintentarse.", 409);
   if (reserved.status !== "reserved" || typeof reserved.analysisId !== "string") throw new WriterNarrativePulseError("reservation", "No pudimos preparar el análisis.", 409);
   let response: Awaited<ReturnType<WriterPulseProvider>>;
-  try { response = await (dependencies.provider ?? openAiPulseProvider)({ operationId, requestHash, context, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: request.signal }); }
+  try { response = await (dependencies.provider ?? openAiPulseProvider)({ operationId, requestHash, cacheKey: `writer-pulse:${userId}:${request.scriptId}:${sourceHash}`, context, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: request.signal }); }
   catch (cause) {
     const ambiguous = cause instanceof ProviderFailure ? cause.ambiguous : true;
     const usage = cause instanceof ProviderFailure ? cause.usage : emptyUsage();
@@ -80,7 +80,19 @@ export async function executeWriterNarrativePulse(
   const actualCost = calculateWriterSceneAnalysisCost(response.usage);
   await settle(db, userId, operationId, "completed", null, response.usage, actualCost, response.latencyMs);
   logOperation(operationId, request.scriptId, "completed", response.usage, actualCost, response.latencyMs);
-  return { ...(await loadWriterNarrativePulseState(readDb, userId, request.scriptId)), cached: false, providerCalls: 1, costMicrousd: actualCost, latencyMs: response.latencyMs };
+  return {
+    ...(await loadWriterNarrativePulseState(readDb, userId, request.scriptId)),
+    cached: false,
+    providerCalls: 1,
+    costMicrousd: actualCost,
+    latencyMs: response.latencyMs,
+    usage: {
+      inputTokens: response.usage.inputTokens,
+      cachedInputTokens: response.usage.cachedInputTokens,
+      cacheWriteTokens: response.usage.cacheWriteTokens ?? 0,
+      outputTokens: response.usage.outputTokens,
+    },
+  };
 }
 
 export async function loadWriterNarrativePulseState(db: Database, userId: string, scriptId: string): Promise<WriterNarrativePulseState> {
@@ -176,7 +188,7 @@ async function persistPulse(db: Database, userId: string, scriptId: string, anal
 async function openAiPulseProvider(input: Parameters<WriterPulseProvider>[0]) {
   if (!process.env.OPENAI_API_KEY) throw new ProviderFailure(false, emptyUsage());
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 120_000 }); const started = Date.now(); let response;
-  try { response = await client.responses.create({ model: WRITER_NARRATIVE_PULSE_MODEL, reasoning: { effort: "none" }, store: false, max_output_tokens: input.maxOutputTokens, instructions: WRITER_NARRATIVE_PULSE_INSTRUCTIONS, input: writerPulseProviderInput(input.context), text: { format: { type: "json_schema", name: "writer_narrative_pulse", strict: true, schema: writerPulseOutputSchema() } } }, { headers: { "Idempotency-Key": `writer-pulse-${input.operationId}-${input.requestHash.slice(0, 16)}` }, signal: input.signal }); }
+  try { response = await client.responses.create({ model: WRITER_NARRATIVE_PULSE_MODEL, reasoning: { effort: "none" }, store: false, prompt_cache_key: input.cacheKey, max_output_tokens: input.maxOutputTokens, instructions: WRITER_NARRATIVE_PULSE_INSTRUCTIONS, input: writerPulseProviderInput(input.context), text: { format: { type: "json_schema", name: "writer_narrative_pulse", strict: true, schema: writerPulseOutputSchema() } } }, { headers: { "Idempotency-Key": `writer-pulse-${input.operationId}-${input.requestHash.slice(0, 16)}` }, signal: input.signal }); }
   catch (cause) { const status = isRecord(cause) && typeof cause.status === "number" ? cause.status : 0; throw new ProviderFailure(status === 0 || status >= 500, emptyUsage()); }
   const usage = readUsage(response.usage); if (response.status !== "completed" || !response.output_text) throw new ProviderFailure(false, usage);
   try { return { result: JSON.parse(response.output_text), usage, latencyMs: Date.now() - started, ...(typeof response._request_id === "string" ? { requestId: response._request_id } : {}) }; } catch { throw new ProviderFailure(false, usage); }
@@ -185,12 +197,12 @@ async function openAiPulseProvider(input: Parameters<WriterPulseProvider>[0]) {
 class ProviderFailure extends Error { constructor(readonly ambiguous: boolean, readonly usage: WriterSceneAnalysisUsage) { super("provider_request_failed"); } }
 async function settle(db: Database, userId: string, operationId: string, status: "completed" | "failed" | "uncertain", errorCode: string | null, usage: WriterSceneAnalysisUsage, cost: number, latency: number) { await rpcJson(db, "writer_settle_narrative_pulse", { p_user_id: userId, p_operation_id: operationId, p_status: status, p_error_code: errorCode, p_input_tokens: usage.inputTokens, p_cached_input_tokens: usage.cachedInputTokens, p_output_tokens: usage.outputTokens, p_reasoning_tokens: usage.reasoningTokens, p_actual_cost_microusd: cost, p_latency_ms: latency }); }
 async function rpcJson(db: Database, name: string, args: Record<string, unknown>) { const result = await db.rpc(name, args); if (result.error) { if (String(result.error.message).includes("BUDGET")) throw new WriterNarrativePulseError("budget", "Narrative Pulse no está disponible por presupuesto ahora.", 429); throw result.error; } return (result.data ?? {}) as Record<string, unknown>; }
-function readUsage(value: unknown): WriterSceneAnalysisUsage { const usage = isRecord(value) ? value : {}; const details = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : {}; const output = isRecord(usage.output_tokens_details) ? usage.output_tokens_details : {}; return { inputTokens: integer(usage.input_tokens), cachedInputTokens: integer(details.cached_tokens), outputTokens: integer(usage.output_tokens), reasoningTokens: integer(output.reasoning_tokens) }; }
-function emptyUsage(): WriterSceneAnalysisUsage { return { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0 }; }
+function readUsage(value: unknown): WriterSceneAnalysisUsage { const usage = isRecord(value) ? value : {}; const details = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : {}; const output = isRecord(usage.output_tokens_details) ? usage.output_tokens_details : {}; return { inputTokens: integer(usage.input_tokens), cachedInputTokens: integer(details.cached_tokens), cacheWriteTokens: integer(details.cache_write_tokens), outputTokens: integer(usage.output_tokens), reasoningTokens: integer(output.reasoning_tokens) }; }
+function emptyUsage(): WriterSceneAnalysisUsage { return { inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 0, reasoningTokens: 0 }; }
 function integer(value: unknown) { return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : 0; }
 function sha256(value: string) { return createHash("sha256").update(value).digest("hex"); }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function uuid(value: unknown) { const result = String(value ?? ""); if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(result)) throw new WriterNarrativePulseError("invalid", "Identificador no válido.", 400); return result; }
 function text(value: unknown, limit: number) { const result = String(value ?? "").trim().replace(/\s+/gu, " "); if (!result || result.length > limit) throw new WriterNarrativePulseError("invalid", "Texto no válido.", 400); return result; }
 function milestoneType(value: unknown) { const type = String(value) as WriterPulseMilestoneType; if (!["inciting_incident", "first_turning_point", "midpoint", "crisis", "climax", "resolution", "custom"].includes(type)) throw new WriterNarrativePulseError("invalid", "Tipo de hito no válido.", 400); return type; }
-function logOperation(operationId: string, scriptId: string, status: string, usage: WriterSceneAnalysisUsage, cost: number, latency: number) { console.info("writer_narrative_pulse", { operationId, scriptId, status, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costMicrousd: cost, latencyMs: latency }); }
+function logOperation(operationId: string, scriptId: string, status: string, usage: WriterSceneAnalysisUsage, cost: number, latency: number) { console.info("writer_narrative_pulse", { operationId, scriptId, status, inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, cacheWriteTokens: usage.cacheWriteTokens ?? 0, outputTokens: usage.outputTokens, costMicrousd: cost, latencyMs: latency }); }

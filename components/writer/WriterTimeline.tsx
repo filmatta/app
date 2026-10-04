@@ -112,6 +112,11 @@ export default function WriterTimelineView({
   const timelineRef = useRef<WriterTimeline | null>(initialTimeline);
   const selectedSceneKeyRef = useRef<string | null>(null);
   const [refreshCoordinator] = useState(() => new TimelineRefreshCoordinator(async () => undefined, setRefreshing));
+  useEffect(() => {
+    if (!notice || (!notice.startsWith("Ya estabas viendo") && !notice.startsWith("Timeline actualizado"))) return;
+    const timer = window.setTimeout(() => setNotice(null), 3_500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const Root = variant === "embedded" ? "div" : "main";
   const setRootRef = useCallback((node: HTMLElement | null) => {
     rootRef.current = node;

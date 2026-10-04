@@ -19,7 +19,7 @@ export class WriterProductionAiError extends Error {
 }
 
 export async function analyzeBreakdownWithAi(input: {
-  userId: string; scriptId: string; sceneIds?: string[]; operationId?: string; readDb: SupabaseClient; signal?: AbortSignal;
+  userId: string; scriptId: string; sceneIds?: string[]; operationId?: string; readDb: SupabaseClient; signal?: AbortSignal; force?: boolean;
 }) {
   assertEnabled();
   const script = await assertOwnedWriterScript(input.readDb, input.userId, input.scriptId);
@@ -30,9 +30,9 @@ export async function analyzeBreakdownWithAi(input: {
   const providerInput = JSON.stringify({ scenes: scenes.map((scene) => ({ sceneId: scene.sceneId, heading: scene.heading, blocks: scene.blocks })) });
   if (providerInput.length > 70_000) throw new WriterProductionAiError("too_large", "Analiza menos escenas por operación.", 413);
   const instructions = "Detecta sólo elementos de producción explícitamente sostenidos por el texto. No inventes. Devuelve referencias exactas a sceneId y blockId. Distingue present, used, mentioned e inferred. No propongas equipo de cámara.";
-  const output = await executeOperation({ userId: input.userId, scriptId: input.scriptId, sourceRevision: script.revision, kind: "breakdown_detect", scope: input.sceneIds?.length === 1 ? "scene" : "document", source: providerInput, instructions, schema: breakdownSchema(), operationId: input.operationId, signal: input.signal });
+  const output = await executeOperation({ userId: input.userId, scriptId: input.scriptId, sourceRevision: script.revision, kind: "breakdown_detect", scope: input.sceneIds?.length === 1 ? "scene" : "document", source: providerInput, instructions, schema: breakdownSchema(), operationId: input.operationId, signal: input.signal, force: input.force });
   const candidates = validateWriterBreakdownCandidates((output.result as { candidates?: unknown }).candidates, script.document);
-  return { candidates, ...output.metrics };
+  return { candidates, operationId: output.operationId, ...output.metrics };
 }
 
 export async function createShotlistProposals(input: {
@@ -88,16 +88,17 @@ export async function loadProposals(db: SupabaseClient, userId: string, shotlist
   return result.data ?? [];
 }
 
-async function executeOperation(input: { userId: string; scriptId?: string | null; sourceRevision?: number | null; shotlistId?: string; kind: string; scope: string; source: string; instructions: string; schema: Record<string, unknown>; operationId?: string; signal?: AbortSignal }) {
-  const sourceHash = sha256(input.source);
+async function executeOperation(input: { userId: string; scriptId?: string | null; sourceRevision?: number | null; shotlistId?: string; kind: string; scope: string; source: string; instructions: string; schema: Record<string, unknown>; operationId?: string; signal?: AbortSignal; force?: boolean }) {
+  const sourceHash = sha256(`${VERSION}:${WRITER_SCRIPT_ASSISTANT_MODEL}:${input.instructions}:${input.source}`);
   let operationId = input.operationId ?? randomUUID();
-  const requestHash = sha256(`${VERSION}:${WRITER_SCRIPT_ASSISTANT_MODEL}:${operationId}:${input.instructions}:${input.source}`);
+  const ownerScope = `${input.userId}:${input.scriptId ?? input.shotlistId ?? "none"}`;
+  const requestHash = sha256(`${ownerScope}:${sourceHash}:${input.kind}:${input.scope}`);
   const estimated = estimateWriterSceneAnalysisMaximumCost(countWriterSceneAnalysisTokens(`${input.instructions}\n${input.source}`), MAX_OUTPUT_TOKENS);
   if (estimated > MAX_OPERATION_COST_MICRO_USD) throw new WriterProductionAiError("budget", "La operación excede el límite técnico de US$0.20.", 413);
   const admin = createAdminClient();
   const existing = await admin.from("writer_production_operations").select("id,status,actual_cost_microusd,latency_ms")
-    .eq("owner_id", input.userId).eq("request_hash", requestHash).maybeSingle();
-  if (existing.data?.status === "completed") return { operationId: String(existing.data.id), result: { candidates: [], shots: [] }, metrics: { cached: true, costMicrousd: Number(existing.data.actual_cost_microusd), latencyMs: Number(existing.data.latency_ms ?? 0) } };
+    .eq("owner_id", input.userId).eq("request_hash", requestHash).eq("model", WRITER_SCRIPT_ASSISTANT_MODEL).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+  if (!input.force && existing.data?.status === "completed" && input.kind === "breakdown_detect") return { operationId: String(existing.data.id), result: { candidates: [] }, metrics: { reused: true, cached: true, costMicrousd: 0, latencyMs: 0, inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 0 } };
   if (existing.data?.id) operationId = String(existing.data.id);
   const reserved = await admin.from("writer_production_operations").upsert({
     id: operationId, owner_id: input.userId, script_id: input.scriptId ?? null, shotlist_id: input.shotlistId ?? null,
@@ -111,19 +112,34 @@ async function executeOperation(input: { userId: string; scriptId?: string | nul
     const response = await client.responses.create({
       model: WRITER_SCRIPT_ASSISTANT_MODEL, reasoning: { effort: "none" }, store: false,
       max_output_tokens: MAX_OUTPUT_TOKENS, instructions: input.instructions, input: input.source,
+      prompt_cache_key: `writer-production:${input.userId}:${input.scriptId ?? input.shotlistId ?? "none"}:${input.kind}:${sourceHash.slice(0, 24)}`,
       text: { format: { type: "json_schema", name: "writer_production", strict: true, schema: input.schema } },
     }, { headers: { "Idempotency-Key": `writer-production-${operationId}-${requestHash.slice(0, 16)}` }, signal: input.signal });
     usage = readUsage(response.usage);
     if (response.status !== "completed" || !response.output_text) throw new Error("invalid_response");
     const result = JSON.parse(response.output_text) as unknown;
     const cost = calculateWriterSceneAnalysisCost(usage); const latency = Date.now() - started;
-    await admin.from("writer_production_operations").update({ status: "completed", actual_cost_microusd: cost, input_tokens: usage.inputTokens, cached_input_tokens: usage.cachedInputTokens, output_tokens: usage.outputTokens, reasoning_tokens: usage.reasoningTokens, latency_ms: latency, settled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", operationId).eq("owner_id", input.userId);
-    console.info("writer_production_operation", { operationId, kind: input.kind, model: WRITER_SCRIPT_ASSISTANT_MODEL, status: "completed", costMicrousd: cost, latencyMs: latency });
-    return { operationId, result, metrics: { cached: false, costMicrousd: cost, latencyMs: latency } };
+    const measured = await admin.from("writer_production_operations").update({ status: "processing", actual_cost_microusd: cost, input_tokens: usage.inputTokens, cached_input_tokens: usage.cachedInputTokens, output_tokens: usage.outputTokens, reasoning_tokens: usage.reasoningTokens, latency_ms: latency, updated_at: new Date().toISOString() }).eq("id", operationId).eq("owner_id", input.userId);
+    if (measured.error) throw new WriterProductionAiError("storage", "No pudimos registrar el resultado del análisis.", 500);
+    console.info("writer_production_operation", { operationId, kind: input.kind, model: WRITER_SCRIPT_ASSISTANT_MODEL, status: "provider_completed", usage, costMicrousd: cost, latencyMs: latency });
+    return { operationId, result, metrics: { reused: false, cached: false, costMicrousd: cost, latencyMs: latency, inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, cacheWriteTokens: usage.cacheWriteTokens ?? 0, outputTokens: usage.outputTokens } };
   } catch {
     const cost = calculateWriterSceneAnalysisCost(usage);
     await admin.from("writer_production_operations").update({ status: "failed", actual_cost_microusd: cost, input_tokens: usage.inputTokens, cached_input_tokens: usage.cachedInputTokens, output_tokens: usage.outputTokens, reasoning_tokens: usage.reasoningTokens, latency_ms: Date.now() - started, error_code: "provider_failed", settled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", operationId).eq("owner_id", input.userId);
     throw new WriterProductionAiError("provider", "No pudimos obtener una propuesta ahora.", 503);
+  }
+}
+
+export async function finalizeWriterProductionAiOperation(userId: string, operationId: string) {
+  const admin = createAdminClient();
+  const completed = await admin.from("writer_production_operations").update({
+    status: "completed",
+    error_code: null,
+    settled_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", operationId).eq("owner_id", userId).eq("status", "processing").select("id").maybeSingle();
+  if (completed.error || !completed.data) {
+    throw new WriterProductionAiError("storage", "No pudimos finalizar el análisis guardado.", 500);
   }
 }
 
@@ -134,7 +150,7 @@ function sha256(value: string) { return createHash("sha256").update(value).diges
 function clean(value: unknown, max: number, fallback: string) { return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : fallback; }
 function nullable(value: unknown, max: number) { return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null; }
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
-function emptyUsage(): WriterSceneAnalysisUsage { return { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0 }; }
-function readUsage(value: unknown): WriterSceneAnalysisUsage { if (!record(value)) return emptyUsage(); const i = record(value.input_tokens_details) ? value.input_tokens_details : {}; const o = record(value.output_tokens_details) ? value.output_tokens_details : {}; return { inputTokens: Number(value.input_tokens ?? 0), cachedInputTokens: Number(i.cached_tokens ?? 0), outputTokens: Number(value.output_tokens ?? 0), reasoningTokens: Number(o.reasoning_tokens ?? 0) }; }
+function emptyUsage(): WriterSceneAnalysisUsage { return { inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 0, reasoningTokens: 0 }; }
+function readUsage(value: unknown): WriterSceneAnalysisUsage { if (!record(value)) return emptyUsage(); const i = record(value.input_tokens_details) ? value.input_tokens_details : {}; const o = record(value.output_tokens_details) ? value.output_tokens_details : {}; return { inputTokens: Number(value.input_tokens ?? 0), cachedInputTokens: Number(i.cached_tokens ?? 0), cacheWriteTokens: Number(i.cache_write_tokens ?? 0), outputTokens: Number(value.output_tokens ?? 0), reasoningTokens: Number(o.reasoning_tokens ?? 0) }; }
 function breakdownSchema() { return { type: "object", additionalProperties: false, required: ["candidates"], properties: { candidates: { type: "array", maxItems: 120, items: { type: "object", additionalProperties: false, required: ["name", "category", "sceneId", "blockId", "excerpt", "nature"], properties: { name: { type: "string", maxLength: 160 }, category: { type: "string", enum: ["character", "prop", "location", "wardrobe", "vehicle", "animal", "extra", "makeup", "practical_effect", "visual_effect", "stunt", "sound_music", "other"] }, sceneId: { type: "string" }, blockId: { type: "string" }, excerpt: { type: "string", maxLength: 500 }, nature: { type: "string", enum: ["present", "used", "mentioned", "inferred"] } } } } } }; }
 function shotSchema() { return { type: "object", additionalProperties: false, required: ["shots"], properties: { shots: { type: "array", maxItems: 120, items: { type: "object", additionalProperties: false, required: ["groupId", "sourceBlockId", "shotType", "subject", "angle", "movement", "lens", "setup", "durationSeconds", "description", "intention"], properties: { groupId: { type: "string" }, sourceBlockId: { type: ["string", "null"] }, shotType: { type: "string", maxLength: 80 }, subject: { type: "string", maxLength: 500 }, angle: { type: "string", maxLength: 80 }, movement: { type: "string", maxLength: 80 }, lens: { type: ["string", "null"], maxLength: 40 }, setup: { type: ["string", "null"], maxLength: 40 }, durationSeconds: { type: ["number", "null"], minimum: 0, maximum: 86400 }, description: { type: ["string", "null"], maxLength: 4000 }, intention: { type: ["string", "null"], maxLength: 2000 } } } } } }; }

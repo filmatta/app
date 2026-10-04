@@ -17,6 +17,7 @@ export type WriterIconName =
   | "search"
   | "soundOff"
   | "soundOn"
+  | "sparkle"
   | "undo";
 
 const paths: Record<WriterIconName, ReactNode> = {
@@ -36,6 +37,7 @@ const paths: Record<WriterIconName, ReactNode> = {
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
   soundOff: <><path d="M11 5 6 9H3v6h3l5 4Z" /><path d="m16 9 5 6" /><path d="m21 9-5 6" /></>,
   soundOn: <><path d="M11 5 6 9H3v6h3l5 4Z" /><path d="M15 9a4 4 0 0 1 0 6" /><path d="M18 6a8 8 0 0 1 0 12" /></>,
+  sparkle: <><path d="M12 3c.6 4.2 2.8 6.4 7 7-4.2.6-6.4 2.8-7 7-.6-4.2-2.8-6.4-7-7 4.2-.6 6.4-2.8 7-7Z" /><path d="M19 16c.2 1.7 1.3 2.8 3 3-1.7.2-2.8 1.3-3 3-.2-1.7-1.3-2.8-3-3 1.7-.2 2.8-1.3 3-3Z" /></>,
   undo: <><path d="m9 7-4 4 4 4" /><path d="M5 11h8a6 6 0 0 1 6 6" /></>,
 };
 

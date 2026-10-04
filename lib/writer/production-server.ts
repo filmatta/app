@@ -107,9 +107,12 @@ export async function detectAndStoreWriterBreakdown(
   db: SupabaseClient,
   userId: string,
   scriptId: string,
-  options: { sceneIds?: ReadonlySet<string>; extraCandidates?: WriterBreakdownCandidate[]; scope?: "scene" | "changed" | "document"; recordLocalRun?: boolean; includeRules?: boolean } = {},
+  options: { sceneIds?: ReadonlySet<string>; extraCandidates?: WriterBreakdownCandidate[]; scope?: "scene" | "changed" | "document"; recordLocalRun?: boolean; includeRules?: boolean; reconcileStale?: boolean; expectedRevision?: number } = {},
 ) {
   const script = await assertOwnedWriterScript(db, userId, scriptId);
+  if (options.expectedRevision !== undefined && script.revision !== options.expectedRevision) {
+    throw new WriterProductionError("stale", "El guion cambió durante la detección. Los resultados anteriores permanecen intactos.", 409);
+  }
   const operationId = options.recordLocalRun ? randomUUID() : null;
   if (operationId) {
     const operation = await db.from("writer_production_operations").insert({
@@ -177,15 +180,15 @@ export async function detectAndStoreWriterBreakdown(
     }, { onConflict: "element_id,block_id,from_offset,nature" });
     if (appearance.error) throw new WriterProductionError("storage", "No pudimos guardar la evidencia de los elementos detectados.", 500);
   }
-  const automatedElements = await db.from("writer_breakdown_elements")
+  const automatedElements = options.reconcileStale === false ? null : await db.from("writer_breakdown_elements")
     .select("id")
     .eq("owner_id", userId)
     .eq("script_id", scriptId)
     .neq("source", "user");
-  if (automatedElements.error) {
+  if (automatedElements?.error) {
     throw new WriterProductionError("storage", "No pudimos reconciliar la evidencia anterior.", 500);
   }
-  const automatedElementIds = (automatedElements.data ?? []).map((row) => String(row.id));
+  const automatedElementIds = (automatedElements?.data ?? []).map((row) => String(row.id));
   if (automatedElementIds.length) {
     let staleQuery = db.from("writer_breakdown_appearances")
       .update({ stale: true, updated_at: new Date().toISOString() })

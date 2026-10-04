@@ -9,7 +9,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
-  SCREENPLAY_KINDS,
   WRITER_SCHEMA_VERSION,
   blockText,
   canonicalWriterDocument,
@@ -75,6 +74,7 @@ import WriterImportFlow from "./WriterImportFlow";
 import WriterBreakdownPanel from "./WriterBreakdownPanel";
 import WriterAssistantNarrative from "./WriterAssistantNarrative";
 import WriterGuidedWriting from "./WriterGuidedWriting";
+import WriterSelectionAnalysisDialog from "./WriterSelectionAnalysisDialog";
 import WriterObservationsPanel, { type WriterObservationsSection } from "./WriterObservationsPanel";
 import WriterPanelResizeHandle from "./WriterPanelResizeHandle";
 import WriterHorizontalResizeHandle from "./WriterHorizontalResizeHandle";
@@ -103,7 +103,6 @@ import {
   applyWriterAutoFormat,
   changeWriterBlockKind,
   findWriterBlockById,
-  selectionSpansWriterBlocks,
   writerSelectionTargetIsCurrent,
   writerSceneForSelection,
   duplicateWriterScene,
@@ -195,7 +194,7 @@ import type { WriterNarrativeObservation } from "@/lib/writer/script-assistant";
 import { useWriterSetupPayoff } from "@/lib/writer/setup-payoff-client";
 import type { WriterNarrativeElement } from "@/lib/writer/setup-payoff";
 import { useWriterGuidedWriting } from "@/lib/writer/guided-writing-client";
-import type { WriterGuidedReference } from "@/lib/writer/guided-writing";
+import type { WriterGuidedReference, WriterGuidedSelection } from "@/lib/writer/guided-writing";
 
 type ScriptInput = {
   id: string;
@@ -318,6 +317,7 @@ export default function WriterWorkspace({
   const [searchReplaceMode, setSearchReplaceMode] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [guidedIdeaContext, setGuidedIdeaContext] = useState<WriterIdeaContext | null>(null);
+  const [guidedSelection, setGuidedSelection] = useState<WriterGuidedSelection | null>(null);
   const [formatBaseline, setFormatBaseline] = useState<WriterFormatBaseline | null>(null);
   const [typewriterSoundEnabled, setTypewriterSoundEnabled] = useState(false);
   const [autocomplete, setAutocomplete] = useState<WriterAutocompleteState | null>(null);
@@ -1725,6 +1725,36 @@ export default function WriterWorkspace({
     setObservationsOpen(true);
   }
 
+  function openSelectionAnalysis(target: WriterSelectionTarget) {
+    setContextMenu(null);
+    const text = target.document.textBetween(target.from, target.to, "\n").trim();
+    if (!text) return setFeedback("Selecciona un fragmento con texto para analizarlo.");
+    if (text.length > 6_000) return setFeedback("La selección supera 6,000 caracteres. Reduce el fragmento; no lo truncaremos en silencio.");
+    if (!guidedWriting.documentHash) return setFeedback("Espera a que Writer termine de preparar la revisión actual.");
+    const blockIds: string[] = [];
+    const sceneIds: string[] = [];
+    let currentSceneId: string | null = null;
+    target.document.forEach((node, position) => {
+      if (node.type.name !== "screenplayBlock") return;
+      const id = String(node.attrs.id ?? "");
+      if (node.attrs.kind === "sceneHeading") currentSceneId = id;
+      const overlaps = position + node.nodeSize > target.from && position < target.to;
+      if (!overlaps || !id) return;
+      blockIds.push(id);
+      if (currentSceneId && !sceneIds.includes(currentSceneId)) sceneIds.push(currentSceneId);
+    });
+    if (!blockIds.length || !sceneIds.length) return setFeedback("La selección debe pertenecer a una escena del guion.");
+    setGuidedSelection({
+      blockIds,
+      sceneIds,
+      text,
+      from: target.from,
+      to: target.to,
+      sourceRevision: saveStateRef.current.revision,
+      documentHash: guidedWriting.documentHash,
+    });
+  }
+
   async function analyzeSetupPayoff() {
     setContextMenu(null);
     setObservationsSection("setupPayoff");
@@ -1740,13 +1770,7 @@ export default function WriterWorkspace({
   async function sendGuidedWriting(question: string) {
     try {
       await ensureCurrentDocumentSaved();
-      let selection: { blockId: string; text: string } | null = null;
-      if (editor && !editor.state.selection.empty && !selectionSpansWriterBlocks(editor.state)) {
-        const target = currentWriterBlock(editor);
-        const text = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, " ").trim();
-        if (target && text) selection = { blockId: target.id, text: text.slice(0, 1_200) };
-      }
-      return await guidedWriting.send(question, selection, guidedIdeaContext);
+      return await guidedWriting.send(question, null, guidedIdeaContext);
     } catch (cause) {
       guidedWriting.setFeedback(cause instanceof Error ? cause.message : "No pudimos responder ahora.");
       return false;
@@ -2739,11 +2763,6 @@ export default function WriterWorkspace({
             setContextMenu(null);
             setInsertState(next);
           }}
-          onConvertSceneHeading={(next) => {
-            setExportMenu(false);
-            setContextMenu(null);
-            setInsertState(next);
-          }}
         />
         <div className="writer-editor-notices">
           {!focusMode && shotlistReturnPath && <Link className="writer-navigation-back" href={shotlistReturnPath}>← Volver a Shotlist</Link>}
@@ -2830,10 +2849,41 @@ export default function WriterWorkspace({
           }}
           onTimeline={(sceneId) => openTimeline(sceneId)}
           onAnalyzeScene={(sceneId) => void analyzeSceneFromMenu(sceneId)}
+          onAnalyzeSelection={openSelectionAnalysis}
           onAssistant={openAssistantForScene}
           onFeedback={setFeedback}
         />
       )}
+      {guidedSelection && <WriterSelectionAnalysisDialog
+        selection={guidedSelection}
+        currentDocumentHash={guidedWriting.documentHash}
+        busy={guidedWriting.sending}
+        onAnalyze={async (question) => {
+          try {
+            await ensureCurrentDocumentSaved();
+            if (!guidedWriting.documentHash || guidedWriting.documentHash !== guidedSelection.documentHash) {
+              guidedWriting.setFeedback("El guion cambió desde esta selección. Selecciona el fragmento de nuevo.");
+              return null;
+            }
+            return await guidedWriting.analyzeSelection({
+              ...guidedSelection,
+              sourceRevision: saveStateRef.current.revision,
+              documentHash: guidedWriting.documentHash,
+            }, question);
+          } catch (cause) {
+            guidedWriting.setFeedback(cause instanceof Error ? cause.message : "No pudimos analizar la selección.");
+            return null;
+          }
+        }}
+        onCancel={guidedWriting.cancel}
+        onClose={() => setGuidedSelection(null)}
+        onView={() => {
+          if (!editor || guidedWriting.documentHash !== guidedSelection.documentHash) return;
+          editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, guidedSelection.from, guidedSelection.to)).scrollIntoView());
+          editor.commands.focus();
+          setGuidedSelection(null);
+        }}
+      />}
       {editor && insertState && (
         <WriterInsertPanel editor={editor} state={insertState} onClose={() => setInsertState(null)} />
       )}
@@ -3202,7 +3252,6 @@ function WriterToolbar({
   soundEnabled,
   onToggleSound,
   onInsert,
-  onConvertSceneHeading,
 }: {
   editor: Editor | null;
   words: number;
@@ -3212,7 +3261,6 @@ function WriterToolbar({
   soundEnabled: boolean;
   onToggleSound: () => void;
   onInsert: (state: WriterInsertState) => void;
-  onConvertSceneHeading: (state: WriterInsertState) => void;
 }) {
   const [formatOpen, setFormatOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
@@ -3233,48 +3281,17 @@ function WriterToolbar({
   const state = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
-      kind: (current?.getAttributes("screenplayBlock").kind ?? "action") as ScreenplayKind,
       bold: current?.isActive("bold") ?? false,
       italic: current?.isActive("italic") ?? false,
       underline: current?.isActive("underline") ?? false,
       canUndo: current?.can().chain().undo().run() ?? false,
       canRedo: current?.can().chain().redo().run() ?? false,
-      multipleBlocks: current ? selectionSpansWriterBlocks(current.state) : false,
     }),
   });
   if (!editor || !state) return <div className="writer-toolbar" aria-hidden="true" />;
   const preserveSelection = (event: React.MouseEvent) => event.preventDefault();
   return (
     <div ref={toolbarRef} className="writer-toolbar" role="toolbar" aria-label="Formato del guion" data-toolbar-mode={toolbarMode}>
-      <select
-        aria-label="Tipo de bloque"
-        value={state.kind}
-        onChange={(event) => {
-          const kind = event.target.value as ScreenplayKind;
-          const target = currentWriterBlock(editor);
-          if (!target) return;
-          if (kind === "sceneHeading") {
-            if (state.multipleBlocks) return;
-            const rect = event.currentTarget.getBoundingClientRect();
-            onConvertSceneHeading({
-              targetId: target.id,
-              x: rect.left,
-              y: rect.bottom + 6,
-              view: "scene",
-              intent: "convert",
-              expectedKind: target.kind,
-              expectedText: target.text,
-              selectionFrom: editor.state.selection.from,
-              selectionTo: editor.state.selection.to,
-              documentAtOpen: editor.state.doc,
-            });
-            return;
-          }
-          editor.chain().focus().updateAttributes("screenplayBlock", { kind }).run();
-        }}
-      >
-        {SCREENPLAY_KINDS.map((kind) => <option key={kind} value={kind}>{WRITER_KIND_LABELS[kind]}</option>)}
-      </select>
       <button
         className="writer-insert-button"
         type="button"

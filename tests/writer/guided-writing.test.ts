@@ -7,6 +7,7 @@ import {
   writerGuidedWritingOutputSchema,
   writerGuidedWritingProviderInput,
   writerGuidedWritingRequestAsksForProse,
+  type WriterGuidedWritingContext,
   type WriterGuidedWritingMessage,
 } from "../../lib/writer/guided-writing.ts";
 import { deriveWriterSceneSources, writerSceneSourceHash, type WriterSceneAnalysisRecord } from "../../lib/writer/script-assistant.ts";
@@ -158,6 +159,22 @@ test("follow-up provider input retains recent user decisions and the current doc
   assert.match(input, /Quiero que Luis sospeche/u);
   assert.match(input, new RegExp(context.documentHash, "u"));
   assert.match(input, /Aqu[ií] no hay nada para ti/u);
+});
+
+test("selection analysis sends only selected scenes and their immediate neighbours", async () => {
+  const context = await buildGuidedWritingContext({ document: fixture(), scope: "document", sceneId: null });
+  const input = JSON.parse(writerGuidedWritingProviderInput(context, [], "¿Qué cambia aquí?", {
+    blockIds: [ids[1]],
+    sceneIds: [ids[0]],
+    text: "Marta oculta una carta",
+    from: 1,
+    to: 24,
+    sourceRevision: 7,
+    documentHash: context.documentHash,
+  })) as { context: WriterGuidedWritingContext };
+  assert.deepEqual(input.context.scenes.map((scene) => scene.sceneId), [ids[0], ids[4]]);
+  assert.equal(input.context.scenes.some((scene) => scene.sceneId === ids[6]), false);
+  assert.ok(input.context.references.every((reference) => reference.sceneId !== ids[6]));
 });
 
 test("the provider JSON schema is strict at every response layer", () => {

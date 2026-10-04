@@ -16,7 +16,8 @@ test("Assistant surface has one clear name, four complete tabs and contextual he
 test("Breakdown exposes one full-document detection action and a presentation-only filter", () => {
   const panel = fs.readFileSync("components/writer/WriterBreakdownPanel.tsx", "utf8");
   const route = fs.readFileSync("app/api/writer/scripts/[id]/breakdown/route.ts", "utf8");
-  assert.equal((panel.match(/label=\{busy \? "Detectando…" : "Detectar elementos"\}/gu) ?? []).length, 1);
+  assert.equal((panel.match(/onClick=\{\(\) => void detect\(\)\}/gu) ?? []).length, 1);
+  assert.match(panel, /"Reanalizar todo" : "Detectar elementos"/u);
   assert.match(panel, /action: "detectAll", scope: "document"/u);
   assert.match(panel, /<label>Mostrar<select/u);
   assert.match(panel, /className="writer-breakdown-more"/u);

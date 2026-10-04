@@ -49,10 +49,11 @@ test("Ideas rejects invented and oversized provider results", () => {
     direction: "Explorar una consecuencia narrativa sin escribir el guion por el usuario.",
     consequence: "La decisión cambia la lectura de la escena.",
     category: "Conflicto",
+    basis: "new_direction",
     referenceIds: [referenceId],
   });
-  assert.equal(validateWriterIdeasOutput({ ideas: [makeIdea(1)] }, source).length, 1);
-  assert.throws(() => validateWriterIdeasOutput({ ideas: [makeIdea(1, "block:inventado")] }, source), /invalid_reference/u);
+  assert.equal(validateWriterIdeasOutput({ ideas: [makeIdea(1), makeIdea(2), makeIdea(3)] }, source).length, 3);
+  assert.throws(() => validateWriterIdeasOutput({ ideas: [makeIdea(1, "block:inventado"), makeIdea(2), makeIdea(3)] }, source), /invalid_reference/u);
   assert.throws(() => validateWriterIdeasOutput({ ideas: Array.from({ length: 6 }, (_, index) => makeIdea(index)) }, source), /invalid_schema/u);
 });
 
@@ -63,7 +64,7 @@ test("Ideas is embedded, explicit and provider-backed without a deterministic fa
   const server = readFileSync(new URL("../../lib/writer/ideas-server.ts", import.meta.url), "utf8");
   assert.match(timeline, /"timeline" \| "pulse" \| "ideas"/u);
   assert.match(timeline, /timeline-ideas-view/u);
-  assert.match(tools, /Explorar direcciones/u);
+  assert.match(tools, /Generar ideas/u);
   assert.doesNotMatch(tools, /role="dialog"[^>]*aria-label="Ideas"/u);
   assert.match(route, /executeWriterIdeas/u);
   assert.match(server, /store:\s*false/u);

@@ -12,7 +12,11 @@ import {
   loadWriterBreakdown,
   WriterProductionError,
 } from "@/lib/writer/production-server";
-import { analyzeBreakdownWithAi, WriterProductionAiError } from "@/lib/writer/production-ai-server";
+import {
+  analyzeBreakdownWithAi,
+  finalizeWriterProductionAiOperation,
+  WriterProductionAiError,
+} from "@/lib/writer/production-ai-server";
 import { deriveWriterSceneSources } from "@/lib/writer/script-assistant";
 
 export const runtime = "nodejs";
@@ -45,12 +49,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const local = await detectAndStoreWriterBreakdown(db, session.user.id, id, {
         scope: "document",
         recordLocalRun: true,
+        reconcileStale: false,
+        expectedRevision: script.revision,
       });
       const sceneIds = deriveWriterSceneSources(script.document).map((scene) => scene.sceneId);
       const batches = Array.from({ length: Math.ceil(sceneIds.length / 12) }, (_, index) => sceneIds.slice(index * 12, index * 12 + 12));
       let processedScenes = 0;
       let costMicrousd = 0;
       let latencyMs = 0;
+      let reusedScenes = 0;
+      let inputTokens = 0;
+      let cachedInputTokens = 0;
+      let cacheWriteTokens = 0;
+      let outputTokens = 0;
       const candidates = [];
       let errorCode: string | null = null;
       for (let index = 0; index < batches.length; index += 1) {
@@ -64,16 +75,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             operationId: childOperationId,
             readDb: session.supabase,
             signal: request.signal,
+            force: body.value.force === true,
           });
           candidates.push(...analysis.candidates);
           costMicrousd += Number(analysis.costMicrousd ?? 0);
           latencyMs += Number(analysis.latencyMs ?? 0);
+          inputTokens += Number(analysis.inputTokens ?? 0);
+          cachedInputTokens += Number(analysis.cachedInputTokens ?? 0);
+          cacheWriteTokens += Number(analysis.cacheWriteTokens ?? 0);
+          outputTokens += Number(analysis.outputTokens ?? 0);
           processedScenes += batch.length;
-          await detectAndStoreWriterBreakdown(db, session.user.id, id, {
-            sceneIds: new Set(batch),
-            extraCandidates: analysis.candidates,
-            includeRules: false,
-          });
+          if (analysis.reused) reusedScenes += batch.length;
+          else {
+            await detectAndStoreWriterBreakdown(db, session.user.id, id, {
+              sceneIds: new Set(batch),
+              extraCandidates: analysis.candidates,
+              includeRules: false,
+              expectedRevision: script.revision,
+            });
+            await finalizeWriterProductionAiOperation(session.user.id, analysis.operationId);
+          }
         } catch (cause) {
           errorCode = cause instanceof WriterProductionAiError ? cause.code : "server_error";
           await db.from("writer_production_operations").update({
@@ -89,9 +110,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         candidates,
         processedScenes,
         totalScenes: sceneIds.length,
+        reusedScenes,
         partial: processedScenes < sceneIds.length,
         errorCode,
-        metrics: { costMicrousd, latencyMs },
+        metrics: { costMicrousd, latencyMs, inputTokens, cachedInputTokens, cacheWriteTokens, outputTokens },
         breakdown: await loadWriterBreakdown(db, session.user.id, id),
       });
     }
@@ -117,7 +139,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         userId: session.user.id, scriptId: id, sceneIds, operationId: body.value.operationId,
         readDb: session.supabase, signal: request.signal,
       });
+      if (analysis.reused) {
+        return writerJson({ ...analysis, analysis: "ai", breakdown: await loadWriterBreakdown(createAdminClient(), session.user.id, id) });
+      }
       const stored = await detectAndStoreWriterBreakdown(createAdminClient(), session.user.id, id, { sceneIds: sceneIds ? new Set(sceneIds) : undefined, extraCandidates: analysis.candidates });
+      await finalizeWriterProductionAiOperation(session.user.id, analysis.operationId);
       return writerJson({ ...stored, ...analysis, analysis: "ai", breakdown: await loadWriterBreakdown(createAdminClient(), session.user.id, id) });
     }
     if (body.value.action === "manual" && isCategory(body.value.category) && clean(body.value.name, 160)) {

@@ -47,7 +47,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     || (body.value.scope === "document" && body.value.sceneId !== null)
     || (body.value.sessionId !== null && body.value.sessionId !== undefined && !validUuid(body.value.sessionId))
     || typeof body.value.documentHash !== "string" || !/^[0-9a-f]{64}$/u.test(body.value.documentHash)
-    || typeof body.value.question !== "string" || body.value.question.trim().length < 1 || body.value.question.trim().length > 1_200
+    || typeof body.value.question !== "string" || body.value.question.trim().length > 1_200
+    || (!body.value.question.trim() && !isRecord(body.value.selection))
     || (body.value.operationId !== undefined && !validUuid(body.value.operationId))
     || !validSelection(body.value.selection)
     || !validIdeaContext(body.value.ideaContext)) {
@@ -58,7 +59,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const sceneId = scope === "scene" ? String(body.value.sceneId) : null;
     const sessionId = typeof body.value.sessionId === "string" ? body.value.sessionId : null;
     const selection = isRecord(body.value.selection)
-      ? { blockId: String(body.value.selection.blockId), text: String(body.value.selection.text) }
+      ? {
+          blockIds: body.value.selection.blockIds as string[],
+          sceneIds: body.value.selection.sceneIds as string[],
+          text: String(body.value.selection.text),
+          from: Number(body.value.selection.from),
+          to: Number(body.value.selection.to),
+          sourceRevision: Number(body.value.selection.sourceRevision),
+          documentHash: String(body.value.selection.documentHash),
+        }
       : null;
     const ideaContext = isRecord(body.value.ideaContext) ? {
       ideaId: String(body.value.ideaContext.ideaId),
@@ -95,7 +104,13 @@ function validScope(value: unknown): value is WriterGuidedWritingScope {
 
 function validSelection(value: unknown) {
   return value === null || value === undefined || (isRecord(value)
-    && validUuid(value.blockId) && typeof value.text === "string" && value.text.length <= 1_200);
+    && Array.isArray(value.blockIds) && value.blockIds.length > 0 && value.blockIds.length <= 100 && value.blockIds.every(validUuid)
+    && Array.isArray(value.sceneIds) && value.sceneIds.length > 0 && value.sceneIds.length <= 30 && value.sceneIds.every(validUuid)
+    && typeof value.text === "string" && value.text.trim().length > 0 && value.text.length <= 6_000
+    && Number.isSafeInteger(value.from) && Number(value.from) >= 0
+    && Number.isSafeInteger(value.to) && Number(value.to) > Number(value.from)
+    && Number.isSafeInteger(value.sourceRevision) && Number(value.sourceRevision) > 0
+    && typeof value.documentHash === "string" && /^[0-9a-f]{64}$/u.test(value.documentHash));
 }
 
 function validIdeaContext(value: unknown): value is WriterIdeaContext | null | undefined {

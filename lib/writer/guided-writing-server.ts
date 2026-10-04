@@ -12,6 +12,7 @@ import {
   WRITER_GUIDED_WRITING_MODEL,
   WRITER_GUIDED_WRITING_VERSION,
   type WriterGuidedWritingMessage,
+  type WriterGuidedSelection,
   type WriterGuidedWritingResponse,
   type WriterGuidedWritingScope,
 } from "./guided-writing";
@@ -45,6 +46,7 @@ export type WriterGuidedWritingProvider = (input: {
   operationId: string;
   requestHash: string;
   providerInput: string;
+  cacheKey: string;
   maxOutputTokens: number;
   signal?: AbortSignal;
 }) => Promise<{ result: unknown; usage: WriterSceneAnalysisUsage; latencyMs: number; requestId?: string }>;
@@ -63,7 +65,7 @@ export async function executeWriterGuidedWriting(
     documentHash: string;
     question: string;
     operationId?: string;
-    selection?: { blockId: string; text: string } | null;
+    selection?: WriterGuidedSelection | null;
     ideaContext?: WriterIdeaContext | null;
     signal?: AbortSignal;
   },
@@ -71,9 +73,10 @@ export async function executeWriterGuidedWriting(
 ) {
   const db = dependencies.db ?? createAdminClient();
   const readDb = dependencies.readDb ?? db;
-  const question = request.question.trim().replace(/\s+/gu, " ");
+  const suppliedQuestion = request.question.trim().replace(/\s+/gu, " ");
+  const question = suppliedQuestion || (request.selection ? "Analiza brevemente este fragmento: qué ocurre, qué evidencia lo sostiene y qué incertidumbre queda." : "");
   if (!question || question.length > 1_200) throw new WriterGuidedWritingError("invalid_question", "La pregunta no es válida.", 400);
-  const scriptResult = await readDb.from("writer_scripts").select("document").eq("id", request.scriptId).eq("owner_id", userId).maybeSingle();
+  const scriptResult = await readDb.from("writer_scripts").select("document,revision").eq("id", request.scriptId).eq("owner_id", userId).maybeSingle();
   if (scriptResult.error || !scriptResult.data) throw new WriterGuidedWritingError("not_found", "Guion no encontrado.", 404);
   const validated = validateWriterDocument(scriptResult.data.document);
   if (!validated.ok) throw new WriterGuidedWritingError("invalid_document", "El guion guardado no es compatible.", 409);
@@ -86,9 +89,15 @@ export async function executeWriterGuidedWriting(
   }
   const documentHash = await writerSetupPayoffSourceHash(validated.document);
   if (documentHash !== request.documentHash) {
-    throw new WriterGuidedWritingError("stale", "El guion cambió. Espera a que se guarde antes de pensarlo juntos.", 409);
+    throw new WriterGuidedWritingError("stale", "El guion cambió. Espera a que se guarde antes de analizarlo.", 409);
   }
-  const selection = normalizeSelection(request.selection, activeScene?.blocks ?? []);
+  if (request.selection && (request.selection.documentHash !== documentHash || request.selection.sourceRevision !== Number(scriptResult.data.revision))) {
+    throw new WriterGuidedWritingError("selection_stale", "La selección corresponde a otra revisión. Vuelve a seleccionar el fragmento.", 409);
+  }
+  const selection = normalizeSelection(request.selection, scenes.flatMap((scene) => scene.blocks.map((block) => ({ ...block, sceneId: scene.sceneId }))));
+  if (request.selection && !selection) {
+    throw new WriterGuidedWritingError("selection_stale", "La selección ya no coincide con el guion guardado.", 409);
+  }
   const [support, existingConversation] = await Promise.all([
     loadGuidedWritingSupport(readDb, userId, request.scriptId),
     loadGuidedWritingConversation(readDb, userId, request.scriptId, {
@@ -148,7 +157,9 @@ export async function executeWriterGuidedWriting(
   let providerResponse: Awaited<ReturnType<WriterGuidedWritingProvider>>;
   try {
     providerResponse = await (dependencies.provider ?? openAiGuidedWritingProvider)({
-      operationId, requestHash, providerInput, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: request.signal,
+      operationId, requestHash, providerInput,
+      cacheKey: `writer-guide:${userId}:${request.scriptId}:${documentHash}:${request.scope}`,
+      maxOutputTokens: MAX_OUTPUT_TOKENS, signal: request.signal,
     });
   } catch (cause) {
     const ambiguous = cause instanceof GuidedProviderFailure ? cause.ambiguous : true;
@@ -180,6 +191,12 @@ export async function executeWriterGuidedWriting(
     providerCalls: 1,
     costMicrousd: actualCost,
     latencyMs: providerResponse.latencyMs,
+    usage: {
+      inputTokens: providerResponse.usage.inputTokens,
+      cachedInputTokens: providerResponse.usage.cachedInputTokens,
+      cacheWriteTokens: providerResponse.usage.cacheWriteTokens ?? 0,
+      outputTokens: providerResponse.usage.outputTokens,
+    },
   };
 }
 
@@ -267,6 +284,7 @@ async function openAiGuidedWritingProvider(input: Parameters<WriterGuidedWriting
       max_output_tokens: input.maxOutputTokens,
       instructions: WRITER_GUIDED_WRITING_INSTRUCTIONS,
       input: input.providerInput,
+      prompt_cache_key: input.cacheKey,
       text: { format: { type: "json_schema", name: "writer_guided_writing", strict: true, schema: writerGuidedWritingOutputSchema() } },
     }, {
       headers: { "Idempotency-Key": `writer-guided-${input.operationId}-${input.requestHash.slice(0, 16)}` },
@@ -320,9 +338,19 @@ async function settle(
   });
 }
 
-function normalizeSelection(value: { blockId: string; text: string } | null | undefined, blocks: Array<{ id: string }>) {
-  if (!value?.text.trim() || !blocks.some((block) => block.id === value.blockId)) return null;
-  return { blockId: value.blockId, text: value.text.trim().slice(0, 1_200) };
+function normalizeSelection(value: WriterGuidedSelection | null | undefined, blocks: Array<{ id: string; sceneId: string; text: string }>) {
+  if (!value?.text.trim() || value.text.length > 6_000) return null;
+  if (new Set(value.blockIds).size !== value.blockIds.length || new Set(value.sceneIds).size !== value.sceneIds.length) return null;
+  const catalog = new Map(blocks.map((block, index) => [block.id, { ...block, index }]));
+  const selectedBlocks = value.blockIds.map((id) => catalog.get(id));
+  if (selectedBlocks.some((block) => !block)) return null;
+  if (selectedBlocks.some((block, index) => index > 0 && block!.index <= selectedBlocks[index - 1]!.index)) return null;
+  const actualSceneIds = [...new Set(selectedBlocks.map((block) => block!.sceneId))];
+  if (actualSceneIds.length !== value.sceneIds.length || actualSceneIds.some((id, index) => id !== value.sceneIds[index])) return null;
+  const canonicalText = selectedBlocks.map((block) => block!.text).join("\n").replace(/\s+/gu, " ").trim();
+  const selectedText = value.text.replace(/\s+/gu, " ").trim();
+  if (!canonicalText.includes(selectedText)) return null;
+  return { ...value, text: value.text.trim() };
 }
 
 async function rpcJson(db: Database, name: string, args: Record<string, unknown>) {
@@ -343,13 +371,14 @@ function readUsage(value: unknown): WriterSceneAnalysisUsage {
   return {
     inputTokens: positiveInteger(value.input_tokens),
     cachedInputTokens: positiveInteger(inputDetails.cached_tokens),
+    cacheWriteTokens: positiveInteger(inputDetails.cache_write_tokens),
     outputTokens: positiveInteger(value.output_tokens),
     reasoningTokens: positiveInteger(outputDetails.reasoning_tokens),
   };
 }
 
 function emptyUsage(): WriterSceneAnalysisUsage {
-  return { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0 };
+  return { inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 0, reasoningTokens: 0 };
 }
 
 function positiveInteger(value: unknown) { return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : 0; }
