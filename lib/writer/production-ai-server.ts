@@ -12,6 +12,7 @@ import { deriveWriterSceneSources } from "./script-assistant.ts";
 import {
   classifyWriterProviderFailure,
   logWriterProviderDiagnostic,
+  writerProviderCacheKey,
   writerProviderLedgerErrorCode,
   type WriterProviderFailureMetadata,
 } from "./provider-diagnostics.ts";
@@ -120,7 +121,7 @@ async function executeOperation(input: { userId: string; scriptId?: string | nul
     response = await client.responses.create({
       model: WRITER_SCRIPT_ASSISTANT_MODEL, reasoning: { effort: "none" }, store: false,
       max_output_tokens: MAX_OUTPUT_TOKENS, instructions: input.instructions, input: input.source,
-      prompt_cache_key: `writer-production:${input.userId}:${input.scriptId ?? input.shotlistId ?? "none"}:${input.kind}:${sourceHash.slice(0, 24)}`,
+      prompt_cache_key: writerProviderCacheKey("writer-production", input.userId, input.scriptId ?? input.shotlistId ?? "none", input.kind, sourceHash),
       text: { format: { type: "json_schema", name: "writer_production", strict: true, schema: input.schema } },
     }, { headers: { "Idempotency-Key": `writer-production-${operationId}-${requestHash.slice(0, 16)}` }, signal: input.signal });
   } catch (cause) {

@@ -3,9 +3,18 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
   classifyWriterProviderFailure,
+  writerProviderCacheKey,
   writerProviderFailureSettlement,
   writerProviderLedgerErrorCode,
 } from "../../lib/writer/provider-diagnostics.ts";
+
+test("provider cache keys stay deterministic, scoped and within the upstream limit", () => {
+  const key = writerProviderCacheKey("writer-production", "u".repeat(100), "s".repeat(100), "breakdown_detect", "h".repeat(100));
+  assert.equal(key, writerProviderCacheKey("writer-production", "u".repeat(100), "s".repeat(100), "breakdown_detect", "h".repeat(100)));
+  assert.notEqual(key, writerProviderCacheKey("writer-production", "u".repeat(100), "s".repeat(100), "breakdown_detect", "changed"));
+  assert.ok(key.length <= 64);
+  assert.match(key, /^writer-production:[a-f0-9]+$/u);
+});
 
 test("provider failures preserve safe upstream status, code, parameter and request id", () => {
   const diagnostic = classifyWriterProviderFailure({

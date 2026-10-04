@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export type WriterProviderFeature = "diagnostic" | "ideas" | "guided_writing" | "narrative_pulse" | "breakdown";
 
 export type WriterProviderStage =
@@ -100,6 +102,12 @@ export function writerProviderRuntimeSnapshot(model: string) {
     production_ai_enabled: process.env.WRITER_PRODUCTION_AI_ENABLED === "enabled",
     max_retries: 0,
   };
+}
+
+export function writerProviderCacheKey(namespace: string, ...parts: Array<string | number | null | undefined>) {
+  const safeNamespace = namespace.replace(/[^a-z0-9_-]/giu, "-").slice(0, 20) || "writer";
+  const digest = createHash("sha256").update(parts.map((part) => String(part ?? "")).join("\u0000")).digest("hex").slice(0, 42);
+  return `${safeNamespace}:${digest}`;
 }
 
 export function logWriterProviderDiagnostic(event: DiagnosticEvent) {

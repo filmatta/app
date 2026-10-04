@@ -14,6 +14,7 @@ import {
 import {
   classifyWriterProviderFailure,
   logWriterProviderDiagnostic,
+  writerProviderCacheKey,
   writerProviderLedgerErrorCode,
   type WriterProviderFailureMetadata,
   type WriterProviderStage,
@@ -70,7 +71,7 @@ export async function executeWriterNarrativePulse(
   if (reserved.status === "uncertain") throw new WriterNarrativePulseError("uncertain", "Una llamada anterior necesita conciliación antes de reintentarse.", 409);
   if (reserved.status !== "reserved" || typeof reserved.analysisId !== "string") throw new WriterNarrativePulseError("reservation", "No pudimos preparar el análisis.", 409);
   let response: Awaited<ReturnType<WriterPulseProvider>>;
-  try { response = await (dependencies.provider ?? openAiPulseProvider)({ operationId, requestHash, cacheKey: `writer-pulse:${userId}:${request.scriptId}:${sourceHash}`, context, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: request.signal }); }
+  try { response = await (dependencies.provider ?? openAiPulseProvider)({ operationId, requestHash, cacheKey: writerProviderCacheKey("writer-pulse", userId, request.scriptId, sourceHash), context, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: request.signal }); }
   catch (cause) {
     const failure = cause instanceof ProviderFailure
       ? cause

@@ -31,6 +31,7 @@ import type { WriterIdeaContext } from "./ideas";
 import {
   classifyWriterProviderFailure,
   logWriterProviderDiagnostic,
+  writerProviderCacheKey,
   writerProviderLedgerErrorCode,
   type WriterProviderFailureMetadata,
   type WriterProviderStage,
@@ -175,7 +176,7 @@ export async function executeWriterGuidedWriting(
   try {
     providerResponse = await (dependencies.provider ?? openAiGuidedWritingProvider)({
       operationId, requestHash, providerInput,
-      cacheKey: `writer-guide:${userId}:${request.scriptId}:${documentHash}:${request.scope}`,
+      cacheKey: writerProviderCacheKey("writer-guide", userId, request.scriptId, documentHash, request.scope),
       maxOutputTokens: MAX_OUTPUT_TOKENS, signal: request.signal,
     });
   } catch (cause) {

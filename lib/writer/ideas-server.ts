@@ -23,6 +23,7 @@ import {
 import {
   classifyWriterProviderFailure,
   logWriterProviderDiagnostic,
+  writerProviderCacheKey,
   writerProviderLedgerErrorCode,
   type WriterProviderFailureMetadata,
   type WriterProviderStage,
@@ -158,7 +159,7 @@ export async function executeWriterIdeas(
       operationId: request.operationId,
       requestHash,
       providerInput,
-      cacheKey: `writer-ideas:${userId}:${request.scriptId}:${sourceRevision}:${request.scope}`,
+      cacheKey: writerProviderCacheKey("writer-ideas", userId, request.scriptId, sourceRevision, request.scope),
       signal: request.signal,
     });
   } catch (cause) {
