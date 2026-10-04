@@ -79,7 +79,7 @@ export async function executeWriterIdeas(
 
   let support: Awaited<ReturnType<typeof loadGuidedWritingSupport>>;
   try {
-    support = await loadGuidedWritingSupport(db, userId, request.scriptId);
+    support = await loadGuidedWritingSupport(dependencies.readDb, userId, request.scriptId);
   } catch (cause) {
     logIdeasDiagnostic(request.operationId, "context_build", false, {
       ...classifyWriterProviderFailure(cause, { outboundAttempted: false }),
