@@ -26,6 +26,7 @@ import { WRITER_SCRIPT_ASSISTANT_VERSION, deriveWriterSceneSources, type WriterS
 import { loadSetupPayoffState } from "./setup-payoff-server";
 import { loadWriterNarrativePulseState } from "./narrative-pulse-server";
 import { writerSetupPayoffSourceHash } from "./setup-payoff";
+import type { WriterIdeaContext } from "./ideas";
 
 const MAX_OUTPUT_TOKENS = 2_200;
 const MAX_SCENE_CONTEXT_CHARACTERS = 80_000;
@@ -63,6 +64,7 @@ export async function executeWriterGuidedWriting(
     question: string;
     operationId?: string;
     selection?: { blockId: string; text: string } | null;
+    ideaContext?: WriterIdeaContext | null;
     signal?: AbortSignal;
   },
   dependencies: { db?: Database; readDb?: Database; provider?: WriterGuidedWritingProvider } = {},
@@ -79,6 +81,9 @@ export async function executeWriterGuidedWriting(
   if (!scenes.length) throw new WriterGuidedWritingError("empty_document", "Añade una escena antes de usar Guided Writing.", 422);
   const activeScene = request.scope === "scene" ? scenes.find((scene) => scene.sceneId === request.sceneId) : null;
   if (request.scope === "scene" && !activeScene) throw new WriterGuidedWritingError("scene_not_found", "La escena ya no existe.", 404);
+  if (request.ideaContext?.sceneId && !scenes.some((scene) => scene.sceneId === request.ideaContext?.sceneId)) {
+    throw new WriterGuidedWritingError("idea_context_stale", "La escena de la idea ya no existe en el guion guardado.", 409);
+  }
   const documentHash = await writerSetupPayoffSourceHash(validated.document);
   if (documentHash !== request.documentHash) {
     throw new WriterGuidedWritingError("stale", "El guion cambió. Espera a que se guarde antes de pensarlo juntos.", 409);
@@ -102,7 +107,7 @@ export async function executeWriterGuidedWriting(
     pulseMilestones: support.pulseMilestones,
     pulseZones: support.pulseZones,
   });
-  const providerInput = writerGuidedWritingProviderInput(context, existingConversation.messages, question, selection);
+  const providerInput = writerGuidedWritingProviderInput(context, existingConversation.messages, question, selection, request.ideaContext);
   const maximumCharacters = request.scope === "scene" ? MAX_SCENE_CONTEXT_CHARACTERS : MAX_DOCUMENT_CONTEXT_CHARACTERS;
   if (providerInput.length > maximumCharacters) {
     throw new WriterGuidedWritingError("context_too_large", "El contexto es demasiado amplio. Prueba con una pregunta más enfocada.", 413);
@@ -217,7 +222,7 @@ export async function loadGuidedWritingConversation(
   };
 }
 
-async function loadGuidedWritingSupport(db: Database, userId: string, scriptId: string) {
+export async function loadGuidedWritingSupport(db: Database, userId: string, scriptId: string) {
   const [analyses, overrides, dismissals, setupPayoff, pulse] = await Promise.all([
     db.from("writer_scene_analyses")
       .select("id,script_id,scene_id,source_hash,analysis_version,model,status,analysis_payload,error_code,updated_at")

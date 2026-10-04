@@ -8,6 +8,7 @@ import {
   type WriterGuidedWritingSession,
 } from "./guided-writing.ts";
 import { writerSetupPayoffSourceHash } from "./setup-payoff.ts";
+import type { WriterIdeaContext } from "./ideas.ts";
 
 export function useWriterGuidedWriting({
   scriptId,
@@ -83,9 +84,15 @@ export function useWriterGuidedWriting({
     setFeedback(null);
   }, [scope, sending]);
 
-  const send = useCallback(async (question: string, selection?: { blockId: string; text: string } | null) => {
+  const send = useCallback(async (
+    question: string,
+    selection?: { blockId: string; text: string } | null,
+    ideaContext?: WriterIdeaContext | null,
+  ) => {
     const clean = question.trim();
-    const sceneId = scope === "scene" ? activeSceneId : null;
+    const sceneId = scope === "scene"
+      ? (ideaContext?.scope === "scene" ? ideaContext.sceneId : activeSceneId)
+      : null;
     if (!clean || !documentHash || (scope === "scene" && !sceneId) || sending) return false;
     const operationId = crypto.randomUUID();
     const optimistic: WriterGuidedWritingMessage = {
@@ -113,6 +120,7 @@ export function useWriterGuidedWriting({
           documentHash,
           question: clean,
           selection: selection?.text.trim() ? selection : null,
+          ideaContext: ideaContext ?? null,
           operationId,
         }),
         signal: controller.signal,
@@ -127,7 +135,7 @@ export function useWriterGuidedWriting({
       if (!mountedRef.current) return false;
       setFeedback(controller.signal.aborted ? "Consulta cancelada." : cause instanceof Error ? cause.message : "No pudimos responder ahora.");
       setMessages((current) => current.filter((message) => message.id !== optimistic.id));
-      if (!controller.signal.aborted) void reload(scope, activeSceneId);
+      if (!controller.signal.aborted) void reload(scope, sceneId);
       return false;
     } finally {
       if (abortRef.current === controller) abortRef.current = null;

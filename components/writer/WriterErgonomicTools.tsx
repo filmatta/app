@@ -21,6 +21,10 @@ type ToolMetrics = {
   latencyMs: number;
 };
 
+class WriterIdeasClientError extends Error {
+  constructor(message: string, readonly code: string | null) { super(message); }
+}
+
 export function WriterSearchPanel({
   scriptId,
   document,
@@ -151,57 +155,102 @@ export function WriterSearchPanel({
   </ToolDialog>;
 }
 
-export function WriterIdeasPanel({ scriptId, activeSceneId, onClose, onNavigate, onThinkTogether }: {
+export function WriterIdeasPanel({ scriptId, activeSceneId, confirmedRevision, onEnsureCurrentSaved, onNavigate, onThinkTogether }: {
   scriptId: string;
   activeSceneId: string | null;
-  onClose: () => void;
+  confirmedRevision: number;
+  onEnsureCurrentSaved: () => Promise<void>;
   onNavigate: (result: WriterSearchResult) => void;
-  onThinkTogether: (idea: WriterIdea, scope: WriterSearchScope) => void;
+  onThinkTogether: (idea: WriterIdea, scope: WriterSearchScope, sceneId: string | null, sourceRevision: number) => void;
 }) {
   const [scope, setScope] = useState<WriterSearchScope>(activeSceneId ? "scene" : "document");
   const [question, setQuestion] = useState("");
   const [category, setCategory] = useState<WriterIdeaCategory | null>(null);
   const [ideas, setIdeas] = useState<WriterIdea[]>([]);
+  const [sourceRevision, setSourceRevision] = useState<number | null>(null);
+  const [sourceContext, setSourceContext] = useState<{ scope: WriterSearchScope; sceneId: string | null } | null>(null);
+  const [metrics, setMetrics] = useState<ToolMetrics | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [providerUnavailable, setProviderUnavailable] = useState(false);
+  const requestRef = useRef(0);
 
   async function generate() {
+    if (busy || (!question.trim() && !category) || (scope === "scene" && !activeSceneId)) return;
+    const requestId = ++requestRef.current;
     setBusy(true);
     setMessage(null);
+    setProviderUnavailable(false);
+    const requestedScope = scope;
+    const requestedSceneId = requestedScope === "scene" ? activeSceneId : null;
     try {
+      await onEnsureCurrentSaved();
       const response = await fetch(`/api/writer/scripts/${scriptId}/ideas`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scope, sceneId: scope === "scene" ? activeSceneId : null, question, category }),
+        body: JSON.stringify({
+          scope: requestedScope,
+          sceneId: requestedSceneId,
+          question,
+          category,
+          operationId: crypto.randomUUID(),
+        }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error ?? "No pudimos preparar ideas.");
+      if (!response.ok) throw new WriterIdeasClientError(
+        typeof data.error === "string" ? data.error : "No pudimos preparar ideas.",
+        typeof data.code === "string" ? data.code : null,
+      );
+      if (requestId !== requestRef.current) return;
       setIdeas(Array.isArray(data.ideas) ? data.ideas : []);
+      setSourceRevision(Number.isSafeInteger(data.sourceRevision) ? data.sourceRevision : confirmedRevision);
+      setSourceContext({ scope: requestedScope, sceneId: requestedSceneId });
+      setMetrics(data.metrics ?? null);
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "No pudimos preparar ideas.");
+      if (requestId !== requestRef.current) return;
+      const next = cause instanceof Error ? cause.message : "No pudimos preparar ideas.";
+      setProviderUnavailable(cause instanceof WriterIdeasClientError && cause.code === "provider_unavailable");
+      setMessage(next);
     } finally {
-      setBusy(false);
+      if (requestId === requestRef.current) setBusy(false);
     }
   }
 
-  return <ToolDialog title="Ideas" onClose={onClose} className="writer-ideas-panel">
-    <p className="writer-tool-lead">Explora direcciones narrativas. FILMATTA no escribirá diálogo ni insertará texto en el guion.</p>
-    <ScopeButtons scope={scope} activeSceneId={activeSceneId} onChange={setScope} />
-    <label className="writer-tool-field">¿Qué quieres explorar?
-      <textarea value={question} onChange={(event) => setQuestion(event.target.value)} rows={3} maxLength={500} placeholder="Ejemplo: aumentar el conflicto de esta escena" />
-    </label>
-    <div className="writer-idea-chips" role="group" aria-label="Categoría de ideas">
-      {WRITER_IDEA_CATEGORIES.map((item) => <button key={item} type="button" aria-pressed={category === item} onClick={() => setCategory((value) => value === item ? null : item)}>{item}</button>)}
+  const stale = sourceRevision !== null && confirmedRevision > sourceRevision;
+  return <section className="writer-ideas-panel writer-ideas-panel--embedded" aria-label="Ideas" aria-busy={busy}>
+    <div className="writer-ideas-controls">
+      <div>
+        <p className="writer-tool-lead">Explora direcciones narrativas sin bloquear el guion. FILMATTA no insertará texto ni escribirá diálogo.</p>
+        <ScopeButtons scope={scope} activeSceneId={activeSceneId} onChange={setScope} />
+      </div>
+      <label className="writer-tool-field">¿Qué quieres explorar?
+        <textarea value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} maxLength={500} placeholder="Ejemplo: ¿Cómo hago más incómodo este encuentro sin convertirlo en una pelea?" />
+      </label>
+      <div className="writer-idea-chips" role="group" aria-label="Categoría de ideas">
+        {WRITER_IDEA_CATEGORIES.map((item) => <button key={item} type="button" aria-pressed={category === item} onClick={() => setCategory((value) => value === item ? null : item)}>{item}</button>)}
+      </div>
+      <button className="writer-tool-primary" type="button" disabled={busy || (!question.trim() && !category) || (scope === "scene" && !activeSceneId)} onClick={() => void generate()}>{busy ? "Explorando…" : "Explorar direcciones"}</button>
     </div>
-    <button className="writer-tool-primary" type="button" disabled={busy || (scope === "scene" && !activeSceneId)} onClick={() => void generate()}>{busy ? "Explorando…" : "💡 Explorar direcciones"}</button>
-    {ideas.length > 0 && <div className="writer-idea-results">{ideas.map((idea) => <article key={idea.id}>
-      <small>{idea.category}</small><h3>{idea.title}</h3><p>{idea.direction}</p><p><strong>Consecuencia:</strong> {idea.consequence}</p>
-      {idea.references.map((reference) => <button key={reference.id} type="button" className="writer-idea-reference" onClick={() => onNavigate(reference)}>Escena {reference.sceneNumber ?? "—"} · Ver referencia →</button>)}
-      <button type="button" onClick={() => onThinkTogether(idea, scope)}>Pensarlo juntos →</button>
-    </article>)}</div>}
-    <p className="writer-tool-privacy">Resultados deterministas de QA · OpenAI 0 llamadas · coste US$0.</p>
-    {message && <p className="writer-tool-message" role="status">{message}</p>}
-  </ToolDialog>;
+    {busy && <p className="writer-ideas-state" role="status">Leyendo la revisión guardada y preparando direcciones distintas…</p>}
+    {!busy && !ideas.length && !message && <p className="writer-ideas-state">Escribe una pregunta o elige una intención. Ideas sólo se ejecuta cuando pulsas “Explorar direcciones”.</p>}
+    {ideas.length > 0 && <div className="writer-idea-results">
+      {stale && <p className="writer-ideas-stale" role="status">Estas ideas corresponden a la revisión {sourceRevision}; el guion guardado ya está en la revisión {confirmedRevision}.</p>}
+      {ideas.map((idea) => <article key={idea.id}>
+        <small>{idea.category}</small><h3>{idea.title}</h3><p>{idea.direction}</p><p><strong>Efecto esperado:</strong> {idea.consequence}</p>
+        <div className="writer-idea-actions">
+          {idea.references.map((reference) => <button key={reference.id} type="button" className="writer-idea-reference" onClick={() => onNavigate(reference)}>Escena {reference.sceneNumber ?? "—"} · Ver en guion →</button>)}
+          <button type="button" onClick={() => onThinkTogether(
+            idea,
+            sourceContext?.scope ?? scope,
+            sourceContext?.sceneId ?? null,
+            sourceRevision ?? confirmedRevision,
+          )}>Pensarlo juntos →</button>
+        </div>
+      </article>)}
+    </div>}
+    {metrics && <small className="writer-tool-metrics">{metrics.latencyMs} ms · {metrics.chunks} {metrics.chunks === 1 ? "escena" : "escenas"} · US$ {(metrics.costMicrousd / 1_000_000).toFixed(4)}</small>}
+    {message && <p className={`writer-tool-message${providerUnavailable ? " is-unavailable" : ""}`} role={providerUnavailable ? "status" : "alert"}>{message}</p>}
+  </section>;
 }
 
 export function WriterVersionsPanel({ scriptId, snapshot, revision, onClose, onRestore }: {

@@ -11,6 +11,7 @@ export type WriterIconName =
   | "more"
   | "panelLeft"
   | "panelRight"
+  | "plus"
   | "redo"
   | "refresh"
   | "search"
@@ -29,6 +30,7 @@ const paths: Record<WriterIconName, ReactNode> = {
   more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
   panelLeft: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></>,
   panelRight: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M15 4v16" /></>,
+  plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
   redo: <><path d="m15 7 4 4-4 4" /><path d="M19 11h-8a6 6 0 0 0-6 6" /></>,
   refresh: <><path d="M20 11a8 8 0 0 0-14.8-4L3 10" /><path d="M3 4v6h6" /><path d="M4 13a8 8 0 0 0 14.8 4l2.2-3" /><path d="M21 20v-6h-6" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,

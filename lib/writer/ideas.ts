@@ -29,88 +29,198 @@ export type WriterIdeasRequest = {
   category: WriterIdeaCategory | null;
 };
 
-/**
- * Deterministic QA contract. It deliberately proposes conceptual directions only:
- * no dialogue, screenplay blocks or prose ready to paste into the document.
- */
-export function createMockWriterIdeas(document: WriterDocument, request: WriterIdeasRequest): WriterIdea[] {
-  const references = writerIdeaReferences(document, request.scope, request.sceneId);
-  const focus = request.question.trim() || "la decisión central";
-  const preferred = request.category;
-  const templates: Array<Omit<WriterIdea, "id" | "references">> = [
-    {
-      title: "Elevar el costo de la decisión",
-      category: "Conflicto",
-      direction: `Haz que explorar “${focus.slice(0, 90)}” obligue al personaje a elegir entre dos valores incompatibles.`,
-      consequence: "La escena gana tensión por la elección, no por añadir diálogo explicativo.",
+export type WriterIdeaContext = {
+  ideaId: string;
+  title: string;
+  direction: string;
+  consequence: string;
+  category: WriterIdeaCategory;
+  scope: WriterSearchScope;
+  sceneId: string | null;
+  sourceRevision: number;
+};
+
+export type WriterIdeasSourceContext = {
+  scope: WriterSearchScope;
+  sceneId: string | null;
+  scenes: Array<{
+    sceneId: string;
+    sceneNumber: number;
+    heading: string;
+    blocks: Array<{ blockId: string; kind: string; text: string }>;
+  }>;
+  references: WriterSearchResult[];
+};
+
+export function buildWriterIdeasSourceContext(
+  document: WriterDocument,
+  scope: WriterSearchScope,
+  targetSceneId: string | null,
+): WriterIdeasSourceContext {
+  const scenes: WriterIdeasSourceContext["scenes"] = [];
+  const references: WriterSearchResult[] = [];
+  let current: WriterIdeasSourceContext["scenes"][number] | null = null;
+
+  for (const block of document.content) {
+    const text = blockText(block);
+    if (block.attrs.kind === "sceneHeading") {
+      current = {
+        sceneId: block.attrs.id,
+        sceneNumber: scenes.length + 1,
+        heading: text.trim() || "Escena sin encabezado",
+        blocks: [],
+      };
+      scenes.push(current);
+    }
+    if (!current) continue;
+    current.blocks.push({ blockId: block.attrs.id, kind: block.attrs.kind, text });
+  }
+
+  const selectedScenes = scope === "scene"
+    ? scenes.filter((scene) => scene.sceneId === targetSceneId)
+    : scenes;
+  if (scope === "scene" && selectedScenes.length !== 1) throw new Error("writer_ideas_scene_not_found");
+
+  for (const scene of selectedScenes) {
+    references.push({
+      id: `scene:${scene.sceneId}`,
+      sceneId: scene.sceneId,
+      sceneNumber: scene.sceneNumber,
+      sceneHeading: scene.heading,
+      blockId: scene.sceneId,
+      blockKind: "sceneHeading",
+      start: 0,
+      end: scene.heading.length,
+      text: scene.heading,
+      snippet: scene.heading,
+      reason: "Referencia de escena",
+    });
+    for (const block of scene.blocks) {
+      if (!block.text.trim()) continue;
+      references.push({
+        id: `block:${block.blockId}`,
+        sceneId: scene.sceneId,
+        sceneNumber: scene.sceneNumber,
+        sceneHeading: scene.heading,
+        blockId: block.blockId,
+        blockKind: block.kind,
+        start: 0,
+        end: block.text.length,
+        text: block.text,
+        snippet: block.text.trim().slice(0, 220),
+        reason: "Referencia verificable del guion",
+      });
+    }
+  }
+
+  return { scope, sceneId: scope === "scene" ? targetSceneId : null, scenes: selectedScenes, references };
+}
+
+export function writerIdeasProviderInput(input: {
+  request: WriterIdeasRequest;
+  sourceRevision: number;
+  source: WriterIdeasSourceContext;
+  narrativeContext?: unknown;
+}) {
+  return JSON.stringify({
+    request: {
+      userQuestion: input.request.question.trim(),
+      categoryIntent: input.request.category,
+      scope: input.request.scope,
+      sceneId: input.request.sceneId,
+      sourceRevision: input.sourceRevision,
     },
-    {
-      title: "Cambiar quién controla la información",
-      category: "Giro",
-      direction: "Desplaza una pieza de información útil hacia quien tiene más que perder si la revela.",
-      consequence: "La revelación pasa a ser una decisión moral y altera el poder de la escena.",
+    screenplay: input.source.scenes,
+    narrativeContext: input.narrativeContext ?? null,
+    referenceCatalog: input.source.references.map((reference) => ({
+      referenceId: reference.id,
+      sceneId: reference.sceneId,
+      blockId: reference.blockId,
+      label: reference.sceneHeading,
+    })),
+  });
+}
+
+export function validateWriterIdeasOutput(value: unknown, source: WriterIdeasSourceContext): WriterIdea[] {
+  if (!isRecord(value) || !hasExactKeys(value, ["ideas"]) || !Array.isArray(value.ideas)
+    || value.ideas.length < 1 || value.ideas.length > 5) throw new Error("writer_ideas_invalid_schema");
+  const catalog = new Map(source.references.map((reference) => [reference.id, reference]));
+  const ids = new Set<string>();
+  const titles = new Set<string>();
+  return value.ideas.map((item) => {
+    if (!isRecord(item) || !hasExactKeys(item, ["id", "title", "direction", "consequence", "category", "referenceIds"])
+      || !isWriterIdeaCategory(item.category) || !Array.isArray(item.referenceIds) || item.referenceIds.length > 4) {
+      throw new Error("writer_ideas_invalid_item");
+    }
+    const id = cleanIdeaText(item.id, 64);
+    const title = cleanIdeaText(item.title, 120);
+    const normalizedTitle = title.toLocaleLowerCase("es-MX");
+    if (ids.has(id) || titles.has(normalizedTitle)) throw new Error("writer_ideas_duplicate_item");
+    ids.add(id);
+    titles.add(normalizedTitle);
+    const seen = new Set<string>();
+    const references = item.referenceIds.map((referenceId) => {
+      if (typeof referenceId !== "string" || seen.has(referenceId)) throw new Error("writer_ideas_invalid_reference");
+      const reference = catalog.get(referenceId);
+      if (!reference) throw new Error("writer_ideas_invalid_reference");
+      seen.add(referenceId);
+      return reference;
+    });
+    return {
+      id,
+      title,
+      direction: cleanIdeaText(item.direction, 500),
+      consequence: cleanIdeaText(item.consequence, 360),
+      category: item.category,
+      references,
+    };
+  });
+}
+
+export function writerIdeasOutputSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["ideas"],
+    properties: {
+      ideas: {
+        type: "array",
+        minItems: 1,
+        maxItems: 5,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "title", "direction", "consequence", "category", "referenceIds"],
+          properties: {
+            id: { type: "string", maxLength: 64 },
+            title: { type: "string", maxLength: 120 },
+            direction: { type: "string", maxLength: 500 },
+            consequence: { type: "string", maxLength: 360 },
+            category: { type: "string", enum: WRITER_IDEA_CATEGORIES },
+            referenceIds: { type: "array", maxItems: 4, items: { type: "string", maxLength: 80 } },
+          },
+        },
+      },
     },
-    {
-      title: "Hacer visible el subtexto",
-      category: "Subtexto",
-      direction: "Introduce una acción concreta que contradiga lo que el personaje afirma querer.",
-      consequence: "El conflicto interno se vuelve legible sin explicarlo ni escribir nuevas líneas por el usuario.",
-    },
-    {
-      title: "Convertir el entorno en obstáculo",
-      category: "Visual",
-      direction: "Usa una regla, objeto o limitación ya presente en la escena para impedir la salida más obvia.",
-      consequence: "La resolución depende de la puesta en escena y no sólo de información verbal.",
-    },
-    {
-      title: "Reformular la expectativa",
-      category: "Revelación",
-      direction: "Haz que una consecuencia aparente confirme la expectativa inmediata, pero cambie lo que significa para el personaje.",
-      consequence: "La escena puede cerrar una pregunta y abrir otra sin generar material de guion automáticamente.",
-    },
-  ];
-  const ordered = preferred
-    ? [...templates.filter((idea) => idea.category === preferred), ...templates.filter((idea) => idea.category !== preferred)]
-    : templates;
-  return ordered.slice(0, 5).map((idea, index) => ({
-    ...idea,
-    id: `idea-${index + 1}`,
-    references: index < 2 ? references.slice(0, 1) : [],
-  }));
+  } as const;
 }
 
 export function isWriterIdeaCategory(value: unknown): value is WriterIdeaCategory {
   return typeof value === "string" && (WRITER_IDEA_CATEGORIES as readonly string[]).includes(value);
 }
 
-function writerIdeaReferences(document: WriterDocument, scope: WriterSearchScope, targetSceneId: string | null) {
-  let sceneId: string | null = null;
-  let sceneNumber = 0;
-  let sceneHeading = "Antes de la primera escena";
-  const references: WriterSearchResult[] = [];
-  for (const block of document.content) {
-    const text = blockText(block).trim();
-    if (block.attrs.kind === "sceneHeading") {
-      sceneId = block.attrs.id;
-      sceneNumber += 1;
-      sceneHeading = text || "Escena sin encabezado";
-    }
-    if (!text || (scope === "scene" && sceneId !== targetSceneId)) continue;
-    if (block.attrs.kind !== "action" && block.attrs.kind !== "dialogue") continue;
-    references.push({
-      id: `idea-ref:${block.attrs.id}`,
-      sceneId,
-      sceneNumber: sceneId ? sceneNumber : null,
-      sceneHeading,
-      blockId: block.attrs.id,
-      blockKind: block.attrs.kind,
-      start: 0,
-      end: Math.min(text.length, 1),
-      text,
-      snippet: text.slice(0, 220),
-      reason: "Referencia de contexto",
-    });
-    if (references.length >= 3) break;
-  }
-  return references;
+function cleanIdeaText(value: unknown, maximum: number) {
+  if (typeof value !== "string") throw new Error("writer_ideas_invalid_text");
+  const result = value.trim().replace(/\s+/gu, " ");
+  if (!result || result.length > maximum) throw new Error("writer_ideas_invalid_text");
+  return result;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: string[]) {
+  const keys = Object.keys(value).sort();
+  return keys.length === expected.length && keys.every((key, index) => key === [...expected].sort()[index]);
 }

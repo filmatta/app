@@ -14,6 +14,7 @@ import {
   type WriterNarrativeLink,
 } from "./setup-payoff.ts";
 import type { WriterPulseMilestone, WriterPulseZone } from "./narrative-pulse.ts";
+import type { WriterIdeaContext } from "./ideas.ts";
 
 export const WRITER_GUIDED_WRITING_VERSION = "guided-writing-v1" as const;
 export const WRITER_GUIDED_WRITING_MODEL = "gpt-5.6-terra" as const;
@@ -313,6 +314,7 @@ export function writerGuidedWritingProviderInput(
   history: WriterGuidedWritingMessage[],
   question: string,
   selection?: { blockId: string; text: string } | null,
+  ideaContext?: WriterIdeaContext | null,
 ) {
   return JSON.stringify({
     context: {
@@ -325,6 +327,7 @@ export function writerGuidedWritingProviderInput(
       ? { role: "user", content: message.content }
       : { role: "assistant", response: message.response }),
     currentQuestion: question,
+    selectedIdea: ideaContext ?? null,
     selection: selection?.text.trim() ? { blockId: selection.blockId, text: selection.text.trim().slice(0, 1_200) } : null,
   });
 }
