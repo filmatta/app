@@ -101,7 +101,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             status: "partial",
             error_code: `partial:${processedScenes}:${sceneIds.length}:${errorCode}`,
             updated_at: new Date().toISOString(),
-          }).eq("id", childOperationId).eq("owner_id", session.user.id);
+          }).eq("id", childOperationId).eq("owner_id", session.user.id).eq("status", "processing");
           break;
         }
       }

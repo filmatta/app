@@ -28,6 +28,13 @@ import { loadSetupPayoffState } from "./setup-payoff-server";
 import { loadWriterNarrativePulseState } from "./narrative-pulse-server";
 import { writerSetupPayoffSourceHash } from "./setup-payoff";
 import type { WriterIdeaContext } from "./ideas";
+import {
+  classifyWriterProviderFailure,
+  logWriterProviderDiagnostic,
+  writerProviderLedgerErrorCode,
+  type WriterProviderFailureMetadata,
+  type WriterProviderStage,
+} from "./provider-diagnostics";
 
 const MAX_OUTPUT_TOKENS = 2_200;
 const MAX_SCENE_CONTEXT_CHARACTERS = 80_000;
@@ -75,6 +82,7 @@ export async function executeWriterGuidedWriting(
   const readDb = dependencies.readDb ?? db;
   const suppliedQuestion = request.question.trim().replace(/\s+/gu, " ");
   const question = suppliedQuestion || (request.selection ? "Analiza brevemente este fragmento: qué ocurre, qué evidencia lo sostiene y qué incertidumbre queda." : "");
+  const operationId = request.operationId ?? randomUUID();
   if (!question || question.length > 1_200) throw new WriterGuidedWritingError("invalid_question", "La pregunta no es válida.", 400);
   const scriptResult = await readDb.from("writer_scripts").select("document,revision").eq("id", request.scriptId).eq("owner_id", userId).maybeSingle();
   if (scriptResult.error || !scriptResult.data) throw new WriterGuidedWritingError("not_found", "Guion no encontrado.", 404);
@@ -98,12 +106,22 @@ export async function executeWriterGuidedWriting(
   if (request.selection && !selection) {
     throw new WriterGuidedWritingError("selection_stale", "La selección ya no coincide con el guion guardado.", 409);
   }
-  const [support, existingConversation] = await Promise.all([
-    loadGuidedWritingSupport(readDb, userId, request.scriptId),
-    loadGuidedWritingConversation(readDb, userId, request.scriptId, {
-      scope: request.scope, sceneId: request.sceneId, sessionId: request.sessionId ?? null,
-    }),
-  ]);
+  let support: Awaited<ReturnType<typeof loadGuidedWritingSupport>>;
+  let existingConversation: Awaited<ReturnType<typeof loadGuidedWritingConversation>>;
+  try {
+    [support, existingConversation] = await Promise.all([
+      loadGuidedWritingSupport(readDb, userId, request.scriptId),
+      loadGuidedWritingConversation(readDb, userId, request.scriptId, {
+        scope: request.scope, sceneId: request.sceneId, sessionId: request.sessionId ?? null,
+      }),
+    ]);
+  } catch (cause) {
+    logGuidedDiagnostic(operationId, "context_build", false, {
+      ...classifyWriterProviderFailure(cause, { outboundAttempted: false }),
+      failureOrigin: "pre_provider",
+    });
+    throw cause;
+  }
   const context = await buildGuidedWritingContext({
     document: validated.document,
     scope: request.scope,
@@ -132,7 +150,6 @@ export async function executeWriterGuidedWriting(
     countWriterSceneAnalysisTokens(`${WRITER_GUIDED_WRITING_INSTRUCTIONS}\n${providerInput}`),
     MAX_OUTPUT_TOKENS,
   );
-  const operationId = request.operationId ?? randomUUID();
   const reserved = await rpcJson(db, "writer_reserve_guided_writing", {
     p_user_id: userId,
     p_operation_id: operationId,
@@ -162,11 +179,16 @@ export async function executeWriterGuidedWriting(
       maxOutputTokens: MAX_OUTPUT_TOKENS, signal: request.signal,
     });
   } catch (cause) {
-    const ambiguous = cause instanceof GuidedProviderFailure ? cause.ambiguous : true;
-    const usage = cause instanceof GuidedProviderFailure ? cause.usage : emptyUsage();
-    const actualCost = ambiguous ? maximumCost : calculateWriterSceneAnalysisCost(usage);
-    await settle(db, userId, operationId, ambiguous ? "uncertain" : "failed", null, "provider_request_failed", usage, actualCost, 0);
-    logOperation(operationId, request.scriptId, request.scope, ambiguous ? "uncertain" : "failed", usage, actualCost, 0);
+    const failure = cause instanceof GuidedProviderFailure
+      ? cause
+      : GuidedProviderFailure.fromUnknown(cause, request.signal?.aborted === true);
+    const usage = failure.usage ?? emptyUsage();
+    const uncertain = !failure.usageReceived && failure.outboundAttempted;
+    const actualCost = uncertain ? maximumCost : calculateWriterSceneAnalysisCost(usage);
+    const status = uncertain ? "uncertain" : "failed";
+    const errorCode = writerProviderLedgerErrorCode(failure.metadata);
+    await settle(db, userId, operationId, status, null, errorCode, usage, actualCost, failure.elapsedMs ?? 0);
+    logOperation(operationId, request.scriptId, request.scope, status, failure.usage, actualCost, failure.elapsedMs, failure.metadata);
     throw new WriterGuidedWritingError("provider", request.signal?.aborted ? "La consulta fue cancelada." : "No pudimos responder ahora.", request.signal?.aborted ? 499 : 503);
   }
 
@@ -175,6 +197,11 @@ export async function executeWriterGuidedWriting(
     response = validateWriterGuidedWritingOutput(providerResponse.result, context, question);
   } catch {
     const actualCost = calculateWriterSceneAnalysisCost(providerResponse.usage);
+    logGuidedDiagnostic(operationId, "validation", true, {
+      providerErrorCode: "provider_invalid_output",
+      providerRequestId: providerResponse.requestId ?? null,
+      failureOrigin: "validation",
+    }, providerResponse.latencyMs, true);
     await settle(db, userId, operationId, "failed", null, "provider_invalid_output", providerResponse.usage, actualCost, providerResponse.latencyMs);
     logOperation(operationId, request.scriptId, request.scope, "failed", providerResponse.usage, actualCost, providerResponse.latencyMs);
     throw new WriterGuidedWritingError("invalid_output", "No pudimos validar la respuesta editorial.", 503);
@@ -272,10 +299,18 @@ export async function loadGuidedWritingSupport(db: Database, userId: string, scr
 }
 
 async function openAiGuidedWritingProvider(input: Parameters<WriterGuidedWritingProvider>[0]) {
-  if (!process.env.OPENAI_API_KEY) throw new GuidedProviderFailure(false, emptyUsage());
+  if (!process.env.OPENAI_API_KEY) {
+    const metadata: WriterProviderFailureMetadata = {
+      providerStatus: null, providerErrorCode: "openai_key_missing", providerErrorType: null,
+      providerErrorParam: null, providerRequestId: null, failureOrigin: "configuration",
+    };
+    logGuidedDiagnostic(input.operationId, "feature_gate", false, metadata);
+    throw new GuidedProviderFailure(metadata, null, null, false);
+  }
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 60_000 });
   const started = Date.now();
   let response;
+  logGuidedDiagnostic(input.operationId, "outbound_attempt", true);
   try {
     response = await client.responses.create({
       model: WRITER_GUIDED_WRITING_MODEL,
@@ -291,11 +326,21 @@ async function openAiGuidedWritingProvider(input: Parameters<WriterGuidedWriting
       signal: input.signal,
     });
   } catch (cause) {
-    const status = isRecord(cause) && typeof cause.status === "number" ? cause.status : 0;
-    throw new GuidedProviderFailure(status === 0 || status >= 500, emptyUsage());
+    const metadata = classifyWriterProviderFailure(cause, { outboundAttempted: true, aborted: input.signal?.aborted });
+    const elapsedMs = Date.now() - started;
+    logGuidedDiagnostic(input.operationId, "response_headers", true, metadata, elapsedMs, false);
+    throw new GuidedProviderFailure(metadata, null, elapsedMs, true);
   }
   const usage = readUsage(response.usage);
-  if (response.status !== "completed" || !response.output_text) throw new GuidedProviderFailure(false, usage);
+  const requestId = typeof response._request_id === "string" ? response._request_id : null;
+  if (response.status !== "completed" || !response.output_text) {
+    const metadata: WriterProviderFailureMetadata = {
+      providerStatus: null, providerErrorCode: `response_${response.status}`, providerErrorType: null,
+      providerErrorParam: null, providerRequestId: requestId, failureOrigin: "response",
+    };
+    logGuidedDiagnostic(input.operationId, "response_body", true, metadata, Date.now() - started, true);
+    throw new GuidedProviderFailure(metadata, usage, Date.now() - started, true);
+  }
   try {
     return {
       result: JSON.parse(response.output_text),
@@ -304,12 +349,30 @@ async function openAiGuidedWritingProvider(input: Parameters<WriterGuidedWriting
       requestId: typeof response._request_id === "string" ? response._request_id : undefined,
     };
   } catch {
-    throw new GuidedProviderFailure(false, usage);
+    const metadata: WriterProviderFailureMetadata = {
+      providerStatus: null, providerErrorCode: "invalid_json", providerErrorType: null,
+      providerErrorParam: null, providerRequestId: requestId, failureOrigin: "parse",
+    };
+    logGuidedDiagnostic(input.operationId, "parse", true, metadata, Date.now() - started, true);
+    throw new GuidedProviderFailure(metadata, usage, Date.now() - started, true);
   }
 }
 
 class GuidedProviderFailure extends Error {
-  constructor(readonly ambiguous: boolean, readonly usage: WriterSceneAnalysisUsage) { super("provider_request_failed"); }
+  constructor(
+    readonly metadata: WriterProviderFailureMetadata,
+    readonly usage: WriterSceneAnalysisUsage | null,
+    readonly elapsedMs: number | null,
+    readonly outboundAttempted: boolean,
+  ) { super("provider_request_failed"); }
+
+  get usageReceived() { return this.usage !== null; }
+
+  static fromUnknown(cause: unknown, aborted: boolean) {
+    return new GuidedProviderFailure(
+      classifyWriterProviderFailure(cause, { outboundAttempted: true, aborted }), null, null, true,
+    );
+  }
 }
 
 async function settle(
@@ -321,7 +384,7 @@ async function settle(
   errorCode: string | null,
   usage: WriterSceneAnalysisUsage,
   actualCost: number,
-  latencyMs: number,
+  latencyMs: number | null,
 ) {
   await rpcJson(db, "writer_settle_guided_writing", {
     p_user_id: userId,
@@ -390,12 +453,29 @@ function logOperation(
   scriptId: string,
   scope: WriterGuidedWritingScope,
   status: string,
-  usage: WriterSceneAnalysisUsage,
+  usage: WriterSceneAnalysisUsage | null,
   costMicrousd: number,
-  latencyMs: number,
+  latencyMs: number | null,
+  metadata?: WriterProviderFailureMetadata,
 ) {
   console.info("writer_guided_writing", {
     operationId, scriptId, scope, model: WRITER_GUIDED_WRITING_MODEL,
-    status, usage, costMicrousd, latencyMs,
+    status, usage, usageReceived: usage !== null, costMicrousd, latencyMs,
+    providerStatus: metadata?.providerStatus ?? null, providerRequestId: metadata?.providerRequestId ?? null,
+  });
+}
+
+function logGuidedDiagnostic(
+  operationId: string,
+  stage: WriterProviderStage,
+  outboundAttempted: boolean,
+  metadata?: Partial<WriterProviderFailureMetadata>,
+  elapsedMs?: number | null,
+  usageReceived = false,
+) {
+  logWriterProviderDiagnostic({
+    diagnosticRunId: operationId, operationId, feature: "guided_writing", stage, outboundAttempted,
+    requestedModel: WRITER_GUIDED_WRITING_MODEL, elapsedMs, usageReceived,
+    ...(metadata ?? {}),
   });
 }

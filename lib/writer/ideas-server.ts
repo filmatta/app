@@ -20,6 +20,13 @@ import {
   estimateWriterSceneAnalysisMaximumCost,
   type WriterSceneAnalysisUsage,
 } from "./script-assistant-accounting";
+import {
+  classifyWriterProviderFailure,
+  logWriterProviderDiagnostic,
+  writerProviderLedgerErrorCode,
+  type WriterProviderFailureMetadata,
+  type WriterProviderStage,
+} from "./provider-diagnostics";
 
 const WRITER_IDEAS_VERSION = "writer-ideas-v1";
 const MAX_OUTPUT_TOKENS = 1_800;
@@ -70,7 +77,16 @@ export async function executeWriterIdeas(
   }
   if (!source.scenes.length) throw new WriterIdeasError("empty_document", "Añade una escena antes de explorar Ideas.", 422);
 
-  const support = await loadGuidedWritingSupport(db, userId, request.scriptId);
+  let support: Awaited<ReturnType<typeof loadGuidedWritingSupport>>;
+  try {
+    support = await loadGuidedWritingSupport(db, userId, request.scriptId);
+  } catch (cause) {
+    logIdeasDiagnostic(request.operationId, "context_build", false, {
+      ...classifyWriterProviderFailure(cause, { outboundAttempted: false }),
+      failureOrigin: "pre_provider",
+    });
+    throw cause;
+  }
   const narrativeContext = await buildGuidedWritingContext({
     document: validated.document,
     scope: request.scope,
@@ -91,6 +107,10 @@ export async function executeWriterIdeas(
       : "Esta escena supera el límite seguro para Ideas.", 413);
   }
   if (!process.env.OPENAI_API_KEY) {
+    logIdeasDiagnostic(request.operationId, "feature_gate", false, {
+      providerStatus: null, providerErrorCode: "openai_key_missing", providerErrorType: null,
+      providerErrorParam: null, providerRequestId: null, failureOrigin: "configuration",
+    });
     throw new WriterIdeasError("provider_unavailable", "Ideas con IA no está disponible en este entorno.", 503);
   }
 
@@ -142,11 +162,16 @@ export async function executeWriterIdeas(
       signal: request.signal,
     });
   } catch (cause) {
-    const ambiguous = cause instanceof IdeasProviderFailure ? cause.ambiguous : true;
-    const usage = cause instanceof IdeasProviderFailure ? cause.usage : emptyUsage();
-    const cost = ambiguous ? maximumCost : calculateWriterSceneAnalysisCost(usage);
-    await settle(db, userId, request.operationId, ambiguous ? "uncertain" : "failed", usage, cost, 0, "provider_failed");
-    logOperation(request.operationId, request.scriptId, request.scope, ambiguous ? "uncertain" : "failed", usage, cost, 0);
+    const failure = cause instanceof IdeasProviderFailure
+      ? cause
+      : IdeasProviderFailure.fromUnknown(cause, request.signal?.aborted === true);
+    const usage = failure.usage ?? emptyUsage();
+    const uncertain = !failure.usageReceived && failure.outboundAttempted;
+    const cost = uncertain ? maximumCost : calculateWriterSceneAnalysisCost(usage);
+    const status = uncertain ? "uncertain" : "failed";
+    const errorCode = writerProviderLedgerErrorCode(failure.metadata);
+    await settle(db, userId, request.operationId, status, usage, cost, failure.elapsedMs ?? 0, errorCode);
+    logOperation(request.operationId, request.scriptId, request.scope, status, failure.usage, cost, failure.elapsedMs, failure.metadata);
     throw new WriterIdeasError("provider", request.signal?.aborted ? "Consulta cancelada." : "No pudimos preparar Ideas ahora.", request.signal?.aborted ? 499 : 503);
   }
 
@@ -155,6 +180,11 @@ export async function executeWriterIdeas(
     ideas = validateWriterIdeasOutput(providerResponse.result, source);
   } catch {
     const cost = calculateWriterSceneAnalysisCost(providerResponse.usage);
+    logIdeasDiagnostic(request.operationId, "validation", true, {
+      providerErrorCode: "invalid_output",
+      providerRequestId: providerResponse.requestId ?? null,
+      failureOrigin: "validation",
+    }, providerResponse.latencyMs, true);
     await settle(db, userId, request.operationId, "failed", providerResponse.usage, cost, providerResponse.latencyMs, "invalid_output");
     logOperation(request.operationId, request.scriptId, request.scope, "failed", providerResponse.usage, cost, providerResponse.latencyMs);
     throw new WriterIdeasError("invalid_output", "La respuesta de Ideas no pudo validarse.", 503);
@@ -184,6 +214,7 @@ async function openAiIdeasProvider(input: Parameters<WriterIdeasProvider>[0]) {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 60_000 });
   const startedAt = Date.now();
   let response;
+  logIdeasDiagnostic(input.operationId, "outbound_attempt", true);
   try {
     response = await client.responses.create({
       model: WRITER_GUIDED_WRITING_MODEL,
@@ -196,11 +227,24 @@ async function openAiIdeasProvider(input: Parameters<WriterIdeasProvider>[0]) {
       text: { format: { type: "json_schema", name: "writer_ideas", strict: true, schema: writerIdeasOutputSchema() } },
     }, { headers: { "Idempotency-Key": `writer-ideas-${input.operationId}-${input.requestHash.slice(0, 16)}` }, signal: input.signal });
   } catch (cause) {
-    const status = isRecord(cause) && typeof cause.status === "number" ? cause.status : 0;
-    throw new IdeasProviderFailure(status === 0 || status >= 500, emptyUsage());
+    const metadata = classifyWriterProviderFailure(cause, { outboundAttempted: true, aborted: input.signal?.aborted });
+    const elapsedMs = Date.now() - startedAt;
+    logIdeasDiagnostic(input.operationId, "response_headers", true, metadata, elapsedMs, false);
+    throw new IdeasProviderFailure(metadata, null, elapsedMs, true);
   }
   const usage = readUsage(response.usage);
-  if (response.status !== "completed" || !response.output_text) throw new IdeasProviderFailure(false, usage);
+  const requestId = typeof response._request_id === "string" ? response._request_id : null;
+  logIdeasDiagnostic(input.operationId, "response_body", true, {
+    providerStatus: null, providerErrorCode: response.status === "completed" ? null : `response_${response.status}`,
+    providerErrorType: null, providerErrorParam: null, providerRequestId: requestId,
+    ...(response.status === "completed" ? {} : { failureOrigin: "response" as const }),
+  }, Date.now() - startedAt, true);
+  if (response.status !== "completed" || !response.output_text) {
+    throw new IdeasProviderFailure({
+      providerStatus: null, providerErrorCode: `response_${response.status}`, providerErrorType: null,
+      providerErrorParam: null, providerRequestId: requestId, failureOrigin: "response",
+    }, usage, Date.now() - startedAt, true);
+  }
   try {
     return {
       result: JSON.parse(response.output_text),
@@ -209,7 +253,12 @@ async function openAiIdeasProvider(input: Parameters<WriterIdeasProvider>[0]) {
       ...(typeof response._request_id === "string" ? { requestId: response._request_id } : {}),
     };
   } catch {
-    throw new IdeasProviderFailure(false, usage);
+    const metadata: WriterProviderFailureMetadata = {
+      providerStatus: null, providerErrorCode: "invalid_json", providerErrorType: null,
+      providerErrorParam: null, providerRequestId: requestId, failureOrigin: "parse",
+    };
+    logIdeasDiagnostic(input.operationId, "parse", true, metadata, Date.now() - startedAt, true);
+    throw new IdeasProviderFailure(metadata, usage, Date.now() - startedAt, true);
   }
 }
 
@@ -265,7 +314,23 @@ async function settle(
 }
 
 class IdeasProviderFailure extends Error {
-  constructor(readonly ambiguous: boolean, readonly usage: WriterSceneAnalysisUsage) { super("provider_failed"); }
+  constructor(
+    readonly metadata: WriterProviderFailureMetadata,
+    readonly usage: WriterSceneAnalysisUsage | null,
+    readonly elapsedMs: number | null,
+    readonly outboundAttempted: boolean,
+  ) { super("provider_failed"); }
+
+  get usageReceived() { return this.usage !== null; }
+
+  static fromUnknown(cause: unknown, aborted: boolean) {
+    return new IdeasProviderFailure(
+      classifyWriterProviderFailure(cause, { outboundAttempted: true, aborted }),
+      null,
+      null,
+      true,
+    );
+  }
 }
 
 function readUsage(value: unknown): WriterSceneAnalysisUsage {
@@ -288,10 +353,27 @@ function emptyUsage(): WriterSceneAnalysisUsage {
 function integer(value: unknown) { return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : 0; }
 function sha256(value: string) { return createHash("sha256").update(value).digest("hex"); }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
-function logOperation(operationId: string, scriptId: string, scope: string, status: string, usage: WriterSceneAnalysisUsage, cost: number, latencyMs: number) {
+function logOperation(operationId: string, scriptId: string, scope: string, status: string, usage: WriterSceneAnalysisUsage | null, cost: number, latencyMs: number | null, metadata?: WriterProviderFailureMetadata) {
   console.info("writer_ideas_operation", {
     operationId, scriptId, scope, status, model: WRITER_GUIDED_WRITING_MODEL,
-    inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens,
-    cacheWriteTokens: usage.cacheWriteTokens ?? 0, outputTokens: usage.outputTokens, costMicrousd: cost, latencyMs,
+    inputTokens: usage?.inputTokens ?? null, cachedInputTokens: usage?.cachedInputTokens ?? null,
+    cacheWriteTokens: usage?.cacheWriteTokens ?? null, outputTokens: usage?.outputTokens ?? null,
+    costMicrousd: cost, latencyMs, usageReceived: usage !== null,
+    providerStatus: metadata?.providerStatus ?? null, providerRequestId: metadata?.providerRequestId ?? null,
+  });
+}
+
+function logIdeasDiagnostic(
+  operationId: string,
+  stage: WriterProviderStage,
+  outboundAttempted: boolean,
+  metadata?: Partial<WriterProviderFailureMetadata>,
+  elapsedMs?: number | null,
+  usageReceived = false,
+) {
+  logWriterProviderDiagnostic({
+    diagnosticRunId: operationId, operationId, feature: "ideas", stage, outboundAttempted,
+    requestedModel: WRITER_GUIDED_WRITING_MODEL, elapsedMs, usageReceived,
+    ...(metadata ?? {}),
   });
 }
