@@ -18,13 +18,13 @@ test("Breakdown progressively overflows against the measured container and keeps
   assert.doesNotMatch(panel, /PRIMARY\.map\(\(item\)[\s\S]*writer-breakdown-more/u);
 });
 
-test("Pulse points use the shared Writer navigation while preserving the Pulse panel", () => {
+test("Pulse points use shared Writer navigation and reveal the screenplay", () => {
   const pulse = fs.readFileSync("components/writer/WriterNarrativePulse.tsx", "utf8");
   const timeline = fs.readFileSync("components/writer/WriterTimeline.tsx", "utf8");
   const workspace = fs.readFileSync("components/writer/WriterWorkspace.tsx", "utf8");
   assert.match(pulse, /aria-label=\{`Escena \$\{scene\.order\} · intensidad \$\{point\.intensity\} · seleccionar escena`\}/u);
   assert.match(pulse, /onClick=\{\(\) => selectPoint\(scene\)\}/u);
-  assert.match(timeline, /onSelectScene=\{\(scene\) => activateScene\(scene, true\)\}/u);
+  assert.match(timeline, /onSelectScene=\{\(scene\) => activateScene\(scene\)\}/u);
   assert.match(timeline, /onGoToWriter\(scene\.sourceId, \{ preservePanel \}\)/u);
   assert.match(workspace, /if \(!options\?\.preservePanel\) setTimelineExpanded\(false\)/u);
   assert.match(workspace, /navigateToWriterReference\(\{ sceneId \}\)/u);

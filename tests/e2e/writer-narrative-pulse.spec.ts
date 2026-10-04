@@ -1,8 +1,10 @@
 import { expect, test, type BrowserContext, type Locator, type Page, type Route } from "@playwright/test";
+import fs from "node:fs";
 
 const scriptId = "11111111-1111-4111-8111-111111111111";
 const sceneA = "11111111-1111-4111-8111-111111111101";
 const sceneB = "11111111-1111-4111-8111-111111111108";
+const evidence = "test-results/writer-beta-handoff";
 
 async function session(context: BrowserContext) { const b64=(value:object)=>Buffer.from(JSON.stringify(value)).toString("base64url"); const token=`${b64({alg:"HS256",typ:"JWT"})}.${b64({sub:scriptId,exp:4102444800,role:"authenticated"})}.local-signature`; await context.addCookies([{name:"sb-127-auth-token",value:"base64-"+b64({access_token:token,refresh_token:"local-refresh",expires_at:4102444800,token_type:"bearer",user:{id:scriptId}}),domain:"127.0.0.1",path:"/"}]); }
 function state() { return { currentSourceHash:"a".repeat(64), analysis:{id:"55555555-5555-4555-8555-555555555551",sourceHash:"a".repeat(64),analysisVersion:"narrative-pulse-v1",model:"gpt-5.6-terra",status:"fresh",errorCode:null,updatedAt:"2026-09-30T12:00:00Z"}, points:[{id:"66666666-6666-4666-8666-666666666661",analysisId:"55555555-5555-4555-8555-555555555551",sceneId:sceneA,intensity:28,signals:["activity"],note:"La escena establece una búsqueda contenida."},{id:"66666666-6666-4666-8666-666666666662",analysisId:"55555555-5555-4555-8555-555555555551",sceneId:sceneB,intensity:76,signals:["revelation","turn"],note:"La revelación cambia el objetivo."}], milestones:[{id:"77777777-7777-4777-8777-777777777771",scriptId,sceneId:sceneB,type:"midpoint",label:"Revelación central",explanation:"La información altera la dirección.",status:"suggested",source:"ai",sourceHash:"a".repeat(64),fingerprint:"ai:midpoint",movedByUser:false,updatedAt:"2026-09-30T12:00:00Z"}], zones:[{id:"88888888-8888-4888-8888-888888888881",analysisId:"55555555-5555-4555-8555-555555555551",startSceneId:sceneA,endSceneId:sceneB,type:"build",note:"La presión aumenta entre ambas escenas."}] }; }
@@ -86,13 +88,35 @@ test("desktop keeps Observations active while splitters and Timeline Pulse switc
   await panel.getByRole("button",{name:/Revelación central/}).last().click();
   await panel.getByRole("button",{name:"Confirmar"}).click();
   await expect(panel.getByRole("button",{name:/Revelación central/}).last()).toBeVisible();
-  await panel.getByRole("button",{name:"+ Añadir hito"}).click();
+  await panel.getByRole("button",{name:"Añadir hito"}).click();
   await panel.getByLabel("Nombre").fill("Primera decisión irreversible");
   await panel.getByRole("button",{name:"Guardar hito"}).click();
   await expect(panel.locator(".writer-pulse-milestone-list").getByRole("button",{name:/Primera decisión irreversible/})).toBeVisible();
+  fs.mkdirSync(evidence, { recursive: true });
+  await page.screenshot({ path: `${evidence}/pulse-hitos-carbon-1440x900.png` });
+  await panel.locator(".writer-pulse-lower").screenshot({ path: `${evidence}/hitos-carbon-detail.png` });
+  await panel.locator(".writer-pulse-milestone-list").evaluate((node) => node.scrollIntoView({ block: "center" }));
+  await panel.locator(".writer-pulse-milestone-list").screenshot({ path: `${evidence}/hitos-carbon-controls.png` });
+  const appearance = page.getByRole("button", { name: "Apariencia de Writer" });
+  await appearance.click();
+  let popover = page.getByRole("dialog", { name: "Apariencia de Writer" });
+  await popover.getByRole("radio", { name: "Marino" }).click();
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: `${evidence}/pulse-hitos-marino-1440x900.png` });
+  await panel.locator(".writer-pulse-lower").screenshot({ path: `${evidence}/hitos-marino-detail.png` });
+  await panel.locator(".writer-pulse-milestone-list").evaluate((node) => node.scrollIntoView({ block: "center" }));
+  await panel.locator(".writer-pulse-milestone-list").screenshot({ path: `${evidence}/hitos-marino-controls.png` });
+  await appearance.click();
+  popover = page.getByRole("dialog", { name: "Apariencia de Writer" });
+  await popover.getByRole("radio", { name: "Cream" }).click();
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: `${evidence}/pulse-hitos-cream-1440x900.png` });
+  await panel.locator(".writer-pulse-lower").screenshot({ path: `${evidence}/hitos-cream-detail.png` });
+  await panel.locator(".writer-pulse-milestone-list").evaluate((node) => node.scrollIntoView({ block: "center" }));
+  await panel.locator(".writer-pulse-milestone-list").screenshot({ path: `${evidence}/hitos-cream-controls.png` });
 });
 
-test("mobile Pulse fits, keeps drawer behavior and navigates by tap",async({page})=>{await page.setViewportSize({width:390,height:844});await page.addInitScript(()=>localStorage.setItem("filmatta.writer.mobile-notice.v1:11111111-1111-4111-8111-111111111111","dismissed"));await mockPulse(page);await page.goto(`/writer/${scriptId}`);const observations=page.getByRole("complementary",{name:"Asistente"});await expect(observations).toBeHidden();await expect(page.getByRole("separator").first()).toBeHidden();await page.getByRole("button",{name:/Navegar/}).click();let navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:/Asistente/}).click();await expect(observations).toBeVisible();await observations.getByRole("button",{name:"Cerrar",exact:true}).click();await page.getByRole("button",{name:/Navegar/}).click();navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:"Timeline"}).click();const panel=page.locator("#writer-timeline-panel");await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();await expect.poll(()=>panel.evaluate((element)=>element.scrollWidth<=element.clientWidth+1)).toBe(true);await panel.locator(".writer-pulse-point").first().press("Enter");await expect(page.locator(`[data-block-id="${sceneA}"]`)).toHaveClass(/writer-scene-target-highlight/);await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();});
+test("mobile Pulse fits, keeps drawer behavior and navigates by tap",async({page})=>{await page.setViewportSize({width:390,height:844});await page.addInitScript(()=>localStorage.setItem("filmatta.writer.mobile-notice.v1:11111111-1111-4111-8111-111111111111","dismissed"));await mockPulse(page);await page.goto(`/writer/${scriptId}`);const observations=page.getByRole("complementary",{name:"Asistente"});await expect(observations).toBeHidden();await expect(page.getByRole("separator").first()).toBeHidden();await page.getByRole("button",{name:/Navegar/}).click();let navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:/Asistente/}).click();await expect(observations).toBeVisible();await observations.getByRole("button",{name:"Cerrar",exact:true}).click();await page.getByRole("button",{name:/Navegar/}).click();navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:"Timeline"}).click();const panel=page.locator("#writer-timeline-panel");await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();await expect.poll(()=>panel.evaluate((element)=>element.scrollWidth<=element.clientWidth+1)).toBe(true);fs.mkdirSync(evidence,{recursive:true});await page.screenshot({path:`${evidence}/pulse-mobile-390x844.png`});await panel.locator(".writer-pulse-point").first().press("Enter");await expect(page.locator(`[data-block-id="${sceneA}"]`)).toHaveClass(/writer-scene-target-highlight/);await expect(panel).toBeHidden();await expect(page.getByRole("button",{name:/Navegar/})).toBeVisible();});
 
 async function pulseAlignmentError(panel: Locator) {
   return panel.locator(".writer-pulse-canvas").evaluate((canvas) => {
