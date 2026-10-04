@@ -11,7 +11,7 @@ export const WRITER_IMPORT_MAX_FILE_BYTES = 5_000_000;
 export const WRITER_IMPORT_MAX_TEXT_CHARACTERS = 1_500_000;
 
 export type WriterImportConfidence = "high" | "medium" | "review";
-export type WriterImportFormat = "pasted" | "txt" | "fdx";
+export type WriterImportFormat = "pasted" | "txt" | "fdx" | "docx";
 
 export type WriterImportSource = {
   format: WriterImportFormat;
@@ -36,6 +36,7 @@ export type WriterImportStaging = {
   source: WriterImportSource;
   suggestedTitle: string;
   blocks: WriterImportBlock[];
+  warnings?: string[];
 };
 
 export type WriterImportAdapter = {
@@ -45,11 +46,6 @@ export type WriterImportAdapter = {
 };
 
 export const PENDING_WRITER_IMPORT_ADAPTERS: readonly WriterImportAdapter[] = [
-  {
-    format: "docx",
-    implemented: false,
-    reason: "No hay un extractor DOCX local en el bundle actual.",
-  },
   {
     format: "pdf",
     implemented: false,
@@ -97,6 +93,15 @@ export function analyzeWriterTxt(text: string, fileName: string) {
     name: fileName,
     suggestedTitle: titleFromFileName(fileName),
   });
+}
+
+export function analyzeWriterDocxText(text: string, fileName: string, warnings: string[] = []) {
+  const staging = analyzePlainText(text, {
+    format: "docx",
+    name: fileName,
+    suggestedTitle: titleFromFileName(fileName),
+  });
+  return { ...staging, warnings };
 }
 
 export function analyzeWriterFdx(xml: string, fileName: string): WriterImportStaging {
@@ -210,21 +215,29 @@ export function validateWriterImportFile(file: { name: string; size: number; typ
   if (file.size <= 0) throw new Error("El archivo está vacío.");
   if (file.size > WRITER_IMPORT_MAX_FILE_BYTES) throw new Error("El archivo supera el límite de 5 MB.");
   const extension = file.name.split(".").at(-1)?.toLocaleLowerCase("en-US") ?? "";
-  if (extension !== "txt" && extension !== "fdx") {
-    throw new Error("Este formato todavía no está disponible. Usa texto pegado, TXT o FDX.");
+  if (extension === "pdf") {
+    throw new Error("La importación de PDF todavía no está disponible. Exporta el archivo como DOCX, TXT o FDX; el exportador PDF de Writer no se modifica.");
+  }
+  if (extension === "doc" || extension === "docm") {
+    throw new Error("Este archivo no es un DOCX seguro. Guarda una copia como .docx sin macros.");
+  }
+  if (extension !== "txt" && extension !== "fdx" && extension !== "docx") {
+    throw new Error("Este formato todavía no está disponible. Usa texto pegado, TXT, FDX o DOCX.");
   }
   const mime = file.type.toLocaleLowerCase("en-US");
-  if (!mime) return extension as "txt" | "fdx";
+  if (!mime) return extension as "txt" | "fdx" | "docx";
   const valid = extension === "txt"
     ? mime === "text/plain"
-    : ["application/xml", "text/xml", "application/octet-stream", "application/vnd.finaldraft"].includes(mime);
+    : extension === "fdx"
+      ? ["application/xml", "text/xml", "application/octet-stream", "application/vnd.finaldraft"].includes(mime)
+      : ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream", "application/zip"].includes(mime);
   if (!valid) throw new Error("El tipo real del archivo no coincide con su extensión.");
-  return extension as "txt" | "fdx";
+  return extension as "txt" | "fdx" | "docx";
 }
 
 function analyzePlainText(
   text: string,
-  input: { format: "pasted" | "txt"; name: string; suggestedTitle: string },
+  input: { format: "pasted" | "txt" | "docx"; name: string; suggestedTitle: string },
 ): WriterImportStaging {
   validateExtractedTextSize(text);
   const normalized = text.replace(/\r\n?/gu, "\n");

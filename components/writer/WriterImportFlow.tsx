@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { SCREENPLAY_KINDS, WRITER_SCHEMA_VERSION, type ScreenplayKind } from "@/lib/writer/document";
 import { parseAssistedImportAnalysisStatus } from "@/lib/writer/assisted-import-status";
 import {
-  PENDING_WRITER_IMPORT_ADAPTERS,
   analyzePastedWriterText,
   analyzeWriterFdx,
+  analyzeWriterDocxText,
   analyzeWriterTxt,
   changeWriterImportKind,
   validateWriterImportFile,
@@ -17,6 +17,7 @@ import {
   type WriterImportBlock,
   type WriterImportStaging,
 } from "@/lib/writer/import";
+import { extractWriterDocx } from "@/lib/writer/docx-import";
 
 const KIND_LABELS: Record<ScreenplayKind, string> = {
   sceneHeading: "Escena",
@@ -59,12 +60,15 @@ export default function WriterImportFlow({ onClose, beforeCreate, destination = 
     return staging.blocks.filter((block) => block.proposedKind === filter);
   }, [filter, staging]);
   const sourceReady = mode === "paste" ? Boolean(pastedText.trim()) : Boolean(selectedFile);
+  const selectedExtension = selectedFile?.name.split(".").at(-1)?.toLocaleLowerCase("en-US") ?? "";
   const assistedDisabledReason = busy
     ? "Ya hay un proceso en curso."
     : !title.trim()
       ? "Escribe un título para el nuevo guion."
       : !sourceReady
-        ? "Añade texto o selecciona un archivo TXT/FDX."
+        ? "Añade texto o selecciona un archivo TXT/FDX/DOCX."
+        : selectedExtension === "docx"
+          ? "DOCX se extrae localmente y pasa por revisión manual; la organización asistida no recibe el archivo."
         : availability.enabled ? null : availability.reason;
 
   async function openImported(scriptId: string, writerQuery: string) {
@@ -143,9 +147,14 @@ export default function WriterImportFlow({ onClose, beforeCreate, destination = 
 
   async function sourceInput() {
     if (mode === "paste") return { format: "pasted" as const, sourceText: pastedText, fileName: undefined };
-    if (!selectedFile) throw new Error("Selecciona un archivo TXT o FDX.");
+    if (!selectedFile) throw new Error("Selecciona un archivo TXT, FDX o DOCX.");
     const format = validateWriterImportFile(selectedFile);
-    return { format, sourceText: await selectedFile.text(), fileName: selectedFile.name };
+    if (format === "docx") {
+      setStage("Extrayendo el DOCX localmente…");
+      const extracted = await extractWriterDocx(await selectedFile.arrayBuffer());
+      return { format, sourceText: extracted.text, fileName: selectedFile.name, warnings: extracted.warnings };
+    }
+    return { format, sourceText: await selectedFile.text(), fileName: selectedFile.name, warnings: [] as string[] };
   }
 
   async function analyzeBasic() {
@@ -160,7 +169,9 @@ export default function WriterImportFlow({ onClose, beforeCreate, destination = 
         ? analyzePastedWriterText(input.sourceText, title)
         : input.format === "txt"
           ? analyzeWriterTxt(input.sourceText, input.fileName!)
-          : analyzeWriterFdx(input.sourceText, input.fileName!));
+          : input.format === "fdx"
+            ? analyzeWriterFdx(input.sourceText, input.fileName!)
+            : analyzeWriterDocxText(input.sourceText, input.fileName!, input.warnings));
       setStage(null);
     } catch (cause) {
       setError(importError(cause));
@@ -270,7 +281,7 @@ export default function WriterImportFlow({ onClose, beforeCreate, destination = 
         <div className="writer-import-source">
           <div className="writer-import-tabs" role="tablist" aria-label="Origen del borrador">
             <button type="button" role="tab" aria-selected={mode === "paste"} onClick={() => { setMode("paste"); invalidateAnalysis(); }}>Texto pegado</button>
-            <button type="button" role="tab" aria-selected={mode === "file"} onClick={() => { setMode("file"); invalidateAnalysis(); }}>Archivo TXT o FDX</button>
+            <button type="button" role="tab" aria-selected={mode === "file"} onClick={() => { setMode("file"); invalidateAnalysis(); }}>Archivo TXT, FDX o DOCX</button>
           </div>
           <label>Título del nuevo guion<input value={title} onChange={(event) => { setTitle(event.target.value); operationIdRef.current = null; }} maxLength={160} disabled={busy !== null} /></label>
           {mode === "paste" ? (
@@ -280,18 +291,30 @@ export default function WriterImportFlow({ onClose, beforeCreate, destination = 
               <small>{pastedText.length.toLocaleString("es-MX")} caracteres · texto, signos y mayúsculas se conservan</small>
             </label>
           ) : (
-            <div className="writer-import-file">
+            <div className="writer-import-file" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+              event.preventDefault();
+              const file = event.dataTransfer.files.item(0);
+              if (!file) return;
+              try { validateWriterImportFile(file); setSelectedFile(file); invalidateAnalysis(); }
+              catch (cause) { setSelectedFile(null); setError(importError(cause)); }
+            }}>
               <label htmlFor="writer-import-file">Selecciona un archivo</label>
-              <input ref={fileInputRef} id="writer-import-file" type="file" accept=".txt,.fdx,text/plain,application/xml,text/xml" onChange={(event) => { setSelectedFile(event.target.files?.[0] ?? null); invalidateAnalysis(); }} disabled={busy !== null} />
+              <input ref={fileInputRef} id="writer-import-file" type="file" accept=".txt,.fdx,.docx,text/plain,application/xml,text/xml,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                invalidateAnalysis();
+                if (!file) { setSelectedFile(null); return; }
+                try { validateWriterImportFile(file); setSelectedFile(file); }
+                catch (cause) { setSelectedFile(null); setError(importError(cause)); event.currentTarget.value = ""; }
+              }} disabled={busy !== null} />
               {selectedFile && <p><strong>Preparado:</strong> {selectedFile.name} · {(selectedFile.size / 1024).toLocaleString("es-MX", { maximumFractionDigits: 1 })} KB</p>}
-              <p>Formatos: TXT y FDX. Importación asistida: máximo 2 MiB, 30,000 palabras y 80,000 tokens de origen.</p>
+              <p>Formatos: TXT, FDX y DOCX. DOCX se extrae en este navegador; no importa imágenes, comentarios ni diseño visual.</p>
             </div>
           )}
           <aside className="writer-import-privacy">
             <strong>Organización asistida opcional</strong>
             <p>Enviaremos el texto necesario a OpenAI para organizar el borrador e identificar sus elementos. No reescribiremos tu historia.</p>
             <p>La solicitud usa almacenamiento desactivado en la API. FILMATTA conserva decisiones estructuradas y evidencias, no una copia adicional del archivo fuente. También puedes importar sin IA.</p>
-            <p>DOCX y PDF siguen pendientes: {PENDING_WRITER_IMPORT_ADAPTERS.map((adapter) => adapter.format.toUpperCase()).join(" y ")} no están disponibles en esta entrega.</p>
+            <p>PDF permanece fuera de esta importación: no se reutiliza el renderer de exportación y no se aplica OCR.</p>
           </aside>
           {busy === "assisted" ? (
             <div className="writer-import-processing" role="status" aria-live="polite" aria-atomic="true">
@@ -325,6 +348,7 @@ export default function WriterImportFlow({ onClose, beforeCreate, destination = 
             <div className={summary?.needsReview ? "needs-review" : "is-ready"}><strong>{summary?.needsReview}</strong><span>ajustes pendientes</span></div>
           </section>
           <p className="writer-import-new-document-notice">Modo manual sin IA. Se creará un guion nuevo; el documento actual no se modificará.</p>
+          {staging.warnings?.length ? <aside className="writer-import-warnings" role="status"><strong>Revisa estas limitaciones de extracción</strong><ul>{staging.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></aside> : null}
           <section className="writer-import-summary" aria-label="Resumen detectado">
             {SCREENPLAY_KINDS.map((kind) => <button key={kind} type="button" aria-pressed={filter === kind} onClick={() => setFilter(kind)}><strong>{summary?.byKind[kind] ?? 0}</strong><span>{KIND_LABELS[kind]}</span></button>)}
           </section>
