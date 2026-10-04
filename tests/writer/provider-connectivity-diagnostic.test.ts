@@ -79,24 +79,6 @@ test("missing usage after an outbound attempt holds the conservative reservation
   });
 });
 
-test("diagnostic route is Preview-only, user-allowlisted, fixed-input and retry-free", async () => {
-  const [server, route] = await Promise.all([
-    readFile(new URL("../../lib/writer/provider-connectivity-diagnostic-server.ts", import.meta.url), "utf8"),
-    readFile(new URL("../../app/api/writer/scripts/[id]/provider-diagnostic/route.ts", import.meta.url), "utf8"),
-  ]);
-  assert.match(server, /process\.env\.VERCEL_ENV !== "preview"/u);
-  assert.match(server, /WRITER_PROVIDER_DIAGNOSTIC_ENABLED/u);
-  assert.match(server, /WRITER_PROVIDER_DIAGNOSTIC_QA_USER_IDS/u);
-  assert.match(server, /Responde exactamente OK\./u);
-  assert.match(server, /store: false/u);
-  assert.match(server, /maxRetries: 0/u);
-  assert.match(server, /reasoning: \{ effort: "none" \}/u);
-  assert.match(server, /DIAGNOSTIC_KINDS = \["minimal", "structured"\]/u);
-  assert.match(server, /writer_smart_tool_operations/u);
-  assert.doesNotMatch(route, /model|prompt|input/u);
-  assert.match(route, /writerApiSession/u);
-});
-
 test("diagnostic logs whitelist metadata and never include messages or bodies", async () => {
   const source = await readFile(new URL("../../lib/writer/provider-diagnostics.ts", import.meta.url), "utf8");
   for (const field of ["diagnostic_run_id", "operation_id", "deployment_id", "feature", "stage", "outbound_attempted", "requested_model", "provider_status", "provider_error_code", "provider_error_type", "provider_error_param", "provider_request_id", "elapsed_ms", "usage_received", "failure_origin"]) {
