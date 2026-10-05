@@ -100,9 +100,11 @@ import {
 import {
   currentWriterBlock,
   captureWriterSelectionTarget,
+  applyWriterImportedDocument,
   applyWriterAutoFormat,
   changeWriterBlockKind,
   findWriterBlockById,
+  insertWriterEmptyBlock,
   writerSelectionTargetIsCurrent,
   writerSceneForSelection,
   duplicateWriterScene,
@@ -115,6 +117,13 @@ import {
   type WriterSceneMovePosition,
   type WriterSelectionTarget,
 } from "@/lib/writer/editor-actions";
+import {
+  parseWriterInternalHistory,
+  recordWriterInternalRoute,
+  stepWriterInternalHistory,
+  writerInternalHistoryStorageKey,
+  type WriterInternalHistory,
+} from "@/lib/writer/internal-navigation";
 import {
   acceptWriterAutocomplete,
   writerAutocompleteContext,
@@ -195,6 +204,7 @@ import { useWriterSetupPayoff } from "@/lib/writer/setup-payoff-client";
 import type { WriterNarrativeElement } from "@/lib/writer/setup-payoff";
 import { useWriterGuidedWriting } from "@/lib/writer/guided-writing-client";
 import type { WriterGuidedReference, WriterGuidedSelection } from "@/lib/writer/guided-writing";
+import WriterApplicationMenu from "./WriterApplicationMenu";
 
 type ScriptInput = {
   id: string;
@@ -325,6 +335,10 @@ export default function WriterWorkspace({
   const [shotlistBusy, setShotlistBusy] = useState(false);
   const [shotlistModalOpen, setShotlistModalOpen] = useState(false);
   const [shotlists, setShotlists] = useState<Array<{ id: string; title?: string }>>([]);
+  const [shotlistQueryState, setShotlistQueryState] = useState<"loading" | "ready" | "error">("loading");
+  const [creatingScript, setCreatingScript] = useState(false);
+  const [internalHistory, setInternalHistory] = useState<WriterInternalHistory>({ entries: [], index: -1 });
+  const [applicationMenuSelection, setApplicationMenuSelection] = useState<WriterSelectionTarget | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const controllerRef = useRef<WriterPersistenceController | null>(null);
   const documentRef = useRef(script.document);
@@ -377,6 +391,7 @@ export default function WriterWorkspace({
     active: boolean;
   }>>([]);
   const sessionIdRef = useRef(crypto.randomUUID());
+  const internalHistoryKey = useMemo(() => writerInternalHistoryStorageKey(userId), [userId]);
   const openContextMenu = useCallback((next: WriterContextMenuState) => {
     autocompleteRef.current = null;
     setAutocomplete(null);
@@ -761,8 +776,34 @@ export default function WriterWorkspace({
       activeWriterSelectionRef.current = captureWriterSelectionTarget(current.state);
     },
   });
+  const applicationMenuEditorState = useEditorState({
+    editor,
+    selector: ({ editor: current }) => ({
+      canUndo: current?.can().chain().undo().run() ?? false,
+      canRedo: current?.can().chain().redo().run() ?? false,
+    }),
+  });
 
   useEffect(() => { activeSceneRef.current = activeScene; }, [activeScene]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const restored = parseWriterInternalHistory(window.sessionStorage.getItem(internalHistoryKey));
+      const next = recordWriterInternalRoute(restored, `/writer/${script.id}`);
+      window.sessionStorage.setItem(internalHistoryKey, JSON.stringify(next));
+      setInternalHistory(next);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [internalHistoryKey, script.id]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("import") !== "1") return;
+    url.searchParams.delete("import");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    const frame = window.requestAnimationFrame(() => setImportOpen(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [script.id]);
 
   useEffect(() => {
     if (!editor) return;
@@ -782,15 +823,23 @@ export default function WriterWorkspace({
     return () => window.removeEventListener("keydown", applyKindShortcut, true);
   }, [editor]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void fetch(`/api/writer/scripts/${script.id}/shotlists`, { cache: "no-store" })
-      .then(async (response) => response.ok ? response.json() : null)
-      .then((data) => {
-        if (!cancelled && Array.isArray(data?.shotlists)) setShotlists(data.shotlists);
-      });
-    return () => { cancelled = true; };
+  const loadShotlists = useCallback(async () => {
+    setShotlistQueryState("loading");
+    try {
+      const response = await fetch(`/api/writer/scripts/${script.id}/shotlists`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(data?.shotlists)) throw new Error("No pudimos comprobar las Shotlists vinculadas.");
+      setShotlists(data.shotlists);
+      setShotlistQueryState("ready");
+    } catch {
+      setShotlistQueryState("error");
+    }
   }, [script.id]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => void loadShotlists());
+    return () => window.cancelAnimationFrame(frame);
+  }, [loadShotlists]);
 
   useEffect(() => {
     if (timelineInitialOpenHandledRef.current === script.id) return;
@@ -1302,7 +1351,7 @@ export default function WriterWorkspace({
     blockId?: string | null;
     fromOffset?: number;
     toOffset?: number;
-  }) => {
+  }, options: { preservePanel?: boolean } = {}) => {
     if (!editor) return "missing" as const;
     const requested = reference.blockId ? findWriterBlockById(editor, reference.blockId) : null;
     const scene = findWriterBlockById(editor, reference.sceneId);
@@ -1319,12 +1368,12 @@ export default function WriterWorkspace({
     setActiveScene(reference.sceneId);
     activeSceneRef.current = reference.sceneId;
     setMobileSidebar(null);
-    setTimelineExpanded(false);
+    if (!options.preservePanel) setTimelineExpanded(false);
     revealWriterBlock(target.position);
     clearSceneHighlight();
     setWriterSceneHighlight(editor, target.id);
     highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
-    if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
+    if (!options.preservePanel && window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
     return requested || !reference.blockId ? "exact" as const : "scene-fallback" as const;
   }, [clearSceneHighlight, editor, recordCurrentNavigation, revealWriterBlock]);
 
@@ -2422,6 +2471,84 @@ export default function WriterWorkspace({
     restoreTimelineAfterFocus();
   }
 
+  function captureApplicationMenuContext() {
+    const activeElement = window.document.activeElement;
+    if (editor && activeElement instanceof Node && editor.view.dom.contains(activeElement)) {
+      const selection = captureWriterSelectionTarget(editor.state);
+      activeWriterSelectionRef.current = selection;
+      setApplicationMenuSelection(selection);
+    } else if (!(activeElement instanceof Element && activeElement.closest(".writer-app-menu"))) {
+      activeWriterSelectionRef.current = null;
+      setApplicationMenuSelection(null);
+    }
+  }
+
+  function restoreApplicationMenuSelection() {
+    const snapshot = applicationMenuSelection ?? activeWriterSelectionRef.current;
+    if (!editor || !snapshot || !writerSelectionTargetIsCurrent(editor.state, snapshot)) return null;
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, snapshot.from, snapshot.to)));
+    return snapshot;
+  }
+
+  async function createNewScriptFromMenu() {
+    if (creatingScript) return;
+    setCreatingScript(true);
+    try {
+      await ensureCurrentDocumentSaved();
+      const response = await fetch("/api/writer/scripts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operationId: crypto.randomUUID(), title: "Guion sin título" }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || typeof payload?.script?.id !== "string") throw new Error(payload.error ?? "No se pudo crear el guion.");
+      router.push(`/writer/${payload.script.id}`);
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No se pudo crear el guion.");
+      setCreatingScript(false);
+    }
+  }
+
+  async function navigateWriterHistory(direction: -1 | 1) {
+    const step = stepWriterInternalHistory(internalHistory, direction);
+    if (!step) return;
+    try {
+      await ensureCurrentDocumentSaved();
+      window.sessionStorage.setItem(internalHistoryKey, JSON.stringify(step.history));
+      setInternalHistory(step.history);
+      router.push(step.route);
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No pudimos guardar antes de navegar.");
+    }
+  }
+
+  async function applyImportedToCurrent(imported: WriterDocument, options: { organize: boolean; format: "pasted" | "txt" | "fdx" | "docx" }) {
+    if (!editor) throw new Error("El editor todavía no está preparado.");
+    const remainsEmpty = (editor.getJSON() as unknown as WriterDocument).content.every((block) => !blockText(block).trim());
+    const result = applyWriterImportedDocument(editor, imported, remainsEmpty ? "replace-empty" : "append");
+    if (!result.applied) throw new Error("No se pudo aplicar la importación de forma segura. Revisa que no existan IDs duplicados.");
+    setFeedback(`${options.format.toUpperCase()} importado en este guion${options.organize ? "; revisa la propuesta de organización" : ""}.`);
+    if (options.organize) window.requestAnimationFrame(() => void startAutoFormat("paste", result.blockIds));
+  }
+
+  function insertFromApplicationMenu(kind: ScreenplayKind) {
+    const snapshot = restoreApplicationMenuSelection();
+    if (!editor || !snapshot || !insertWriterEmptyBlock(editor, snapshot.targetId, kind)) setFeedback("Vuelve a colocar el cursor en el guion para insertar un bloque.");
+  }
+
+  function changeKindFromApplicationMenu(kind: ScreenplayKind) {
+    const snapshot = restoreApplicationMenuSelection();
+    if (!editor || !snapshot || !changeWriterBlockKind(editor, snapshot.targetId, kind)) setFeedback("La selección cambió. Elige de nuevo el bloque que quieres convertir.");
+  }
+
+  function toggleInlineFormatFromApplicationMenu(format: "bold" | "italic" | "underline") {
+    if (!restoreApplicationMenuSelection() || !editor) return setFeedback("Selecciona texto del guion para aplicar formato.");
+    const chain = editor.chain().focus();
+    if (format === "bold") chain.toggleBold().run();
+    if (format === "italic") chain.toggleItalic().run();
+    if (format === "underline") chain.toggleUnderline().run();
+  }
+
   return (
     <div
       ref={workspaceRef}
@@ -2439,6 +2566,43 @@ export default function WriterWorkspace({
         "--writer-warm-intensity": appearance.warmIntensity / 100,
       } as CSSProperties}
     >
+      {!focusMode && <WriterApplicationMenu
+        canBack={internalHistory.index > 0}
+        canForward={internalHistory.index >= 0 && internalHistory.index < internalHistory.entries.length - 1}
+        hasEditorContext={Boolean(editor && applicationMenuSelection)}
+        canUndo={applicationMenuEditorState?.canUndo ?? false}
+        canRedo={applicationMenuEditorState?.canRedo ?? false}
+        leftPanelVisible={workspaceLayout.leftSidebarVisible}
+        assistantVisible={observationsOpen}
+        focusMode={focusMode}
+        timelineVisible={timelineOpen}
+        appearance={appearance.skin}
+        warmFilter={appearance.warmFilter}
+        typewriterSound={typewriterSoundEnabled}
+        onCaptureContext={captureApplicationMenuContext}
+        onBack={() => void navigateWriterHistory(-1)}
+        onForward={() => void navigateWriterHistory(1)}
+        onNew={() => void createNewScriptFromMenu()}
+        onImport={openImportFlow}
+        onScripts={() => void (async () => { try { await ensureCurrentDocumentSaved(); router.push("/writer"); } catch (cause) { setFeedback(cause instanceof Error ? cause.message : "No pudimos guardar antes de navegar."); } })()}
+        onVersions={() => setVersionsOpen(true)}
+        onExport={(format) => format === "pdf" ? setPdfExportOpen(true) : downloadBackup(format)}
+        onUndo={() => { restoreApplicationMenuSelection(); editor?.chain().focus().undo().run(); }}
+        onRedo={() => { restoreApplicationMenuSelection(); editor?.chain().focus().redo().run(); }}
+        onSearch={(replace) => { setSearchReplaceMode(replace); setSearchOpen(true); }}
+        onInlineFormat={toggleInlineFormatFromApplicationMenu}
+        onInsert={insertFromApplicationMenu}
+        onChangeKind={changeKindFromApplicationMenu}
+        onAutoFormat={() => void startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document")}
+        onLeftPanel={() => setLeftSidebarVisible(!workspaceLayout.leftSidebarVisible)}
+        onAssistant={() => setRightSidebarVisible(!observationsOpen)}
+        onFocus={() => void (focusMode ? exitFocus() : enterFocus())}
+        onTimeline={(view) => openTimeline(null, view)}
+        onAppearance={(skin) => commitAppearance({ skin })}
+        onWarmFilter={() => commitAppearance({ warmFilter: !appearance.warmFilter })}
+        onTypewriterSound={toggleTypewriterSound}
+        onShortcuts={() => setShortcutsOpen(true)}
+      />}
       <header className="writer-header">
         <div className="writer-header-brand">
           <Link href="/" aria-label="FILMATTA — Inicio">FILMATTA</Link>
@@ -2498,7 +2662,7 @@ export default function WriterWorkspace({
             type="button"
             onClick={openImportFlow}
             disabled={!ready}
-          >Importar borrador</button>
+          >Importar guion</button>
           <button
             ref={observationsButtonRef}
             className="writer-observations-open-button"
@@ -2562,7 +2726,7 @@ export default function WriterWorkspace({
         {mobileMoreOpen && (
           <div className="writer-mobile-sheet writer-mobile-more-sheet" role="dialog" aria-label="Más acciones de Writer">
             <div className="writer-mobile-sheet-head"><strong>Writer</strong><button type="button" onClick={() => setMobileMoreOpen(false)}>Cerrar</button></div>
-            <button type="button" onClick={openImportFlow}>Importar borrador</button>
+            <button type="button" onClick={openImportFlow}>Importar guion</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setAppearanceOpen(true); }}>Apariencia y atajos</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document"); }}><SmartFeatureIndicator label="FORMATO AUTOMÁTICO" /></button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setSearchReplaceMode(false); setSearchOpen(true); }}><WriterIcon name="search" /> Buscar</button>
@@ -2798,6 +2962,12 @@ export default function WriterWorkspace({
         >
           {!ready && <div className="writer-loading">Preparando tu guion…</div>}
           <div className="writer-paper-sheet">
+            {ready && document.content.every((block) => !blockText(block).trim()) && <div className="writer-empty-document-help">
+              <strong>Empieza tu guión</strong>
+              <span>Escribe, pega tu texto o importa un guion existente.</span>
+              <button type="button" onClick={openImportFlow}>Importar guion</button>
+              <small>DOCX · FDX · TXT</small>
+            </div>}
             <EditorContent editor={editor} />
           </div>
         </div>
@@ -2940,7 +3110,7 @@ export default function WriterWorkspace({
                 return;
               }
               const target = findWriterBlockById(editor, sceneId);
-              if (!target || target.kind !== "sceneHeading" || navigateToWriterReference({ sceneId }) === "missing") {
+              if (!target || target.kind !== "sceneHeading" || navigateToWriterReference({ sceneId }, { preservePanel: options?.preservePanel }) === "missing") {
                 setFeedback("Timeline está desactualizado: la escena ya no existe o dejó de ser un encabezado.");
                 return;
               }
@@ -2989,6 +3159,7 @@ export default function WriterWorkspace({
       {importOpen && (
         <WriterImportFlow
           beforeCreate={ensureCurrentDocumentSaved}
+          currentDocument={{ title, empty: document.content.every((block) => !blockText(block).trim()), onApply: applyImportedToCurrent }}
           onClose={() => setImportOpen(false)}
         />
       )}
@@ -3102,7 +3273,7 @@ export default function WriterWorkspace({
             onClearIdeaContext={() => setGuidedIdeaContext(null)}
           />
         )}
-        footer={<button ref={shotlistTriggerRef} className="writer-shotlist-footer-button" type="button" disabled={!ready || shotlistBusy} onClick={openShotlistFlow}><SmartFeatureIndicator label={shotlistBusy ? "GUARDANDO…" : shotlists.length ? "ABRIR SHOTLIST" : "GENERAR SHOTLIST"} /></button>}
+        footer={<button ref={shotlistTriggerRef} className={`writer-shotlist-footer-button${shotlistQueryState === "error" ? " is-error" : ""}`} type="button" disabled={!ready || shotlistBusy || shotlistQueryState === "loading"} onClick={() => shotlistQueryState === "error" ? void loadShotlists() : openShotlistFlow()}>{shotlistQueryState === "error" ? "Reintentar consulta de Shotlist" : shotlistQueryState === "loading" ? "Comprobando Shotlist…" : shotlists.length ? "Abrir shotlist" : <SmartFeatureIndicator label={shotlistBusy ? "GUARDANDO…" : "GENERAR SHOTLIST"} />}</button>}
         observations={combinedCharacterObservations}
         knownIdentities={knownCharacterIdentities}
         knownCharacterActivity={characterRows}

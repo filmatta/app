@@ -619,7 +619,7 @@ export default function WriterTimelineView({
           selectedSceneId={selectedScene?.sourceId ?? activeSceneId}
           columnWidth={columnWidth}
           scrollRef={pulseScrollRef}
-          onSelectScene={(scene) => activateScene(scene)}
+          onSelectScene={(scene) => activateScene(scene, true)}
           onMilestonesChange={setPulseMilestones}
           onEnsureCurrentSaved={onEnsureCurrentSaved}
         />

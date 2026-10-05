@@ -44,6 +44,7 @@ export type WriterCharacterRenameInput = {
 };
 
 export type WriterStructuralCommandResult = "applied" | "unchanged" | "missing" | "invalid";
+export type WriterImportApplyMode = "append" | "replace-empty";
 
 export type WriterAutoFormatMutation = {
   blockId: string;
@@ -64,6 +65,28 @@ export function findWriterBlockAtPosition(doc: ProseMirrorNode, position: number
     };
   }
   return null;
+}
+
+export function applyWriterImportedDocument(
+  editor: Editor,
+  imported: WriterDocument,
+  mode: WriterImportApplyMode,
+): { applied: boolean; blockIds: string[] } {
+  const blockIds = imported.content.map((block) => block.attrs.id);
+  const importedIds = new Set(blockIds);
+  if (importedIds.size !== blockIds.length) return { applied: false, blockIds: [] };
+  const existingIds = new Set<string>();
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "screenplayBlock") existingIds.add(String(node.attrs.id));
+  });
+  if (mode === "append" && blockIds.some((id) => existingIds.has(id))) return { applied: false, blockIds: [] };
+  const nodes = imported.content.map((block) => editor.state.schema.nodeFromJSON(block));
+  if (!nodes.length) return { applied: false, blockIds: [] };
+  const transaction = closeHistory(editor.state.tr);
+  if (mode === "replace-empty") transaction.replaceWith(0, editor.state.doc.content.size, Fragment.fromArray(nodes));
+  else transaction.insert(editor.state.doc.content.size, Fragment.fromArray(nodes));
+  editor.view.dispatch(transaction.scrollIntoView());
+  return { applied: true, blockIds };
 }
 
 export function findWriterBlockById(editor: Editor, id: string): WriterBlockTarget | null {

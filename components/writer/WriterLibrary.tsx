@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createWriterBackup, writerFileStem } from "@/lib/writer/export";
 import { loadLocalWriterDrafts, type LocalWriterDraft } from "@/lib/writer/storage";
-import WriterImportFlow from "./WriterImportFlow";
+import { parseWriterInternalHistory, recordWriterInternalRoute, writerInternalHistoryStorageKey } from "@/lib/writer/internal-navigation";
 
 export type WriterListItem = {
   id: string;
@@ -19,7 +19,6 @@ export default function WriterLibrary({
   limit,
   userId,
   initialImportOpen = false,
-  importDestination = "writer",
 }: {
   initialScripts: WriterListItem[];
   limit: number;
@@ -33,9 +32,15 @@ export default function WriterLibrary({
   const [rename, setRename] = useState<WriterListItem | null>(null);
   const [deleting, setDeleting] = useState<WriterListItem | null>(null);
   const [pendingDeleteDraft, setPendingDeleteDraft] = useState<LocalWriterDraft | null>(null);
-  const [importOpen, setImportOpen] = useState(initialImportOpen);
 
-  async function createScript() {
+  useEffect(() => {
+    const key = writerInternalHistoryStorageKey(userId);
+    const next = recordWriterInternalRoute(parseWriterInternalHistory(window.sessionStorage.getItem(key)), "/writer");
+    window.sessionStorage.setItem(key, JSON.stringify(next));
+  }, [userId]);
+
+  async function createScript(openImport = false) {
+    if (busy) return;
     setBusy("create");
     setFeedback(null);
     const response = await fetch("/api/writer/scripts", {
@@ -49,7 +54,7 @@ export default function WriterLibrary({
       setFeedback(data.error ?? "No se pudo crear el guion.");
       return;
     }
-    router.push(`/writer/${data.script.id}`);
+    router.push(`/writer/${data.script.id}${openImport ? "?import=1" : ""}`);
   }
 
   async function duplicateScript(script: WriterListItem) {
@@ -146,16 +151,13 @@ export default function WriterLibrary({
           <p>Un espacio privado para escribir y conservar tu trabajo.</p>
         </div>
         <div className="writer-library-create-actions">
-          <button className="writer-library-action-button" type="button" onClick={() => setImportOpen(true)} disabled={busy !== null || initialScripts.length >= limit}>
-            Importar borrador
-          </button>
           <button
             className="writer-primary-button writer-library-action-button"
             type="button"
-            onClick={createScript}
+            onClick={() => void createScript()}
             disabled={busy !== null || initialScripts.length >= limit}
           >
-            {busy === "create" ? "Creando…" : "Crear guion"}
+            {busy === "create" ? "Creando…" : "+ Crear guión"}
           </button>
         </div>
       </div>
@@ -165,6 +167,7 @@ export default function WriterLibrary({
         <span>Writer Foundation</span>
       </div>
       {feedback && <p className="writer-feedback writer-feedback--error" role="alert">{feedback}</p>}
+      {initialImportOpen && <div className="writer-feedback" role="status">La importación ahora se realiza dentro de Writer. <button type="button" onClick={() => void createScript(true)} disabled={busy !== null || initialScripts.length >= limit}>Crear guion e importar</button></div>}
 
       {initialScripts.length === 0 ? (
         <section className="writer-empty-state">
@@ -172,10 +175,9 @@ export default function WriterLibrary({
           <h2>Empieza un guion nuevo.</h2>
           <p>La escritura se guarda localmente y se sincroniza con la nube.</p>
           <div className="writer-empty-actions">
-            <button className="writer-primary-button writer-library-action-button" type="button" onClick={createScript} disabled={busy !== null}>
-              Crear guion
+            <button className="writer-primary-button writer-library-action-button" type="button" onClick={() => void createScript()} disabled={busy !== null}>
+              + Crear guión
             </button>
-            <button className="writer-library-action-button" type="button" onClick={() => setImportOpen(true)} disabled={busy !== null}>Importar borrador</button>
           </div>
         </section>
       ) : (
@@ -242,7 +244,6 @@ export default function WriterLibrary({
         </div>
       )}
 
-      {importOpen && <WriterImportFlow destination={importDestination} onClose={() => setImportOpen(false)} />}
     </main>
   );
 }
