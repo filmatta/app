@@ -14,11 +14,22 @@ import {
   type WriterNarrativeLink,
 } from "./setup-payoff.ts";
 import type { WriterPulseMilestone, WriterPulseZone } from "./narrative-pulse.ts";
+import type { WriterIdeaContext } from "./ideas.ts";
 
 export const WRITER_GUIDED_WRITING_VERSION = "guided-writing-v1" as const;
 export const WRITER_GUIDED_WRITING_MODEL = "gpt-5.6-terra" as const;
 
 export type WriterGuidedWritingScope = "scene" | "document";
+export type WriterGuidedSelection = {
+  blockIds: string[];
+  sceneIds: string[];
+  text: string;
+  from: number;
+  to: number;
+  sourceRevision: number;
+  documentHash: string;
+};
+type WriterGuidedSelectionInput = WriterGuidedSelection | { blockId: string; text: string };
 export type WriterGuidedReferenceType = "scene" | "observation" | "ooc" | "setup" | "payoff" | "pulse";
 
 export type WriterGuidedReference = {
@@ -312,12 +323,16 @@ export function writerGuidedWritingProviderInput(
   context: WriterGuidedWritingContext,
   history: WriterGuidedWritingMessage[],
   question: string,
-  selection?: { blockId: string; text: string } | null,
+  selection?: WriterGuidedSelectionInput | null,
+  ideaContext?: WriterIdeaContext | null,
 ) {
+  const providerContext = selection && "sceneIds" in selection
+    ? guidedWritingSelectionContext(context, selection.sceneIds)
+    : context;
   return JSON.stringify({
     context: {
-      ...context,
-      references: context.references.map(({ referenceId, type, targetId, sceneId, blockId, label, status }) => ({
+      ...providerContext,
+      references: providerContext.references.map(({ referenceId, type, targetId, sceneId, blockId, label, status }) => ({
         referenceId, type, targetId, sceneId, blockId, label, status,
       })),
     },
@@ -325,8 +340,56 @@ export function writerGuidedWritingProviderInput(
       ? { role: "user", content: message.content }
       : { role: "assistant", response: message.response }),
     currentQuestion: question,
-    selection: selection?.text.trim() ? { blockId: selection.blockId, text: selection.text.trim().slice(0, 1_200) } : null,
+    selectedIdea: ideaContext ?? null,
+    selection: selection?.text.trim() ? ("blockIds" in selection ? {
+      blockIds: selection.blockIds,
+      sceneIds: selection.sceneIds,
+      text: selection.text.trim(),
+      from: selection.from,
+      to: selection.to,
+      sourceRevision: selection.sourceRevision,
+      documentHash: selection.documentHash,
+    } : { blockIds: [selection.blockId], text: selection.text.trim() }) : null,
   });
+}
+
+function guidedWritingSelectionContext(
+  context: WriterGuidedWritingContext,
+  selectedSceneIds: string[],
+): WriterGuidedWritingContext {
+  const selected = new Set(selectedSceneIds);
+  const included = new Set<string>();
+  for (const sceneId of selectedSceneIds) {
+    const index = context.scenes.findIndex((scene) => scene.sceneId === sceneId);
+    if (index < 0) continue;
+    included.add(sceneId);
+    if (index > 0) included.add(context.scenes[index - 1].sceneId);
+    if (index + 1 < context.scenes.length) included.add(context.scenes[index + 1].sceneId);
+  }
+  const scenes = context.scenes
+    .filter((scene) => included.has(scene.sceneId))
+    .map((scene) => ({ ...scene, role: selected.has(scene.sceneId) ? "focus" as const : "adjacent" as const }));
+  const narrativeElements = context.narrativeElements.filter((element) => included.has(element.sceneId));
+  const elementIds = new Set(narrativeElements.map((element) => element.id));
+  const references = context.references.filter((reference) => included.has(reference.sceneId));
+  return {
+    ...context,
+    focusSceneId: selectedSceneIds[0] ?? null,
+    scenes,
+    ooc: context.ooc.filter((item) => included.has(item.sceneId)),
+    observations: context.observations.filter((item) => included.has(item.sceneId)),
+    narrativeElements,
+    narrativeLinks: context.narrativeLinks.filter((link) => (
+      elementIds.has(link.setupElementId) && elementIds.has(link.payoffElementId)
+    )),
+    pulse: {
+      milestones: context.pulse.milestones.filter((milestone) => included.has(milestone.sceneId)),
+      zones: context.pulse.zones.filter((zone) => (
+        included.has(zone.startSceneId) || included.has(zone.endSceneId)
+      )),
+    },
+    references,
+  };
 }
 
 export function validateWriterGuidedWritingOutput(

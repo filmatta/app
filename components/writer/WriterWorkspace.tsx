@@ -9,7 +9,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
-  SCREENPLAY_KINDS,
   WRITER_SCHEMA_VERSION,
   blockText,
   canonicalWriterDocument,
@@ -75,6 +74,7 @@ import WriterImportFlow from "./WriterImportFlow";
 import WriterBreakdownPanel from "./WriterBreakdownPanel";
 import WriterAssistantNarrative from "./WriterAssistantNarrative";
 import WriterGuidedWriting from "./WriterGuidedWriting";
+import WriterSelectionAnalysisDialog from "./WriterSelectionAnalysisDialog";
 import WriterObservationsPanel, { type WriterObservationsSection } from "./WriterObservationsPanel";
 import WriterPanelResizeHandle from "./WriterPanelResizeHandle";
 import WriterHorizontalResizeHandle from "./WriterHorizontalResizeHandle";
@@ -103,7 +103,6 @@ import {
   applyWriterAutoFormat,
   changeWriterBlockKind,
   findWriterBlockById,
-  selectionSpansWriterBlocks,
   writerSelectionTargetIsCurrent,
   writerSceneForSelection,
   duplicateWriterScene,
@@ -144,7 +143,7 @@ import {
 } from "@/lib/writer/format-baseline";
 import { createWriterCheckpoint, writerCheckpointLabel } from "@/lib/writer/checkpoints";
 import type { WriterSearchResult, WriterSearchScope } from "@/lib/writer/search";
-import type { WriterIdea } from "@/lib/writer/ideas";
+import type { WriterIdea, WriterIdeaContext } from "@/lib/writer/ideas";
 import {
   isWriterTextInputKey,
   loadWriterTypewriterSoundPreference,
@@ -195,7 +194,7 @@ import type { WriterNarrativeObservation } from "@/lib/writer/script-assistant";
 import { useWriterSetupPayoff } from "@/lib/writer/setup-payoff-client";
 import type { WriterNarrativeElement } from "@/lib/writer/setup-payoff";
 import { useWriterGuidedWriting } from "@/lib/writer/guided-writing-client";
-import type { WriterGuidedReference } from "@/lib/writer/guided-writing";
+import type { WriterGuidedReference, WriterGuidedSelection } from "@/lib/writer/guided-writing";
 
 type ScriptInput = {
   id: string;
@@ -310,14 +309,15 @@ export default function WriterWorkspace({
   const [timelineMounted, setTimelineMounted] = useState(false);
   const [timelineRefreshToken, setTimelineRefreshToken] = useState(0);
   const [timelineRequestedScene, setTimelineRequestedScene] = useState<string | null>(null);
-  const [timelineRequestedView, setTimelineRequestedView] = useState<"timeline" | "pulse" | null>(null);
+  const [timelineRequestedView, setTimelineRequestedView] = useState<"timeline" | "pulse" | "ideas" | null>(null);
+  const [timelineRequestedViewToken, setTimelineRequestedViewToken] = useState(0);
   const [timelineExpanded, setTimelineExpanded] = useState(false);
   const [charactersCollapsed, setCharactersCollapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchReplaceMode, setSearchReplaceMode] = useState(false);
-  const [ideasOpen, setIdeasOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
-  const [guidedIdeaQuestion, setGuidedIdeaQuestion] = useState("");
+  const [guidedIdeaContext, setGuidedIdeaContext] = useState<WriterIdeaContext | null>(null);
+  const [guidedSelection, setGuidedSelection] = useState<WriterGuidedSelection | null>(null);
   const [formatBaseline, setFormatBaseline] = useState<WriterFormatBaseline | null>(null);
   const [typewriterSoundEnabled, setTypewriterSoundEnabled] = useState(false);
   const [autocomplete, setAutocomplete] = useState<WriterAutocompleteState | null>(null);
@@ -338,6 +338,8 @@ export default function WriterWorkspace({
   const appearanceRootRef = useRef<HTMLDivElement>(null);
   const appearanceButtonRef = useRef<HTMLButtonElement>(null);
   const paperRef = useRef<HTMLDivElement>(null);
+  const activeSceneRef = useRef<string | null>(null);
+  const navigationFrameRef = useRef<number | null>(null);
   const nativeFullscreenRef = useRef(false);
   const pointerRef = useRef<{ type: string; at: number }>({ type: "mouse", at: 0 });
   const activeWriterSelectionRef = useRef<WriterSelectionTarget | null>(null);
@@ -747,14 +749,20 @@ export default function WriterWorkspace({
     },
     onSelectionUpdate: ({ editor: current }) => {
       if (current.isFocused) activeWriterSelectionRef.current = captureWriterSelectionTarget(current.state);
-      const parent = current.state.selection.$from.parent;
-      setActiveScene(findSceneForPosition(current.getJSON() as unknown as WriterDocument, parent.attrs.id));
+      const parent = current.state.selection.$head.parent;
+      const nextScene = findSceneForPosition(documentRef.current, parent.attrs.id);
+      if (nextScene !== activeSceneRef.current) {
+        activeSceneRef.current = nextScene;
+        setActiveScene(nextScene);
+      }
       syncAutocomplete(current);
     },
     onFocus: ({ editor: current }) => {
       activeWriterSelectionRef.current = captureWriterSelectionTarget(current.state);
     },
   });
+
+  useEffect(() => { activeSceneRef.current = activeScene; }, [activeScene]);
 
   useEffect(() => {
     if (!editor) return;
@@ -1238,6 +1246,29 @@ export default function WriterWorkspace({
       if (!editor.isDestroyed) setWriterImportReviewDecorations(editor, [], () => undefined);
     };
   }, [editor, focusMode, importReviewDecorationSignature, openFormatObservation, ready, showImportReviewHighlights]);
+  const revealWriterBlock = useCallback((position: number) => {
+    if (!editor || editor.isDestroyed) return;
+    if (navigationFrameRef.current !== null) cancelAnimationFrame(navigationFrameRef.current);
+    navigationFrameRef.current = requestAnimationFrame(() => {
+      navigationFrameRef.current = null;
+      const paper = paperRef.current;
+      const dom = editor.view.nodeDOM(position);
+      const element = dom instanceof HTMLElement ? dom : dom?.parentElement;
+      if (!paper || !element || !paper.contains(element)) return;
+      const paperRect = paper.getBoundingClientRect();
+      const targetRect = element.getBoundingClientRect();
+      const margin = Math.min(56, Math.max(20, paper.clientHeight * .12));
+      const usefulHeight = Math.max(1, paper.clientHeight - margin * 2);
+      const targetTop = paper.scrollTop + targetRect.top - paperRect.top;
+      const nextTop = targetRect.height > usefulHeight
+        ? targetTop - margin
+        : targetTop - Math.max(0, (paper.clientHeight - targetRect.height) / 2);
+      paper.scrollTo({
+        top: Math.max(0, nextTop),
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      });
+    });
+  }, [editor]);
   const navigateToScene = useCallback((id: string, requireSceneHeading = false, highlight = false, record = true) => {
     if (!editor) return false;
     const target = findWriterBlockById(editor, id);
@@ -1249,12 +1280,13 @@ export default function WriterWorkspace({
       if (record && currentScene && currentScene !== id) recordCurrentNavigation();
       editor.view.dispatch(
         editor.state.tr
-          .setSelection(TextSelection.create(editor.state.doc, target.position + 1))
-          .scrollIntoView(),
+          .setSelection(TextSelection.create(editor.state.doc, target.position + 1)),
       );
-      editor.view.focus();
       setActiveScene(id);
+      activeSceneRef.current = id;
       setMobileSidebar(null);
+      setTimelineExpanded(false);
+      revealWriterBlock(target.position);
       if (highlight) {
         clearSceneHighlight();
         setWriterSceneHighlight(editor, id);
@@ -1263,7 +1295,7 @@ export default function WriterWorkspace({
       return true;
     }
     return false;
-  }, [clearSceneHighlight, editor, recordCurrentNavigation]);
+  }, [clearSceneHighlight, editor, recordCurrentNavigation, revealWriterBlock]);
 
   const navigateToWriterReference = useCallback((reference: {
     sceneId: string;
@@ -1271,27 +1303,30 @@ export default function WriterWorkspace({
     fromOffset?: number;
     toOffset?: number;
   }) => {
-    if (!editor) return false;
-    const target = findWriterBlockById(editor, reference.blockId ?? reference.sceneId)
-      ?? findWriterBlockById(editor, reference.sceneId);
-    if (!target) return false;
+    if (!editor) return "missing" as const;
+    const requested = reference.blockId ? findWriterBlockById(editor, reference.blockId) : null;
+    const scene = findWriterBlockById(editor, reference.sceneId);
+    const target = requested ?? scene;
+    if (!target || !scene || scene.kind !== "sceneHeading") return "missing" as const;
+    const resolvedScene = findSceneForPosition(documentRef.current, target.id);
+    if (target.id !== reference.sceneId && resolvedScene !== reference.sceneId) return "missing" as const;
     recordCurrentNavigation();
     const start = target.position + 1 + Math.max(0, reference.fromOffset ?? 0);
     const maximum = target.position + 1 + target.text.length;
     const from = Math.min(start, maximum);
-    const to = Math.min(maximum, Math.max(from, target.position + 1 + (reference.toOffset ?? reference.fromOffset ?? 0)));
     editor.view.dispatch(editor.state.tr
-      .setSelection(TextSelection.create(editor.state.doc, from, to))
-      .scrollIntoView());
-    editor.view.focus();
+      .setSelection(TextSelection.create(editor.state.doc, from)));
     setActiveScene(reference.sceneId);
+    activeSceneRef.current = reference.sceneId;
     setMobileSidebar(null);
+    setTimelineExpanded(false);
+    revealWriterBlock(target.position);
     clearSceneHighlight();
     setWriterSceneHighlight(editor, target.id);
     highlightTimeoutRef.current = window.setTimeout(clearSceneHighlight, 1_800);
     if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
-    return true;
-  }, [clearSceneHighlight, editor, recordCurrentNavigation]);
+    return requested || !reference.blockId ? "exact" as const : "scene-fallback" as const;
+  }, [clearSceneHighlight, editor, recordCurrentNavigation, revealWriterBlock]);
 
   const navigateBack = useCallback(() => {
     if (!editor) return;
@@ -1313,6 +1348,9 @@ export default function WriterWorkspace({
   }, [editor]);
 
   useEffect(() => clearSceneHighlight, [clearSceneHighlight, script.id]);
+  useEffect(() => () => {
+    if (navigationFrameRef.current !== null) cancelAnimationFrame(navigationFrameRef.current);
+  }, []);
   useEffect(() => () => {
     if (toastTimeoutRef.current !== null) window.clearTimeout(toastTimeoutRef.current);
   }, []);
@@ -1467,7 +1505,6 @@ export default function WriterWorkspace({
       if (shortcutsOpen) return setShortcutsOpen(false);
       if (appearanceOpen) return setAppearanceOpen(false);
       if (searchOpen) return setSearchOpen(false);
-      if (ideasOpen) return setIdeasOpen(false);
       if (versionsOpen) return setVersionsOpen(false);
       if (autoFormatPlan) return closeAutoFormat();
       if (pasteAssist) return setPasteAssist(null);
@@ -1497,7 +1534,7 @@ export default function WriterWorkspace({
     };
     window.addEventListener("keydown", closeSurfaceOrFocus);
     return () => window.removeEventListener("keydown", closeSurfaceOrFocus);
-  }, [appearanceOpen, autoFormatPlan, contextMenu, exportMenu, feedback, focusMode, ideasOpen, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pasteAssist, pdfExportOpen, restoreTimelineAfterFocus, searchOpen, shortcutsOpen, shotlistBusy, shotlistModalOpen, timelineExpanded, timelineOpen, versionsOpen]);
+  }, [appearanceOpen, autoFormatPlan, contextMenu, exportMenu, feedback, focusMode, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pasteAssist, pdfExportOpen, restoreTimelineAfterFocus, searchOpen, shortcutsOpen, shotlistBusy, shotlistModalOpen, timelineExpanded, timelineOpen, versionsOpen]);
 
   useEffect(() => {
     if (!editor || !ready || deepLinkHandledRef.current) return;
@@ -1505,7 +1542,7 @@ export default function WriterWorkspace({
     const sceneId = new URLSearchParams(window.location.search).get("scene");
     if (!sceneId) return;
     const frame = requestAnimationFrame(() => {
-      if (!navigateToScene(sceneId, true)) setFeedback("La escena enlazada ya no existe o dejó de ser un encabezado.");
+      if (!navigateToScene(sceneId, true, true)) setFeedback("La escena enlazada ya no existe o dejó de ser un encabezado.");
     });
     return () => cancelAnimationFrame(frame);
   }, [editor, navigateToScene, ready]);
@@ -1647,7 +1684,7 @@ export default function WriterWorkspace({
     router.push(`/writer/${data.script.id}`);
   }
 
-  function openTimeline(sceneId: string | null = null, view: "timeline" | "pulse" | null = null) {
+  function openTimeline(sceneId: string | null = null, view: "timeline" | "pulse" | "ideas" | null = null) {
     setExportMenu(false);
     setContextMenu(null);
     setInsertState(null);
@@ -1656,9 +1693,10 @@ export default function WriterWorkspace({
     setMobileMoreOpen(false);
     setTimelineRequestedScene(sceneId);
     setTimelineRequestedView(view);
+    setTimelineRequestedViewToken((value) => value + 1);
     setTimelineMounted(true);
     timelineRequestedRevisionRef.current = confirmedTimelineRevisionRef.current;
-    setTimelineRefreshToken((value) => value + 1);
+    if (view !== "ideas") setTimelineRefreshToken((value) => value + 1);
     timelineOpenRef.current = true;
     setTimelineOpen(true);
     if (focusMode) {
@@ -1687,6 +1725,36 @@ export default function WriterWorkspace({
     setObservationsOpen(true);
   }
 
+  function openSelectionAnalysis(target: WriterSelectionTarget) {
+    setContextMenu(null);
+    const text = target.document.textBetween(target.from, target.to, "\n").trim();
+    if (!text) return setFeedback("Selecciona un fragmento con texto para analizarlo.");
+    if (text.length > 6_000) return setFeedback("La selección supera 6,000 caracteres. Reduce el fragmento; no lo truncaremos en silencio.");
+    if (!guidedWriting.documentHash) return setFeedback("Espera a que Writer termine de preparar la revisión actual.");
+    const blockIds: string[] = [];
+    const sceneIds: string[] = [];
+    let currentSceneId: string | null = null;
+    target.document.forEach((node, position) => {
+      if (node.type.name !== "screenplayBlock") return;
+      const id = String(node.attrs.id ?? "");
+      if (node.attrs.kind === "sceneHeading") currentSceneId = id;
+      const overlaps = position + node.nodeSize > target.from && position < target.to;
+      if (!overlaps || !id) return;
+      blockIds.push(id);
+      if (currentSceneId && !sceneIds.includes(currentSceneId)) sceneIds.push(currentSceneId);
+    });
+    if (!blockIds.length || !sceneIds.length) return setFeedback("La selección debe pertenecer a una escena del guion.");
+    setGuidedSelection({
+      blockIds,
+      sceneIds,
+      text,
+      from: target.from,
+      to: target.to,
+      sourceRevision: saveStateRef.current.revision,
+      documentHash: guidedWriting.documentHash,
+    });
+  }
+
   async function analyzeSetupPayoff() {
     setContextMenu(null);
     setObservationsSection("setupPayoff");
@@ -1702,13 +1770,7 @@ export default function WriterWorkspace({
   async function sendGuidedWriting(question: string) {
     try {
       await ensureCurrentDocumentSaved();
-      let selection: { blockId: string; text: string } | null = null;
-      if (editor && !editor.state.selection.empty && !selectionSpansWriterBlocks(editor.state)) {
-        const target = currentWriterBlock(editor);
-        const text = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, " ").trim();
-        if (target && text) selection = { blockId: target.id, text: text.slice(0, 1_200) };
-      }
-      return await guidedWriting.send(question, selection);
+      return await guidedWriting.send(question, null, guidedIdeaContext);
     } catch (cause) {
       guidedWriting.setFeedback(cause instanceof Error ? cause.message : "No pudimos responder ahora.");
       return false;
@@ -1860,7 +1922,7 @@ export default function WriterWorkspace({
   function viewNarrativeObservation(observation: WriterNarrativeObservation) {
     if (!activeScene) return;
     const blockId = observation.evidence[0]?.blockId ?? activeScene;
-    if (!navigateToWriterReference({ sceneId: activeScene, blockId })) {
+    if (navigateToWriterReference({ sceneId: activeScene, blockId }) === "missing") {
       setFeedback("La evidencia ya no existe en la escena actual.");
       return;
     }
@@ -1868,8 +1930,11 @@ export default function WriterWorkspace({
   }
 
   function viewSetupPayoffElement(element: WriterNarrativeElement) {
-    if (!navigateToWriterReference({ sceneId: element.sceneId, blockId: element.blockId })) {
+    const navigation = navigateToWriterReference({ sceneId: element.sceneId, blockId: element.blockId });
+    if (navigation === "missing") {
       setFeedback("La escena vinculada ya no existe. La relación se conserva para revisión.");
+    } else if (navigation === "scene-fallback") {
+      setFeedback("El fragmento cambió; mostrando la escena.");
     }
   }
 
@@ -1890,12 +1955,14 @@ export default function WriterWorkspace({
       return;
     }
     if (reference.type === "scene") {
-      if (!navigateToWriterReference({ sceneId: reference.sceneId })) setFeedback("La escena referenciada ya no existe.");
+      if (navigateToWriterReference({ sceneId: reference.sceneId }) === "missing") setFeedback("La escena referenciada ya no existe.");
     } else {
-      if (!navigateToWriterReference({ sceneId: reference.sceneId, blockId: reference.blockId })) {
+      const navigation = navigateToWriterReference({ sceneId: reference.sceneId, blockId: reference.blockId });
+      if (navigation === "missing") {
         setFeedback("La evidencia referenciada ya no existe.");
         return;
       }
+      if (navigation === "scene-fallback") setFeedback("El fragmento cambió; mostrando la escena.");
       setObservationsSection("assistant");
       if (reference.type === "observation") setSelectedAssistantObservationId(reference.targetId);
     }
@@ -1914,12 +1981,12 @@ export default function WriterWorkspace({
     }
     const sceneId = observation.sceneId
       ?? findSceneForPosition(editor.getJSON() as unknown as WriterDocument, observation.blockId);
-    if (!sceneId || !navigateToWriterReference({
+    if (!sceneId || navigateToWriterReference({
       sceneId,
       blockId: observation.blockId,
       fromOffset: observation.start,
       toOffset: observation.end,
-    })) setFeedback("Este fragmento cambió desde la revisión.");
+    }) === "missing") setFeedback("Este fragmento cambió desde la revisión.");
     if (window.matchMedia("(max-width: 900px)").matches) setObservationsOpen(false);
   }
 
@@ -2186,12 +2253,19 @@ export default function WriterWorkspace({
 
   function navigateSearchResult(result: WriterSearchResult) {
     setTimelineExpanded(false);
-    if (!result.sceneId || !navigateToWriterReference({
+    if (!result.sceneId) {
+      setFeedback("La referencia no tiene una escena válida en el documento actual.");
+      return;
+    }
+    const navigation = navigateToWriterReference({
       sceneId: result.sceneId,
       blockId: result.blockId,
       fromOffset: result.start,
       toOffset: result.end,
-    })) setFeedback("El fragmento ya no existe en el documento actual.");
+    });
+    if (navigation === "missing") setFeedback("La referencia ya no está disponible en el documento actual.");
+    else if (navigation === "scene-fallback") setFeedback("El fragmento cambió; mostrando la escena.");
+    else setFeedback(null);
   }
 
   function replaceSearchResult(result: WriterSearchResult, replacement: string) {
@@ -2255,9 +2329,17 @@ export default function WriterWorkspace({
     persistFormatBaseline(nextBaseline);
   }
 
-  function thinkTogetherFromIdea(idea: WriterIdea, scope: WriterSearchScope) {
-    setIdeasOpen(false);
-    setGuidedIdeaQuestion(`${idea.title}: ${idea.direction} Consecuencia posible: ${idea.consequence}`);
+  function thinkTogetherFromIdea(idea: WriterIdea, scope: WriterSearchScope, sceneId: string | null, sourceRevision: number) {
+    setGuidedIdeaContext({
+      ideaId: idea.id,
+      title: idea.title,
+      direction: idea.direction,
+      consequence: idea.consequence,
+      category: idea.category,
+      scope,
+      sceneId: scope === "scene" ? sceneId : null,
+      sourceRevision,
+    });
     guidedWriting.setScope(scope);
     setObservationsSection("guided");
     setObservationsOpen(true);
@@ -2421,7 +2503,7 @@ export default function WriterWorkspace({
             ref={observationsButtonRef}
             className="writer-observations-open-button"
             type="button"
-            onClick={() => { setSelectedObservationBlockId(null); setObservationsSection("review"); setRightSidebarVisible(true); }}
+            onClick={() => { setSelectedObservationBlockId(null); setRightSidebarVisible(true); }}
             aria-expanded={observationsOpen}
           ><SmartFeatureIndicator label={`Asistente${pendingObservationCount ? ` (${pendingObservationCount})` : ""}`} /></button>
           <button
@@ -2472,7 +2554,7 @@ export default function WriterWorkspace({
             <div className="writer-mobile-nav-tabs" role="group" aria-label="Secciones de Writer">
               <button type="button" onClick={() => { setMobileSidebar("scenes"); setMobileNavigateOpen(false); }}>Escenas</button>
               <button type="button" onClick={() => { setMobileSidebar("characters"); setMobileNavigateOpen(false); }}>Personajes</button>
-              <button ref={mobileObservationsButtonRef} type="button" onClick={() => { observationsExplicitRef.current = true; setSelectedObservationBlockId(null); setObservationsSection("review"); setObservationsOpen(true); setMobileNavigateOpen(false); }}><SmartFeatureIndicator label={`Asistente${pendingObservationCount ? ` (${pendingObservationCount})` : ""}`} /></button>
+              <button ref={mobileObservationsButtonRef} type="button" onClick={() => { observationsExplicitRef.current = true; setSelectedObservationBlockId(null); setObservationsOpen(true); setMobileNavigateOpen(false); }}><SmartFeatureIndicator label={`Asistente${pendingObservationCount ? ` (${pendingObservationCount})` : ""}`} /></button>
               <button type="button" disabled={!initialTimeline.ok} onClick={() => openTimeline()}>Timeline</button>
             </div>
           </div>
@@ -2484,7 +2566,7 @@ export default function WriterWorkspace({
             <button type="button" onClick={() => { setMobileMoreOpen(false); setAppearanceOpen(true); }}>Apariencia y atajos</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document"); }}><SmartFeatureIndicator label="FORMATO AUTOMÁTICO" /></button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setSearchReplaceMode(false); setSearchOpen(true); }}><WriterIcon name="search" /> Buscar</button>
-            <button type="button" onClick={() => { setMobileMoreOpen(false); setIdeasOpen(true); }}><WriterIcon name="ideas" /> Ideas</button>
+            <button type="button" onClick={() => { setMobileMoreOpen(false); openTimeline(null, "ideas"); }}><WriterIcon name="ideas" /> Ideas</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setVersionsOpen(true); }}><WriterIcon name="history" /> Versiones</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); toggleTypewriterSound(); }}><WriterIcon name={typewriterSoundEnabled ? "soundOn" : "soundOff"} /> {typewriterSoundEnabled ? "Desactivar sonido" : "Activar sonido"}</button>
             <button type="button" onClick={() => { setMobileMoreOpen(false); setPdfExportOpen(true); }}>Exportar PDF</button>
@@ -2673,15 +2755,10 @@ export default function WriterWorkspace({
           words={words}
           onAutoFormat={() => startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document")}
           onSearch={() => { setSearchReplaceMode(false); setSearchOpen(true); }}
-          onIdeas={() => setIdeasOpen(true)}
+          onIdeas={() => openTimeline(null, "ideas")}
           soundEnabled={typewriterSoundEnabled}
           onToggleSound={toggleTypewriterSound}
           onInsert={(next) => {
-            setExportMenu(false);
-            setContextMenu(null);
-            setInsertState(next);
-          }}
-          onConvertSceneHeading={(next) => {
             setExportMenu(false);
             setContextMenu(null);
             setInsertState(next);
@@ -2772,10 +2849,41 @@ export default function WriterWorkspace({
           }}
           onTimeline={(sceneId) => openTimeline(sceneId)}
           onAnalyzeScene={(sceneId) => void analyzeSceneFromMenu(sceneId)}
+          onAnalyzeSelection={openSelectionAnalysis}
           onAssistant={openAssistantForScene}
           onFeedback={setFeedback}
         />
       )}
+      {guidedSelection && <WriterSelectionAnalysisDialog
+        selection={guidedSelection}
+        currentDocumentHash={guidedWriting.documentHash}
+        busy={guidedWriting.sending}
+        onAnalyze={async (question) => {
+          try {
+            await ensureCurrentDocumentSaved();
+            if (!guidedWriting.documentHash || guidedWriting.documentHash !== guidedSelection.documentHash) {
+              guidedWriting.setFeedback("El guion cambió desde esta selección. Selecciona el fragmento de nuevo.");
+              return null;
+            }
+            return await guidedWriting.analyzeSelection({
+              ...guidedSelection,
+              sourceRevision: saveStateRef.current.revision,
+              documentHash: guidedWriting.documentHash,
+            }, question);
+          } catch (cause) {
+            guidedWriting.setFeedback(cause instanceof Error ? cause.message : "No pudimos analizar la selección.");
+            return null;
+          }
+        }}
+        onCancel={guidedWriting.cancel}
+        onClose={() => setGuidedSelection(null)}
+        onView={() => {
+          if (!editor || guidedWriting.documentHash !== guidedSelection.documentHash) return;
+          editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, guidedSelection.from, guidedSelection.to)).scrollIntoView());
+          editor.commands.focus();
+          setGuidedSelection(null);
+        }}
+      />}
       {editor && insertState && (
         <WriterInsertPanel editor={editor} state={insertState} onClose={() => setInsertState(null)} />
       )}
@@ -2803,6 +2911,7 @@ export default function WriterWorkspace({
             active={timelineOpen}
             requestedSceneId={timelineRequestedScene}
             requestedView={timelineRequestedView}
+            requestedViewToken={timelineRequestedViewToken}
             timelineReadinessNotice={readinessNotice("timeline")}
             pulseReadinessNotice={readinessNotice("pulse")}
             pulseAvailable={canUseStructuredFeature(readiness, "pulse").available}
@@ -2814,6 +2923,16 @@ export default function WriterWorkspace({
             onClose={closeTimeline}
             expanded={timelineExpanded}
             onToggleExpanded={() => setTimelineExpanded((value) => !value)}
+            ideasPanel={(
+              <WriterIdeasPanel
+                scriptId={script.id}
+                activeSceneId={activeScene}
+                confirmedRevision={saveState.revision}
+                onEnsureCurrentSaved={ensureCurrentDocumentSaved}
+                onNavigate={navigateSearchResult}
+                onThinkTogether={thinkTogetherFromIdea}
+              />
+            )}
             onGoToWriter={(sceneId, options) => {
               if (!options?.preservePanel) setTimelineExpanded(false);
               if (!editor) {
@@ -2821,7 +2940,7 @@ export default function WriterWorkspace({
                 return;
               }
               const target = findWriterBlockById(editor, sceneId);
-              if (!target || target.kind !== "sceneHeading" || !navigateToWriterReference({ sceneId })) {
+              if (!target || target.kind !== "sceneHeading" || navigateToWriterReference({ sceneId }) === "missing") {
                 setFeedback("Timeline está desactualizado: la escena ya no existe o dejó de ser un encabezado.");
                 return;
               }
@@ -2848,14 +2967,6 @@ export default function WriterWorkspace({
         onNavigate={navigateSearchResult}
         onReplace={replaceSearchResult}
         onReplaceAll={replaceAllSearchResults}
-      />}
-
-      {ideasOpen && <WriterIdeasPanel
-        scriptId={script.id}
-        activeSceneId={activeScene}
-        onClose={() => setIdeasOpen(false)}
-        onNavigate={navigateSearchResult}
-        onThinkTogether={thinkTogetherFromIdea}
       />}
 
       {versionsOpen && <WriterVersionsPanel
@@ -2974,7 +3085,6 @@ export default function WriterWorkspace({
         )}
         guidedWritingPanel={(
           <WriterGuidedWriting
-            key={guidedIdeaQuestion}
             scope={guidedWriting.scope}
             sceneNumber={activeScene ? (scenes.find((scene) => scene.id === activeScene)?.order ?? null) : null}
             sceneTitle={activeScene ? (structuralMetadata.sceneNicknames[activeScene]
@@ -2988,7 +3098,8 @@ export default function WriterWorkspace({
             onSend={sendGuidedWriting}
             onCancel={guidedWriting.cancel}
             onReference={viewGuidedReference}
-            suggestedQuestion={guidedIdeaQuestion}
+            ideaContext={guidedIdeaContext}
+            onClearIdeaContext={() => setGuidedIdeaContext(null)}
           />
         )}
         footer={<button ref={shotlistTriggerRef} className="writer-shotlist-footer-button" type="button" disabled={!ready || shotlistBusy} onClick={openShotlistFlow}><SmartFeatureIndicator label={shotlistBusy ? "GUARDANDO…" : shotlists.length ? "ABRIR SHOTLIST" : "GENERAR SHOTLIST"} /></button>}
@@ -3141,7 +3252,6 @@ function WriterToolbar({
   soundEnabled,
   onToggleSound,
   onInsert,
-  onConvertSceneHeading,
 }: {
   editor: Editor | null;
   words: number;
@@ -3151,7 +3261,6 @@ function WriterToolbar({
   soundEnabled: boolean;
   onToggleSound: () => void;
   onInsert: (state: WriterInsertState) => void;
-  onConvertSceneHeading: (state: WriterInsertState) => void;
 }) {
   const [formatOpen, setFormatOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
@@ -3172,48 +3281,17 @@ function WriterToolbar({
   const state = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
-      kind: (current?.getAttributes("screenplayBlock").kind ?? "action") as ScreenplayKind,
       bold: current?.isActive("bold") ?? false,
       italic: current?.isActive("italic") ?? false,
       underline: current?.isActive("underline") ?? false,
       canUndo: current?.can().chain().undo().run() ?? false,
       canRedo: current?.can().chain().redo().run() ?? false,
-      multipleBlocks: current ? selectionSpansWriterBlocks(current.state) : false,
     }),
   });
   if (!editor || !state) return <div className="writer-toolbar" aria-hidden="true" />;
   const preserveSelection = (event: React.MouseEvent) => event.preventDefault();
   return (
     <div ref={toolbarRef} className="writer-toolbar" role="toolbar" aria-label="Formato del guion" data-toolbar-mode={toolbarMode}>
-      <select
-        aria-label="Tipo de bloque"
-        value={state.kind}
-        onChange={(event) => {
-          const kind = event.target.value as ScreenplayKind;
-          const target = currentWriterBlock(editor);
-          if (!target) return;
-          if (kind === "sceneHeading") {
-            if (state.multipleBlocks) return;
-            const rect = event.currentTarget.getBoundingClientRect();
-            onConvertSceneHeading({
-              targetId: target.id,
-              x: rect.left,
-              y: rect.bottom + 6,
-              view: "scene",
-              intent: "convert",
-              expectedKind: target.kind,
-              expectedText: target.text,
-              selectionFrom: editor.state.selection.from,
-              selectionTo: editor.state.selection.to,
-              documentAtOpen: editor.state.doc,
-            });
-            return;
-          }
-          editor.chain().focus().updateAttributes("screenplayBlock", { kind }).run();
-        }}
-      >
-        {SCREENPLAY_KINDS.map((kind) => <option key={kind} value={kind}>{WRITER_KIND_LABELS[kind]}</option>)}
-      </select>
       <button
         className="writer-insert-button"
         type="button"

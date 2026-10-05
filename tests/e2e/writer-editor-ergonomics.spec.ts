@@ -87,15 +87,36 @@ test("150-scene Writer keeps independent navigation, expandable analysis and loc
 
 test("Ideas, Replace All checkpoints and mobile geometry remain safe", async ({ page, context }) => {
   await openLongWriter(page, context);
+  let ideasRequests = 0;
+  await page.route(`**/api/writer/scripts/${scriptId}/ideas`, async (route) => {
+    ideasRequests += 1;
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    expect(body.question).toBe("Aumentar el conflicto");
+    expect(body.category).toBe("Conflicto");
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ideas: [{
+        id: "idea-1",
+        title: "Elevar el costo de la decisión",
+        direction: "Haz que la decisión enfrente dos valores incompatibles.",
+        consequence: "La escena gana tensión sin añadir diálogo explicativo.",
+        category: "Conflicto",
+        references: [],
+      }],
+      sourceRevision: 7,
+      metrics: { latencyMs: 120, chunks: 150, costMicrousd: 1200 },
+    }) });
+  });
   await page.getByRole("button", { name: /Ideas/ }).first().click();
-  const ideas = page.getByRole("dialog", { name: "Ideas" });
+  const ideas = page.locator(".writer-ideas-panel");
   await ideas.getByLabel("¿Qué quieres explorar?").fill("Aumentar el conflicto");
   await ideas.getByRole("button", { name: "Conflicto" }).click();
-  await ideas.getByRole("button", { name: "💡 Explorar direcciones" }).click();
-  await expect(ideas.locator(".writer-idea-results article")).toHaveCount(5);
-  await expect(ideas).toContainText("OpenAI 0 llamadas");
+  await ideas.getByRole("button", { name: "Explorar direcciones" }).click();
+  await expect(ideas.locator(".writer-idea-results article")).toHaveCount(1);
+  expect(ideasRequests).toBe(1);
   await ideas.getByRole("button", { name: "Pensarlo juntos →" }).first().click();
-  await expect(page.locator(".writer-observations-panel").getByLabel("Cuéntame qué decisión estás intentando tomar.")).toHaveValue(/Elevar el costo de la decisión/u);
+  const assistant = page.locator(".writer-observations-panel");
+  await expect(assistant.getByText("Elevar el costo de la decisión")).toBeVisible();
+  await expect(assistant.getByLabel("Cuéntame qué decisión estás intentando tomar.")).toHaveValue("");
 
   await page.keyboard.press("Control+h");
   const search = page.getByRole("dialog", { name: "Buscar en Writer" });
@@ -219,20 +240,20 @@ test("desktop panel toggles and horizontal heights persist, reset and restore ar
   await page.getByRole("button", { name: "Mostrar Asistente" }).click();
   const characters = page.getByRole("separator", { name: "Cambiar altura del panel de personajes" });
   const timeline = page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" });
-  await expect(characters).toHaveAttribute("aria-valuenow", "360");
+  await expect(characters).toHaveAttribute("aria-valuenow", "440");
   await expect(timeline).toHaveAttribute("aria-valuenow", "260");
   await characters.focus();
   await page.keyboard.press("ArrowUp");
   await timeline.focus();
   await page.keyboard.press("ArrowDown");
-  await expect(characters).toHaveAttribute("aria-valuenow", "376");
+  await expect(characters).toHaveAttribute("aria-valuenow", "456");
   await expect(timeline).toHaveAttribute("aria-valuenow", "244");
   await page.reload();
-  await expect(page.getByRole("separator", { name: "Cambiar altura del panel de personajes" })).toHaveAttribute("aria-valuenow", "376");
+  await expect(page.getByRole("separator", { name: "Cambiar altura del panel de personajes" })).toHaveAttribute("aria-valuenow", "456");
   await expect(page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" })).toHaveAttribute("aria-valuenow", "244");
   await page.getByRole("separator", { name: "Cambiar altura del panel de personajes" }).dblclick();
   await page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" }).dblclick();
-  await expect(page.getByRole("separator", { name: "Cambiar altura del panel de personajes" })).toHaveAttribute("aria-valuenow", "360");
+  await expect(page.getByRole("separator", { name: "Cambiar altura del panel de personajes" })).toHaveAttribute("aria-valuenow", "440");
   await expect(page.getByRole("separator", { name: "Cambiar altura de Timeline y Narrative Pulse" })).toHaveAttribute("aria-valuenow", "260");
 
   const normalPaper = await page.locator(".writer-paper-sheet").boundingBox();

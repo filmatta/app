@@ -191,7 +191,7 @@ test("context menu rejects ambiguous, composing, denied, cancelled, and obsolete
   await page.keyboard.press("Shift+F10");
   menu = page.getByRole("menu", { name: "Acciones del bloque" });
   await menu.getByRole("menuitem", { name: /^Pegar/ }).click();
-  await expect(page.getByRole("status")).toContainText("No se pudo pegar");
+  await expect(page.locator(".writer-editor-feedback")).toContainText("No se pudo pegar");
   await page.keyboard.press("Escape");
 
   await page.evaluate(() => {
@@ -202,7 +202,7 @@ test("context menu rejects ambiguous, composing, denied, cancelled, and obsolete
   });
   await page.keyboard.press("Shift+F10");
   await menu.getByRole("menuitem", { name: /^Pegar/ }).click();
-  await expect(page.getByRole("status")).toContainText("No se pudo pegar");
+  await expect(page.locator(".writer-editor-feedback")).toContainText("No se pudo pegar");
   await page.keyboard.press("Escape");
 
   await page.reload();
@@ -224,7 +224,7 @@ test("context menu rejects ambiguous, composing, denied, cancelled, and obsolete
   await page.keyboard.press("Escape");
   await expect(menu).toBeHidden();
   await last.click();
-  await expect(page.getByRole("status")).toContainText("El destino cambió");
+  await expect(page.locator(".writer-editor-feedback")).toContainText("El destino cambió");
   await expect(editor).not.toContainText("OBSOLETE_PASTE");
 });
 
@@ -371,19 +371,16 @@ test("embedded Timeline reads saved revisions and navigates by stable scene id",
   await expect(panel.getByLabel("Entorno")).toHaveValue("interior");
 
   await panel.locator('[data-timeline-scene-id$="08"]').click();
-  await expect.poll(() => page.evaluate(() =>
-    window.getSelection()?.anchorNode?.parentElement?.closest("[data-block-id]")?.getAttribute("data-block-id"),
-  )).toMatch(/08$/);
+  await expect(editor).not.toBeFocused();
+  await expect(page.locator(".writer-scene-list > li").nth(1)).toHaveClass(/is-active/);
   await expect(panel).toBeVisible();
   await expect(editor.locator('[data-block-id$="08"]')).toHaveClass(/writer-scene-target-highlight/);
-  await expect.poll(() => page.evaluate(() => window.getSelection()?.isCollapsed)).toBe(true);
   fs.mkdirSync(evidence, { recursive: true });
   await page.screenshot({ path: `${evidence}/timeline-direct-navigation-1440x900.png` });
 
   await panel.locator('[data-timeline-scene-id$="01"]').click();
-  await expect.poll(() => page.evaluate(() =>
-    window.getSelection()?.anchorNode?.parentElement?.closest("[data-block-id]")?.getAttribute("data-block-id"),
-  )).toMatch(/01$/);
+  await expect(editor).not.toBeFocused();
+  await expect(page.locator(".writer-scene-list > li").first()).toHaveClass(/is-active/);
   await expect(editor.locator('[data-block-id$="01"]')).toHaveClass(/writer-scene-target-highlight/);
   await expect(editor.locator('[data-block-id$="08"]')).not.toHaveClass(/writer-scene-target-highlight/);
   await expect(editor.locator('[data-block-id$="01"]')).not.toHaveClass(/writer-scene-target-highlight/, { timeout: 3_000 });
@@ -445,9 +442,8 @@ test("standalone Timeline keeps its route, filters, details, and stable deep lin
   await expect(page.getByRole("heading", { name: "INT. ESTUDIO - DÍA", level: 2 })).toBeVisible();
   await page.getByRole("link", { name: "Ir al guion" }).click();
   await expect(page).toHaveURL(new RegExp(`/writer/${scriptId}\\?scene=.*08$`));
-  await expect.poll(() => page.evaluate(() =>
-    window.getSelection()?.anchorNode?.parentElement?.closest("[data-block-id]")?.getAttribute("data-block-id"),
-  )).toMatch(/08$/);
+  await expect(page.locator(".writer-scene-list > li").nth(1)).toHaveClass(/is-active/);
+  await expect(page.getByLabel("Editor de guion").locator('[data-block-id$="08"]')).toHaveClass(/writer-scene-target-highlight/);
 });
 
 test("late save acknowledgement survives Timeline and Focus without remounting the editor", async ({ page, context }) => {

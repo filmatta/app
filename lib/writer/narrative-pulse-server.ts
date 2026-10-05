@@ -11,6 +11,14 @@ import {
   buildWriterPulseContext, validateWriterPulseOutput, writerNarrativePulseSourceHash, writerPulseOutputSchema, writerPulseProviderInput,
   type WriterNarrativePulsePayload, type WriterNarrativePulseState, type WriterPulseMilestoneStatus, type WriterPulseMilestoneType,
 } from "./narrative-pulse";
+import {
+  classifyWriterProviderFailure,
+  logWriterProviderDiagnostic,
+  writerProviderCacheKey,
+  writerProviderLedgerErrorCode,
+  type WriterProviderFailureMetadata,
+  type WriterProviderStage,
+} from "./provider-diagnostics";
 
 const MAX_OUTPUT_TOKENS = 7_000;
 const MAX_INPUT_CHARACTERS = 180_000;
@@ -21,7 +29,7 @@ Considera amenaza/peligro, conflicto/presión, stakes/consecuencias, intensidad 
 Usa exclusivamente los sceneId recibidos y devuelve exactamente un punto por escena, en el mismo orden. Las notas y explicaciones deben ser breves, descriptivas y sin razonamiento interno. Las relaciones Setup/Payoff confirmadas son hechos; las sugeridas sólo contexto. Los cambios O-O-C son contexto, no una fórmula de intensidad.`;
 
 type Database = ReturnType<typeof createAdminClient>;
-export type WriterPulseProvider = (input: { operationId: string; requestHash: string; context: ReturnType<typeof buildWriterPulseContext>; maxOutputTokens: number; signal?: AbortSignal }) => Promise<{ result: unknown; usage: WriterSceneAnalysisUsage; latencyMs: number; requestId?: string }>;
+export type WriterPulseProvider = (input: { operationId: string; requestHash: string; cacheKey: string; context: ReturnType<typeof buildWriterPulseContext>; maxOutputTokens: number; signal?: AbortSignal }) => Promise<{ result: unknown; usage: WriterSceneAnalysisUsage; latencyMs: number; requestId?: string }>;
 
 export class WriterNarrativePulseError extends Error { constructor(readonly code: string, message: string, readonly status: number) { super(message); } }
 
@@ -40,12 +48,19 @@ export async function executeWriterNarrativePulse(
   if (scenes.length < WRITER_NARRATIVE_PULSE_MIN_SCENES) throw new WriterNarrativePulseError("not_enough_scenes", "Narrative Pulse necesita más escenas para producir una lectura útil.", 422);
   const sourceHash = await writerNarrativePulseSourceHash(validated.document);
   if (sourceHash !== request.sourceHash) throw new WriterNarrativePulseError("stale", "El guion cambió. Espera a que se guarde antes de analizarlo.", 409);
-  const context = await loadPulseContext(readDb, userId, request.scriptId, scenes);
+  const operationId = request.operationId ?? randomUUID();
+  let context: Awaited<ReturnType<typeof loadPulseContext>>;
+  try { context = await loadPulseContext(readDb, userId, request.scriptId, scenes); }
+  catch (cause) {
+    logPulseDiagnostic(operationId, "context_build", false, {
+      ...classifyWriterProviderFailure(cause, { outboundAttempted: false }), failureOrigin: "pre_provider",
+    });
+    throw cause;
+  }
   const providerInput = writerPulseProviderInput(context);
   if (providerInput.length > MAX_INPUT_CHARACTERS) throw new WriterNarrativePulseError("document_too_large", "Este guion supera el límite seguro de Narrative Pulse V1.", 413);
   const requestHash = sha256(JSON.stringify({ version: WRITER_NARRATIVE_PULSE_VERSION, model: WRITER_NARRATIVE_PULSE_MODEL, instructions: WRITER_NARRATIVE_PULSE_INSTRUCTIONS, input: providerInput }));
   const maximumCost = estimateWriterSceneAnalysisMaximumCost(countWriterSceneAnalysisTokens(`${WRITER_NARRATIVE_PULSE_INSTRUCTIONS}\n${providerInput}`), MAX_OUTPUT_TOKENS);
-  const operationId = request.operationId ?? randomUUID();
   const reserved = await rpcJson(db, "writer_reserve_narrative_pulse", {
     p_user_id: userId, p_operation_id: operationId, p_script_id: request.scriptId, p_source_hash: sourceHash,
     p_analysis_version: WRITER_NARRATIVE_PULSE_VERSION, p_model: WRITER_NARRATIVE_PULSE_MODEL, p_request_hash: requestHash,
@@ -56,31 +71,58 @@ export async function executeWriterNarrativePulse(
   if (reserved.status === "uncertain") throw new WriterNarrativePulseError("uncertain", "Una llamada anterior necesita conciliación antes de reintentarse.", 409);
   if (reserved.status !== "reserved" || typeof reserved.analysisId !== "string") throw new WriterNarrativePulseError("reservation", "No pudimos preparar el análisis.", 409);
   let response: Awaited<ReturnType<WriterPulseProvider>>;
-  try { response = await (dependencies.provider ?? openAiPulseProvider)({ operationId, requestHash, context, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: request.signal }); }
+  try { response = await (dependencies.provider ?? openAiPulseProvider)({ operationId, requestHash, cacheKey: writerProviderCacheKey("writer-pulse", userId, request.scriptId, sourceHash), context, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: request.signal }); }
   catch (cause) {
-    const ambiguous = cause instanceof ProviderFailure ? cause.ambiguous : true;
-    const usage = cause instanceof ProviderFailure ? cause.usage : emptyUsage();
-    const cost = ambiguous ? maximumCost : calculateWriterSceneAnalysisCost(usage);
-    await settle(db, userId, operationId, ambiguous ? "uncertain" : "failed", "provider_request_failed", usage, cost, 0);
+    const failure = cause instanceof ProviderFailure
+      ? cause
+      : ProviderFailure.fromUnknown(cause, request.signal?.aborted === true);
+    const usage = failure.usage ?? emptyUsage();
+    const uncertain = !failure.usageReceived && failure.outboundAttempted;
+    const cost = uncertain ? maximumCost : calculateWriterSceneAnalysisCost(usage);
+    const status = uncertain ? "uncertain" : "failed";
+    await settle(db, userId, operationId, status, writerProviderLedgerErrorCode(failure.metadata), usage, cost, failure.elapsedMs ?? 0);
+    logOperation(operationId, request.scriptId, status, failure.usage, cost, failure.elapsedMs, failure.metadata);
     throw new WriterNarrativePulseError("provider", "No pudimos analizar Narrative Pulse ahora.", 503);
   }
   let payload: WriterNarrativePulsePayload;
   try { payload = validateWriterPulseOutput(response.result, scenes); }
   catch {
     const cost = calculateWriterSceneAnalysisCost(response.usage);
+    logPulseDiagnostic(operationId, "validation", true, {
+      providerErrorCode: "provider_invalid_output",
+      providerRequestId: response.requestId ?? null,
+      failureOrigin: "validation",
+    }, response.latencyMs, true);
     await settle(db, userId, operationId, "failed", "provider_invalid_output", response.usage, cost, response.latencyMs);
     throw new WriterNarrativePulseError("invalid_output", "No pudimos validar el análisis Narrative Pulse.", 503);
   }
   try { await persistPulse(db, userId, request.scriptId, String(reserved.analysisId), sourceHash, payload); }
   catch {
     const cost = calculateWriterSceneAnalysisCost(response.usage);
+    logPulseDiagnostic(operationId, "persist", true, {
+      providerErrorCode: "storage_failed",
+      providerRequestId: response.requestId ?? null,
+      failureOrigin: "persistence",
+    }, response.latencyMs, true);
     await settle(db, userId, operationId, "failed", "storage_failed", response.usage, cost, response.latencyMs);
     throw new WriterNarrativePulseError("storage", "No pudimos guardar Narrative Pulse.", 500);
   }
   const actualCost = calculateWriterSceneAnalysisCost(response.usage);
   await settle(db, userId, operationId, "completed", null, response.usage, actualCost, response.latencyMs);
   logOperation(operationId, request.scriptId, "completed", response.usage, actualCost, response.latencyMs);
-  return { ...(await loadWriterNarrativePulseState(readDb, userId, request.scriptId)), cached: false, providerCalls: 1, costMicrousd: actualCost, latencyMs: response.latencyMs };
+  return {
+    ...(await loadWriterNarrativePulseState(readDb, userId, request.scriptId)),
+    cached: false,
+    providerCalls: 1,
+    costMicrousd: actualCost,
+    latencyMs: response.latencyMs,
+    usage: {
+      inputTokens: response.usage.inputTokens,
+      cachedInputTokens: response.usage.cachedInputTokens,
+      cacheWriteTokens: response.usage.cacheWriteTokens ?? 0,
+      outputTokens: response.usage.outputTokens,
+    },
+  };
 }
 
 export async function loadWriterNarrativePulseState(db: Database, userId: string, scriptId: string): Promise<WriterNarrativePulseState> {
@@ -174,23 +216,49 @@ async function persistPulse(db: Database, userId: string, scriptId: string, anal
 }
 
 async function openAiPulseProvider(input: Parameters<WriterPulseProvider>[0]) {
-  if (!process.env.OPENAI_API_KEY) throw new ProviderFailure(false, emptyUsage());
+  if (!process.env.OPENAI_API_KEY) {
+    const metadata: WriterProviderFailureMetadata = { providerStatus: null, providerErrorCode: "openai_key_missing", providerErrorType: null, providerErrorParam: null, providerRequestId: null, failureOrigin: "configuration" };
+    logPulseDiagnostic(input.operationId, "feature_gate", false, metadata);
+    throw new ProviderFailure(metadata, null, null, false);
+  }
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 120_000 }); const started = Date.now(); let response;
-  try { response = await client.responses.create({ model: WRITER_NARRATIVE_PULSE_MODEL, reasoning: { effort: "none" }, store: false, max_output_tokens: input.maxOutputTokens, instructions: WRITER_NARRATIVE_PULSE_INSTRUCTIONS, input: writerPulseProviderInput(input.context), text: { format: { type: "json_schema", name: "writer_narrative_pulse", strict: true, schema: writerPulseOutputSchema() } } }, { headers: { "Idempotency-Key": `writer-pulse-${input.operationId}-${input.requestHash.slice(0, 16)}` }, signal: input.signal }); }
-  catch (cause) { const status = isRecord(cause) && typeof cause.status === "number" ? cause.status : 0; throw new ProviderFailure(status === 0 || status >= 500, emptyUsage()); }
-  const usage = readUsage(response.usage); if (response.status !== "completed" || !response.output_text) throw new ProviderFailure(false, usage);
-  try { return { result: JSON.parse(response.output_text), usage, latencyMs: Date.now() - started, ...(typeof response._request_id === "string" ? { requestId: response._request_id } : {}) }; } catch { throw new ProviderFailure(false, usage); }
+  logPulseDiagnostic(input.operationId, "outbound_attempt", true);
+  try { response = await client.responses.create({ model: WRITER_NARRATIVE_PULSE_MODEL, reasoning: { effort: "none" }, store: false, prompt_cache_key: input.cacheKey, max_output_tokens: input.maxOutputTokens, instructions: WRITER_NARRATIVE_PULSE_INSTRUCTIONS, input: writerPulseProviderInput(input.context), text: { format: { type: "json_schema", name: "writer_narrative_pulse", strict: true, schema: writerPulseOutputSchema() } } }, { headers: { "Idempotency-Key": `writer-pulse-${input.operationId}-${input.requestHash.slice(0, 16)}` }, signal: input.signal }); }
+  catch (cause) {
+    const metadata = classifyWriterProviderFailure(cause, { outboundAttempted: true, aborted: input.signal?.aborted });
+    const elapsedMs = Date.now() - started;
+    logPulseDiagnostic(input.operationId, "response_headers", true, metadata, elapsedMs, false);
+    throw new ProviderFailure(metadata, null, elapsedMs, true);
+  }
+  const usage = readUsage(response.usage);
+  const requestId = typeof response._request_id === "string" ? response._request_id : null;
+  if (response.status !== "completed" || !response.output_text) {
+    const metadata: WriterProviderFailureMetadata = { providerStatus: null, providerErrorCode: `response_${response.status}`, providerErrorType: null, providerErrorParam: null, providerRequestId: requestId, failureOrigin: "response" };
+    logPulseDiagnostic(input.operationId, "response_body", true, metadata, Date.now() - started, true);
+    throw new ProviderFailure(metadata, usage, Date.now() - started, true);
+  }
+  try { return { result: JSON.parse(response.output_text), usage, latencyMs: Date.now() - started, ...(requestId ? { requestId } : {}) }; }
+  catch {
+    const metadata: WriterProviderFailureMetadata = { providerStatus: null, providerErrorCode: "invalid_json", providerErrorType: null, providerErrorParam: null, providerRequestId: requestId, failureOrigin: "parse" };
+    logPulseDiagnostic(input.operationId, "parse", true, metadata, Date.now() - started, true);
+    throw new ProviderFailure(metadata, usage, Date.now() - started, true);
+  }
 }
 
-class ProviderFailure extends Error { constructor(readonly ambiguous: boolean, readonly usage: WriterSceneAnalysisUsage) { super("provider_request_failed"); } }
+class ProviderFailure extends Error {
+  constructor(readonly metadata: WriterProviderFailureMetadata, readonly usage: WriterSceneAnalysisUsage | null, readonly elapsedMs: number | null, readonly outboundAttempted: boolean) { super("provider_request_failed"); }
+  get usageReceived() { return this.usage !== null; }
+  static fromUnknown(cause: unknown, aborted: boolean) { return new ProviderFailure(classifyWriterProviderFailure(cause, { outboundAttempted: true, aborted }), null, null, true); }
+}
 async function settle(db: Database, userId: string, operationId: string, status: "completed" | "failed" | "uncertain", errorCode: string | null, usage: WriterSceneAnalysisUsage, cost: number, latency: number) { await rpcJson(db, "writer_settle_narrative_pulse", { p_user_id: userId, p_operation_id: operationId, p_status: status, p_error_code: errorCode, p_input_tokens: usage.inputTokens, p_cached_input_tokens: usage.cachedInputTokens, p_output_tokens: usage.outputTokens, p_reasoning_tokens: usage.reasoningTokens, p_actual_cost_microusd: cost, p_latency_ms: latency }); }
 async function rpcJson(db: Database, name: string, args: Record<string, unknown>) { const result = await db.rpc(name, args); if (result.error) { if (String(result.error.message).includes("BUDGET")) throw new WriterNarrativePulseError("budget", "Narrative Pulse no está disponible por presupuesto ahora.", 429); throw result.error; } return (result.data ?? {}) as Record<string, unknown>; }
-function readUsage(value: unknown): WriterSceneAnalysisUsage { const usage = isRecord(value) ? value : {}; const details = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : {}; const output = isRecord(usage.output_tokens_details) ? usage.output_tokens_details : {}; return { inputTokens: integer(usage.input_tokens), cachedInputTokens: integer(details.cached_tokens), outputTokens: integer(usage.output_tokens), reasoningTokens: integer(output.reasoning_tokens) }; }
-function emptyUsage(): WriterSceneAnalysisUsage { return { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0 }; }
+function readUsage(value: unknown): WriterSceneAnalysisUsage { const usage = isRecord(value) ? value : {}; const details = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : {}; const output = isRecord(usage.output_tokens_details) ? usage.output_tokens_details : {}; return { inputTokens: integer(usage.input_tokens), cachedInputTokens: integer(details.cached_tokens), cacheWriteTokens: integer(details.cache_write_tokens), outputTokens: integer(usage.output_tokens), reasoningTokens: integer(output.reasoning_tokens) }; }
+function emptyUsage(): WriterSceneAnalysisUsage { return { inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 0, reasoningTokens: 0 }; }
 function integer(value: unknown) { return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : 0; }
 function sha256(value: string) { return createHash("sha256").update(value).digest("hex"); }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function uuid(value: unknown) { const result = String(value ?? ""); if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(result)) throw new WriterNarrativePulseError("invalid", "Identificador no válido.", 400); return result; }
 function text(value: unknown, limit: number) { const result = String(value ?? "").trim().replace(/\s+/gu, " "); if (!result || result.length > limit) throw new WriterNarrativePulseError("invalid", "Texto no válido.", 400); return result; }
 function milestoneType(value: unknown) { const type = String(value) as WriterPulseMilestoneType; if (!["inciting_incident", "first_turning_point", "midpoint", "crisis", "climax", "resolution", "custom"].includes(type)) throw new WriterNarrativePulseError("invalid", "Tipo de hito no válido.", 400); return type; }
-function logOperation(operationId: string, scriptId: string, status: string, usage: WriterSceneAnalysisUsage, cost: number, latency: number) { console.info("writer_narrative_pulse", { operationId, scriptId, status, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costMicrousd: cost, latencyMs: latency }); }
+function logOperation(operationId: string, scriptId: string, status: string, usage: WriterSceneAnalysisUsage | null, cost: number, latency: number | null, metadata?: WriterProviderFailureMetadata) { console.info("writer_narrative_pulse", { operationId, scriptId, status, inputTokens: usage?.inputTokens ?? null, cachedInputTokens: usage?.cachedInputTokens ?? null, cacheWriteTokens: usage?.cacheWriteTokens ?? null, outputTokens: usage?.outputTokens ?? null, usageReceived: usage !== null, costMicrousd: cost, latencyMs: latency, providerStatus: metadata?.providerStatus ?? null, providerRequestId: metadata?.providerRequestId ?? null }); }
+function logPulseDiagnostic(operationId: string, stage: WriterProviderStage, outboundAttempted: boolean, metadata?: Partial<WriterProviderFailureMetadata>, elapsedMs?: number | null, usageReceived = false) { logWriterProviderDiagnostic({ diagnosticRunId: operationId, operationId, feature: "narrative_pulse", stage, outboundAttempted, requestedModel: WRITER_NARRATIVE_PULSE_MODEL, elapsedMs, usageReceived, ...(metadata ?? {}) }); }

@@ -9,10 +9,11 @@ import {
   type WriterStructuredFeature,
 } from "@/lib/writer/smart-format";
 import { WRITER_KIND_LABELS } from "./WriterWritingTools";
+import WriterIcon from "./WriterIcon";
 
 export function SmartFeatureIndicator({ label, compact = false }: { label: string; compact?: boolean }) {
   return <span className={`writer-smart-indicator${compact ? " is-compact" : ""}`}>
-    <span aria-hidden="true">✦</span><span>{label}</span>
+    <WriterIcon name="sparkle" size={14} /><span>{label}</span>
   </span>;
 }
 

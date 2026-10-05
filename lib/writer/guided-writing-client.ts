@@ -4,10 +4,25 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WriterDocument } from "./document.ts";
 import {
   type WriterGuidedWritingMessage,
+  type WriterGuidedSelection,
+  type WriterGuidedWritingResponse,
   type WriterGuidedWritingScope,
   type WriterGuidedWritingSession,
 } from "./guided-writing.ts";
 import { writerSetupPayoffSourceHash } from "./setup-payoff.ts";
+import type { WriterIdeaContext } from "./ideas.ts";
+
+async function postGuidedWriting(scriptId: string, body: Record<string, unknown>, signal: AbortSignal) {
+  const response = await fetch(`/api/writer/scripts/${scriptId}/guided-writing`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error ?? "No pudimos responder ahora.");
+  return data;
+}
 
 export function useWriterGuidedWriting({
   scriptId,
@@ -83,9 +98,15 @@ export function useWriterGuidedWriting({
     setFeedback(null);
   }, [scope, sending]);
 
-  const send = useCallback(async (question: string, selection?: { blockId: string; text: string } | null) => {
+  const send = useCallback(async (
+    question: string,
+    selection?: WriterGuidedSelection | null,
+    ideaContext?: WriterIdeaContext | null,
+  ) => {
     const clean = question.trim();
-    const sceneId = scope === "scene" ? activeSceneId : null;
+    const sceneId = scope === "scene"
+      ? (ideaContext?.scope === "scene" ? ideaContext.sceneId : activeSceneId)
+      : null;
     if (!clean || !documentHash || (scope === "scene" && !sceneId) || sending) return false;
     const operationId = crypto.randomUUID();
     const optimistic: WriterGuidedWritingMessage = {
@@ -103,22 +124,16 @@ export function useWriterGuidedWriting({
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const response = await fetch(`/api/writer/scripts/${scriptId}/guided-writing`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const data = await postGuidedWriting(scriptId, {
           scope,
           sceneId,
           sessionId: session?.id ?? null,
           documentHash,
           question: clean,
           selection: selection?.text.trim() ? selection : null,
+          ideaContext: ideaContext ?? null,
           operationId,
-        }),
-        signal: controller.signal,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error ?? "No pudimos responder ahora.");
+        }, controller.signal);
       if (!mountedRef.current) return false;
       setSession(data.session ?? null);
       setMessages(Array.isArray(data.messages) ? data.messages : []);
@@ -127,7 +142,7 @@ export function useWriterGuidedWriting({
       if (!mountedRef.current) return false;
       setFeedback(controller.signal.aborted ? "Consulta cancelada." : cause instanceof Error ? cause.message : "No pudimos responder ahora.");
       setMessages((current) => current.filter((message) => message.id !== optimistic.id));
-      if (!controller.signal.aborted) void reload(scope, activeSceneId);
+      if (!controller.signal.aborted) void reload(scope, sceneId);
       return false;
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -141,6 +156,44 @@ export function useWriterGuidedWriting({
     setSending(false);
   }, []);
 
+  const analyzeSelection = useCallback(async (
+    selection: WriterGuidedSelection,
+    question: string,
+  ): Promise<WriterGuidedWritingResponse | null> => {
+    if (sending || !documentHash || selection.documentHash !== documentHash) {
+      setFeedback("La selección pertenece a una versión anterior del guion. Selecciona el fragmento de nuevo.");
+      return null;
+    }
+    const selectionScope: WriterGuidedWritingScope = selection.sceneIds.length === 1 ? "scene" : "document";
+    const sceneId = selectionScope === "scene" ? selection.sceneIds[0] ?? null : null;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setSending(true);
+    setFeedback(null);
+    try {
+      const data = await postGuidedWriting(scriptId, {
+          scope: selectionScope,
+          sceneId,
+          sessionId: null,
+          documentHash,
+          question,
+          selection,
+          ideaContext: null,
+          operationId: crypto.randomUUID(),
+        }, controller.signal);
+      const nextMessages = Array.isArray(data.messages) ? data.messages as WriterGuidedWritingMessage[] : [];
+      setSession(data.session ?? null);
+      setMessages(nextMessages);
+      return [...nextMessages].reverse().find((message) => message.role === "assistant")?.response ?? null;
+    } catch (cause) {
+      setFeedback(controller.signal.aborted ? "Análisis cancelado." : cause instanceof Error ? cause.message : "No pudimos analizar la selección.");
+      return null;
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      if (mountedRef.current) setSending(false);
+    }
+  }, [documentHash, scriptId, sending]);
+
   return {
     scope,
     session,
@@ -152,6 +205,7 @@ export function useWriterGuidedWriting({
     setFeedback,
     setScope,
     send,
+    analyzeSelection,
     cancel,
     reload,
   };

@@ -5,6 +5,7 @@ import { PULSE_DIMENSIONS, WRITER_NARRATIVE_PULSE_MIN_SCENES, writerPulseDisplay
 import { useWriterNarrativePulse } from "@/lib/writer/narrative-pulse-client";
 import type { TimelineScene } from "@/lib/writer/timeline";
 import { SmartFeatureIndicator } from "./WriterSmartFormatting";
+import WriterIcon from "./WriterIcon";
 
 const TYPES: WriterPulseMilestoneType[] = ["inciting_incident", "first_turning_point", "midpoint", "crisis", "climax", "resolution", "custom"];
 
@@ -110,7 +111,7 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
     <section className="writer-pulse-intro">
       <div><p className="timeline-eyebrow">Lectura descriptiva</p><h1>Intensidad narrativa</h1><p>Compara cambios dentro de este guion. No es una puntuación de calidad, ritmo ni estructura.</p></div>
       <div className="writer-pulse-actions">
-        {selectedPulseSceneId && <button type="button" onClick={() => { setSelectedPulseSceneId(null); setSelectedMilestoneId(null); }}>Ver todos los hitos</button>}
+        {selectedPulseSceneId && <button className="writer-pulse-overview" type="button" onClick={() => { setSelectedPulseSceneId(null); setSelectedMilestoneId(null); }}>Ver todos los hitos</button>}
         {pulse.analyzing ? <button type="button" onClick={pulse.cancel}>Cancelar</button> : <button type="button" disabled={!analysisEnabled || savePhase === "saving" || scenes.length < WRITER_NARRATIVE_PULSE_MIN_SCENES} onClick={() => void saveThenAnalyze()}><SmartFeatureIndicator label={pulse.analysis ? "Actualizar Narrative Pulse" : "Analizar Narrative Pulse"} /></button>}
       </div>
     </section>
@@ -153,9 +154,9 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
           {selected && selectedPoint ? <><p className="timeline-eyebrow">Escena {selected.order} · intensidad original {selectedPoint.intensity}/100</p><h2>{selected.heading}</h2><p>{selectedPoint.note}</p><div className="writer-pulse-signals" aria-label="Señales narrativas">{selectedPoint.signals.map((signal) => <span key={signal}>{signalLabel(signal)}</span>)}</div>{selectedPoint.dimensions && <dl className="writer-pulse-dimensions">{PULSE_DIMENSIONS.map((dimension) => <div key={dimension}><dt>{dimensionLabel(dimension)}</dt><dd>{selectedPoint.dimensions?.[dimension] ?? 0}</dd></div>)}</dl>}{selectedPoint.evidence?.length ? <ul className="writer-pulse-evidence">{selectedPoint.evidence.map((item, index) => <li key={`${index}:${item}`}>“{item}”</li>)}</ul> : null}<button type="button" onClick={() => selectPoint(selected)}>Ir a escena</button></> : <p>Selecciona un punto para ver su contexto narrativo y abrir la escena correspondiente.</p>}
         </section>
         <section className="writer-pulse-milestone-list" aria-labelledby="writer-pulse-milestones">
-          <div><h2 id="writer-pulse-milestones">Hitos</h2><button type="button" onClick={() => { setManualScene(selectedSceneId ?? scenes[0]?.sourceId ?? ""); setManualOpen((value) => !value); }}>+ Añadir hito</button></div>
+          <div><h2 id="writer-pulse-milestones">Hitos</h2><button className="writer-pulse-add-milestone" type="button" aria-expanded={manualOpen} onClick={() => { setManualScene(selectedSceneId ?? scenes[0]?.sourceId ?? ""); setManualOpen((value) => !value); }}><WriterIcon name="plus" /><span>Añadir hito</span></button></div>
           {manualOpen && <div className="writer-pulse-form"><label>Escena<select value={manualScene} onChange={(event) => setManualScene(event.target.value)}>{scenes.map((scene) => <option key={scene.key} value={scene.sourceId ?? ""}>Escena {scene.order} · {scene.heading}</option>)}</select></label><label>Tipo<select value={manualType} onChange={(event) => setManualType(event.target.value as WriterPulseMilestoneType)}>{TYPES.map((type) => <option key={type} value={type}>{writerPulseMilestoneLabel(type)}</option>)}</select></label><label>Nombre<input value={manualLabel} maxLength={100} onChange={(event) => setManualLabel(event.target.value)} /></label><button type="button" onClick={() => void createManual()} disabled={!manualLabel.trim() || !manualScene}>Guardar hito</button></div>}
-          <ul>{visibleMilestones.map((milestone) => <li key={milestone.id}><button type="button" onClick={() => selectMilestone(milestone)} aria-pressed={selectedMilestoneId === milestone.id}><span>{milestone.status === "confirmed" || milestone.status === "manual" ? "✓" : milestone.status === "needs_review" ? "!" : "?"}</span><strong>{milestone.label}</strong><small>{sceneName(scenes, milestone.sceneId)}</small></button></li>)}</ul>
+          <ul>{visibleMilestones.map((milestone) => <li key={milestone.id}><button type="button" onClick={() => selectMilestone(milestone)} aria-pressed={selectedMilestoneId === milestone.id}><span className={`writer-pulse-milestone-status is-${milestone.status}`} aria-hidden="true">{milestone.status === "confirmed" || milestone.status === "manual" ? "✓" : milestone.status === "needs_review" ? "!" : "?"}</span><strong>{milestone.label}</strong><small>{sceneName(scenes, milestone.sceneId)}</small></button></li>)}</ul>
         </section>
       </div>
       {pulse.zones.length > 0 && <section className="writer-pulse-zones" aria-labelledby="writer-pulse-zones-title"><h2 id="writer-pulse-zones-title">Tramos narrativos</h2><ul>{pulse.zones.map((zone) => <li key={zone.id}><strong>{zoneLabel(zone.type)}</strong><span>{sceneName(scenes, zone.startSceneId)} → {sceneName(scenes, zone.endSceneId)}</span><p>{zone.note}</p></li>)}</ul></section>}

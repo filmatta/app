@@ -47,13 +47,15 @@ type WriterTimelineViewProps = {
   activeSceneId?: string | null;
   sceneNicknames?: Readonly<Record<string, string>>;
   onMoveScene?: (sceneId: string, targetSceneId: string, position: WriterSceneMovePosition) => void;
-  requestedView?: "timeline" | "pulse" | null;
+  requestedView?: "timeline" | "pulse" | "ideas" | null;
+  requestedViewToken?: number;
   timelineReadinessNotice?: ReactNode;
   pulseReadinessNotice?: ReactNode;
   pulseAvailable?: boolean;
   onEnsureCurrentSaved?: () => Promise<void>;
   expanded?: boolean;
   onToggleExpanded?: () => void;
+  ideasPanel?: ReactNode;
 };
 
 export default function WriterTimelineView({
@@ -70,12 +72,14 @@ export default function WriterTimelineView({
   sceneNicknames = {},
   onMoveScene,
   requestedView = null,
+  requestedViewToken = 0,
   timelineReadinessNotice,
   pulseReadinessNotice,
   pulseAvailable = true,
   onEnsureCurrentSaved,
   expanded = false,
   onToggleExpanded,
+  ideasPanel,
 }: WriterTimelineViewProps) {
   const [timeline, setTimeline] = useState<WriterTimeline | null>(initialTimeline);
   const [selectedSceneKey, setSelectedSceneKey] = useState<string | null>(null);
@@ -83,7 +87,7 @@ export default function WriterTimelineView({
   const [environment, setEnvironment] = useState<"all" | TimelineEnvironment>("all");
   const [moment, setMoment] = useState<"all" | TimelineMomentCategory>("all");
   const [zoomIndex, setZoomIndex] = useState(1);
-  const [panelView, setPanelView] = useState<"timeline" | "pulse">("timeline");
+  const [panelView, setPanelView] = useState<"timeline" | "pulse" | "ideas">("timeline");
   const [pulseMilestones, setPulseMilestones] = useState<WriterPulseMilestone[]>([]);
   const [visibleCharacters, setVisibleCharacters] = useState<Set<string>>(
     () => new Set(initialTimeline.characters.slice(0, INITIAL_CHARACTER_TRACKS).map((item) => item.key)),
@@ -108,6 +112,11 @@ export default function WriterTimelineView({
   const timelineRef = useRef<WriterTimeline | null>(initialTimeline);
   const selectedSceneKeyRef = useRef<string | null>(null);
   const [refreshCoordinator] = useState(() => new TimelineRefreshCoordinator(async () => undefined, setRefreshing));
+  useEffect(() => {
+    if (!notice || (!notice.startsWith("Ya estabas viendo") && !notice.startsWith("Timeline actualizado"))) return;
+    const timer = window.setTimeout(() => setNotice(null), 3_500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const Root = variant === "embedded" ? "div" : "main";
   const setRootRef = useCallback((node: HTMLElement | null) => {
     rootRef.current = node;
@@ -261,7 +270,7 @@ export default function WriterTimelineView({
     if (!requestedView) return;
     const frame = requestAnimationFrame(() => setPanelView(requestedView));
     return () => cancelAnimationFrame(frame);
-  }, [requestedView]);
+  }, [requestedView, requestedViewToken]);
 
   if (!timeline) {
     return (
@@ -308,8 +317,8 @@ export default function WriterTimelineView({
     if (onGoToWriter && scene.sourceId && scene.canDeepLink) onGoToWriter(scene.sourceId, { preservePanel });
   }
 
-  function changePanelView(next: "timeline" | "pulse") {
-    const source = panelView === "timeline" ? scrollRef.current : pulseScrollRef.current;
+  function changePanelView(next: "timeline" | "pulse" | "ideas") {
+    const source = panelView === "timeline" ? scrollRef.current : panelView === "pulse" ? pulseScrollRef.current : null;
     const center = source ? sceneNearestHorizontalCenter(source) : null;
     if (center) {
       const scene = timeline?.scenes.find((item) => item.sourceId === center);
@@ -325,7 +334,7 @@ export default function WriterTimelineView({
           <Link href="/" aria-label="FILMATTA — Inicio">FILMATTA</Link>
           <span aria-hidden="true" />
           <Link href="/writer">Writer</Link>
-          <b>{panelView === "timeline" ? "Timeline" : "Narrative Pulse"}</b>
+          <b>{panelView === "timeline" ? "Timeline" : panelView === "pulse" ? "Narrative Pulse" : "Ideas"}</b>
         </div>
         <div className="timeline-title">
           <p>{timeline.title}</p>
@@ -335,6 +344,7 @@ export default function WriterTimelineView({
           <div className="timeline-view-switch" role="group" aria-label="Vista del panel estructural">
             <button type="button" aria-pressed={panelView === "timeline"} onClick={() => changePanelView("timeline")}>Timeline</button>
             <button type="button" aria-pressed={panelView === "pulse"} onClick={() => changePanelView("pulse")}>Narrative Pulse</button>
+            {ideasPanel && <button type="button" aria-pressed={panelView === "ideas"} onClick={() => changePanelView("ideas")}>Ideas</button>}
           </div>
           {panelView === "timeline" && <button className="timeline-refresh" type="button" onClick={() => void refreshTimeline()} disabled={refreshing} aria-label={refreshing ? "Actualizando Timeline" : "Actualizar Timeline"}>
             <WriterIcon name="refresh" /><span>{refreshing ? "Actualizando…" : "Actualizar Timeline"}</span>
@@ -344,7 +354,7 @@ export default function WriterTimelineView({
         </div>
       </header>
 
-      {panelView === "timeline" ? timelineReadinessNotice : pulseReadinessNotice}
+      {panelView === "timeline" ? timelineReadinessNotice : panelView === "pulse" ? pulseReadinessNotice : null}
 
       <div className="timeline-view-content" hidden={panelView !== "timeline"}>
       <section className="timeline-intro" aria-labelledby="timeline-heading">
@@ -603,17 +613,18 @@ export default function WriterTimelineView({
         <WriterNarrativePulse
           scriptId={timeline.scriptId}
           scenes={timeline.scenes}
-          active={active}
+          active={active && panelView === "pulse"}
           expanded={expanded}
           analysisEnabled={pulseAvailable}
           selectedSceneId={selectedScene?.sourceId ?? activeSceneId}
           columnWidth={columnWidth}
           scrollRef={pulseScrollRef}
-          onSelectScene={(scene) => activateScene(scene, true)}
+          onSelectScene={(scene) => activateScene(scene)}
           onMilestonesChange={setPulseMilestones}
           onEnsureCurrentSaved={onEnsureCurrentSaved}
         />
       </div>
+      {ideasPanel && <div className="timeline-ideas-view" hidden={panelView !== "ideas"}>{ideasPanel}</div>}
     </Root>
   );
 }

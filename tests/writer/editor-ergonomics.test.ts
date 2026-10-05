@@ -8,7 +8,7 @@ import {
   shouldInvalidateFormatBaseline,
   writerReadinessWithFormatBaseline,
 } from "../../lib/writer/format-baseline.ts";
-import { createMockWriterIdeas } from "../../lib/writer/ideas.ts";
+import { buildWriterIdeasSourceContext, validateWriterIdeasOutput } from "../../lib/writer/ideas.ts";
 import { findWriterSmartCandidates, findWriterText } from "../../lib/writer/search.ts";
 import {
   countRedundantWriterBlankBlocks,
@@ -133,20 +133,24 @@ test("automatic format collapses technical newlines and imported presentation wh
   assert.deepEqual(wordsAfter, wordsBefore);
 });
 
-test("Ideas QA contract returns conceptual directions without screenplay dialogue", () => {
-  const ideas = createMockWriterIdeas(longDocument(2), {
-    scope: "scene",
-    sceneId: longDocument(1).content[0]?.attrs.id ?? null,
-    question: "Aumentar el conflicto",
+test("Ideas validates provider output against stable screenplay references", () => {
+  const document = longDocument(2);
+  const sceneId = document.content[0]!.attrs.id;
+  const source = buildWriterIdeasSourceContext(document, "scene", sceneId);
+  const referenceId = source.references.find((reference) => reference.blockKind === "action")!.id;
+  const makeIdea = (id: string, reference = referenceId) => ({
+    id,
+    title: "Elevar el costo de la decisión",
+    direction: "Convertir la elección inmediata en una decisión entre dos valores incompatibles.",
+    consequence: "La tensión proviene de lo que el personaje arriesga al elegir.",
     category: "Conflicto",
+    basis: "new_direction",
+    referenceIds: [reference],
   });
-  assert.equal(ideas.length, 5);
-  assert.equal(ideas[0]?.category, "Conflicto");
-  for (const idea of ideas) {
-    assert.ok(idea.direction.length > 20);
-    assert.ok(idea.consequence.length > 20);
-    assert.doesNotMatch(idea.direction, /^(?:INT\.|EXT\.|[A-ZÁÉÍÓÚÑ ]+:)/u);
-  }
+  const ideas = validateWriterIdeasOutput({ ideas: [makeIdea("elevar-costo"), { ...makeIdea("tensionar"), title: "Tensionar la espera" }, { ...makeIdea("contrastar"), title: "Contrastar decisiones" }] }, source);
+  assert.equal(ideas.length, 3);
+  assert.equal(ideas[0]?.references[0]?.id, referenceId);
+  assert.throws(() => validateWriterIdeasOutput({ ideas: [makeIdea("inventada", "block:no-existe"), { ...makeIdea("valida-2"), title: "Válida dos" }, { ...makeIdea("valida-3"), title: "Válida tres" }] }, source), /writer_ideas_invalid_reference/u);
 });
 
 test("typewriter trigger excludes shortcuts, navigation and IME", () => {
@@ -207,14 +211,17 @@ test("checkpoints are owner-scoped, bounded and created before structural operat
   assert.match(workspace, /kind: "before_restore"/u);
 });
 
-test("Smart Search and Ideas endpoints are local QA implementations with zero external cost", () => {
+test("Smart Search stays local while Ideas uses the audited provider operation", () => {
   const smart = readFileSync(new URL("../../app/api/writer/scripts/[id]/smart-search/route.ts", import.meta.url), "utf8");
   const ideas = readFileSync(new URL("../../app/api/writer/scripts/[id]/ideas/route.ts", import.meta.url), "utf8");
+  const ideasServer = readFileSync(new URL("../../lib/writer/ideas-server.ts", import.meta.url), "utf8");
   assert.match(smart, /buildWriterSmartSearchContext/u);
-  assert.match(ideas, /buildGuidedWritingContext/u);
-  for (const source of [smart, ideas]) {
-    assert.doesNotMatch(source, /openai|responses\.create|chat\.completions/iu);
-    assert.match(source, /costMicrousd:\s*0/u);
-    assert.match(source, /mocked:\s*true/u);
-  }
+  assert.doesNotMatch(smart, /openai|responses\.create|chat\.completions/iu);
+  assert.match(smart, /costMicrousd:\s*0/u);
+  assert.match(smart, /mocked:\s*true/u);
+  assert.match(ideas, /executeWriterIdeas/u);
+  assert.match(ideasServer, /WRITER_GUIDED_WRITING_MODEL/u);
+  assert.match(ideasServer, /store:\s*false/u);
+  assert.match(ideasServer, /writer_smart_tool_operations/u);
+  assert.doesNotMatch(ideas, /createMockWriterIdeas|mocked:\s*true/u);
 });
