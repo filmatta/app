@@ -1,0 +1,14 @@
+{
+  "preview": "https://production-assistant-v1-filmatta.vercel.app",
+  "productionPath": "/production/6e60fd44-464c-44f1-a27d-1130d185699a",
+  "authenticated": true,
+  "persistedAfterReload": true,
+  "screenshots": [
+    "overview-desktop.png",
+    "days-desktop.png",
+    "tasks-mobile.png",
+    "resources-mobile.png"
+  ],
+  "consoleErrors": 0,
+  "serverErrors": 0
+}

@@ -1,0 +1,29 @@
+{
+  "generatedAt": "2026-10-03",
+  "preview": "https://app-qfb4emucc-filmatta.vercel.app",
+  "project": "ezlycwkuzkwcnhrhiruv",
+  "result": "PASS",
+  "checks": [
+    "visual board keeps narrative order",
+    "sketcher draws and autosaves an editable panel",
+    "saved drawing survives reload",
+    "PNG export downloads",
+    "approval targets the saved revision",
+    "second tab receives a read-only lease warning",
+    "canvas stays within 1920, 834, 768 and 390 pixel viewports",
+    "3,000-shot board renders at most 120 clusters and mounts no board canvases"
+  ],
+  "responsive": {
+    "1920": { "hostWidth": 1380, "bodyScrollWidth": 1920 },
+    "834": { "hostWidth": 604, "bodyScrollWidth": 834 },
+    "768": { "hostWidth": 538, "bodyScrollWidth": 768 },
+    "390": { "hostWidth": 384, "bodyScrollWidth": 390 }
+  },
+  "stress": {
+    "shots": 3000,
+    "renderedClusters": 120,
+    "canvases": 0,
+    "navigationMs": 2676
+  },
+  "consoleErrors": 0
+}

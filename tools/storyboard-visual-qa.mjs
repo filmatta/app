@@ -5,11 +5,13 @@ import path from "node:path";
 import { chromium } from "playwright";
 
 const baseUrl = process.env.FILMATTA_STORYBOARD_QA_URL ?? "http://127.0.0.1:3107";
+const shareUrl = process.env.FILMATTA_STORYBOARD_QA_SHARE_URL;
 const outputDir = process.env.FILMATTA_STORYBOARD_QA_OUTPUT ?? path.join(os.tmpdir(), "filmatta-storyboard-qa");
 const manifestPath = path.join(os.tmpdir(), "filmatta-storyboard-foundation-fixture.json");
 assert.ok(fs.existsSync(manifestPath), "Create the reversible Storyboard Test fixture first.");
 const fixture = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 assert.match(baseUrl, /^(http:\/\/127\.0\.0\.1:\d+|https:\/\/app-[a-z0-9]+-filmatta\.vercel\.app)$/u);
+if (shareUrl) assert.equal(new URL(shareUrl).origin, new URL(baseUrl).origin, "Shareable Link belongs to another Preview.");
 fs.mkdirSync(outputDir, { recursive: true });
 
 const systemChrome = process.env.FILMATTA_STORYBOARD_QA_BROWSER ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
@@ -34,6 +36,7 @@ page.on("console", (message) => { if (message.type() === "error") consoleErrors.
 page.on("pageerror", (error) => consoleErrors.push(error.message));
 
 try {
+  if (shareUrl) await page.goto(shareUrl, { waitUntil: "networkidle", timeout: 90_000 });
   await page.goto(`${baseUrl}/login?next=${encodeURIComponent(fixture.linkedPath ?? `/shotlists/${fixture.linkedId}/storyboard`)}`, { waitUntil: "domcontentloaded", timeout: 90_000 });
   await page.locator("#email").fill(fixture.email);
   await page.locator("#password").fill(fixture.password);

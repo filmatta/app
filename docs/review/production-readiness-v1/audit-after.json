@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-10-03",
+  "node": "24.20.0",
+  "npm": "11.19.0",
+  "lockfileGitBlob": "c61e2d26308d3499af4a7e99e7183a01170082e5",
+  "command": "npm audit --json",
+  "metadata": {
+    "total": 6,
+    "critical": 0,
+    "high": 6,
+    "productionOnlyTotal": 0,
+    "productionOnlyCritical": 0
+  },
+  "resolved": [
+    {
+      "package": "next",
+      "from": "16.3.4",
+      "to": "16.3.8",
+      "advisory": "GHSA-vcvr-r3jv-pc5j",
+      "status": "not reported after upgrade"
+    }
+  ],
+  "remainingRootAdvisories": [
+    {
+      "package": "brace-expansion",
+      "versions": ["1.1.18", "5.0.9"],
+      "severity": "high",
+      "advisories": ["GHSA-6j4f-fj2g-mc7p", "GHSA-qhr7-859c-m2p7", "GHSA-q2hr-2g5m-vwhr"],
+      "classification": "development/CI only; repository-controlled lint patterns; no public runtime path found",
+      "minimumRecommendation": "upgrade the compatible lint dependency chain when it publishes fixed releases; do not accept npm's suggested Next 14 downgrade"
+    },
+    {
+      "package": "braces",
+      "version": "3.0.3",
+      "severity": "high",
+      "advisory": "GHSA-vfj7-8cjw-p6xm",
+      "classification": "development/CI only through eslint-config-next; no public runtime path found",
+      "minimumRecommendation": "track a compatible upstream fix and revalidate lint"
+    }
+  ],
+  "derivedFindings": [
+    "micromatch -> braces",
+    "fast-glob -> micromatch -> braces",
+    "@next/eslint-plugin-next -> fast-glob -> micromatch -> braces",
+    "eslint-config-next -> @next/eslint-plugin-next -> fast-glob -> micromatch -> braces"
+  ],
+  "note": "The six npm entries are not six independent root vulnerabilities. npm audit --omit=dev --json reports zero findings, but this is supporting evidence only and does not replace the full audit."
+}
