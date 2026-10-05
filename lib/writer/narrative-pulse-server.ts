@@ -7,8 +7,8 @@ import { validateWriterDocument } from "./document";
 import { calculateWriterSceneAnalysisCost, countWriterSceneAnalysisTokens, estimateWriterSceneAnalysisMaximumCost, type WriterSceneAnalysisUsage } from "./script-assistant-accounting";
 import { deriveWriterSceneSources } from "./script-assistant";
 import {
-  WRITER_NARRATIVE_PULSE_MIN_SCENES, WRITER_NARRATIVE_PULSE_MODEL, WRITER_NARRATIVE_PULSE_VERSION,
-  buildWriterPulseContext, validateWriterPulseOutput, writerNarrativePulseSourceHash, writerPulseOutputSchema, writerPulseProviderInput,
+  WRITER_NARRATIVE_PULSE_MIN_SCENES, WRITER_NARRATIVE_PULSE_MODEL,
+  buildWriterPulseContext, validateWriterPulseOutput, writerNarrativePulseSourceHash, writerPulseAnalysisVersionPrefix, writerPulseContextCacheInput, writerPulseOutputSchema, writerPulseProviderInput,
   type WriterNarrativePulsePayload, type WriterNarrativePulseState, type WriterPulseMilestoneStatus, type WriterPulseMilestoneType,
 } from "./narrative-pulse";
 import {
@@ -25,7 +25,7 @@ const MAX_INPUT_CHARACTERS = 180_000;
 const GLOBAL_BUDGET_MICRO_USD = 10_000_000;
 
 export const WRITER_NARRATIVE_PULSE_INSTRUCTIONS = `Eres el lector de Narrative Pulse de FILMATTA. Describe la evolución comparativa de intensidad narrativa escena por escena; no evalúes calidad, pacing, estructura correcta ni salud del guion.
-Considera amenaza/peligro, conflicto/presión, stakes/consecuencias, intensidad emocional, revelación/cambio de comprensión y urgencia/acción. La intensidad global es una lectura contextual, no una media rígida de las dimensiones: una sola dimensión decisiva puede sostener una escena intensa. Las dimensiones explican y permiten revisar la lectura; no uses pesos fijos. La intensidad es relativa dentro de este guion y nunca una calificación. Detecta pocos hitos plausibles y zonas amplias; no impongas tres actos ni inventes hitos ausentes.
+Considera amenaza/peligro, conflicto/presión, stakes/consecuencias, intensidad emocional, revelación/cambio de comprensión y urgencia/acción. La intensidad global es una lectura contextual, no una media rígida de las dimensiones: una sola dimensión decisiva puede sostener una escena intensa. Las dimensiones explican y permiten revisar la lectura; no uses pesos fijos ni centres por defecto los resultados alrededor de 50. Una revelación emocional puede ser intensa sin peligro físico. Distingue un arma guardada o meramente visible de una amenaza o uso efectivo, y no interpretes metáforas como violencia literal. La intensidad es relativa dentro de este guion y nunca una calificación. Detecta pocos hitos plausibles y zonas amplias; no impongas tres actos ni inventes hitos ausentes.
 Usa exclusivamente los sceneId recibidos y devuelve exactamente un punto por escena, en el mismo orden. Las notas y explicaciones deben ser breves, descriptivas y sin razonamiento interno. Las relaciones Setup/Payoff confirmadas son hechos; las sugeridas sólo contexto. Los cambios O-O-C son contexto, no una fórmula de intensidad.`;
 
 type Database = ReturnType<typeof createAdminClient>;
@@ -59,11 +59,12 @@ export async function executeWriterNarrativePulse(
   }
   const providerInput = writerPulseProviderInput(context);
   if (providerInput.length > MAX_INPUT_CHARACTERS) throw new WriterNarrativePulseError("document_too_large", "Este guion supera el límite seguro de Narrative Pulse V1.", 413);
-  const requestHash = sha256(JSON.stringify({ version: WRITER_NARRATIVE_PULSE_VERSION, model: WRITER_NARRATIVE_PULSE_MODEL, instructions: WRITER_NARRATIVE_PULSE_INSTRUCTIONS, input: providerInput }));
+  const analysisVersion = pulseAnalysisVersion(context);
+  const requestHash = sha256(JSON.stringify({ version: analysisVersion, model: WRITER_NARRATIVE_PULSE_MODEL, instructions: WRITER_NARRATIVE_PULSE_INSTRUCTIONS, input: providerInput }));
   const maximumCost = estimateWriterSceneAnalysisMaximumCost(countWriterSceneAnalysisTokens(`${WRITER_NARRATIVE_PULSE_INSTRUCTIONS}\n${providerInput}`), MAX_OUTPUT_TOKENS);
   const reserved = await rpcJson(db, "writer_reserve_narrative_pulse", {
     p_user_id: userId, p_operation_id: operationId, p_script_id: request.scriptId, p_source_hash: sourceHash,
-    p_analysis_version: WRITER_NARRATIVE_PULSE_VERSION, p_model: WRITER_NARRATIVE_PULSE_MODEL, p_request_hash: requestHash,
+    p_analysis_version: analysisVersion, p_model: WRITER_NARRATIVE_PULSE_MODEL, p_request_hash: requestHash,
     p_max_cost_microusd: maximumCost, p_global_budget_microusd: GLOBAL_BUDGET_MICRO_USD,
   });
   if (reserved.status === "fresh") return { ...(await loadWriterNarrativePulseState(readDb, userId, request.scriptId)), cached: true, providerCalls: 0, costMicrousd: 0, latencyMs: 0 };
@@ -71,7 +72,7 @@ export async function executeWriterNarrativePulse(
   if (reserved.status === "uncertain") throw new WriterNarrativePulseError("uncertain", "Una llamada anterior necesita conciliación antes de reintentarse.", 409);
   if (reserved.status !== "reserved" || typeof reserved.analysisId !== "string") throw new WriterNarrativePulseError("reservation", "No pudimos preparar el análisis.", 409);
   let response: Awaited<ReturnType<WriterPulseProvider>>;
-  try { response = await (dependencies.provider ?? openAiPulseProvider)({ operationId, requestHash, cacheKey: writerProviderCacheKey("writer-pulse", userId, request.scriptId, sourceHash), context, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: request.signal }); }
+  try { response = await (dependencies.provider ?? openAiPulseProvider)({ operationId, requestHash, cacheKey: writerProviderCacheKey("writer-pulse", userId, request.scriptId, sha256(`${sourceHash}:${analysisVersion}`)), context, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: request.signal }); }
   catch (cause) {
     const failure = cause instanceof ProviderFailure
       ? cause
@@ -130,7 +131,9 @@ export async function loadWriterNarrativePulseState(db: Database, userId: string
   if (script.error || !script.data) throw new WriterNarrativePulseError("not_found", "Guion no encontrado.", 404);
   const valid = validateWriterDocument(script.data.document);
   const currentSourceHash = valid.ok ? await writerNarrativePulseSourceHash(valid.document) : null;
-  const sceneIds = new Set(valid.ok ? deriveWriterSceneSources(valid.document).map((scene) => scene.sceneId) : []);
+  const scenes = valid.ok ? deriveWriterSceneSources(valid.document) : [];
+  const sceneIds = new Set(scenes.map((scene) => scene.sceneId));
+  const currentAnalysisVersion = valid.ok ? pulseAnalysisVersion(await loadPulseContext(db, userId, scriptId, scenes)) : null;
   const analysisResult = await db.from("writer_narrative_pulse_analyses").select("id,source_hash,analysis_version,model,status,error_code,updated_at").eq("owner_id", userId).eq("script_id", scriptId).order("updated_at", { ascending: false }).limit(1);
   if (analysisResult.error) throw new WriterNarrativePulseError("storage", "No pudimos cargar Narrative Pulse.", 500);
   const analysisRow = analysisResult.data?.[0] as Record<string, unknown> | undefined;
@@ -143,6 +146,7 @@ export async function loadWriterNarrativePulseState(db: Database, userId: string
   if (pointsResult.error || zonesResult.error || milestonesResult.error) throw new WriterNarrativePulseError("storage", "No pudimos cargar Narrative Pulse.", 500);
   return {
     currentSourceHash,
+    currentAnalysisVersion,
     analysis: analysisRow ? { id: String(analysisRow.id), sourceHash: String(analysisRow.source_hash), analysisVersion: String(analysisRow.analysis_version), model: String(analysisRow.model), status: analysisRow.status as NonNullable<WriterNarrativePulseState["analysis"]>["status"], errorCode: analysisRow.error_code ? String(analysisRow.error_code) : null, updatedAt: String(analysisRow.updated_at) } : null,
     points: (pointsResult.data ?? []).map((row: Record<string, unknown>) => ({ id: String(row.id), analysisId: String(row.analysis_id), sceneId: String(row.scene_id), intensity: Number(row.intensity), signals: Array.isArray(row.signals) ? row.signals as never : [], note: String(row.note), dimensions: isRecord(row.dimensions) ? row.dimensions as never : {}, evidence: Array.isArray(row.evidence) ? row.evidence.map(String) : [] })),
     zones: (zonesResult.data ?? []).map((row: Record<string, unknown>) => ({ id: String(row.id), analysisId: String(row.analysis_id), startSceneId: String(row.start_scene_id), endSceneId: String(row.end_scene_id), type: row.zone_type as never, note: String(row.note) })),
@@ -256,6 +260,10 @@ function readUsage(value: unknown): WriterSceneAnalysisUsage { const usage = isR
 function emptyUsage(): WriterSceneAnalysisUsage { return { inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 0, reasoningTokens: 0 }; }
 function integer(value: unknown) { return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : 0; }
 function sha256(value: string) { return createHash("sha256").update(value).digest("hex"); }
+function pulseAnalysisVersion(context: ReturnType<typeof buildWriterPulseContext>) {
+  const contextHash = sha256(writerPulseContextCacheInput(context)).slice(0, 16);
+  return `${writerPulseAnalysisVersionPrefix()}${contextHash}`;
+}
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function uuid(value: unknown) { const result = String(value ?? ""); if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(result)) throw new WriterNarrativePulseError("invalid", "Identificador no válido.", 400); return result; }
 function text(value: unknown, limit: number) { const result = String(value ?? "").trim().replace(/\s+/gu, " "); if (!result || result.length > limit) throw new WriterNarrativePulseError("invalid", "Texto no válido.", 400); return result; }

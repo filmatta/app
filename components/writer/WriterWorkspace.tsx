@@ -2778,6 +2778,7 @@ export default function WriterWorkspace({
               {scenes.map((scene, index) => (
                 <li
                   key={scene.id}
+                  data-writer-scene-id={scene.id}
                   className={`${activeScene === scene.id ? "is-active" : ""}${draggedSceneId === scene.id ? " is-dragging" : ""}${sceneDropTarget?.sceneId === scene.id ? ` is-drop-${sceneDropTarget.position}` : ""}`}
                   onDragOver={(event) => {
                     if (!draggedSceneId || draggedSceneId === scene.id) return;

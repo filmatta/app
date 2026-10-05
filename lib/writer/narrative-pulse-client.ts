@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WriterNarrativePulseState, WriterPulseMilestoneStatus, WriterPulseMilestoneType } from "./narrative-pulse";
 
-const EMPTY: WriterNarrativePulseState = { analysis: null, points: [], milestones: [], zones: [], currentSourceHash: null };
+const EMPTY: WriterNarrativePulseState = { analysis: null, points: [], milestones: [], zones: [], currentSourceHash: null, currentAnalysisVersion: null };
 
 export function useWriterNarrativePulse({ scriptId, enabled }: { scriptId: string; enabled: boolean }) {
   const [state, setState] = useState<WriterNarrativePulseState>(EMPTY);
@@ -58,5 +58,5 @@ export function useWriterNarrativePulse({ scriptId, enabled }: { scriptId: strin
   };
 }
 
-function normalize(data: Record<string, unknown>): WriterNarrativePulseState { return { analysis: data.analysis as WriterNarrativePulseState["analysis"] ?? null, points: Array.isArray(data.points) ? data.points as never : [], milestones: Array.isArray(data.milestones) ? data.milestones as never : [], zones: Array.isArray(data.zones) ? data.zones as never : [], currentSourceHash: typeof data.currentSourceHash === "string" ? data.currentSourceHash : null }; }
+function normalize(data: Record<string, unknown>): WriterNarrativePulseState { return { analysis: data.analysis as WriterNarrativePulseState["analysis"] ?? null, points: Array.isArray(data.points) ? data.points as never : [], milestones: Array.isArray(data.milestones) ? data.milestones as never : [], zones: Array.isArray(data.zones) ? data.zones as never : [], currentSourceHash: typeof data.currentSourceHash === "string" ? data.currentSourceHash : null, currentAnalysisVersion: typeof data.currentAnalysisVersion === "string" ? data.currentAnalysisVersion : null }; }
 function message(cause: unknown) { return cause instanceof Error ? cause.message : "No pudimos guardar esta decisión."; }

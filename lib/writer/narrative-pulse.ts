@@ -1,7 +1,8 @@
 import type { WriterDocument } from "./document.ts";
 import { deriveWriterSceneSources, writerSceneCanonicalSource, type WriterSceneSource } from "./script-assistant.ts";
 
-export const WRITER_NARRATIVE_PULSE_VERSION = "narrative-pulse-v3" as const;
+export const WRITER_NARRATIVE_PULSE_VERSION = "narrative-pulse-v4" as const;
+export const WRITER_NARRATIVE_PULSE_CONTEXT_VERSION = "context-v1" as const;
 export const WRITER_NARRATIVE_PULSE_MODEL = "gpt-5.6-terra" as const;
 export const WRITER_NARRATIVE_PULSE_MIN_SCENES = 4;
 
@@ -33,7 +34,7 @@ export type WriterPulseMilestone = {
   status: WriterPulseMilestoneStatus; source: "ai" | "user"; sourceHash: string | null; fingerprint: string; movedByUser: boolean; updatedAt: string;
 };
 export type WriterPulseZone = WriterPulseZoneCandidate & { id: string; analysisId: string };
-export type WriterNarrativePulseState = { analysis: WriterPulseAnalysis; points: WriterPulsePoint[]; milestones: WriterPulseMilestone[]; zones: WriterPulseZone[]; currentSourceHash: string | null };
+export type WriterNarrativePulseState = { analysis: WriterPulseAnalysis; points: WriterPulsePoint[]; milestones: WriterPulseMilestone[]; zones: WriterPulseZone[]; currentSourceHash: string | null; currentAnalysisVersion: string | null };
 
 export type WriterPulseContext = {
   scenes: Array<{ sceneId: string; sceneNumber: number; heading: string; characters: string[]; summary: string; setupPayoff: string[]; changes: string[] }>;
@@ -183,6 +184,14 @@ export function writerPulsePlotPoints(
 
 export function writerPulseMilestoneLabel(type: WriterPulseMilestoneType) {
   return ({ inciting_incident: "Incidente incitador", first_turning_point: "Primer giro", midpoint: "Midpoint", crisis: "Crisis / punto bajo", climax: "Clímax", resolution: "Resolución", custom: "Hito personalizado" } as const)[type];
+}
+
+export function writerPulseAnalysisVersionPrefix() {
+  return `${WRITER_NARRATIVE_PULSE_VERSION}:${WRITER_NARRATIVE_PULSE_CONTEXT_VERSION}:`;
+}
+
+export function writerPulseContextCacheInput(context: WriterPulseContext) {
+  return JSON.stringify({ version: WRITER_NARRATIVE_PULSE_CONTEXT_VERSION, context });
 }
 
 const PULSE_SIGNALS: WriterPulseSignal[] = ["conflict", "change", "pressure", "turn", "risk", "revelation", "consequence", "activity"];

@@ -1,7 +1,9 @@
 // Local transport fixture only. This does NOT test PostgreSQL RLS.
 // No production credentials or remote database access.
 import http from "node:http";
+import fs from "node:fs";
 import {profileFixture,resetProfileFixture} from "./profiles-fixture.mjs";
+const pulseDenseFixture = JSON.parse(fs.readFileSync(new URL("../fixtures/writer/pulse-dense-original.json", import.meta.url), "utf8"));
 const port = Number.parseInt(process.env.MOCK_SUPABASE_PORT ?? "54329", 10);
 const id = "11111111-1111-4111-8111-111111111111";
 let scenario = "empty";
@@ -86,7 +88,9 @@ http
       if (scenario === "writer-ux") {
         writerRevision = 1;
         const writerScenes = Math.min(160, Math.max(0, Number(url.searchParams.get("writerScenes")) || 0));
-        writerDocument = writerScenes ? makeLongWriterDocument(writerScenes) : makeWriterDocument();
+        writerDocument = url.searchParams.get("writerPulseDense") === "1"
+          ? makePulseDenseWriterDocument()
+          : writerScenes ? makeLongWriterDocument(writerScenes) : makeWriterDocument();
         writerScriptId = id;
         writerTitle = "Guion de prueba UX";
         writerSaveCount = 0;
@@ -348,6 +352,26 @@ function makeLongWriterDocument(sceneCount) {
       content: [{ type: "text", text: `PERSONA ${index % 30 + 1}` }],
     });
   }
+  return { type: "doc", content };
+}
+
+function makePulseDenseWriterDocument() {
+  const content = [];
+  pulseDenseFixture.scenes.forEach((scene, index) => {
+    content.push({
+      type: "screenplayBlock",
+      attrs: { id: stableWriterId(index * 3 + 1), kind: "sceneHeading" },
+      content: [{ type: "text", text: scene.heading }],
+    }, {
+      type: "screenplayBlock",
+      attrs: { id: stableWriterId(index * 3 + 2), kind: "action" },
+      content: [{ type: "text", text: scene.action }],
+    }, {
+      type: "screenplayBlock",
+      attrs: { id: stableWriterId(index * 3 + 3), kind: "character" },
+      content: [{ type: "text", text: index % 2 ? "TOMÁS" : "MARA" }],
+    });
+  });
   return { type: "doc", content };
 }
 

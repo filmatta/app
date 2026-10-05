@@ -7,8 +7,28 @@ const sceneB = "11111111-1111-4111-8111-111111111108";
 const evidence = "test-results/writer-beta-handoff";
 
 async function session(context: BrowserContext) { const b64=(value:object)=>Buffer.from(JSON.stringify(value)).toString("base64url"); const token=`${b64({alg:"HS256",typ:"JWT"})}.${b64({sub:scriptId,exp:4102444800,role:"authenticated"})}.local-signature`; await context.addCookies([{name:"sb-127-auth-token",value:"base64-"+b64({access_token:token,refresh_token:"local-refresh",expires_at:4102444800,token_type:"bearer",user:{id:scriptId}}),domain:"127.0.0.1",path:"/"}]); }
-function state() { return { currentSourceHash:"a".repeat(64), analysis:{id:"55555555-5555-4555-8555-555555555551",sourceHash:"a".repeat(64),analysisVersion:"narrative-pulse-v1",model:"gpt-5.6-terra",status:"fresh",errorCode:null,updatedAt:"2026-09-30T12:00:00Z"}, points:[{id:"66666666-6666-4666-8666-666666666661",analysisId:"55555555-5555-4555-8555-555555555551",sceneId:sceneA,intensity:28,signals:["activity"],note:"La escena establece una búsqueda contenida."},{id:"66666666-6666-4666-8666-666666666662",analysisId:"55555555-5555-4555-8555-555555555551",sceneId:sceneB,intensity:76,signals:["revelation","turn"],note:"La revelación cambia el objetivo."}], milestones:[{id:"77777777-7777-4777-8777-777777777771",scriptId,sceneId:sceneB,type:"midpoint",label:"Revelación central",explanation:"La información altera la dirección.",status:"suggested",source:"ai",sourceHash:"a".repeat(64),fingerprint:"ai:midpoint",movedByUser:false,updatedAt:"2026-09-30T12:00:00Z"}], zones:[{id:"88888888-8888-4888-8888-888888888881",analysisId:"55555555-5555-4555-8555-555555555551",startSceneId:sceneA,endSceneId:sceneB,type:"build",note:"La presión aumenta entre ambas escenas."}] }; }
+function state() { const analysisVersion="narrative-pulse-v4:context-v1:aaaaaaaaaaaaaaaa"; return { currentSourceHash:"a".repeat(64),currentAnalysisVersion:analysisVersion, analysis:{id:"55555555-5555-4555-8555-555555555551",sourceHash:"a".repeat(64),analysisVersion,model:"gpt-5.6-terra",status:"fresh",errorCode:null,updatedAt:"2026-09-30T12:00:00Z"}, points:[{id:"66666666-6666-4666-8666-666666666661",analysisId:"55555555-5555-4555-8555-555555555551",sceneId:sceneA,intensity:28,signals:["activity"],note:"La escena establece una búsqueda contenida."},{id:"66666666-6666-4666-8666-666666666662",analysisId:"55555555-5555-4555-8555-555555555551",sceneId:sceneB,intensity:76,signals:["revelation","turn"],note:"La revelación cambia el objetivo."}], milestones:[{id:"77777777-7777-4777-8777-777777777771",scriptId,sceneId:sceneB,type:"midpoint",label:"Revelación central",explanation:"La información altera la dirección.",status:"suggested",source:"ai",sourceHash:"a".repeat(64),fingerprint:"ai:midpoint",movedByUser:false,updatedAt:"2026-09-30T12:00:00Z"}], zones:[{id:"88888888-8888-4888-8888-888888888881",analysisId:"55555555-5555-4555-8555-555555555551",startSceneId:sceneA,endSceneId:sceneB,type:"build",note:"La presión aumenta entre ambas escenas."}] }; }
 async function mockPulse(page: Page) { const data=state(); let posts=0; await page.route(`**/api/writer/scripts/${scriptId}/narrative-pulse`,async(route:Route)=>{ const method=route.request().method(); if(method==="GET") return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(data)}); if(method==="POST"){posts+=1;return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(data)});} const body=route.request().postDataJSON() as Record<string,string>; if(body.action==="status"){const item=data.milestones.find((value)=>value.id===body.milestoneId);if(item)item.status=body.status;} if(body.action==="move"){const item=data.milestones.find((value)=>value.id===body.milestoneId);if(item){item.sceneId=body.sceneId;item.status="confirmed";item.movedByUser=true;}} if(body.action==="create") data.milestones.push({...data.milestones[0],id:"77777777-7777-4777-8777-777777777772",sceneId:body.sceneId,type:body.type,label:body.label,status:"manual",source:"user",fingerprint:"user:1"}); return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({saved:true})}); }); return ()=>posts; }
+
+function longSceneId(index: number) { return `11111111-1111-4111-8111-${(index * 3 + 1).toString(16).padStart(12, "0")}`; }
+function denseState(count = 36) {
+  const points = Array.from({ length: count }, (_, index) => ({
+    id: `66666666-6666-4666-8666-${String(index + 1).padStart(12, "0")}`,
+    analysisId: "55555555-5555-4555-8555-555555555552",
+    sceneId: longSceneId(index),
+    intensity: 14 + ((index * 19) % 83),
+    signals: index % 7 === 0 ? ["revelation", "turn"] : ["activity"],
+    note: `Lectura sintética verificable de la escena ${index + 1}.`,
+    dimensions: { threat: (index * 13) % 100, pressure: (index * 17) % 100, stakes: (index * 11) % 100, emotion: (index * 23) % 100, revelation: (index * 29) % 100, urgency: (index * 31) % 100 },
+    evidence: [`Acción de prueba ${index + 1}.`],
+  }));
+  const analysisVersion = "narrative-pulse-v4:context-v1:bbbbbbbbbbbbbbbb";
+  return { currentSourceHash:"b".repeat(64), currentAnalysisVersion:analysisVersion, analysis:{id:"55555555-5555-4555-8555-555555555552",sourceHash:"b".repeat(64),analysisVersion,model:"gpt-5.6-terra",status:"fresh",errorCode:null,updatedAt:"2026-10-05T12:00:00Z"}, points, milestones:[], zones:[] };
+}
+async function mockDensePulse(page: Page, count = 36) {
+  const data = denseState(count);
+  await page.route(`**/api/writer/scripts/${scriptId}/narrative-pulse`, async (route: Route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(data) }));
+}
 
 test.beforeEach(async({request,context})=>{await request.get("http://127.0.0.1:54329/__scenario?value=writer-ux");await session(context);});
 
@@ -117,6 +137,100 @@ test("desktop keeps Observations active while splitters and Timeline Pulse switc
 });
 
 test("mobile Pulse fits, keeps drawer behavior and navigates by tap",async({page})=>{await page.setViewportSize({width:390,height:844});await page.addInitScript(()=>localStorage.setItem("filmatta.writer.mobile-notice.v1:11111111-1111-4111-8111-111111111111","dismissed"));await mockPulse(page);await page.goto(`/writer/${scriptId}`);const observations=page.getByRole("complementary",{name:"Asistente"});await expect(observations).toBeHidden();await expect(page.getByRole("separator").first()).toBeHidden();await page.getByRole("button",{name:/Navegar/}).click();let navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:/Asistente/}).click();await expect(observations).toBeVisible();await observations.getByRole("button",{name:"Cerrar",exact:true}).click();await page.getByRole("button",{name:/Navegar/}).click();navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:"Timeline"}).click();const panel=page.locator("#writer-timeline-panel");await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();await expect.poll(()=>panel.evaluate((element)=>element.scrollWidth<=element.clientWidth+1)).toBe(true);fs.mkdirSync(evidence,{recursive:true});await page.screenshot({path:`${evidence}/pulse-mobile-390x844.png`});await panel.locator(".writer-pulse-point").first().press("Enter");await expect(page.locator(`[data-block-id="${sceneA}"]`)).toHaveClass(/writer-scene-target-highlight/);await expect(panel).toBeVisible();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();});
+
+test("40-scene Pulse keeps canonical point navigation reliable through layout and scroll changes", async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  await page.request.get("http://127.0.0.1:54329/__scenario?value=writer-ux&writerPulseDense=1");
+  await mockDensePulse(page, 40);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/writer/${scriptId}`);
+  const panel = page.locator("#writer-timeline-panel");
+  await panel.getByRole("button", { name: "Narrative Pulse", exact: true }).click();
+  const points = panel.locator(".writer-pulse-point");
+  await expect(points).toHaveCount(40);
+  const scroller = panel.locator(".writer-pulse-scroll");
+  const results: Array<{ phase: string; expected: string; actual: string | null }> = [];
+
+  const selectAtRealCoordinates = async (index: number, phase: string) => {
+    const target = points.nth(index);
+    await target.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" }));
+    await target.evaluate((element) => {
+      const scroller = element.closest<HTMLElement>(".writer-pulse-scroll");
+      if (scroller) scroller.scrollLeft = Math.max(0, (element as HTMLElement).offsetLeft - scroller.clientWidth / 2);
+    });
+    await expect.poll(async () => {
+      const [targetBox, scrollBox] = await Promise.all([target.boundingBox(), scroller.boundingBox()]);
+      const viewport = page.viewportSize();
+      return Boolean(targetBox && scrollBox && viewport && targetBox.x >= Math.max(0, scrollBox.x) && targetBox.x + targetBox.width <= Math.min(viewport.width, scrollBox.x + scrollBox.width) && targetBox.y >= 0 && targetBox.y + targetBox.height <= viewport.height);
+    }).toBe(true);
+    const box = await target.boundingBox();
+    expect(box, `missing hit target in ${phase}`).not.toBeNull();
+    const hit = await page.evaluate(({ x, y }) => { const element = document.elementFromPoint(x, y) as HTMLElement | null; return { sceneId: element?.closest<HTMLElement>("[data-pulse-scene-id]")?.dataset.pulseSceneId ?? null, tag: element?.tagName ?? null, className: element?.className?.toString() ?? null, ariaLabel: element?.getAttribute("aria-label") ?? null, parentTag: element?.parentElement?.tagName ?? null, parentClass: element?.parentElement?.className?.toString() ?? null, parentAria: element?.parentElement?.getAttribute("aria-label") ?? null }; }, { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 });
+    expect(hit.sceneId, `hit target mismatch in ${phase}: ${JSON.stringify(hit)}`).toBe(longSceneId(index));
+    await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    const expected = longSceneId(index);
+    await expect(panel.locator(".writer-pulse-point.is-selected")).toHaveAttribute("data-pulse-scene-id", expected);
+    await expect(page.locator(`.writer-scene-list > li[data-writer-scene-id="${expected}"]`)).toHaveClass(/is-active/);
+    const actual = await page.locator(".writer-scene-list > li.is-active").getAttribute("data-writer-scene-id");
+    results.push({ phase, expected, actual });
+  };
+  const alternate = async (count: number, phase: string) => {
+    for (let cycle = 0; cycle < count; cycle += 1) await selectAtRealCoordinates(cycle % 2 ? 31 : 3, phase);
+  };
+
+  await alternate(50, "baseline");
+
+  for (let cycle = 0; cycle < 20; cycle += 1) {
+    await page.setViewportSize({ width: cycle % 2 ? 1024 : 1440, height: cycle % 3 ? 820 : 900 });
+    await expect.poll(() => pulseAlignmentError(panel)).toBeLessThan(1);
+    await selectAtRealCoordinates(cycle % 2 ? 28 : 5, "viewport-resize");
+  }
+
+  for (let cycle = 0; cycle < 20; cycle += 1) {
+    await panel.getByRole("button", { name: "Timeline", exact: true }).click();
+    await panel.getByRole("button", { name: "Narrative Pulse", exact: true }).click();
+    await selectAtRealCoordinates(cycle % 2 ? 30 : 4, "timeline-pulse");
+  }
+
+  for (let cycle = 0; cycle < 20; cycle += 1) {
+    await panel.getByRole("button", { name: cycle % 2 ? "Contraer vista" : "Expandir vista" }).click();
+    await expect.poll(() => pulseAlignmentError(panel)).toBeLessThan(1);
+    await selectAtRealCoordinates(cycle % 2 ? 27 : 6, "expand-collapse");
+  }
+
+  for (let cycle = 0; cycle < 20; cycle += 1) {
+    await scroller.evaluate((element, ratio) => { element.scrollLeft = (element.scrollWidth - element.clientWidth) * ratio; }, cycle % 2 ? 1 : 0);
+    await selectAtRealCoordinates(cycle % 2 ? 34 : 1, "horizontal-scroll");
+  }
+
+  for (const index of [8, 17, 26, 39]) {
+    await points.nth(index).press(index % 2 ? "Space" : "Enter");
+    await expect(page.locator(`.writer-scene-list > li[data-writer-scene-id="${longSceneId(index)}"]`)).toHaveClass(/is-active/);
+  }
+  await points.nth(12).dispatchEvent("pointerdown", { pointerType: "touch", pointerId: 8, isPrimary: true });
+  await points.nth(12).dispatchEvent("pointerup", { pointerType: "touch", pointerId: 8, isPrimary: true });
+  await points.nth(12).dispatchEvent("click", { detail: 1 });
+  await expect(page.locator(`.writer-scene-list > li[data-writer-scene-id="${longSceneId(12)}"]`)).toHaveClass(/is-active/);
+
+  await panel.locator(".writer-pulse-canvas").click({ position: { x: 8, y: 8 } });
+  await expect(panel.locator(".writer-pulse")).toHaveAttribute("data-pulse-selection", "overview");
+  await page.locator(`.writer-scene-list > li[data-writer-scene-id="${longSceneId(20)}"] .writer-scene-link`).click();
+  await expect(panel.locator(".writer-pulse")).toHaveAttribute("data-pulse-selection", "overview");
+
+  expect(results).toHaveLength(130);
+  expect(results.filter((result) => result.expected !== result.actual), JSON.stringify(results.filter((result) => result.expected !== result.actual))).toEqual([]);
+  fs.mkdirSync(evidence, { recursive: true });
+  await testInfo.attach("pulse-selection-ledger", { body: Buffer.from(JSON.stringify(results, null, 2)), contentType: "application/json" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({ path: `${evidence}/pulse-dense-overview-1440x900.png`, fullPage: false });
+  await selectAtRealCoordinates(20, "violent-scene-evidence");
+  await page.screenshot({ path: `${evidence}/pulse-dense-violent-scene-1440x900.png`, fullPage: false });
+  await selectAtRealCoordinates(2, "quiet-scene-evidence");
+  await page.screenshot({ path: `${evidence}/pulse-dense-quiet-scene-1440x900.png`, fullPage: false });
+  await panel.getByRole("button", { name: "Expandir vista" }).click();
+  await expect.poll(() => pulseAlignmentError(panel)).toBeLessThan(1);
+  await page.screenshot({ path: `${evidence}/pulse-dense-expanded-1440x900.png`, fullPage: false });
+});
 
 async function pulseAlignmentError(panel: Locator) {
   return panel.locator(".writer-pulse-canvas").evaluate((canvas) => {
