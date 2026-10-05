@@ -157,7 +157,7 @@ test("saved revisions auto-refresh an open Timeline once, preserve state, and st
   expect(final.reads).toBe(closed.reads);
 });
 
-test("paste import requires review, creates a new canonical document, and exports PDF", async ({ page, context }) => {
+test("paste import requires review, updates the open canonical document, and exports PDF", async ({ page, context }) => {
   await openWriter(page, context);
   const originalEditor = page.getByLabel("Editor de guion");
   await expect(page.locator(".writer-character-suggestions")).toHaveCount(0);
@@ -168,16 +168,16 @@ test("paste import requires review, creates a new canonical document, and export
       if (await notice.isVisible()) await notice.getByRole("button", { name: "Entendido" }).click();
       await page.getByRole("button", { name: "Más acciones de Writer" }).click();
       const mobileMenu = page.getByRole("dialog", { name: "Más acciones de Writer" });
-      await expect(mobileMenu.getByRole("button", { name: "Importar borrador" })).toBeVisible();
+      await expect(mobileMenu.getByRole("button", { name: "Importar guion" })).toBeVisible();
       await page.keyboard.press("Escape");
     } else {
-      await expect(page.locator(".writer-header").getByRole("button", { name: "Importar borrador" })).toBeVisible();
+      await expect(page.locator(".writer-header").getByRole("button", { name: "Importar guion" })).toBeVisible();
     }
   }
 
   await page.getByRole("button", { name: "Más acciones de Writer" }).click();
-  await page.getByRole("dialog", { name: "Más acciones de Writer" }).getByRole("button", { name: "Importar borrador" }).click();
-  const dialog = page.getByRole("dialog", { name: "Importar borrador" });
+  await page.getByRole("dialog", { name: "Más acciones de Writer" }).getByRole("button", { name: "Importar guion" }).click();
+  const dialog = page.getByRole("dialog", { name: "Importar guion" });
   await expect(dialog.getByText("Se creará un guion nuevo. Tu documento actual no se modificará.")).toBeHidden();
   await dialog.getByLabel("Texto del borrador").fill("EXT. PRUEBA - DÍA\n\nTexto que sólo vive en staging.");
   await expect(originalEditor).not.toContainText("Texto que sólo vive en staging.");
@@ -187,8 +187,8 @@ test("paste import requires review, creates a new canonical document, and export
   expect((await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json()).creates).toBe(0);
 
   await page.getByRole("button", { name: "Más acciones de Writer" }).click();
-  await page.getByRole("dialog", { name: "Más acciones de Writer" }).getByRole("button", { name: "Importar borrador" }).click();
-  await dialog.getByRole("tab", { name: "Archivo TXT o FDX" }).click();
+  await page.getByRole("dialog", { name: "Más acciones de Writer" }).getByRole("button", { name: "Importar guion" }).click();
+  await dialog.getByRole("tab", { name: "Archivo TXT, FDX o DOCX" }).click();
   const fileInput = dialog.getByLabel("Selecciona un archivo");
   await fileInput.setInputFiles({
     name: "sintetico.fdx",
@@ -197,7 +197,7 @@ test("paste import requires review, creates a new canonical document, and export
   });
   await expect(dialog.getByText("Preparado:")).toBeVisible();
   await expect(dialog.getByText("ÁNGELA", { exact: true })).toBeHidden();
-  await dialog.getByRole("button", { name: "Importar sin IA" }).click();
+  await dialog.getByRole("button", { name: "Revisar importación" }).click();
   await expect(dialog.getByText("ÁNGELA", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Volver al origen" }).click();
   await fileInput.setInputFiles({
@@ -206,7 +206,7 @@ test("paste import requires review, creates a new canonical document, and export
     buffer: Buffer.from("EXT. CALLE - NOCHE\n\nESPERANZA\nSeguimos aquí."),
   });
   await expect(dialog.getByText("ESPERANZA", { exact: true })).toBeHidden();
-  await dialog.getByRole("button", { name: "Importar sin IA" }).click();
+  await dialog.getByRole("button", { name: "Revisar importación" }).click();
   await expect(dialog.getByText("ESPERANZA", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Volver al origen" }).click();
   await dialog.getByRole("tab", { name: "Texto pegado" }).click();
@@ -221,12 +221,12 @@ No podemos esperar más.
 CORTE A:
 
 MISTERIO`);
-  await dialog.getByRole("button", { name: "Importar sin IA" }).click();
+  await dialog.getByRole("button", { name: "Revisar importación" }).click();
   await expect(dialog.getByRole("button", { name: /Revisar \(1\)/ })).toBeVisible();
   await expect(dialog.getByText("MISTERIO", { exact: true })).toBeVisible();
   const characterSummary = dialog.locator(".writer-import-summary button").filter({ hasText: "Personaje — encabezado de diálogo" });
   await expect(characterSummary.getByText("1", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("Se creará un guion nuevo; el documento actual no se modificará.", { exact: false })).toBeVisible();
+  await expect(dialog.getByText("Este guion ya tiene contenido. La importación se anexará", { exact: false })).toBeVisible();
   await expect(originalEditor).toContainText("ANA observa la VENTANA.");
 
   const reviewCard = dialog.locator(".writer-import-list article").first();
@@ -240,13 +240,13 @@ MISTERIO`);
   const unresolvedCard = dialog.locator(".writer-import-list article").filter({ hasText: "MISTERIO" });
   await unresolvedCard.getByLabel("Tipo").selectOption("action");
   await expect(dialog.getByRole("button", { name: "Revisar (0)" })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Importar al Writer" }).click();
-  await expect(page).toHaveURL(/\/writer\/33333333-3333-4333-8333-333333333333$/);
-  expect((await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json()).creates).toBe(1);
+  await dialog.getByRole("button", { name: "Importar tal cual" }).click();
+  await expect(page).toHaveURL(new RegExp(`/writer/${scriptId}$`));
+  expect((await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json()).creates).toBe(0);
   const editor = page.getByLabel("Editor de guion");
   await expect(editor).toContainText("INT. CASA - DÍA");
   await expect(editor).toContainText("MISTERIO");
-  await expect(page.getByRole("status")).toContainText("Importación completada");
+  await expect(page.locator(".writer-editor-feedback")).toContainText("importado en este guion");
 
   const importedMobileNotice = page.getByRole("dialog", { name: "Writer en móvil" });
   if (await importedMobileNotice.isVisible()) {

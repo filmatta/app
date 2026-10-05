@@ -62,11 +62,11 @@ test("Setup Payoff uses accessible inline accordions and separate navigation ref
 });
 
 test("desktop layout keeps both sidebars and splitters full-height with Timeline only in center", () => {
-  assert.match(css, /\.writer-sidebar \{[^}]*grid-row: 2 \/ -1/u);
-  assert.match(css, /\.writer-observations-panel \{[^}]*grid-row: 2 \/ -1/u);
-  assert.match(css, /\.writer-panel-resize-handle--left \{[^}]*grid-row: 2 \/ -1/u);
-  assert.match(css, /\.writer-panel-resize-handle--right \{[^}]*grid-row: 2 \/ -1/u);
-  assert.match(css, /\.writer-timeline-panel \{ grid-column: 2; grid-row: 3/u);
+  assert.match(css, /\.writer-sidebar \{[^}]*grid-row: 3 \/ -1/u);
+  assert.match(css, /\.writer-observations-panel \{[^}]*grid-row: 3 \/ -1/u);
+  assert.match(css, /\.writer-panel-resize-handle--left \{[^}]*grid-row: 3 \/ -1/u);
+  assert.match(css, /\.writer-panel-resize-handle--right \{[^}]*grid-row: 3 \/ -1/u);
+  assert.match(css, /\.writer-timeline-panel \{ grid-column: 2; grid-row: 4/u);
 });
 
 test("navigation uses one reference contract and a bounded highlight", () => {

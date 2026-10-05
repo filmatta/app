@@ -24,10 +24,10 @@ test("Pulse points use shared Writer navigation and reveal the screenplay", () =
   const workspace = fs.readFileSync("components/writer/WriterWorkspace.tsx", "utf8");
   assert.match(pulse, /aria-label=\{`Escena \$\{scene\.order\} · intensidad \$\{point\.intensity\} · seleccionar escena`\}/u);
   assert.match(pulse, /onClick=\{\(\) => selectPoint\(scene\)\}/u);
-  assert.match(timeline, /onSelectScene=\{\(scene\) => activateScene\(scene\)\}/u);
+  assert.match(timeline, /onSelectScene=\{\(scene\) => activateScene\(scene, true\)\}/u);
   assert.match(timeline, /onGoToWriter\(scene\.sourceId, \{ preservePanel \}\)/u);
   assert.match(workspace, /if \(!options\?\.preservePanel\) setTimelineExpanded\(false\)/u);
-  assert.match(workspace, /navigateToWriterReference\(\{ sceneId \}\)/u);
+  assert.match(workspace, /navigateToWriterReference\(\{ sceneId \}, \{ preservePanel: options\?\.preservePanel \}\)/u);
 });
 
 test("Writer popovers share outside and Escape dismissal with focus return", () => {

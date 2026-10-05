@@ -297,7 +297,7 @@ test("writing presentation uses a stable mobile shell without toolbar overflow",
 
       await page.getByRole("button", { name: "Más acciones de Writer" }).click();
       const more = page.getByRole("dialog", { name: "Más acciones de Writer" });
-      await expect(more.getByRole("button", { name: "Importar borrador" })).toBeVisible();
+      await expect(more.getByRole("button", { name: "Importar guion" })).toBeVisible();
       await expect(more.getByRole("button", { name: "Exportar PDF" })).toBeVisible();
       await expect(more.getByRole("button", { name: "Focus" })).toBeVisible();
       await more.getByRole("button", { name: "Cerrar" }).click();
@@ -370,8 +370,8 @@ test("assisted import shows immediate indeterminate progress, blocks duplicates,
     return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ code: "request_failed", error: "Fallo sintético de QA." }) });
   });
   await page.goto(`/writer/${scriptId}`);
-  await page.locator(".writer-header").getByRole("button", { name: "Importar borrador" }).click();
-  const dialog = page.getByRole("dialog", { name: "Importar borrador" });
+  await page.locator(".writer-header").getByRole("button", { name: "Importar guion" }).click();
+  const dialog = page.getByRole("dialog", { name: "Importar guion" });
   const source = "INT. ESTUDIO - DÍA\n\nANA\nEsto es una prueba local.";
   await dialog.getByLabel("Texto del borrador").fill(source);
   const submit = dialog.getByRole("button", { name: "Importar y organizar" });

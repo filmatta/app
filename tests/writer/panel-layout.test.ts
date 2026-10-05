@@ -45,8 +45,8 @@ test("workspace wires accessible desktop splitters without changing mobile drawe
   assert.match(handle, /ArrowLeft/u);
   assert.match(handle, /onDoubleClick/u);
   assert.match(css, /@media \(min-width: 1200px\)[\s\S]*writer-panel-resize-handle/u);
-  assert.match(css, /\.writer-timeline-panel \{ grid-column: 2; grid-row: 3/u);
-  assert.match(css, /\.writer-observations-panel \{[^}]*grid-row: 2 \/ -1/u);
-  assert.match(css, /\.writer-panel-resize-handle--right \{[^}]*grid-row: 2 \/ -1/u);
+  assert.match(css, /\.writer-timeline-panel \{ grid-column: 2; grid-row: 4/u);
+  assert.match(css, /\.writer-observations-panel \{[^}]*grid-row: 3 \/ -1/u);
+  assert.match(css, /\.writer-panel-resize-handle--right \{[^}]*grid-row: 3 \/ -1/u);
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*\.writer-sidebar \{ position: fixed/u);
 });

@@ -95,6 +95,14 @@ test("Assistant reopen is stable for ten cycles and preserves width and selected
   await page.keyboard.press("ArrowLeft");
   const expectedWidth = await splitter.getAttribute("aria-valuenow");
   const baseline = await headerGeometry(page);
+  const typography = await page.locator(".writer-header").evaluate((header) => {
+    const assistant = header.querySelector<HTMLElement>(".writer-observations-open-button .writer-smart-indicator")!;
+    const timeline = header.querySelector<HTMLElement>(".writer-timeline-button")!;
+    const a = getComputedStyle(assistant);
+    const t = getComputedStyle(timeline);
+    return { assistant: [a.fontFamily, a.fontSize, a.fontWeight, a.lineHeight], timeline: [t.fontFamily, t.fontSize, t.fontWeight, t.lineHeight] };
+  });
+  expect(typography.assistant).toEqual(typography.timeline);
 
   for (let cycle = 0; cycle < 10; cycle += 1) {
     await page.getByRole("button", { name: "Ocultar Asistente" }).click();
