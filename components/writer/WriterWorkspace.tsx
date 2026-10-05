@@ -299,6 +299,7 @@ export default function WriterWorkspace({
   const [panelLayout, setPanelLayout] = useState<WriterPanelLayout>(WRITER_PANEL_LAYOUT_DEFAULTS);
   const [workspaceLayout, setWorkspaceLayout] = useState<WriterWorkspaceLayout>(WRITER_WORKSPACE_LAYOUT_DEFAULTS);
   const [appearance, setAppearance] = useState<WriterAppearance>(WRITER_APPEARANCE_DEFAULTS);
+  const [appearanceStorageError, setAppearanceStorageError] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [observationsSection, setObservationsSection] = useState<WriterObservationsSection>("review");
@@ -351,6 +352,8 @@ export default function WriterWorkspace({
   const workspaceRef = useRef<HTMLDivElement>(null);
   const appearanceRootRef = useRef<HTMLDivElement>(null);
   const appearanceButtonRef = useRef<HTMLButtonElement>(null);
+  const appearanceRef = useRef<WriterAppearance>(WRITER_APPEARANCE_DEFAULTS);
+  const appearanceEditedKeyRef = useRef<string | null>(null);
   const paperRef = useRef<HTMLDivElement>(null);
   const activeSceneRef = useRef<string | null>(null);
   const navigationFrameRef = useRef<number | null>(null);
@@ -550,18 +553,34 @@ export default function WriterWorkspace({
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      try { setAppearance(parseWriterAppearance(window.localStorage.getItem(appearanceStorageKey))); }
-      catch { setAppearance({ ...WRITER_APPEARANCE_DEFAULTS }); }
+      if (appearanceEditedKeyRef.current === appearanceStorageKey) return;
+      try {
+        const restored = parseWriterAppearance(window.localStorage.getItem(appearanceStorageKey));
+        appearanceRef.current = restored;
+        setAppearance(restored);
+        setAppearanceStorageError(false);
+      } catch (error) {
+        appearanceRef.current = { ...WRITER_APPEARANCE_DEFAULTS };
+        setAppearance(appearanceRef.current);
+        setAppearanceStorageError(true);
+        console.error("Could not restore Writer appearance preference", error);
+      }
     });
     return () => window.cancelAnimationFrame(frame);
   }, [appearanceStorageKey]);
 
   const commitAppearance = useCallback((patch: Partial<WriterAppearance>) => {
-    setAppearance((current) => {
-      const next = { ...current, ...patch };
-      try { window.localStorage.setItem(appearanceStorageKey, JSON.stringify(next)); } catch { /* visual preference stays local */ }
-      return next;
-    });
+    const next = { ...appearanceRef.current, ...patch };
+    appearanceEditedKeyRef.current = appearanceStorageKey;
+    appearanceRef.current = next;
+    setAppearance(next);
+    try {
+      window.localStorage.setItem(appearanceStorageKey, JSON.stringify(next));
+      setAppearanceStorageError(false);
+    } catch (error) {
+      setAppearanceStorageError(true);
+      console.error("Could not save Writer appearance preference", error);
+    }
   }, [appearanceStorageKey]);
 
   useEffect(() => {
@@ -2599,7 +2618,7 @@ export default function WriterWorkspace({
         onFocus={() => void (focusMode ? exitFocus() : enterFocus())}
         onTimeline={(view) => openTimeline(null, view)}
         onAppearance={(skin) => commitAppearance({ skin })}
-        onWarmFilter={() => commitAppearance({ warmFilter: !appearance.warmFilter })}
+        onWarmFilter={() => commitAppearance({ warmFilter: !appearanceRef.current.warmFilter })}
         onTypewriterSound={toggleTypewriterSound}
         onShortcuts={() => setShortcutsOpen(true)}
       />}
@@ -2653,6 +2672,7 @@ export default function WriterWorkspace({
               <div className="writer-skin-options" role="radiogroup" aria-label="Skin de Writer">{(["carbon", "navy", "cream"] as WriterSkin[]).map((skin) => <button key={skin} type="button" role="radio" aria-checked={appearance.skin === skin} onClick={() => commitAppearance({ skin })}><span className={`writer-skin-swatch is-${skin}`} />{skin === "carbon" ? "Carbon" : skin === "navy" ? "Marino" : "Cream"}</button>)}</div>
               <label className="writer-warm-toggle"><input type="checkbox" checked={appearance.warmFilter} onChange={(event) => commitAppearance({ warmFilter: event.target.checked })} />Confort visual / filtro cálido</label>
               {appearance.warmFilter && <label className="writer-warm-intensity">Intensidad<input type="range" min="4" max="14" value={appearance.warmIntensity} onChange={(event) => commitAppearance({ warmIntensity: Number(event.target.value) })} /></label>}
+              {appearanceStorageError && <small role="alert">No se pudo guardar la preferencia de apariencia en este navegador.</small>}
               <small>El filtro cálido altera temporalmente la percepción del color. No cambia el guion ni sus exports.</small>
               <button type="button" onClick={() => { setAppearanceOpen(false); setShortcutsOpen(true); }}>Atajos de teclado</button>
             </div>}
