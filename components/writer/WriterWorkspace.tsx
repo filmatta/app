@@ -104,6 +104,7 @@ import {
   applyWriterAutoFormat,
   changeWriterBlockKind,
   findWriterBlockById,
+  findWriterSceneForBlock,
   insertWriterEmptyBlock,
   writerSelectionTargetIsCurrent,
   writerSceneAtSelectionHead,
@@ -700,6 +701,21 @@ export default function WriterWorkspace({
             rightClickSelectionRef.current = activeWriterSelectionRef.current
               ? captureWriterSelectionTarget(_view.state)
               : null;
+          }
+          return false;
+        },
+        click: (view, event) => {
+          if ((event as MouseEvent).button !== 0) return false;
+          const target = event.target instanceof Element
+            ? event.target.closest<HTMLElement>("[data-block-id]")
+            : null;
+          const blockId = target?.dataset.blockId;
+          const clickedScene = blockId ? findWriterSceneForBlock(view.state.doc, blockId) : null;
+          if (clickedScene !== null && clickedScene !== activeSceneRef.current) {
+            activeSceneRef.current = clickedScene;
+            setActiveScene(clickedScene);
+          } else if (clickedScene === null) {
+            syncActiveSceneFromEditor(view.state);
           }
           return false;
         },

@@ -16,6 +16,14 @@ type PulseTooltipTarget = {
   point: ReturnType<typeof useWriterNarrativePulse>["points"][number];
 };
 
+type PulsePointerIntent = {
+  pointerId: number;
+  sceneId: string;
+  clientX: number;
+  clientY: number;
+  activated: boolean;
+};
+
 export default function WriterNarrativePulse({ scriptId, scenes, active, expanded = false, analysisEnabled = true, selectedSceneId, columnWidth, scrollRef, onSelectScene, onMilestonesChange, onEnsureCurrentSaved }: {
   scriptId: string; scenes: TimelineScene[]; active: boolean; analysisEnabled?: boolean; selectedSceneId: string | null; columnWidth: number;
   expanded?: boolean;
@@ -34,6 +42,7 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
   const [savePhase, setSavePhase] = useState<"idle" | "saving" | "error">("idle");
   const [viewportWidth, setViewportWidth] = useState(0);
   const [tooltipTarget, setTooltipTarget] = useState<PulseTooltipTarget | null>(null);
+  const pointerIntentRef = useRef<PulsePointerIntent | null>(null);
   const orderedPoints = useMemo(() => scenes.flatMap((scene) => {
     const point = pulse.points.find((item) => item.sceneId === scene.sourceId);
     return point ? [{ scene, point }] : [];
@@ -94,9 +103,14 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
     setRenameLabel(milestone.label);
   }
 
-  function selectPoint(scene: TimelineScene) {
+  function activatePulseScene(scene: TimelineScene, origin: "pointer" | "keyboard" | "fallback") {
+    if (origin !== "pointer") pointerIntentRef.current = null;
     setSelectedPulseSceneId(scene.sourceId ?? null);
     onSelectScene(scene);
+  }
+
+  function selectPoint(scene: TimelineScene) {
+    activatePulseScene(scene, "fallback");
   }
 
   function closeTooltip(anchor: HTMLButtonElement) {
@@ -149,7 +163,36 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
             const plotted = plotPoints[index];
             if (!plotted) return null;
             const tooltipId = `writer-pulse-tooltip-${scene.sourceId ?? scene.key}`;
-            return <button key={scene.key} type="button" data-pulse-scene-id={scene.sourceId ?? undefined} data-raw-intensity={point.intensity} data-display-intensity={plotted.displayIntensity.toFixed(2)} data-plot-x={plotted.x.toFixed(2)} data-plot-y={plotted.y.toFixed(2)} className={`writer-pulse-point${selectedPulseSceneId === scene.sourceId ? " is-selected" : ""}`} style={{ left: plotted.x, top: plotted.y }} onPointerDown={(event) => event.stopPropagation()} onPointerEnter={(event) => { if (event.pointerType !== "touch") setTooltipTarget({ anchor: event.currentTarget, scene, point }); }} onPointerLeave={(event) => { const anchor = event.currentTarget; if (document.activeElement !== anchor) closeTooltip(anchor); }} onFocus={(event) => setTooltipTarget({ anchor: event.currentTarget, scene, point })} onBlur={(event) => closeTooltip(event.currentTarget)} onClick={(event) => { event.stopPropagation(); selectPoint(scene); }} aria-describedby={tooltipTarget?.scene.sourceId === scene.sourceId ? tooltipId : undefined} aria-label={`Escena ${scene.order} · intensidad ${point.intensity} · seleccionar escena`}><span aria-hidden="true" /></button>;
+            return <button key={scene.key} type="button" data-pulse-scene-id={scene.sourceId ?? undefined} data-raw-intensity={point.intensity} data-display-intensity={plotted.displayIntensity.toFixed(2)} data-plot-x={plotted.x.toFixed(2)} data-plot-y={plotted.y.toFixed(2)} className={`writer-pulse-point${selectedPulseSceneId === scene.sourceId ? " is-selected" : ""}`} style={{ left: plotted.x, top: plotted.y }} onPointerDown={(event) => {
+              event.stopPropagation();
+              if (event.button !== 0 || !scene.sourceId) return;
+              pointerIntentRef.current = {
+                pointerId: event.pointerId,
+                sceneId: scene.sourceId,
+                clientX: event.clientX,
+                clientY: event.clientY,
+                activated: false,
+              };
+            }} onPointerUp={(event) => {
+              event.stopPropagation();
+              const intent = pointerIntentRef.current;
+              if (!scene.sourceId || !intent || intent.pointerId !== event.pointerId || intent.sceneId !== scene.sourceId) return;
+              const moved = Math.hypot(event.clientX - intent.clientX, event.clientY - intent.clientY);
+              if (moved > 8) {
+                pointerIntentRef.current = null;
+                return;
+              }
+              intent.activated = true;
+              activatePulseScene(scene, "pointer");
+            }} onPointerCancel={() => { pointerIntentRef.current = null; }} onPointerEnter={(event) => { if (event.pointerType !== "touch") setTooltipTarget({ anchor: event.currentTarget, scene, point }); }} onPointerLeave={(event) => { const anchor = event.currentTarget; if (document.activeElement !== anchor) closeTooltip(anchor); }} onFocus={(event) => setTooltipTarget({ anchor: event.currentTarget, scene, point })} onBlur={(event) => closeTooltip(event.currentTarget)} onClick={(event) => {
+              event.stopPropagation();
+              const intent = pointerIntentRef.current;
+              if (intent?.activated && intent.sceneId === scene.sourceId) {
+                pointerIntentRef.current = null;
+                return;
+              }
+              activatePulseScene(scene, event.detail === 0 ? "keyboard" : "fallback");
+            }} aria-describedby={tooltipTarget?.scene.sourceId === scene.sourceId ? tooltipId : undefined} aria-label={`Escena ${scene.order} · intensidad ${point.intensity} · seleccionar escena`}><span aria-hidden="true" /></button>;
           })}
           {visibleMilestones.map((milestone) => {
             const index = scenes.findIndex((scene) => scene.sourceId === milestone.sceneId); if (index < 0) return null;

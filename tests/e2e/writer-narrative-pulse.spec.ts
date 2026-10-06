@@ -354,6 +354,45 @@ test("visible circle stays under the pointer during a deliberate scene 38 click"
     await video?.saveAs(path.join(output, `${phase}.webm`));
   }
 });
+
+test("mouse Pulse navigation and manual screenplay selection keep distinct scroll origins", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.request.get("http://127.0.0.1:54329/__scenario?value=writer-ux&writerPulseDense=1");
+  await mockDensePulse(page, 40);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/writer/${scriptId}`);
+  const panel = page.locator("#writer-timeline-panel");
+  await panel.getByRole("button", { name: "Narrative Pulse", exact: true }).click();
+  const points = panel.locator(".writer-pulse-point");
+
+  const clickPulsePoint = async (index: number) => {
+    const point = points.nth(index);
+    await point.scrollIntoViewIfNeeded();
+    const circle = await point.locator("span").boundingBox();
+    expect(circle).not.toBeNull();
+    await page.mouse.click(circle!.x + circle!.width / 2, circle!.y + circle!.height / 2);
+    await expectWriterSceneNavigation(page, longSceneId(index));
+  };
+
+  for (const index of [36, 37, 38, 19, 37]) await clickPulsePoint(index);
+
+  await panel.getByRole("button", { name: "Expandir vista" }).click();
+  await clickPulsePoint(37);
+  await expect(panel.getByRole("button", { name: "Expandir vista" })).toBeVisible();
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Narrative Pulse", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  for (const index of [2, 7, 1]) {
+    const block = page.locator(`[data-block-id="${longSceneId(index)}"]`);
+    await block.scrollIntoViewIfNeeded();
+    const before = await page.locator(".writer-paper").evaluate((element) => element.scrollTop);
+    const box = await block.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.click(box!.x + Math.min(40, box!.width / 2), box!.y + box!.height / 2);
+    await expect(page.locator(`.writer-scene-list > li[data-writer-scene-id="${longSceneId(index)}"]`)).toHaveClass(/is-active/);
+    await expect.poll(() => page.locator(".writer-paper").evaluate((element) => element.scrollTop)).toBe(before);
+  }
+});
 });
 
 test.describe("Pulse emulated touch activation", () => {
