@@ -20,7 +20,8 @@ export default async function ShotlistPage({
   if (!viewer) redirect(`/login?next=/shotlists/${encodeURIComponent(id)}`);
   const state = await loadShotlistOrNull(viewer.id, id);
   if (!state) notFound();
-  return <ShotlistWorkspace initialState={state} initialMode={mode === "suggested" ? "suggested" : "manual"} initialShotId={typeof shot === "string" ? shot : undefined} />;
+  const initialMode = mode === "suggested" || mode === "assisted" ? mode : "manual";
+  return <ShotlistWorkspace initialState={state} initialMode={initialMode} initialShotId={typeof shot === "string" ? shot : undefined} />;
 }
 
 async function loadShotlistOrNull(userId: string, id: string) {

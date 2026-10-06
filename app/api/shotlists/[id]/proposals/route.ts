@@ -24,7 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const body = await readWriterJson(request);
   if (!validUuid(id) || !body.ok || !isRecord(body.value) || !validUuid(body.value.operationId)
     || !Array.isArray(body.value.groupIds) || body.value.groupIds.length < 1 || body.value.groupIds.length > 12 || !body.value.groupIds.every(validUuid)
-    || (body.value.mode !== "assisted" && body.value.mode !== "suggested")
+    || body.value.mode !== "suggested"
     || (body.value.briefing !== undefined && (typeof body.value.briefing !== "string" || body.value.briefing.length > 2_000))) {
     return body.ok ? writerJson({ error: "Solicitud inválida.", code: "invalid" }, 400) : body.response;
   }

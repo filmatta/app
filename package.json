@@ -40,7 +40,8 @@
     "react-dom": "19.2.8",
     "react-konva": "^19.2.2",
     "sharp": "0.35.4",
-    "stripe": "22.6.2"
+    "stripe": "22.6.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

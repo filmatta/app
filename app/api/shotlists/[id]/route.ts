@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { deriveWriterSceneSources } from "@/lib/writer/script-assistant";
 import { deleteShotsWithStoryboard, storyboardDeleteImpact } from "@/lib/storyboard/server";
 import { runStoryboardAssetCleanup } from "@/lib/storyboard/assets";
+import { createHash } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -43,21 +44,60 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const admin = createAdminClient();
 
   if (body.value.action === "addGroup" && validUuid(body.value.operationId) && clean(body.value.title, 180)) {
-    return rpcResult(session.supabase, "writer_add_shotlist_group", {
+    const created = await rpcCall(session.supabase, "writer_add_shotlist_group", {
       p_shotlist_id: id, p_title: String(body.value.title).trim(), p_operation_id: body.value.operationId,
     });
+    if (!created.ok) return created.response;
+    if (Number.isSafeInteger(body.value.targetIndex) && !await reorderGroups(admin, session.user.id, id, String(created.id), Number(body.value.targetIndex))) {
+      return writerJson({ error: "La escena se creó, pero no pudimos ubicarla. Reintenta para completar el orden.", code: "partial" }, 409);
+    }
+    return writerJson({ saved: true, id: created.id });
   }
   if (body.value.action === "addShot" && validUuid(body.value.groupId) && validUuid(body.value.operationId)
     && ["manual", "assisted", "suggested"].includes(String(body.value.origin ?? "manual"))) {
-    return rpcResult(session.supabase, "writer_add_shot", {
+    const created = await rpcCall(session.supabase, "writer_add_shot", {
       p_shotlist_id: id, p_group_id: body.value.groupId, p_operation_id: body.value.operationId,
       p_origin: body.value.origin ?? "manual",
     });
+    if (!created.ok) return created.response;
+    if (Number.isSafeInteger(body.value.targetIndex)) {
+      const reordered = await rpcCall(session.supabase, "writer_reorder_shot", { p_shotlist_id: id, p_shot_id: created.id, p_target_index: body.value.targetIndex });
+      if (!reordered.ok) return reordered.response;
+    }
+    return writerJson({ saved: true, id: created.id });
   }
   if (body.value.action === "duplicateShot" && validUuid(body.value.shotId) && validUuid(body.value.operationId)) {
     return rpcResult(session.supabase, "writer_duplicate_shot", {
       p_shotlist_id: id, p_shot_id: body.value.shotId, p_operation_id: body.value.operationId,
     });
+  }
+  if (body.value.action === "duplicateGroup" && validUuid(body.value.groupId) && validUuid(body.value.operationId)) {
+    const group = await session.supabase.from("writer_shotlist_groups").select("id,title,position").eq("id", body.value.groupId).eq("shotlist_id", id).eq("owner_id", session.user.id).maybeSingle();
+    if (group.error || !group.data) return writerJson({ error: "Escena no encontrada.", code: "not_found" }, 404);
+    const shots = await session.supabase.from("writer_shotlist_shots").select("source_block_id,shot_type,composition,subject,angle,movement,support,lens,setup,duration_seconds,description,intention,notes,position,source_revision").eq("group_id", body.value.groupId).eq("shotlist_id", id).eq("owner_id", session.user.id).order("position");
+    if (shots.error) return writerJson({ error: "No pudimos cargar el grupo.", code: "server_error" }, 500);
+    const created = await rpcCall(session.supabase, "writer_add_shotlist_group", { p_shotlist_id: id, p_title: `${String(group.data.title).slice(0, 168)} · copia`, p_operation_id: body.value.operationId });
+    if (!created.ok) return created.response;
+    const groupId = String(created.id);
+    const copies = (shots.data ?? []).map((shot, index) => ({
+      owner_id: session.user.id, shotlist_id: id, group_id: groupId, source_block_id: null,
+      origin: "manual", shot_type: shot.shot_type, composition: shot.composition, subject: shot.subject,
+      angle: shot.angle, movement: shot.movement, support: shot.support, lens: shot.lens, setup: shot.setup,
+      duration_seconds: shot.duration_seconds, status: "pending", description: shot.description, intention: shot.intention,
+      notes: shot.notes, asset_id: null, position: Number(shot.position),
+      creation_operation_id: deterministicUuid(String(body.value.operationId), `shot:${index}`), source_revision: null,
+    }));
+    if (copies.length) {
+      const inserted = await admin.from("writer_shotlist_shots").insert(copies);
+      if (inserted.error) {
+        await admin.from("writer_shotlist_groups").delete().eq("id", groupId).eq("owner_id", session.user.id).eq("shotlist_id", id);
+        return writerJson({ error: "No pudimos duplicar todos los planos.", code: "server_error" }, 500);
+      }
+    }
+    if (!await reorderGroups(admin, session.user.id, id, groupId, Number(group.data.position) + 1)) {
+      return writerJson({ error: "El grupo se duplicó, pero no pudimos ubicarlo. Reintenta para completar el orden.", code: "partial" }, 409);
+    }
+    return writerJson({ saved: true, id: groupId });
   }
   if (body.value.action === "reorderShot" && validUuid(body.value.shotId) && Number.isSafeInteger(body.value.targetIndex)) {
     return rpcResult(session.supabase, "writer_reorder_shot", {
@@ -90,6 +130,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
     return rpcResult(session.supabase, "writer_delete_shots", { p_shotlist_id: id, p_shot_ids: body.value.shotIds });
+  }
+  if (body.value.action === "deleteGroup" && validUuid(body.value.groupId)) {
+    const group = await session.supabase.from("writer_shotlist_groups").select("id").eq("id", body.value.groupId).eq("shotlist_id", id).eq("owner_id", session.user.id).maybeSingle();
+    if (group.error || !group.data) return writerJson({ error: "Escena no encontrada.", code: "not_found" }, 404);
+    const shots = await session.supabase.from("writer_shotlist_shots").select("id").eq("group_id", body.value.groupId).eq("shotlist_id", id).eq("owner_id", session.user.id);
+    if (shots.error) return writerJson({ error: "No pudimos comprobar el grupo.", code: "server_error" }, 500);
+    const shotIds = (shots.data ?? []).map((shot) => String(shot.id));
+    const impact = shotIds.length ? await storyboardDeleteImpact(session.supabase, session.user.id, id, shotIds) : { panels: 0, approvals: 0 };
+    if (impact.panels > 0 && body.value.deleteStoryboard !== true) return writerJson({ error: `Este grupo tiene ${impact.panels} panel(es) de storyboard y ${impact.approvals} aprobación(es).`, code: "storyboard_dependencies", impact }, 409);
+    if (impact.panels > 0) {
+      const deleted = await deleteShotsWithStoryboard({ db: session.supabase, userId: session.user.id, shotlistId: id, shotIds });
+      await runStoryboardAssetCleanup(session.user.id, deleted.assetIds);
+    }
+    const removed = await admin.from("writer_shotlist_groups").delete().eq("id", body.value.groupId).eq("shotlist_id", id).eq("owner_id", session.user.id);
+    if (removed.error) return writerJson({ error: "No pudimos eliminar el grupo.", code: "server_error" }, 500);
+    return writerJson({ saved: true, deleted: true });
   }
   if (body.value.action === "updateShot" && validUuid(body.value.shotId)
     && Number.isSafeInteger(body.value.expectedRevision) && isRecord(body.value.changes)) {
@@ -174,6 +230,38 @@ async function rpcResult(db: SupabaseClient, name: string, args: Record<string, 
     return writerJson({ error: "No pudimos guardar el cambio.", code: "server_error" }, 500);
   }
   return writerJson({ saved: true, id: result.data ?? null });
+}
+
+async function rpcCall(db: SupabaseClient, name: string, args: Record<string, unknown>): Promise<{ ok: true; id: unknown } | { ok: false; response: Response }> {
+  const result = await db.rpc(name, args);
+  if (!result.error) return { ok: true, id: result.data ?? null };
+  const message = result.error.message ?? "";
+  if (message.includes("NOT_FOUND")) return { ok: false, response: writerJson({ error: "Recurso no encontrado.", code: "not_found" }, 404) };
+  if (result.error.code === "22023" || message.includes("INVALID")) return { ok: false, response: writerJson({ error: "Solicitud inválida.", code: "invalid" }, 400) };
+  return { ok: false, response: writerJson({ error: "No pudimos guardar el cambio.", code: "server_error" }, 500) };
+}
+
+async function reorderGroups(admin: ReturnType<typeof createAdminClient>, userId: string, shotlistId: string, groupId: string, requestedIndex: number) {
+  const rows = await admin.from("writer_shotlist_groups").select("id,position").eq("owner_id", userId).eq("shotlist_id", shotlistId).order("position");
+  if (rows.error || !rows.data) return false;
+  const ids = rows.data.map((row) => String(row.id)).filter((id) => id !== groupId);
+  ids.splice(Math.max(0, Math.min(requestedIndex, ids.length)), 0, groupId);
+  for (const [index, targetId] of ids.entries()) {
+    const moved = await admin.from("writer_shotlist_groups").update({ position: 100_000 + index }).eq("id", targetId).eq("owner_id", userId).eq("shotlist_id", shotlistId);
+    if (moved.error) return false;
+  }
+  for (const [index, targetId] of ids.entries()) {
+    const moved = await admin.from("writer_shotlist_groups").update({ position: index, updated_at: new Date().toISOString() }).eq("id", targetId).eq("owner_id", userId).eq("shotlist_id", shotlistId);
+    if (moved.error) return false;
+  }
+  return true;
+}
+
+function deterministicUuid(root: string, label: string) {
+  const hex = createHash("sha256").update(`${root}:${label}`).digest("hex").slice(0, 32).split("");
+  hex[12] = "4";
+  hex[16] = ((parseInt(hex[16]!, 16) & 3) | 8).toString(16);
+  return `${hex.slice(0, 8).join("")}-${hex.slice(8, 12).join("")}-${hex.slice(12, 16).join("")}-${hex.slice(16, 20).join("")}-${hex.slice(20).join("")}`;
 }
 
 function validShotValue(key: string, value: unknown) {
