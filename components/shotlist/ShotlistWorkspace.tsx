@@ -1,7 +1,5 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element -- authenticated image route is intentionally not sent through the public optimizer */
-
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
@@ -29,7 +27,7 @@ import {
 } from "@/lib/shotlist/ux";
 import ShotlistApplicationMenu from "./ShotlistApplicationMenu";
 import ShotlistBadgeSelect from "./ShotlistBadgeSelect";
-import { ConfirmDialog, NewSceneDialog, ShotlistHelpDialog, StoryboardCreateDialog } from "./ShotlistDialogs";
+import { ConfirmDialog, NewSceneDialog, ShotlistHelpDialog, StoryboardCreateDialog, StoryboardPreviewDialog, StoryboardPreviewImage } from "./ShotlistDialogs";
 import ShotlistExportDialog from "./ShotlistExportDialog";
 import ShotlistFilters from "./ShotlistFilters";
 import ShotlistImportDialog from "./ShotlistImportDialog";
@@ -41,6 +39,7 @@ import {
   writerInternalHistoryStorageKey,
   type WriterInternalHistory,
 } from "@/lib/writer/internal-navigation";
+import type { StoryboardBoard, StoryboardPanel } from "@/lib/storyboard/types";
 
 type SourceChanges = { renamed: Array<{ groupId: string; sceneId: string; title: string }>; reordered: boolean; missing: string[]; added: Array<{ sceneId: string; title: string }> };
 type Mode = "manual" | "assisted" | "suggested";
@@ -49,6 +48,7 @@ type DeleteTarget = { kind: "shot"; shotIds: string[] } | { kind: "group"; group
 
 const SUPPORT_OPTIONS = ["Trípode", "Monopié", "Hombro", "Handheld", "Gimbal", "Steadicam", "Dolly", "Grúa", "Drone"];
 const COLUMN_WIDTHS: Record<ShotlistColumnKey, number> = { number: 66, scene: 84, location: 150, interiorExterior: 78, shotType: 142, subject: 210, description: 240, lens: 108, composition: 130, angle: 120, movement: 132, support: 120, setup: 90, durationSeconds: 94, status: 112, notes: 240, storyboard: 86 };
+const ACTION_COLUMN_WIDTH = 78;
 const DEFAULT_COLUMNS = new Set(SHOTLIST_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key));
 
 export default function ShotlistWorkspace({ initialState, userId, initialMode = "manual", initialShotId }: { initialState: { shotlist: WriterShotlist; sourceChanges: SourceChanges }; userId: string; initialMode?: Mode; initialShotId?: string }) {
@@ -79,6 +79,8 @@ export default function ShotlistWorkspace({ initialState, userId, initialMode = 
   const [helpOpen, setHelpOpen] = useState(false);
   const [storyboardCreateOpen, setStoryboardCreateOpen] = useState(false);
   const [storyboardState, setStoryboardState] = useState<"loading" | "empty" | "existing" | "error">("loading");
+  const [storyboardBoard, setStoryboardBoard] = useState<StoryboardBoard | null>(null);
+  const [storyboardPreviewShotId, setStoryboardPreviewShotId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<{ panels: number; approvals: number } | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
@@ -125,10 +127,10 @@ export default function ShotlistWorkspace({ initialState, userId, initialMode = 
     let active = true;
     void fetch(`/api/shotlists/${initialState.shotlist.id}/storyboard`, { cache: "no-store" }).then(async (response) => {
       if (!response.ok) throw new Error();
-      const board = await response.json();
+      const board = await response.json() as StoryboardBoard;
       const panelCount = (board.groups ?? []).reduce((total: number, group: { shots?: Array<{ panels?: unknown[] }> }) => total + (group.shots ?? []).reduce((shotTotal, shot) => shotTotal + (shot.panels?.length ?? 0), 0), 0);
-      if (active) setStoryboardState(panelCount > 0 ? "existing" : "empty");
-    }).catch(() => { if (active) setStoryboardState("error"); });
+      if (active) { setStoryboardBoard(board); setStoryboardState(panelCount > 0 ? "existing" : "empty"); }
+    }).catch(() => { if (active) { setStoryboardBoard(null); setStoryboardState("error"); } });
     return () => { active = false; };
   }, [initialState.shotlist.id]);
 
@@ -149,11 +151,17 @@ export default function ShotlistWorkspace({ initialState, userId, initialMode = 
   const selectedShot = allShots.find((shot) => shot.id === selectedShotId) ?? null;
   const selectedGroup = selectedShot ? shotlist.groups.find((group) => group.id === selectedShot.groupId) ?? null : null;
   const selectedRow = selectedShot ? allRows.find((row) => row.shot.id === selectedShot.id) ?? null : null;
+  const storyboardShots = useMemo(() => new Map((storyboardBoard?.groups ?? []).flatMap((group) => group.shots).map((shot) => [shot.id, shot])), [storyboardBoard]);
+  const selectedStoryboardPanels = selectedShot ? storyboardShots.get(selectedShot.id)?.panels ?? [] : [];
+  const selectedStoryboardPanel = representativeStoryboardPanel(selectedStoryboardPanels);
+  const previewShot = storyboardPreviewShotId ? allRows.find((row) => row.shot.id === storyboardPreviewShotId) ?? null : null;
+  const previewPanels = storyboardPreviewShotId ? storyboardShots.get(storyboardPreviewShotId)?.panels ?? [] : [];
+  const previewPanel = representativeStoryboardPanel(previewPanels);
   const summary = writerShotlistSummary(shotlist.groups);
   const duration = `${Math.floor(summary.durationSeconds / 60)}:${String(Math.round(summary.durationSeconds % 60)).padStart(2, "0")}`;
   const columns = SHOTLIST_COLUMNS.map((column) => column.key).filter((column) => visibleColumns.has(column));
-  const gridTemplate = `${columns.map((column) => `${COLUMN_WIDTHS[column]}px`).join(" ")} 46px`;
-  const gridWidth = columns.reduce((sum, column) => sum + COLUMN_WIDTHS[column], 46);
+  const gridTemplate = `${columns.map((column) => `${COLUMN_WIDTHS[column]}px`).join(" ")} ${ACTION_COLUMN_WIDTH}px`;
+  const gridWidth = columns.reduce((sum, column) => sum + COLUMN_WIDTHS[column], ACTION_COLUMN_WIDTH);
   const gridStyle = { gridTemplateColumns: gridTemplate, minWidth: gridWidth, "--shot-grid": gridTemplate } as CSSProperties;
   const groupStyle = { minWidth: gridWidth } as CSSProperties;
 
@@ -276,6 +284,7 @@ export default function ShotlistWorkspace({ initialState, userId, initialMode = 
   function openExport(format: "csv" | "pdf") { setExportFormat(format); setExportOpen(true); }
   function selectedTextActive() { const selection = window.getSelection(); return Boolean(selection && !selection.isCollapsed && selection.toString()); }
   function menuDelete() { if (selectedTextActive()) return setNotice("Hay texto seleccionado. La fila no se eliminó."); const ids = selectedIds.size ? [...selectedIds] : selectedShot ? [selectedShot.id] : []; if (ids.length) setDeleteTarget({ kind: "shot", shotIds: ids }); }
+  function openStoryboardPreview(shot: WriterShot) { selectShot(shot); setStoryboardPreviewShotId(shot.id); }
   function navigateInternalHistory(direction: -1 | 1) {
     if (saveState !== "saved") { setNotice("Espera a que termine el guardado antes de navegar."); return; }
     const step = stepWriterInternalHistory(internalHistory, direction);
@@ -307,27 +316,28 @@ export default function ShotlistWorkspace({ initialState, userId, initialMode = 
         const isLastGroup = groupIndex === shotlist.groups.length - 1;
         return <section key={group.id} id={`shot-group-${group.id}`} className="shotlist-group" style={groupStyle}><div className="shotlist-group-head"><button type="button" className="shotlist-group-toggle" onClick={() => setExpanded((current) => { const next = new Set(current); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next; })}><span>{expanded.has(group.id) ? "⌄" : "›"}</span><strong>{group.sourceStatus === "manual" ? "MANUAL" : `ESC. ${String(groupIndex + 1).padStart(2, "0")}`} · {group.title}</strong><small>· {group.shots.length} planos</small></button><ShotlistMoreMenu label={`Acciones de ${group.title}`} canOpenWriter={Boolean(shotlist.scriptId && group.sourceSceneId)} onInsertAfter={() => openNewScene(group)} onDuplicate={() => void duplicateGroup(group)} onCopy={() => void copyGroup(group)} onOpenWriter={() => openWriter(group)} onDelete={() => setDeleteTarget({ kind: "group", group })} /></div>{expanded.has(group.id) && group.shots.length === 0 && <div className="shotlist-empty-group"><p>Esta escena aún no tiene planos.</p><button type="button" onClick={() => void addShot(group.id, 0)}>＋ Añadir primer plano</button></div>}{expanded.has(group.id) && groupRows.map((row) => {
           const canonicalIndex = group.shots.findIndex((shot) => shot.id === row.shot.id);
-          return <div key={row.shot.id} className="shotlist-row-wrap"><InsertionButton label="Añadir plano aquí" onInsert={() => void addShot(group.id, canonicalIndex)} /><ShotRow row={row} columns={columns} gridStyle={gridStyle} selected={selectedShotId === row.shot.id} checked={selectedIds.has(row.shot.id)} shotlist={shotlist} onSelect={() => selectShot(row.shot)} onNavigate={(direction) => navigateRow(row.shot.id, direction)} onCheck={(checked) => setSelectedIds((current) => { const next = new Set(current); if (checked) next.add(row.shot.id); else next.delete(row.shot.id); return next; })} onSave={(changes) => void saveShot(row.shot, changes)} onDuplicate={() => void duplicateShot(row.shot)} onCopy={() => void copyShot(row)} onOpenWriter={() => openWriter(group, row.shot)} onDelete={() => setDeleteTarget({ kind: "shot", shotIds: [row.shot.id] })} onInsertAfter={() => void addShot(group.id, canonicalIndex + 1)} /></div>;
+          return <div key={row.shot.id} className="shotlist-row-wrap"><InsertionButton label="Añadir plano aquí" onInsert={() => void addShot(group.id, canonicalIndex)} /><ShotRow row={row} columns={columns} gridStyle={gridStyle} selected={selectedShotId === row.shot.id} checked={selectedIds.has(row.shot.id)} shotlist={shotlist} onSelect={() => selectShot(row.shot)} onPreview={() => openStoryboardPreview(row.shot)} onNavigate={(direction) => navigateRow(row.shot.id, direction)} onCheck={(checked) => setSelectedIds((current) => { const next = new Set(current); if (checked) next.add(row.shot.id); else next.delete(row.shot.id); return next; })} onSave={(changes) => void saveShot(row.shot, changes)} onDuplicate={() => void duplicateShot(row.shot)} onCopy={() => void copyShot(row)} onOpenWriter={() => openWriter(group, row.shot)} onDelete={() => setDeleteTarget({ kind: "shot", shotIds: [row.shot.id] })} onInsertAfter={() => void addShot(group.id, canonicalIndex + 1)} /></div>;
         })}{expanded.has(group.id) && groupRows.length > 0 && <InsertionButton end label={isLastGroup ? "Añadir plano al final de la shotlist" : "Añadir plano al final de esta escena"} onInsert={() => void addShot(group.id, group.shots.length)} />}<InsertionButton scene label="Nueva escena aquí" onInsert={() => openNewScene(group)} /></section>;
       })}{!filteredRows.length && <p className="shotlist-no-results">No hay planos que coincidan. Los filtros no han modificado ni reordenado los datos.</p>}<div ref={loadMore} className="shotlist-load-more">{renderedRows.length < filteredRows.length ? `Cargando ${Math.min(240, filteredRows.length - renderedRows.length)} planos más…` : `${filteredRows.length} planos visibles`}</div></div>
       {selectedIds.size > 0 && <div className="shotlist-bulk"><strong>{selectedIds.size} seleccionados</strong><button type="button" onClick={() => void api({ action: "bulkStatus", shotIds: [...selectedIds], status: "ready" }).then(() => reload())}>Marcar Listos</button><button type="button" onClick={() => setDeleteTarget({ kind: "shot", shotIds: [...selectedIds] })}>Eliminar</button></div>}
     </main>
-    {inspectorOpen && <Inspector shotlist={shotlist} selectedShot={selectedShot} selectedGroup={selectedGroup} selectedRow={selectedRow} searchActive={Boolean(search.trim() || filters.length)} onClose={() => setInspectorOpen(false)} onSelect={selectShot} onSave={(shot, changes) => void saveShot(shot, changes)} onMove={(direction) => void moveShot(direction)} onDuplicate={() => void duplicateShot()} onDelete={() => selectedShot && setDeleteTarget({ kind: "shot", shotIds: [selectedShot.id] })} onOpenWriter={() => selectedGroup && selectedShot && openWriter(selectedGroup, selectedShot)} onUpload={uploadShotImage} />}
+    {inspectorOpen && <Inspector shotlist={shotlist} selectedShot={selectedShot} selectedGroup={selectedGroup} selectedRow={selectedRow} storyboardState={storyboardState} storyboardPanel={selectedStoryboardPanel} storyboardPanelCount={selectedStoryboardPanels.length} searchActive={Boolean(search.trim() || filters.length)} onClose={() => setInspectorOpen(false)} onSelect={selectShot} onSave={(shot, changes) => void saveShot(shot, changes)} onMove={(direction) => void moveShot(direction)} onDuplicate={() => void duplicateShot()} onDelete={() => selectedShot && setDeleteTarget({ kind: "shot", shotIds: [selectedShot.id] })} onOpenWriter={() => selectedGroup && selectedShot && openWriter(selectedGroup, selectedShot)} onPreview={() => selectedShot && openStoryboardPreview(selectedShot)} onUpload={uploadShotImage} />}
     {!inspectorOpen && <button type="button" className="shotlist-open-inspector" onClick={() => setInspectorOpen(true)}>Abrir inspector</button>}
     <NewSceneDialog open={newSceneOpen} anchorLabel={newSceneAnchor?.label} busy={dialogBusy} onClose={() => { if (!dialogBusy) { setNewSceneOpen(false); setNewSceneAnchor(null); } }} onCreate={(title) => void addGroup(title)} />
     <ShotlistImportDialog open={importOpen} shotlistId={shotlist.id} linkedScriptId={shotlist.scriptId} onClose={() => setImportOpen(false)} onImported={() => reload()} />
     <ShotlistExportDialog key={`${exportOpen}:${exportFormat}`} open={exportOpen} initialFormat={exportFormat} visibleColumns={visibleColumns} totalCount={allRows.length} filteredCount={naturalFilteredRows.length} busy={exportBusy} onClose={() => setExportOpen(false)} onExport={(options) => void exportData(options)} />
     <ShotlistHelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
     <StoryboardCreateDialog open={storyboardCreateOpen} shotlistId={shotlist.id} onClose={() => setStoryboardCreateOpen(false)} />
+    <StoryboardPreviewDialog open={Boolean(storyboardPreviewShotId)} shotlistId={shotlist.id} shotId={previewShot?.shot.id ?? null} shotNumber={previewShot?.number ?? null} shotSubject={previewShot?.shot.subject ?? null} panel={previewPanel} panelCount={previewPanels.length} onClose={() => setStoryboardPreviewShotId(null)} />
     <ConfirmDialog open={Boolean(deleteTarget)} title={deleteTarget?.kind === "group" ? "Eliminar grupo" : "Eliminar plano"} description={deleteImpact ? <p>También se eliminarán {deleteImpact.panels} panel(es) de Storyboard y {deleteImpact.approvals} aprobación(es). Esta acción es definitiva.</p> : <p>{deleteTarget?.kind === "group" ? "Se eliminará el grupo y sus planos. La escena literaria de Writer no se borrará." : `Se eliminarán ${deleteTarget?.shotIds.length ?? 0} plano(s).`}</p>} confirmLabel={deleteImpact ? "Eliminar planos y Storyboard" : "Eliminar"} danger busy={dialogBusy} onClose={() => { if (!dialogBusy) { setDeleteTarget(null); setDeleteImpact(null); } }} onConfirm={() => void performDelete(Boolean(deleteImpact))} />
   </div>;
 }
 
-function ShotRow({ row, columns, gridStyle, selected, checked, shotlist, onSelect, onNavigate, onCheck, onSave, onDuplicate, onCopy, onOpenWriter, onDelete, onInsertAfter }: { row: ShotlistRowContext; columns: ShotlistColumnKey[]; gridStyle: CSSProperties; selected: boolean; checked: boolean; shotlist: WriterShotlist; onSelect: () => void; onNavigate: (direction: -1 | 1) => void; onCheck: (checked: boolean) => void; onSave: (changes: Partial<WriterShot>) => void; onDuplicate: () => void; onCopy: () => void; onOpenWriter: () => void; onDelete: () => void; onInsertAfter: () => void }) {
-  return <div data-shot-id={row.shot.id} className={`shotlist-row${selected ? " is-selected" : ""}`} style={gridStyle} role="row" tabIndex={0} aria-label={`Plano ${row.number}: ${row.shot.subject || row.shot.shotType}`} onClick={onSelect} onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === "Enter") { event.preventDefault(); onSelect(); } else if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); onNavigate(event.key === "ArrowUp" ? -1 : 1); } }}>{columns.map((column) => <div key={column} role="cell" className={`shotlist-cell is-${column}`}>{renderCell(column, row, checked, onCheck, onSave, shotlist)}</div>)}<div className="shotlist-cell is-actions"><ShotlistMoreMenu label={`Acciones del plano ${row.number}`} canOpenWriter={Boolean(shotlist.scriptId && row.group.sourceSceneId)} onInsertAfter={onInsertAfter} onDuplicate={onDuplicate} onCopy={onCopy} onOpenWriter={onOpenWriter} onDelete={onDelete} /></div></div>;
+function ShotRow({ row, columns, gridStyle, selected, checked, shotlist, onSelect, onPreview, onNavigate, onCheck, onSave, onDuplicate, onCopy, onOpenWriter, onDelete, onInsertAfter }: { row: ShotlistRowContext; columns: ShotlistColumnKey[]; gridStyle: CSSProperties; selected: boolean; checked: boolean; shotlist: WriterShotlist; onSelect: () => void; onPreview: () => void; onNavigate: (direction: -1 | 1) => void; onCheck: (checked: boolean) => void; onSave: (changes: Partial<WriterShot>) => void; onDuplicate: () => void; onCopy: () => void; onOpenWriter: () => void; onDelete: () => void; onInsertAfter: () => void }) {
+  return <div data-shot-id={row.shot.id} className={`shotlist-row${selected ? " is-selected" : ""}`} style={gridStyle} role="row" tabIndex={0} aria-label={`Plano ${row.number}: ${row.shot.subject || row.shot.shotType}`} onClick={onSelect} onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === "Enter") { event.preventDefault(); onSelect(); } else if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); onNavigate(event.key === "ArrowUp" ? -1 : 1); } }}>{columns.map((column) => <div key={column} role="cell" className={`shotlist-cell is-${column}`}>{renderCell(column, row, checked, onCheck, onSave, onPreview)}</div>)}<div className="shotlist-cell is-actions"><button type="button" className="shotlist-story-preview-button" onClick={(event) => { event.stopPropagation(); onPreview(); }} aria-label={`Vista previa del storyboard del plano ${row.number}`} title="Vista previa del storyboard">▧</button><ShotlistMoreMenu label={`Acciones del plano ${row.number}`} canOpenWriter={Boolean(shotlist.scriptId && row.group.sourceSceneId)} onInsertAfter={onInsertAfter} onDuplicate={onDuplicate} onCopy={onCopy} onOpenWriter={onOpenWriter} onDelete={onDelete} /></div></div>;
 }
 
-function renderCell(column: ShotlistColumnKey, row: ShotlistRowContext, checked: boolean, onCheck: (checked: boolean) => void, onSave: (changes: Partial<WriterShot>) => void, shotlist: WriterShotlist) {
+function renderCell(column: ShotlistColumnKey, row: ShotlistRowContext, checked: boolean, onCheck: (checked: boolean) => void, onSave: (changes: Partial<WriterShot>) => void, onPreview: () => void) {
   const shot = row.shot;
   if (column === "number") return <span className="shotlist-number"><input type="checkbox" aria-label={`Seleccionar plano ${row.number}`} checked={checked} onClick={(event) => event.stopPropagation()} onChange={(event) => onCheck(event.target.checked)} />{String(row.number).padStart(2, "0")}</span>;
   if (column === "scene") return <span>ESC. {String(row.sceneNumber).padStart(2, "0")}</span>;
@@ -345,14 +355,14 @@ function renderCell(column: ShotlistColumnKey, row: ShotlistRowContext, checked:
   if (column === "durationSeconds") return <input aria-label="Duración en segundos" type="number" min="0" key={`${shot.id}-duration-${shot.revision}`} defaultValue={shot.durationSeconds ?? ""} onClick={(event) => event.stopPropagation()} onBlur={(event) => { const value = event.target.value === "" ? null : Number(event.target.value); if (value !== shot.durationSeconds) onSave({ durationSeconds: value }); }} />;
   if (column === "status") return <ShotlistBadgeSelect compact label="Estado" value={shot.status === "ready" ? "Listo" : "Pendiente"} options={["Pendiente", "Listo"]} allowCustom={false} onChange={(value) => onSave({ status: value === "Listo" ? "ready" : "pending" })} />;
   if (column === "notes") return <CellInput label="Observaciones" value={shot.notes ?? ""} revision={shot.revision} onSave={(value) => onSave({ notes: value || null })} />;
-  if (column === "storyboard") return <Link href={`/shotlists/${shotlist.id}/storyboard#story-shot-${shot.id}`} className="shotlist-story-cell" onClick={(event) => event.stopPropagation()} aria-label={`Abrir storyboard del plano ${row.number}`}>▧</Link>;
+  if (column === "storyboard") return <button type="button" className="shotlist-story-cell" onClick={(event) => { event.stopPropagation(); onPreview(); }} aria-label={`Vista previa del storyboard del plano ${row.number}`}>▧</button>;
   return null;
 }
 
 function CellInput({ label, value, revision, onSave }: { label: string; value: string; revision: number; onSave: (value: string) => void }) { return <input aria-label={label} key={`${label}-${revision}`} defaultValue={value} onClick={(event) => event.stopPropagation()} onBlur={(event) => { if (event.target.value !== value) onSave(event.target.value); }} />; }
 function InsertionButton({ label, onInsert, scene = false, end = false }: { label: string; onInsert: () => void; scene?: boolean; end?: boolean }) { return <div className={`shotlist-insert-slot${scene ? " is-scene" : ""}${end ? " is-end" : ""}`}><button type="button" onClick={onInsert} aria-label={label} title={label}><span>＋</span><b>{label}</b></button></div>; }
 
-function Inspector({ shotlist, selectedShot, selectedGroup, selectedRow, searchActive, onClose, onSelect, onSave, onMove, onDuplicate, onDelete, onOpenWriter, onUpload }: { shotlist: WriterShotlist; selectedShot: WriterShot | null; selectedGroup: WriterShotlistGroup | null; selectedRow: ShotlistRowContext | null; searchActive: boolean; onClose: () => void; onSelect: (shot: WriterShot) => void; onSave: (shot: WriterShot, changes: Partial<WriterShot>) => void; onMove: (direction: -1 | 1) => void; onDuplicate: () => void; onDelete: () => void; onOpenWriter: () => void; onUpload: (shot: WriterShot, file: File) => void }) {
+function Inspector({ shotlist, selectedShot, selectedGroup, selectedRow, storyboardState, storyboardPanel, storyboardPanelCount, searchActive, onClose, onSelect, onSave, onMove, onDuplicate, onDelete, onOpenWriter, onPreview, onUpload }: { shotlist: WriterShotlist; selectedShot: WriterShot | null; selectedGroup: WriterShotlistGroup | null; selectedRow: ShotlistRowContext | null; storyboardState: "loading" | "empty" | "existing" | "error"; storyboardPanel: StoryboardPanel | null; storyboardPanelCount: number; searchActive: boolean; onClose: () => void; onSelect: (shot: WriterShot) => void; onSave: (shot: WriterShot, changes: Partial<WriterShot>) => void; onMove: (direction: -1 | 1) => void; onDuplicate: () => void; onDelete: () => void; onOpenWriter: () => void; onPreview: () => void; onUpload: (shot: WriterShot, file: File) => void }) {
   if (!selectedShot || !selectedGroup || !selectedRow) return <aside className="shotlist-inspector"><div className="shotlist-inspector-empty"><button type="button" onClick={onClose}>×</button><p>Selecciona un plano para editarlo.</p></div></aside>;
   const allShots = shotlist.groups.flatMap((group) => group.shots); const index = allShots.indexOf(selectedShot);
   return <aside className="shotlist-inspector"><div className="shotlist-inspector-head"><div><h2>PLANO {String(selectedRow.number).padStart(2, "0")}</h2><span>{selectedGroup.sourceStatus === "manual" ? "GRUPO MANUAL" : `ESC. ${String(selectedRow.sceneNumber).padStart(2, "0")}`} · {selectedGroup.title}</span></div><button type="button" disabled={index <= 0} onClick={() => onSelect(allShots[index - 1]!)} aria-label="Plano anterior">‹</button><button type="button" disabled={index >= allShots.length - 1} onClick={() => onSelect(allShots[index + 1]!)} aria-label="Plano siguiente">›</button><button type="button" onClick={onClose} aria-label="Cerrar inspector">×</button></div>
@@ -362,11 +372,12 @@ function Inspector({ shotlist, selectedShot, selectedGroup, selectedRow, searchA
     <div className="shotlist-field-pair"><ShotField label="Setup"><CellInput label="Setup" value={selectedShot.setup ?? ""} revision={selectedShot.revision} onSave={(value) => onSave(selectedShot, { setup: value || null })} /></ShotField><ShotField label="Duración (s)"><input type="number" min="0" key={`${selectedShot.id}-inspector-duration-${selectedShot.revision}`} defaultValue={selectedShot.durationSeconds ?? ""} onBlur={(event) => { const value = event.target.value === "" ? null : Number(event.target.value); if (value !== selectedShot.durationSeconds) onSave(selectedShot, { durationSeconds: value }); }} /></ShotField></div>
     <ShotField label="Descripción"><textarea key={`${selectedShot.id}-description-${selectedShot.revision}`} defaultValue={selectedShot.description ?? ""} onBlur={(event) => { if (event.target.value !== (selectedShot.description ?? "")) onSave(selectedShot, { description: event.target.value || null }); }} /></ShotField><ShotField label="Intención"><textarea key={`${selectedShot.id}-intention-${selectedShot.revision}`} defaultValue={selectedShot.intention ?? ""} onBlur={(event) => { if (event.target.value !== (selectedShot.intention ?? "")) onSave(selectedShot, { intention: event.target.value || null }); }} /></ShotField><ShotField label="Observaciones"><textarea key={`${selectedShot.id}-notes-${selectedShot.revision}`} defaultValue={selectedShot.notes ?? ""} onBlur={(event) => { if (event.target.value !== (selectedShot.notes ?? "")) onSave(selectedShot, { notes: event.target.value || null }); }} /></ShotField>
     {shotlist.scriptId && selectedGroup.sourceSceneId && <button type="button" className="shotlist-edit-writer" onClick={onOpenWriter}>Ver en guion ↗</button>}
-    <div className="shotlist-storyboard"><h3>Storyboard / referencia</h3><div>{selectedShot.assetId ? <a href={`/api/writer/production-assets/${selectedShot.assetId}`} target="_blank" rel="noreferrer" title="Abrir referencia"><img src={`/api/writer/production-assets/${selectedShot.assetId}`} alt="Referencia visual privada del plano" /></a> : <span>▧</span>}<strong>{selectedShot.assetId ? "Referencia privada del plano" : "Sin referencia de plano"}</strong><p>Shotlist decide qué filmar; Storyboard ayuda a visualizarlo.</p><Link href={`/shotlists/${shotlist.id}/storyboard#story-shot-${selectedShot.id}`}>Abrir Storyboard</Link><label>⇧ {selectedShot.assetId ? "Cambiar referencia" : "Subir referencia"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void onUpload(selectedShot, file); event.target.value = ""; }} /></label></div></div>
+    <div className="shotlist-storyboard"><h3>Storyboard</h3><div><button type="button" className="shotlist-inspector-preview" onClick={onPreview} disabled={storyboardState === "loading" || storyboardState === "error"}>{storyboardState === "loading" ? <span>Cargando storyboard…</span> : storyboardState === "error" ? <span>No pudimos cargar el storyboard.</span> : <StoryboardPreviewImage panel={storyboardPanel} alt={`Storyboard del plano ${selectedRow.number}`} />}</button><strong>{storyboardPanel ? "Vista previa del storyboard" : "Sin storyboard"}</strong>{storyboardPanelCount > 1 && <p>{storyboardPanelCount} paneles · se muestra el primero con contenido</p>}<Link href={storyboardPanel ? `/shotlists/${shotlist.id}/storyboard/shots/${selectedShot.id}?panel=${storyboardPanel.id}` : `/shotlists/${shotlist.id}/storyboard#story-shot-${selectedShot.id}`}>Abrir en Storyboard</Link><label>⇧ {selectedShot.assetId ? "Cambiar referencia del plano" : "Subir referencia del plano"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void onUpload(selectedShot, file); event.target.value = ""; }} /></label></div></div>
     <div className="shotlist-inspector-actions"><button type="button" disabled={searchActive || selectedGroup.shots[0]?.id === selectedShot.id} title={searchActive ? "Quita los filtros para reordenar" : "Mover arriba"} onClick={() => onMove(-1)}>↑ Subir</button><button type="button" disabled={searchActive || selectedGroup.shots.at(-1)?.id === selectedShot.id} title={searchActive ? "Quita los filtros para reordenar" : "Mover abajo"} onClick={() => onMove(1)}>↓ Bajar</button><button type="button" onClick={onDuplicate}>Duplicar</button><button type="button" onClick={onDelete}>Eliminar</button></div>
   </aside>;
 }
 
 function ShotField({ label, children }: { label: string; children: ReactNode }) { return <label className="shotlist-field"><span>{label}</span>{children}</label>; }
+function representativeStoryboardPanel(panels: StoryboardPanel[]) { return panels.find((panel) => panel.previewAssetId && panel.currentRevision.contentKind !== "empty") ?? panels.find((panel) => panel.currentRevision.contentKind !== "empty") ?? panels[0] ?? null; }
 function message(cause: unknown, fallback: string) { return cause instanceof Error && cause.message ? cause.message : fallback; }
 function download(blob: Blob, filename: string) { const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = filename; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 30_000); }

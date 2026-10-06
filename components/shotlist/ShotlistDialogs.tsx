@@ -1,7 +1,10 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- authenticated preview route is intentionally not sent through the public optimizer */
+
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
+import type { StoryboardPanel } from "@/lib/storyboard/types";
 
 function DialogFrame({ open, title, eyebrow, onClose, children, footer, initialFocus }: { open: boolean; title: string; eyebrow?: string; onClose: () => void; children: ReactNode; footer?: ReactNode; initialFocus?: React.RefObject<HTMLElement | null> }) {
   const dialog = useRef<HTMLDivElement>(null);
@@ -66,6 +69,33 @@ export function StoryboardCreateDialog({ open, shotlistId, onClose }: { open: bo
     <p>Se abrirá un tablero vacío para dibujar o subir referencias a tus planos.</p>
     <p className="shotlist-dialog-note">Esta acción no genera imágenes, no ejecuta IA y no consume créditos.</p>
   </DialogFrame>;
+}
+
+export function StoryboardPreviewDialog({ open, shotlistId, shotId, shotNumber, shotSubject, panel, panelCount, onClose }: { open: boolean; shotlistId: string; shotId: string | null; shotNumber: number | null; shotSubject: string | null; panel: StoryboardPanel | null; panelCount: number; onClose: () => void }) {
+  if (!shotId) return null;
+  const destination = panel
+    ? `/shotlists/${shotlistId}/storyboard/shots/${shotId}?panel=${panel.id}`
+    : `/shotlists/${shotlistId}/storyboard#story-shot-${shotId}`;
+  return <DialogFrame open={open} title={`Plano ${String(shotNumber ?? 0).padStart(2, "0")}`} eyebrow="VISTA PREVIA DEL STORYBOARD" onClose={onClose} footer={<><button type="button" className="is-secondary" onClick={onClose}>Cerrar</button><Link className="shotlist-dialog-link" href={destination}>Abrir en Storyboard</Link></>}>
+    <div className="shotlist-storyboard-preview">
+      <StoryboardPreviewImage panel={panel} alt={`Storyboard del plano ${shotNumber ?? ""}`} />
+      <div><strong>{shotSubject || "Plano sin descripción"}</strong>{panelCount > 1 && <span>{panelCount} paneles · se muestra el primero con contenido</span>}{!panel && <p>Este plano aún no tiene storyboard.</p>}</div>
+    </div>
+  </DialogFrame>;
+}
+
+export function StoryboardPreviewImage({ panel, alt }: { panel: StoryboardPanel | null; alt: string }) {
+  const [failedAssetId, setFailedAssetId] = useState<string | null>(null);
+  if (!panel) return <div className="shotlist-storyboard-preview-empty"><span aria-hidden="true">▧</span><p>Este plano aún no tiene storyboard.</p></div>;
+  if (panel.previewAssetId && failedAssetId !== panel.previewAssetId) return <img src={`/api/writer/production-assets/${panel.previewAssetId}`} alt={alt} onError={() => setFailedAssetId(panel.previewAssetId)} />;
+  const label = failedAssetId === panel.previewAssetId
+    ? "No pudimos cargar la miniatura. El panel sigue disponible en Storyboard."
+    : panel.renderStatus === "pending"
+      ? "Miniatura pendiente"
+      : panel.currentRevision.contentKind === "empty"
+        ? "El panel aún no tiene contenido visual."
+        : "Vista previa pendiente";
+  return <div className="shotlist-storyboard-preview-empty"><span aria-hidden="true">▧</span><p>{label}</p></div>;
 }
 
 export function ShotlistHelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {

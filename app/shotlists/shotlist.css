@@ -141,6 +141,17 @@ button,input,select,textarea { font:inherit; }
 .shotlist-header-actions button,.shotlist-header-actions a,.shotlist-tool,.shotlist-new-scene,.shotlist-grid-title>button{border-color:var(--shot-line);background:transparent;border-radius:10px}
 .shotlist-filter-trigger,.shotlist-filter-popover,.shotlist-more-popover,.shotlist-badge-popover,.shotlist-dialog{border-color:var(--shot-line);background:var(--shot-panel-raised)}
 .shotlist-dialog>header,.shotlist-dialog>footer{border-color:var(--shot-line);background:var(--shot-panel-raised)}
+.shotlist-cell.is-actions{gap:4px}
+.shotlist-story-preview-button,.shotlist-cell .shotlist-story-cell{display:grid;width:30px;height:30px;place-items:center;flex:0 0 30px;padding:0;border:1px solid transparent!important;border-radius:6px!important;color:var(--shot-muted);background:transparent!important}
+.shotlist-story-preview-button:hover,.shotlist-story-preview-button:focus-visible,.shotlist-cell .shotlist-story-cell:hover,.shotlist-cell .shotlist-story-cell:focus-visible{color:var(--shot-cyan);background:rgba(121,200,223,.08)!important}
+.shotlist-storyboard-preview{display:grid;gap:14px}
+.shotlist-storyboard-preview>img,.shotlist-storyboard-preview-empty{display:block;width:100%;max-height:min(62dvh,620px);aspect-ratio:16/9;object-fit:contain;border:1px solid var(--shot-line);border-radius:8px;background:#050505}
+.shotlist-storyboard-preview-empty{display:grid;box-sizing:border-box;place-content:center;justify-items:center;padding:24px;color:var(--shot-muted);text-align:center}
+.shotlist-storyboard-preview-empty span{font-size:30px}
+.shotlist-storyboard-preview>div:last-child{display:grid;gap:5px}.shotlist-storyboard-preview>div:last-child span,.shotlist-storyboard-preview>div:last-child p{margin:0;color:var(--shot-muted);font-size:.75rem}
+.shotlist-inspector-preview{display:grid!important;width:100%!important;min-height:150px!important;place-items:center!important;padding:0!important;overflow:hidden;border:0!important;background:#050505!important}
+.shotlist-inspector-preview img,.shotlist-inspector-preview .shotlist-storyboard-preview-empty{width:100%;height:150px;object-fit:contain;border:0;border-radius:0}
+.shotlist-inspector-preview>span{color:var(--shot-muted);font-size:.72rem}
 
 @media(max-width:1200px){
   .shotlist-inspector{top:160px}

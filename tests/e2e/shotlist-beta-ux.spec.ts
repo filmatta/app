@@ -4,6 +4,8 @@ import * as XLSX from "xlsx";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const shotlistId = "44444444-4444-4444-8444-444444444444";
+const previewAssetId = "55555555-5555-4555-8555-555555555555";
+const previewPanelId = "66666666-6666-4666-8666-666666666666";
 const evidence = "output/screenshots/shotlist-beta-ux-v1";
 const carbonEvidence = "output/screenshots/shotlist-carbon-polish-v1";
 
@@ -50,12 +52,13 @@ function shot(groupId: string, index: number, position: number): Shot {
 
 async function mockShotlistApi(page: Page) {
   const state = fixture();
+  await page.route(`**/api/writer/production-assets/${previewAssetId}`, (route) => route.fulfill({ status: 200, contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900"><rect width="1600" height="900" fill="#090909"/><path d="M80 710h1440M160 640l310-310 250 245 210-180 500 315" fill="none" stroke="#dce8eb" stroke-width="18"/><circle cx="1170" cy="250" r="110" fill="none" stroke="#ed5a55" stroke-width="18"/><rect x="110" y="90" width="420" height="120" rx="18" fill="#111" stroke="#79c8df" stroke-width="10"/><text x="150" y="165" fill="#f1efe9" font-family="Arial" font-size="58">PLANO 01 · QA</text></svg>` }));
   await page.route(`**/api/shotlists/${shotlistId}{,/**}`, async (route: Route) => {
     const request = route.request();
     const url = new URL(request.url());
     const tail = url.pathname.slice(`/api/shotlists/${shotlistId}`.length);
     if (request.method() === "GET" && tail === "/proposals") return json(route, { proposals: [] });
-    if (request.method() === "GET" && tail === "/storyboard") return json(route, { groups: state.groups.map((group) => ({ ...group, shots: group.shots.map((item) => ({ ...item, panels: [] })) })) });
+    if (request.method() === "GET" && tail === "/storyboard") return json(route, { shotlist: { id: shotlistId, title: state.title, scriptId: null, revision: 1 }, groups: state.groups.map((group) => ({ ...group, shots: group.shots.map((item, index) => ({ ...item, contextHash: `context-${item.id}`, panels: group === state.groups[0] && index === 0 ? [{ id: previewPanelId, shotlistId, shotId: item.id, position: 0, currentRevisionId: "77777777-7777-4777-8777-777777777777", currentRevision: { id: "77777777-7777-4777-8777-777777777777", panelId: previewPanelId, revisionNumber: 1, schemaVersion: 1, baseAssetId: null, visualNote: "Mara frente a la consola", logicalWidth: 1600, logicalHeight: 900, contentKind: "drawing", contentHash: "preview", sourceShotRevision: 1, sourceContextHash: `context-${item.id}`, createdAt: "2026-10-06T00:00:00.000Z" }, approvedRevisionId: null, acknowledgedContextHash: null, previewAssetId, previewRevisionId: "77777777-7777-4777-8777-777777777777", renderStatus: "ready" }] : [] })) })) });
     if (request.method() === "GET" && tail === "/import") return json(route, { scripts: [] });
     if (request.method() === "POST" && tail === "/import") return route.fallback();
     if (request.method() === "GET" && tail === "") return json(route, { shotlist: state, sourceChanges: { renamed: [], reordered: false, missing: [], added: [] } });
@@ -249,6 +252,36 @@ test("Carbon menubar, full-width scene bands and final insertion remain function
   await dialog.getByRole("button", { name: "Crear" }).click();
   await page.getByText("ESCENA VACÍA QA", { exact: true }).last().click();
   await expect(page.getByRole("button", { name: "＋ Añadir primer plano" })).toBeVisible();
+});
+
+test("storyboard preview uses the representative panel in row and inspector without writes", async ({ page, context }) => {
+  fs.mkdirSync(carbonEvidence, { recursive: true });
+  await openShotlist(page, context, 1440, 900);
+  const mutations: string[] = [];
+  page.on("request", (request) => { if (request.url().includes("/storyboard") && request.method() !== "GET") mutations.push(request.method()); });
+
+  const firstRow = page.getByRole("row", { name: /Plano 1:/u });
+  await firstRow.getByRole("button", { name: "Vista previa del storyboard del plano 1" }).click();
+  const dialog = page.getByRole("dialog", { name: "Plano 01" });
+  const dialogImage = dialog.getByRole("img", { name: "Storyboard del plano 1" });
+  await expect(dialogImage).toHaveAttribute("src", `/api/writer/production-assets/${previewAssetId}`);
+  await expect(dialog.getByRole("link", { name: "Abrir en Storyboard" })).toHaveAttribute("href", `/shotlists/${shotlistId}/storyboard/shots/${fixture().groups[0]!.shots[0]!.id}?panel=${previewPanelId}`);
+  await page.screenshot({ path: `${carbonEvidence}/03-popup-preview-storyboard.png` });
+  await page.keyboard.press("Escape");
+
+  const inspector = page.locator(".shotlist-inspector");
+  const inspectorImage = inspector.getByRole("img", { name: "Storyboard del plano 1" });
+  await expect(inspectorImage).toHaveAttribute("src", `/api/writer/production-assets/${previewAssetId}`);
+  await inspectorImage.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${carbonEvidence}/04-miniatura-storyboard-inspector.png` });
+
+  const secondRow = page.getByRole("row", { name: /Plano 2:/u });
+  await secondRow.getByRole("button", { name: "Vista previa del storyboard del plano 2" }).click();
+  const emptyDialog = page.getByRole("dialog", { name: "Plano 02" });
+  await expect(emptyDialog.getByText("Este plano aún no tiene storyboard.").first()).toBeVisible();
+  await expect(emptyDialog.getByRole("img")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  expect(mutations).toEqual([]);
 });
 
 test("Writer handoff, Storyboard and Production keep their approved surfaces", async ({ page, context }) => {
