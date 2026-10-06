@@ -358,6 +358,14 @@
 .writer-pulse-point span { display: block; width: 8px; height: 8px; border: 2px solid #080b0e; border-radius: 50%; background: #7ec7d8; box-shadow: 0 0 0 1px #7ec7d8; }
 .writer-pulse-point.is-selected span { width: 12px; height: 12px; background: #ed5a55; box-shadow: 0 0 0 2px rgba(237,90,85,.35); }
 .writer-pulse-point:focus-visible { outline: 2px solid #f5d37d !important; outline-offset: 1px; }
+.writer-pulse-point-tooltip { position:fixed; z-index:300; display:grid; width:min(280px,calc(100vw - 20px)); max-height:calc(100vh - 20px); box-sizing:border-box; gap:4px; padding:10px 12px; overflow:auto; border:1px solid rgba(126,199,216,.38); color:#f1efea; background:#0b0d0f; box-shadow:0 10px 30px rgba(0,0,0,.48); pointer-events:none; }
+.writer-pulse-point-tooltip strong { overflow:hidden; font-size:.68rem; line-height:1.35; text-overflow:ellipsis; white-space:nowrap; }
+.writer-pulse-point-tooltip span { color:#9fdff0; font:.58rem/1.35 var(--font-geist-mono); }
+.writer-pulse-point-tooltip p { margin:1px 0 0; color:rgba(241,239,233,.7); font-size:.62rem; line-height:1.45; }
+.writer-pulse-point-tooltip[data-writer-skin="navy"] { border-color:rgba(157,202,235,.32); color:#e9f2fa; background:#091321; }
+.writer-pulse-point-tooltip[data-writer-skin="cream"] { border-color:rgba(52,42,33,.28); color:#28221d; background:#fffaf1; box-shadow:0 10px 30px rgba(52,42,33,.22); }
+.writer-pulse-point-tooltip[data-writer-skin="cream"] span { color:#00627b; }
+.writer-pulse-point-tooltip[data-writer-skin="cream"] p { color:#594d42; }
 .writer-pulse-milestone { position: absolute; z-index: 4; top: 5px; display: grid; width: 108px; justify-items: center; gap: 4px; padding: 0; overflow: hidden; border: 0 !important; color: #d9edf1 !important; background: transparent !important; font-size: .56rem; text-overflow: ellipsis; white-space: nowrap; transform: translateX(-50%); pointer-events: auto; }
 .writer-pulse-milestone span { width: 1px; height: 18px; background: #7ec7d8; }
 .writer-pulse-milestone.needs-review { color: #d8aa62 !important; }

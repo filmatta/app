@@ -136,10 +136,10 @@ test("desktop keeps Observations active while splitters and Timeline Pulse switc
   await panel.locator(".writer-pulse-milestone-list").screenshot({ path: `${evidence}/hitos-cream-controls.png` });
 });
 
-test("mobile Pulse fits, keeps drawer behavior and navigates by tap",async({page})=>{await page.setViewportSize({width:390,height:844});await page.addInitScript(()=>localStorage.setItem("filmatta.writer.mobile-notice.v1:11111111-1111-4111-8111-111111111111","dismissed"));await mockPulse(page);await page.goto(`/writer/${scriptId}`);const observations=page.getByRole("complementary",{name:"Asistente"});await expect(observations).toBeHidden();await expect(page.getByRole("separator").first()).toBeHidden();await page.getByRole("button",{name:/Navegar/}).click();let navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:/Asistente/}).click();await expect(observations).toBeVisible();await observations.getByRole("button",{name:"Cerrar",exact:true}).click();await page.getByRole("button",{name:/Navegar/}).click();navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:"Timeline"}).click();const panel=page.locator("#writer-timeline-panel");await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();await expect.poll(()=>panel.evaluate((element)=>element.scrollWidth<=element.clientWidth+1)).toBe(true);fs.mkdirSync(evidence,{recursive:true});await page.screenshot({path:`${evidence}/pulse-mobile-390x844.png`});await panel.locator(".writer-pulse-point").first().press("Enter");await expect(page.locator(`[data-block-id="${sceneA}"]`)).toHaveClass(/writer-scene-target-highlight/);await expect(panel).toBeVisible();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();});
+test("mobile Pulse fits, keeps drawer behavior and navigates by tap",async({page})=>{await page.setViewportSize({width:390,height:844});await page.addInitScript(()=>localStorage.setItem("filmatta.writer.mobile-notice.v1:11111111-1111-4111-8111-111111111111","dismissed"));await mockPulse(page);await page.goto(`/writer/${scriptId}`);const observations=page.getByRole("complementary",{name:"Asistente"});await expect(observations).toBeHidden();await expect(page.getByRole("separator").first()).toBeHidden();await page.getByRole("button",{name:/Navegar/}).click();let navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:/Asistente/}).click();await expect(observations).toBeVisible();await observations.getByRole("button",{name:"Cerrar",exact:true}).click();await page.getByRole("button",{name:/Navegar/}).click();navigate=page.getByRole("dialog",{name:"Navegar por el guion"});await navigate.getByRole("button",{name:"Timeline"}).click();const panel=page.locator("#writer-timeline-panel");await panel.getByRole("button",{name:"Narrative Pulse",exact:true}).click();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();await expect.poll(()=>panel.evaluate((element)=>element.scrollWidth<=element.clientWidth+1)).toBe(true);fs.mkdirSync(evidence,{recursive:true});await page.screenshot({path:`${evidence}/pulse-mobile-390x844.png`});await panel.locator(".writer-pulse-point").first().press("Enter");await expect(page.locator(`[data-block-id="${sceneA}"]`)).toHaveClass(/writer-scene-target-highlight/);await expectTooltipInsideViewport(page,page.getByRole("tooltip"));await expect(panel).toBeVisible();await expect(panel.getByRole("heading",{name:"Intensidad narrativa"})).toBeVisible();});
 
 test("40-scene Pulse keeps canonical point navigation reliable through layout and scroll changes", async ({ page }, testInfo) => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   await page.request.get("http://127.0.0.1:54329/__scenario?value=writer-ux&writerPulseDense=1");
   await mockDensePulse(page, 40);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -149,9 +149,10 @@ test("40-scene Pulse keeps canonical point navigation reliable through layout an
   const points = panel.locator(".writer-pulse-point");
   await expect(points).toHaveCount(40);
   const scroller = panel.locator(".writer-pulse-scroll");
-  const results: Array<{ phase: string; expected: string; actual: string | null }> = [];
+  const results: Array<{ phase: string; expected: string; actual: string | null; contractVerified: boolean }> = [];
+  const interactionContract: Array<{ method: "click" | "Enter" | "Space" | "tap"; phase: string; sceneId: string; activeScene: boolean; centered: boolean; highlighted: boolean }> = [];
 
-  const selectAtRealCoordinates = async (index: number, phase: string) => {
+  const selectAtRealCoordinates = async (index: number, phase: string, verifyContract = false) => {
     const target = points.nth(index);
     await target.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" }));
     await target.evaluate((element) => {
@@ -171,11 +172,15 @@ test("40-scene Pulse keeps canonical point navigation reliable through layout an
     const expected = longSceneId(index);
     await expect(panel.locator(".writer-pulse-point.is-selected")).toHaveAttribute("data-pulse-scene-id", expected);
     await expect(page.locator(`.writer-scene-list > li[data-writer-scene-id="${expected}"]`)).toHaveClass(/is-active/);
+    if (verifyContract) {
+      await expectWriterSceneNavigation(page, expected);
+      interactionContract.push({ method: "click", phase, sceneId: expected, activeScene: true, centered: true, highlighted: true });
+    }
     const actual = await page.locator(".writer-scene-list > li.is-active").getAttribute("data-writer-scene-id");
-    results.push({ phase, expected, actual });
+    results.push({ phase, expected, actual, contractVerified: verifyContract });
   };
   const alternate = async (count: number, phase: string) => {
-    for (let cycle = 0; cycle < count; cycle += 1) await selectAtRealCoordinates(cycle % 2 ? 31 : 3, phase);
+    for (let cycle = 0; cycle < count; cycle += 1) await selectAtRealCoordinates(cycle % 2 ? 31 : 3, phase, cycle === 0);
   };
 
   await alternate(50, "baseline");
@@ -183,34 +188,64 @@ test("40-scene Pulse keeps canonical point navigation reliable through layout an
   for (let cycle = 0; cycle < 20; cycle += 1) {
     await page.setViewportSize({ width: cycle % 2 ? 1024 : 1440, height: cycle % 3 ? 820 : 900 });
     await expect.poll(() => pulseAlignmentError(panel)).toBeLessThan(1);
-    await selectAtRealCoordinates(cycle % 2 ? 28 : 5, "viewport-resize");
+    await selectAtRealCoordinates(cycle % 2 ? 28 : 5, "viewport-resize", cycle === 0);
   }
 
   for (let cycle = 0; cycle < 20; cycle += 1) {
     await panel.getByRole("button", { name: "Timeline", exact: true }).click();
     await panel.getByRole("button", { name: "Narrative Pulse", exact: true }).click();
-    await selectAtRealCoordinates(cycle % 2 ? 30 : 4, "timeline-pulse");
+    await selectAtRealCoordinates(cycle % 2 ? 30 : 4, "timeline-pulse", cycle === 0);
   }
 
   for (let cycle = 0; cycle < 20; cycle += 1) {
     await panel.getByRole("button", { name: cycle % 2 ? "Contraer vista" : "Expandir vista" }).click();
     await expect.poll(() => pulseAlignmentError(panel)).toBeLessThan(1);
-    await selectAtRealCoordinates(cycle % 2 ? 27 : 6, "expand-collapse");
+    await selectAtRealCoordinates(cycle % 2 ? 27 : 6, "expand-collapse", cycle === 0);
   }
 
   for (let cycle = 0; cycle < 20; cycle += 1) {
     await scroller.evaluate((element, ratio) => { element.scrollLeft = (element.scrollWidth - element.clientWidth) * ratio; }, cycle % 2 ? 1 : 0);
-    await selectAtRealCoordinates(cycle % 2 ? 34 : 1, "horizontal-scroll");
+    await selectAtRealCoordinates(cycle % 2 ? 34 : 1, "horizontal-scroll", cycle === 0);
   }
 
   for (const index of [8, 17, 26, 39]) {
-    await points.nth(index).press(index % 2 ? "Space" : "Enter");
-    await expect(page.locator(`.writer-scene-list > li[data-writer-scene-id="${longSceneId(index)}"]`)).toHaveClass(/is-active/);
+    const method = index % 2 ? "Space" as const : "Enter" as const;
+    await points.nth(index).press(method);
+    await expectWriterSceneNavigation(page, longSceneId(index));
+    interactionContract.push({ method, phase: "keyboard", sceneId: longSceneId(index), activeScene: true, centered: true, highlighted: true });
   }
   await points.nth(12).dispatchEvent("pointerdown", { pointerType: "touch", pointerId: 8, isPrimary: true });
   await points.nth(12).dispatchEvent("pointerup", { pointerType: "touch", pointerId: 8, isPrimary: true });
   await points.nth(12).dispatchEvent("click", { detail: 1 });
-  await expect(page.locator(`.writer-scene-list > li[data-writer-scene-id="${longSceneId(12)}"]`)).toHaveClass(/is-active/);
+  await expectWriterSceneNavigation(page, longSceneId(12));
+  interactionContract.push({ method: "tap", phase: "touch-sequence", sceneId: longSceneId(12), activeScene: true, centered: true, highlighted: true });
+
+  const tooltipIndices = await points.evaluateAll((nodes) => {
+    const values = nodes.map((node, index) => ({ index, y: Number((node as HTMLElement).dataset.plotY) }));
+    return [0, values.reduce((best, value) => value.y > best.y ? value : best).index, nodes.length - 1];
+  });
+  for (const index of tooltipIndices) {
+    const point = points.nth(index);
+    await point.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" }));
+    await point.hover();
+    const tooltip = page.getByRole("tooltip");
+    await expect(tooltip).toBeVisible();
+    await expectTooltipInsideViewport(page, tooltip);
+  }
+  await page.setViewportSize({ width: 1024, height: 820 });
+  const lateralPoint = points.last();
+  await lateralPoint.evaluate((element) => {
+    const container = element.closest<HTMLElement>(".writer-pulse-scroll");
+    if (container) container.scrollLeft = Math.max(0, (element as HTMLElement).offsetLeft - container.clientWidth / 2);
+  });
+  await expect.poll(async () => {
+    const [pointBox, scrollBox] = await Promise.all([lateralPoint.boundingBox(), scroller.boundingBox()]);
+    const viewport = page.viewportSize();
+    return Boolean(pointBox && scrollBox && viewport && pointBox.x >= Math.max(0, scrollBox.x) && pointBox.x + pointBox.width <= Math.min(viewport.width, scrollBox.x + scrollBox.width));
+  }).toBe(true);
+  await lateralPoint.hover();
+  await expectTooltipInsideViewport(page, page.getByRole("tooltip"));
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   await panel.locator(".writer-pulse-canvas").click({ position: { x: 8, y: 8 } });
   await expect(panel.locator(".writer-pulse")).toHaveAttribute("data-pulse-selection", "overview");
@@ -219,8 +254,11 @@ test("40-scene Pulse keeps canonical point navigation reliable through layout an
 
   expect(results).toHaveLength(130);
   expect(results.filter((result) => result.expected !== result.actual), JSON.stringify(results.filter((result) => result.expected !== result.actual))).toEqual([]);
+  expect(results.filter((result) => result.contractVerified).map((result) => result.phase)).toEqual(["baseline", "viewport-resize", "timeline-pulse", "expand-collapse", "horizontal-scroll"]);
+  expect(new Set(interactionContract.map((item) => item.method))).toEqual(new Set(["click", "Enter", "Space", "tap"]));
   fs.mkdirSync(evidence, { recursive: true });
   await testInfo.attach("pulse-selection-ledger", { body: Buffer.from(JSON.stringify(results, null, 2)), contentType: "application/json" });
+  await testInfo.attach("pulse-navigation-contract", { body: Buffer.from(JSON.stringify(interactionContract, null, 2)), contentType: "application/json" });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: `${evidence}/pulse-dense-overview-1440x900.png`, fullPage: false });
   await selectAtRealCoordinates(20, "violent-scene-evidence");
@@ -230,6 +268,21 @@ test("40-scene Pulse keeps canonical point navigation reliable through layout an
   await panel.getByRole("button", { name: "Expandir vista" }).click();
   await expect.poll(() => pulseAlignmentError(panel)).toBeLessThan(1);
   await page.screenshot({ path: `${evidence}/pulse-dense-expanded-1440x900.png`, fullPage: false });
+});
+
+test.describe("Pulse real touch activation", () => {
+  test.use({ hasTouch: true });
+  test("tap on a point resolves the canonical scene and keeps the navigation contract", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1024, height: 820 });
+    await mockPulse(page);
+    await page.goto(`/writer/${scriptId}`);
+    const panel = page.locator("#writer-timeline-panel");
+    await panel.getByRole("button", { name: "Narrative Pulse", exact: true }).click();
+    await panel.locator(".writer-pulse-point").last().tap();
+    await expect(panel.locator(".writer-pulse-point.is-selected")).toHaveAttribute("data-pulse-scene-id", sceneB);
+    await expectWriterSceneNavigation(page, sceneB);
+    await testInfo.attach("pulse-real-touch-contract", { body: Buffer.from(JSON.stringify({ method: "tap", sceneId: sceneB, activeScene: true, centered: true, highlighted: true }, null, 2)), contentType: "application/json" });
+  });
 });
 
 async function pulseAlignmentError(panel: Locator) {
@@ -243,4 +296,29 @@ async function pulseAlignmentError(panel: Locator) {
     });
     return Math.max(0, ...points.map((point, index) => Math.hypot(point.x - coordinates[index].x, point.y - coordinates[index].y)));
   });
+}
+
+async function expectWriterSceneNavigation(page: Page, sceneId: string) {
+  await expect(page.locator(`.writer-scene-list > li[data-writer-scene-id="${sceneId}"]`)).toHaveClass(/is-active/);
+  const block = page.locator(`[data-block-id="${sceneId}"]`);
+  await expect(block).toHaveClass(/writer-scene-target-highlight/);
+  await expect.poll(() => block.evaluate((element) => {
+    const paper = element.closest<HTMLElement>(".writer-paper");
+    if (!paper) return false;
+    const paperRect = paper.getBoundingClientRect();
+    const blockRect = element.getBoundingClientRect();
+    const delta = Math.abs((blockRect.top + blockRect.height / 2) - (paperRect.top + paperRect.height / 2));
+    const atStart = paper.scrollTop <= 2;
+    const atEnd = Math.abs(paper.scrollTop - (paper.scrollHeight - paper.clientHeight)) <= 2;
+    const fullyVisible = blockRect.top >= paperRect.top - 1 && blockRect.bottom <= paperRect.bottom + 1;
+    return delta <= paperRect.height * .3 || ((atStart || atEnd) && fullyVisible);
+  })).toBe(true);
+}
+
+async function expectTooltipInsideViewport(page: Page, tooltip: Locator) {
+  await expect.poll(async () => {
+    const box = await tooltip.boundingBox();
+    const viewport = page.viewportSize();
+    return Boolean(box && viewport && box.x >= 9 && box.y >= 9 && box.x + box.width <= viewport.width - 9 && box.y + box.height <= viewport.height - 9);
+  }).toBe(true);
 }

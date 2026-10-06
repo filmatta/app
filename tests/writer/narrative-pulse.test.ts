@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { createBlock, type WriterDocument } from "../../lib/writer/document.ts";
 import { deriveWriterSceneSources } from "../../lib/writer/script-assistant.ts";
 import fs from "node:fs";
-import { WRITER_NARRATIVE_PULSE_CONTEXT_VERSION, WRITER_NARRATIVE_PULSE_MODEL, WRITER_NARRATIVE_PULSE_VERSION, buildWriterPulseContext, validateWriterPulseOutput, writerNarrativePulseSourceHash, writerPulseAnalysisVersionPrefix, writerPulseContextCacheInput, writerPulseDisplaySeries, writerPulseDisplayStats, writerPulseMilestoneLabel, writerPulseOutputSchema, writerPulsePath, writerPulsePlotPoints, type WriterPulseDimension, type WriterPulseSignal } from "../../lib/writer/narrative-pulse.ts";
+import { WRITER_NARRATIVE_PULSE_CONTEXT_VERSION, WRITER_NARRATIVE_PULSE_MODEL, WRITER_NARRATIVE_PULSE_VERSION, buildWriterPulseContext, validateWriterPulseOutput, writerNarrativePulseSourceHash, writerPulseAnalysisVersionPrefix, writerPulseContextCacheInput, writerPulseDisplaySeries, writerPulseDisplayStats, writerPulseMilestoneLabel, writerPulseOutputSchema, writerPulsePath, writerPulsePlotPoints, writerPulseTooltipPosition, type WriterPulseDimension, type WriterPulseSignal } from "../../lib/writer/narrative-pulse.ts";
 
 const ids = Array.from({ length: 24 }, (_, index) => `11111111-1111-4111-8111-${String(index + 1).padStart(12, "0")}`);
 function fixture(): WriterDocument { return { type: "doc", content: Array.from({ length: 7 }, (_, index) => [
@@ -27,6 +27,16 @@ test("line and interactive markers share the exact same responsive plot geometry
   assert.equal(path, plot.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" "));
   assert.deepEqual(plot.map((point) => [point.x, point.y]), writerPulsePlotPoints(display, 997, 287, 24).map((point) => [point.x, point.y]));
   assert.ok(plot.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)));
+});
+test("Pulse tooltip flips below and shifts inside lateral viewport edges", () => {
+  const flipped = writerPulseTooltipPosition({ anchor: { left: 190, right: 210, top: 14, bottom: 34, width: 20, height: 20 }, tooltip: { width: 180, height: 80 }, viewport: { width: 400, height: 300 } });
+  assert.equal(flipped.placement, "bottom");
+  assert.equal(flipped.top, 42);
+  const shifted = writerPulseTooltipPosition({ anchor: { left: 386, right: 398, top: 180, bottom: 192, width: 12, height: 12 }, tooltip: { width: 180, height: 80 }, viewport: { width: 400, height: 300 } });
+  assert.equal(shifted.left, 210);
+  assert.equal(shifted.shifted, true);
+  assert.ok(shifted.left >= 10 && shifted.left + 180 <= 390);
+  assert.ok(shifted.top >= 10 && shifted.top + 80 <= 290);
 });
 test("adaptive display keeps a genuinely flat fixture restrained without mutating raw values", () => {
   const fixture = JSON.parse(fs.readFileSync("tests/fixtures/writer/pulse-flat.json", "utf8")) as { intensities: number[] };

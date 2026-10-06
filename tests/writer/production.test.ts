@@ -28,6 +28,20 @@ test("Breakdown rules retain exact evidence and avoid metaphor/mention invention
   assert.equal(action.content?.[0]?.type === "text" ? action.content[0].text.slice(props[0]!.fromOffset, props[0]!.toOffset) : "", "pistola");
 });
 
+test("Breakdown reanalysis recognizes a newly found prop in normal prose without promoting metaphors", () => {
+  const heading = createBlock("sceneHeading", "INT. CASA - NOCHE", "61111111-1111-4111-8111-111111111111");
+  const before = createBlock("action", "Mara abre un cajón vacío.", "62222222-2222-4222-8222-222222222222");
+  const after = createBlock("action", "Mara abre un cajón. Dentro encuentra una pistola. La noticia fue un disparo al corazón.", "62222222-2222-4222-8222-222222222222");
+  const initial = detectWriterBreakdownRules({ type: "doc", content: [heading, before] });
+  const revised = detectWriterBreakdownRules({ type: "doc", content: [heading, after] });
+  assert.equal(initial.some((candidate) => candidate.name === "pistola"), false);
+  const pistols = revised.filter((candidate) => candidate.name === "pistola");
+  assert.equal(pistols.length, 1);
+  assert.equal(pistols[0]?.excerpt, "Mara abre un cajón. Dentro encuentra una pistola. La noticia fue un disparo al corazón.");
+  assert.equal(pistols[0]?.nature, "used");
+  assert.equal(revised.some((candidate) => /disparo|corazón/iu.test(candidate.name)), false);
+});
+
 test("hybrid evidence validation accepts exact wardrobe and prop references without fixture dictionaries", () => {
   const heading = createBlock("sceneHeading", "EXT. BOSQUE - NOCHE", "51111111-1111-4111-8111-111111111111");
   const action = createBlock("action", "Mara entra con un abrigo rojo. Rubén saca una pistola y apunta a Mara.", "52222222-2222-4222-8222-222222222222");

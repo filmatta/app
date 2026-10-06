@@ -1,13 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState, type RefObject } from "react";
-import { PULSE_DIMENSIONS, WRITER_NARRATIVE_PULSE_MIN_SCENES, writerPulseDisplaySeries, writerPulseMilestoneLabel, writerPulsePlotPoints, type WriterPulseMilestone, type WriterPulseMilestoneType } from "@/lib/writer/narrative-pulse";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
+import { PULSE_DIMENSIONS, WRITER_NARRATIVE_PULSE_MIN_SCENES, writerPulseDisplaySeries, writerPulseMilestoneLabel, writerPulsePlotPoints, writerPulseTooltipPosition, type WriterPulseMilestone, type WriterPulseMilestoneType } from "@/lib/writer/narrative-pulse";
 import { useWriterNarrativePulse } from "@/lib/writer/narrative-pulse-client";
 import type { TimelineScene } from "@/lib/writer/timeline";
 import { SmartFeatureIndicator } from "./WriterSmartFormatting";
 import WriterIcon from "./WriterIcon";
 
 const TYPES: WriterPulseMilestoneType[] = ["inciting_incident", "first_turning_point", "midpoint", "crisis", "climax", "resolution", "custom"];
+
+type PulseTooltipTarget = {
+  anchor: HTMLButtonElement;
+  scene: TimelineScene;
+  point: ReturnType<typeof useWriterNarrativePulse>["points"][number];
+};
 
 export default function WriterNarrativePulse({ scriptId, scenes, active, expanded = false, analysisEnabled = true, selectedSceneId, columnWidth, scrollRef, onSelectScene, onMilestonesChange, onEnsureCurrentSaved }: {
   scriptId: string; scenes: TimelineScene[]; active: boolean; analysisEnabled?: boolean; selectedSceneId: string | null; columnWidth: number;
@@ -26,6 +33,7 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
   const [renameLabel, setRenameLabel] = useState("");
   const [savePhase, setSavePhase] = useState<"idle" | "saving" | "error">("idle");
   const [viewportWidth, setViewportWidth] = useState(0);
+  const [tooltipTarget, setTooltipTarget] = useState<PulseTooltipTarget | null>(null);
   const orderedPoints = useMemo(() => scenes.flatMap((scene) => {
     const point = pulse.points.find((item) => item.sceneId === scene.sourceId);
     return point ? [{ scene, point }] : [];
@@ -91,6 +99,10 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
     onSelectScene(scene);
   }
 
+  function closeTooltip(anchor: HTMLButtonElement) {
+    setTooltipTarget((current) => current?.anchor === anchor ? null : current);
+  }
+
   async function saveThenAnalyze() {
     if (savePhase === "saving" || pulse.analyzing) return;
     setSavePhase("saving");
@@ -136,7 +148,8 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
           {orderedPoints.map(({ scene, point }, index) => {
             const plotted = plotPoints[index];
             if (!plotted) return null;
-            return <button key={scene.key} type="button" data-pulse-scene-id={scene.sourceId ?? undefined} data-raw-intensity={point.intensity} data-display-intensity={plotted.displayIntensity.toFixed(2)} data-plot-x={plotted.x.toFixed(2)} data-plot-y={plotted.y.toFixed(2)} className={`writer-pulse-point${selectedPulseSceneId === scene.sourceId ? " is-selected" : ""}`} style={{ left: plotted.x, top: plotted.y }} onClick={(event) => { event.stopPropagation(); selectPoint(scene); }} aria-label={`Escena ${scene.order} · intensidad ${point.intensity} · seleccionar escena`}><span aria-hidden="true" /></button>;
+            const tooltipId = `writer-pulse-tooltip-${scene.sourceId ?? scene.key}`;
+            return <button key={scene.key} type="button" data-pulse-scene-id={scene.sourceId ?? undefined} data-raw-intensity={point.intensity} data-display-intensity={plotted.displayIntensity.toFixed(2)} data-plot-x={plotted.x.toFixed(2)} data-plot-y={plotted.y.toFixed(2)} className={`writer-pulse-point${selectedPulseSceneId === scene.sourceId ? " is-selected" : ""}`} style={{ left: plotted.x, top: plotted.y }} onPointerDown={(event) => event.stopPropagation()} onPointerEnter={(event) => { if (event.pointerType !== "touch") setTooltipTarget({ anchor: event.currentTarget, scene, point }); }} onPointerLeave={(event) => { const anchor = event.currentTarget; if (document.activeElement !== anchor) closeTooltip(anchor); }} onFocus={(event) => setTooltipTarget({ anchor: event.currentTarget, scene, point })} onBlur={(event) => closeTooltip(event.currentTarget)} onClick={(event) => { event.stopPropagation(); selectPoint(scene); }} aria-describedby={tooltipTarget?.scene.sourceId === scene.sourceId ? tooltipId : undefined} aria-label={`Escena ${scene.order} · intensidad ${point.intensity} · seleccionar escena`}><span aria-hidden="true" /></button>;
           })}
           {visibleMilestones.map((milestone) => {
             const index = scenes.findIndex((scene) => scene.sourceId === milestone.sceneId); if (index < 0) return null;
@@ -163,7 +176,48 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
       {selectedMilestone && <aside className="writer-pulse-milestone-detail"><div><p className="timeline-eyebrow">{writerPulseMilestoneLabel(selectedMilestone.type)}</p><h2>{selectedMilestone.label}</h2><span>{sceneName(scenes, selectedMilestone.sceneId)}</span></div>{selectedMilestone.explanation && <p>{selectedMilestone.explanation}</p>}{selectedMilestone.status === "needs_review" && <p>La escena vinculada ya no existe o cambió de forma relevante. El hito no se movió automáticamente.</p>}<div>{selectedMilestone.status === "suggested" && <button type="button" onClick={() => void pulse.setStatus(selectedMilestone.id, "confirmed")}>Confirmar</button>}<button type="button" onClick={() => void pulse.setStatus(selectedMilestone.id, "dismissed")}>Descartar</button><label>Título revisado<input value={renameLabel} maxLength={100} onChange={(event) => setRenameLabel(event.target.value)} /></label><button type="button" disabled={!renameLabel.trim() || renameLabel.trim() === selectedMilestone.label} onClick={() => void pulse.rename(selectedMilestone.id, renameLabel.trim())}>Renombrar</button><label>Mover a<select value={moveScene} onChange={(event) => setMoveScene(event.target.value)}><option value="">Selecciona escena…</option>{scenes.map((scene) => <option key={scene.key} value={scene.sourceId ?? ""}>Escena {scene.order} · {scene.heading}</option>)}</select></label><button type="button" disabled={!moveScene} onClick={() => void pulse.move(selectedMilestone.id, moveScene)}>Mover</button></div></aside>}
       <details className="writer-pulse-accessible"><summary>Lista accesible de escenas y zonas</summary><ol>{orderedPoints.map(({ scene, point }) => <li key={scene.key}><button type="button" onClick={() => selectPoint(scene)}><strong>Escena {scene.order}: {scene.heading}</strong><span>{point.note}</span></button></li>)}</ol>{pulse.zones.length > 0 && <ul>{pulse.zones.map((zone) => <li key={zone.id}><strong>{zoneLabel(zone.type)}</strong>: {zone.note}</li>)}</ul>}</details>
     </>}
+    {active && tooltipTarget?.anchor.isConnected && <PulsePointTooltip target={tooltipTarget} />}
   </div>;
+}
+
+function PulsePointTooltip({ target }: { target: PulseTooltipTarget }) {
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: 0, top: 0, placement: "top" as "top" | "bottom", shifted: false });
+  useLayoutEffect(() => {
+    const tooltip = tooltipRef.current;
+    if (!tooltip || !target.anchor.isConnected) return;
+    const update = () => {
+      const anchor = target.anchor.getBoundingClientRect();
+      const bounds = tooltip.getBoundingClientRect();
+      setPosition(writerPulseTooltipPosition({
+        anchor,
+        tooltip: bounds,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      }));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(tooltip);
+    observer.observe(target.anchor);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [target]);
+  const skin = target.anchor.closest<HTMLElement>("[data-writer-skin]")?.dataset.writerSkin ?? "carbon";
+  return createPortal(<div
+    ref={tooltipRef}
+    id={`writer-pulse-tooltip-${target.scene.sourceId ?? target.scene.key}`}
+    className="writer-pulse-point-tooltip"
+    role="tooltip"
+    data-placement={position.placement}
+    data-shifted={position.shifted ? "true" : "false"}
+    data-writer-skin={skin}
+    style={{ left: position.left, top: position.top }}
+  ><strong>Escena {target.scene.order} · {target.scene.heading}</strong><span>Intensidad original {target.point.intensity}/100</span><p>{target.point.note}</p></div>, document.body);
 }
 
 function sceneName(scenes: TimelineScene[], sceneId: string) { const scene = scenes.find((item) => item.sourceId === sceneId); return scene ? `Escena ${scene.order} · ${scene.heading}` : "Escena eliminada"; }

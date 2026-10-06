@@ -167,7 +167,7 @@ export const WRITER_SHOT_MOVEMENTS = [
 
 const categorySet = new Set<string>(WRITER_BREAKDOWN_CATEGORIES);
 const natureSet = new Set<string>(["present", "used", "mentioned", "inferred"]);
-const explicitUsePattern = /\b(?:sostiene|toma|agarra|abre|cierra|enciende|apaga|guarda|esconde|dispara|conduce|viste|lleva|usa)\s+(?:un|una|el|la|los|las|su|sus)\s+([\p{L}\p{N}][\p{L}\p{N}\s-]{1,48})/giu;
+const explicitUsePattern = /\b(?:sostiene|toma|agarra|abre|cierra|enciende|apaga|guarda|esconde|encuentra|descubre|extrae|saca|dispara|conduce|viste|lleva|usa)\s+(?:un|una|el|la|los|las|su|sus)\s+([\p{L}\p{N}][\p{L}\p{N}\s-]{1,48})/giu;
 const trailingClause = /\s+(?:mientras|cuando|que|y|pero|para|porque|con|sin|sobre|bajo|en)\b.*$/iu;
 
 export function normalizeProductionName(value: string) {

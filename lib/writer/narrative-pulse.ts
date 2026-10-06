@@ -6,6 +6,24 @@ export const WRITER_NARRATIVE_PULSE_CONTEXT_VERSION = "context-v1" as const;
 export const WRITER_NARRATIVE_PULSE_MODEL = "gpt-5.6-terra" as const;
 export const WRITER_NARRATIVE_PULSE_MIN_SCENES = 4;
 
+export function writerPulseTooltipPosition(input: {
+  anchor: { left: number; right: number; top: number; bottom: number; width: number; height: number };
+  tooltip: { width: number; height: number };
+  viewport: { width: number; height: number };
+  padding?: number;
+  gap?: number;
+}) {
+  const padding = input.padding ?? 10;
+  const gap = input.gap ?? 8;
+  const preferredTop = input.anchor.top - input.tooltip.height - gap;
+  const placement = preferredTop >= padding ? "top" as const : "bottom" as const;
+  const preferredLeft = input.anchor.left + input.anchor.width / 2 - input.tooltip.width / 2;
+  const left = Math.min(Math.max(padding, preferredLeft), Math.max(padding, input.viewport.width - input.tooltip.width - padding));
+  const desiredTop = placement === "top" ? preferredTop : input.anchor.bottom + gap;
+  const top = Math.min(Math.max(padding, desiredTop), Math.max(padding, input.viewport.height - input.tooltip.height - padding));
+  return { left, top, placement, shifted: Math.abs(left - preferredLeft) > .5 || Math.abs(top - desiredTop) > .5 };
+}
+
 export type WriterPulseSignal = "conflict" | "change" | "pressure" | "turn" | "risk" | "revelation" | "consequence" | "activity";
 export type WriterPulseZoneType = "stable" | "build" | "release" | "peak";
 export type WriterPulseMilestoneType = "inciting_incident" | "first_turning_point" | "midpoint" | "crisis" | "climax" | "resolution" | "custom";
