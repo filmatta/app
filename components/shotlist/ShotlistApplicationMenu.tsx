@@ -6,6 +6,8 @@ import { SHOTLIST_COLUMNS, type ShotlistColumnKey } from "@/lib/shotlist/ux";
 type MenuName = "file" | "edit" | "format" | "help";
 
 export default function ShotlistApplicationMenu({
+  canBack,
+  canForward,
   hasSelection,
   visibleColumns,
   onNew,
@@ -19,7 +21,11 @@ export default function ShotlistApplicationMenu({
   onInsertScene,
   onToggleColumn,
   onShortcuts,
+  onBack,
+  onForward,
 }: {
+  canBack: boolean;
+  canForward: boolean;
   hasSelection: boolean;
   visibleColumns: ReadonlySet<ShotlistColumnKey>;
   onNew: () => void;
@@ -33,6 +39,8 @@ export default function ShotlistApplicationMenu({
   onInsertScene: () => void;
   onToggleColumn: (column: ShotlistColumnKey) => void;
   onShortcuts: () => void;
+  onBack: () => void;
+  onForward: () => void;
 }) {
   const [open, setOpen] = useState<MenuName | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -77,6 +85,11 @@ export default function ShotlistApplicationMenu({
   }
 
   return <nav ref={root} className="shotlist-app-menu" aria-label="Menú de aplicación de Shotlist">
+    <div className="shotlist-app-history" role="group" aria-label="Historial interno">
+      <button type="button" aria-label="Atrás en FILMATTA" title="Atrás en FILMATTA" disabled={!canBack} onClick={onBack}>←</button>
+      <button type="button" aria-label="Adelante en FILMATTA" title="Adelante en FILMATTA" disabled={!canForward} onClick={onForward}>→</button>
+    </div>
+    <span className="shotlist-app-menu-divider" aria-hidden="true" />
     <Menu label="Archivo" name="file" open={open} onToggle={toggle}>
       <Item onClick={() => run(onNew)}>Nueva shotlist</Item>
       <Item onClick={() => run(onImport)}>Importar…</Item>

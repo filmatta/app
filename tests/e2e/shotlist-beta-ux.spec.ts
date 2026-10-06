@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 const userId = "11111111-1111-4111-8111-111111111111";
 const shotlistId = "44444444-4444-4444-8444-444444444444";
 const evidence = "output/screenshots/shotlist-beta-ux-v1";
+const carbonEvidence = "output/screenshots/shotlist-carbon-polish-v1";
 
 type Shot = {
   id: string; shotlistId: string; groupId: string; sourceBlockId: null; origin: "manual";
@@ -197,6 +198,57 @@ test("touch-size viewport keeps contextual insertion reachable without hover", a
   await page.getByRole("button", { name: "Cerrar inspector" }).click();
   await expect(page.getByText("9 planos visibles")).toBeVisible();
   await page.screenshot({ path: `${evidence}/05-mobile-insercion-sin-hover.png` });
+});
+
+test("Carbon menubar, full-width scene bands and final insertion remain functional", async ({ page, context }) => {
+  fs.mkdirSync(carbonEvidence, { recursive: true });
+  const state = await openShotlist(page, context, 1440, 900);
+
+  const menu = page.getByRole("navigation", { name: "Menú de aplicación de Shotlist" });
+  const brand = page.getByRole("link", { name: "FILMATTA" });
+  const menuBox = await menu.boundingBox();
+  const brandBox = await brand.boundingBox();
+  expect(menuBox).not.toBeNull();
+  expect(brandBox).not.toBeNull();
+  expect(menuBox!.y).toBeLessThan(brandBox!.y);
+  await expect(page.getByRole("button", { name: "Atrás en FILMATTA" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Formato" }).click();
+  for (const column of ["Descripción", "Composición", "Soporte", "Setup", "Duración", "Observaciones", "Storyboard"]) {
+    const option = page.getByRole("menuitemcheckbox", { name: column });
+    if (await option.getAttribute("aria-checked") === "false") await option.click();
+  }
+  await page.keyboard.press("Escape");
+
+  const scroller = page.locator(".shotlist-grid-scroll");
+  const firstGroup = page.locator(".shotlist-group").first();
+  const firstRow = page.locator(".shotlist-row").first();
+  await expect.poll(async () => {
+    const groupWidth = (await firstGroup.boundingBox())?.width ?? 0;
+    const rowWidth = (await firstRow.boundingBox())?.width ?? 0;
+    return Math.abs(groupWidth - rowWidth);
+  }).toBeLessThanOrEqual(1);
+  await scroller.evaluate((node) => { node.scrollLeft = node.scrollWidth / 2; });
+  await page.screenshot({ path: `${carbonEvidence}/01-carbon-menubar-escena-ancho-completo.png` });
+  await scroller.evaluate((node) => { node.scrollLeft = node.scrollWidth; });
+  await expect(firstGroup.getByRole("button", { name: "Acciones de INT. RADIO K-17 / CABINA — NOCHE", exact: true })).toBeVisible();
+
+  const finalInsert = page.getByRole("button", { name: "Añadir plano al final de la shotlist" });
+  await finalInsert.focus();
+  await expect(finalInsert).toBeVisible();
+  await page.screenshot({ path: `${carbonEvidence}/02-insercion-final-shotlist.png` });
+  await finalInsert.click();
+  await expect(page.getByText("9 planos visibles")).toBeVisible();
+  expect(state.groups.at(-1)!.shots).toHaveLength(4);
+  const persisted = await page.evaluate(async (id) => (await fetch(`/api/shotlists/${id}`, { cache: "no-store" })).json(), shotlistId);
+  expect(persisted.shotlist.groups.at(-1).shots).toHaveLength(4);
+
+  await page.getByRole("button", { name: "＋ Nueva escena" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nueva escena" });
+  await dialog.getByLabel("Nombre").fill("ESCENA VACÍA QA");
+  await dialog.getByRole("button", { name: "Crear" }).click();
+  await page.getByText("ESCENA VACÍA QA", { exact: true }).last().click();
+  await expect(page.getByRole("button", { name: "＋ Añadir primer plano" })).toBeVisible();
 });
 
 test("Writer handoff, Storyboard and Production keep their approved surfaces", async ({ page, context }) => {
