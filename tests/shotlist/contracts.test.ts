@@ -29,9 +29,11 @@ test("file import is bounded, previewed, mapped explicitly, and idempotent", () 
 
 test("PDF export is a real landscape table with repeated headers and wrapping", () => {
   assert.match(pdf, /orientation="landscape"/);
-  assert.match(pdf, /style=\{styles\.header\} fixed/);
+  assert.match(pdf, /paginateShotlist/);
+  assert.match(pdf, /pages\.map/);
+  assert.match(pdf, /style=\{styles\.header\}/);
   assert.match(pdf, /style=\{styles\.row\} wrap=\{false\}/);
-  assert.match(pdf, /pageNumber, totalPages/);
+  assert.match(pdf, /Página \$\{pageIndex \+ 1\} de \$\{pages\.length\}/);
   assert.match(pdf, /description: 130/);
   assert.match(pdf, /notes: 120/);
   assert.doesNotMatch(pdf, /screenshot|canvas|html2canvas/iu);

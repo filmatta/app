@@ -94,15 +94,16 @@ async function openShotlist(page: Page, context: BrowserContext, width: number, 
   await page.request.get("http://127.0.0.1:54329/__scenario?value=shotlist-ux");
   await session(context);
   await page.setViewportSize({ width, height });
-  await mockShotlistApi(page);
+  const state = await mockShotlistApi(page);
   await page.goto(`/shotlists/${shotlistId}`);
   await expect(page.getByRole("heading", { name: "Lista de planos" })).toBeVisible();
   await expect(page.getByText("8 planos visibles")).toBeVisible();
+  return state;
 }
 
 test("desktop grid, keyboard, filters, badges, menus and dialogs produce visible persistent results", async ({ page, context }) => {
   fs.mkdirSync(evidence, { recursive: true });
-  await openShotlist(page, context, 1600, 1000);
+  const state = await openShotlist(page, context, 1600, 1000);
 
   const first = page.getByRole("row", { name: /Plano 1:/u });
   await first.focus();
@@ -127,6 +128,19 @@ test("desktop grid, keyboard, filters, badges, menus and dialogs produce visible
   await lens.click();
   await page.getByRole("option", { name: "50 mm", exact: true }).click();
   await expect(page.getByRole("row", { name: /Plano 1:/u }).getByRole("button", { name: "Óptica: 50 mm", exact: true })).toBeVisible();
+  await page.getByRole("row", { name: /Plano 1:/u }).getByRole("button", { name: "Óptica: 50 mm", exact: true }).click();
+  const lensOptions = page.getByRole("listbox", { name: "Óptica" });
+  await expect(lensOptions.getByRole("option", { name: "8 mm", exact: true })).toBeVisible();
+  await expect(lensOptions.getByRole("option", { name: "300 mm", exact: true })).toBeVisible();
+  await page.screenshot({ path: `${evidence}/06-focales-y-personalizada.png` });
+  await lensOptions.getByLabel("Personalizada").fill("43 mm");
+  await lensOptions.getByRole("button", { name: "Usar" }).click();
+  await expect(page.getByRole("row", { name: /Plano 1:/u }).getByRole("button", { name: "Óptica: 43 mm", exact: true })).toBeVisible();
+  await expect(page.getByText("● Guardado")).toBeVisible();
+  await expect.poll(() => state.groups[0]!.shots[0]!.lens).toBe("43 mm");
+  await page.getByRole("row", { name: /Plano 2:/u }).click();
+  await page.getByRole("row", { name: /Plano 1:/u }).click();
+  await expect(page.getByRole("row", { name: /Plano 1:/u }).getByRole("button", { name: "Óptica: 43 mm", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Archivo" }).click();
   await expect(page.getByRole("menu", { name: "Archivo" })).toBeVisible();
