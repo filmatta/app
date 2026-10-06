@@ -403,6 +403,11 @@ export function writerSceneForSelection(state: EditorState):
   return { sceneId: firstScene, reason: null };
 }
 
+export function writerSceneAtSelectionHead(state: EditorState): string | null {
+  const activeBlock = findWriterBlockAtPosition(state.doc, state.selection.head);
+  return activeBlock ? findWriterSceneForBlock(state.doc, activeBlock.id) : null;
+}
+
 export function findWriterSceneForBlock(doc: ProseMirrorNode, blockId: string): string | null {
   let sceneId: string | null = null;
   let result: string | null = null;

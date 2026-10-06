@@ -88,7 +88,9 @@ http
       if (scenario === "writer-ux") {
         writerRevision = 1;
         const writerScenes = Math.min(160, Math.max(0, Number(url.searchParams.get("writerScenes")) || 0));
-        writerDocument = url.searchParams.get("writerPulseDense") === "1"
+        writerDocument = url.searchParams.get("writerSceneSelection") === "1"
+          ? makeSceneSelectionWriterDocument()
+          : url.searchParams.get("writerPulseDense") === "1"
           ? makePulseDenseWriterDocument()
           : writerScenes ? makeLongWriterDocument(writerScenes) : makeWriterDocument();
         writerScriptId = id;
@@ -350,6 +352,30 @@ function makeLongWriterDocument(sceneCount) {
       type: "screenplayBlock",
       attrs: { id: characterId, kind: "character" },
       content: [{ type: "text", text: `PERSONA ${index % 30 + 1}` }],
+    });
+  }
+  return { type: "doc", content };
+}
+
+function makeSceneSelectionWriterDocument() {
+  const content = [];
+  const kinds = ["sceneHeading", "action", "character", "dialogue", "parenthetical", "transition", "authorNote"];
+  for (let sceneIndex = 0; sceneIndex < 10; sceneIndex += 1) {
+    kinds.forEach((kind, kindIndex) => {
+      const texts = {
+        sceneHeading: `INT. ESCENA ${sceneIndex + 1} - DÍA`,
+        action: `Acción verificable de la escena ${sceneIndex + 1}.`,
+        character: `PERSONA ${sceneIndex + 1}`,
+        dialogue: `Diálogo de la escena ${sceneIndex + 1}.`,
+        parenthetical: "(en voz baja)",
+        transition: "CORTE A:",
+        authorNote: `Nota de la escena ${sceneIndex + 1}.`,
+      };
+      content.push({
+        type: "screenplayBlock",
+        attrs: { id: stableWriterId(sceneIndex * kinds.length + kindIndex + 1), kind },
+        content: [{ type: "text", text: texts[kind] }],
+      });
     });
   }
   return { type: "doc", content };

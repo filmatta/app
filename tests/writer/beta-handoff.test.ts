@@ -93,7 +93,7 @@ test("Writer uses one non-focusing centered navigation contract", () => {
   assert.doesNotMatch(contract, /scrollIntoView|\.focus\(/u);
   assert.match(workspace, /paper\.clientHeight - targetRect\.height\) \/ 2/u);
   assert.match(workspace, /El fragmento cambió; mostrando la escena\./u);
-  assert.match(workspace, /selection\.\$head/u);
+  assert.match(workspace, /writerSceneAtSelectionHead\(state\)/u);
 });
 
 test("Pensarlo juntos keeps idea context separate and Guide reveals the new response start", () => {

@@ -24,6 +24,48 @@ async function openWriter(page: Page, context: BrowserContext, width = 1440) {
   await expect(page.getByLabel("Editor de guion")).toBeVisible();
 }
 
+function selectionBlockId(sceneNumber: number, kindOffset: number) {
+  const index = (sceneNumber - 1) * 7 + kindOffset;
+  return `11111111-1111-4111-8111-${index.toString(16).padStart(12, "0")}`;
+}
+
+async function openSelectionWriter(page: Page, context: BrowserContext) {
+  await page.request.get("http://127.0.0.1:54329/__scenario?value=writer-ux&writerSceneSelection=1");
+  await session(context);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const analysisVersion = "narrative-pulse-v4:context-v1:selection";
+  const points = Array.from({ length: 10 }, (_, index) => ({
+    id: `66666666-6666-4666-8666-${String(index + 1).padStart(12, "0")}`,
+    analysisId: "55555555-5555-4555-8555-555555555559",
+    sceneId: selectionBlockId(index + 1, 1),
+    intensity: 20 + index * 6,
+    signals: ["activity"],
+    note: `Lectura sintética de la escena ${index + 1}.`,
+  }));
+  await page.route(`**/api/writer/scripts/${scriptId}/narrative-pulse`, (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      currentSourceHash: "c".repeat(64),
+      currentAnalysisVersion: analysisVersion,
+      analysis: {
+        id: "55555555-5555-4555-8555-555555555559",
+        sourceHash: "c".repeat(64),
+        analysisVersion,
+        model: "fixture",
+        status: "fresh",
+        errorCode: null,
+        updatedAt: "2026-10-05T12:00:00Z",
+      },
+      points,
+      milestones: [],
+      zones: [],
+    }),
+  }));
+  await page.goto(`/writer/${scriptId}`);
+  await expect(page.getByLabel("Editor de guion")).toBeVisible();
+}
+
 function ideaPayload() {
   return {
     ideas: [{
@@ -195,17 +237,89 @@ test("Ideas stays non-modal, uses one explicit request, navigates centrally and 
   await expect(assistant.getByRole("button", { name: "Ver nueva respuesta" })).toHaveCount(0);
 });
 
-test("caret selection uses the active end scene without saving or launching analysis", async ({ page, context }) => {
-  await openWriter(page, context);
+test("screenplay caret keeps canonical scene context without feedback scrolling or writes", async ({ page, context }) => {
+  await openSelectionWriter(page, context);
   let writeRequests = 0;
   page.on("request", (request) => {
     if (request.method() !== "GET" && /assistant|guided-writing|narrative-pulse|\/api\/writer\/scripts\/[^/]+$/u.test(request.url())) writeRequests += 1;
   });
-  await page.locator(`[data-block-id="${sceneA}"]`).click();
-  await expect(page.locator(".writer-scene-list > li").first()).toHaveClass(/is-active/);
-  await page.locator(`[data-block-id="${sceneB}"]`).click();
-  await expect(page.locator(".writer-scene-list > li").nth(1)).toHaveClass(/is-active/);
-  await page.waitForTimeout(300);
+
+  const paper = page.locator(".writer-paper");
+  const sceneItem = (sceneNumber: number) => page.locator(`[data-writer-scene-id="${selectionBlockId(sceneNumber, 1)}"]`);
+  const selectBlock = async (sceneNumber: number, kindOffset: number) => {
+    const block = page.locator(`[data-block-id="${selectionBlockId(sceneNumber, kindOffset)}"]`);
+    await block.scrollIntoViewIfNeeded();
+    const scrollTop = await paper.evaluate((node) => node.scrollTop);
+    await block.click();
+    await expect(sceneItem(sceneNumber)).toHaveClass(/is-active/);
+    await expect.poll(() => paper.evaluate((node) => node.scrollTop)).toBe(scrollTop);
+  };
+
+  await selectBlock(1, 1);
+  await selectBlock(3, 2);
+  await selectBlock(5, 3);
+  await selectBlock(5, 4);
+  await selectBlock(8, 5);
+  await selectBlock(10, 2);
+  await selectBlock(6, 6);
+  await selectBlock(6, 7);
+
+  await selectBlock(2, 2);
+  await page.locator(`[data-block-id="${selectionBlockId(7, 2)}"]`).hover();
+  await expect(sceneItem(2)).toHaveClass(/is-active/);
+
+  for (let cycle = 0; cycle < 10; cycle += 1) {
+    await selectBlock(2, 2);
+    await selectBlock(7, 2);
+    await selectBlock(4, 2);
+  }
+
+  await selectBlock(4, 7);
+  await page.evaluate((blockId) => {
+    const block = document.querySelector<HTMLElement>(`[data-block-id="${blockId}"]`);
+    const text = block?.firstChild;
+    if (!block || !text) throw new Error("Missing keyboard destination block");
+    block.closest<HTMLElement>("[contenteditable=true]")?.focus();
+    const range = document.createRange();
+    range.setStart(text, Math.min(1, text.textContent?.length ?? 0));
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+  }, selectionBlockId(5, 1));
+  await expect(sceneItem(5)).toHaveClass(/is-active/);
+
+  const panel = page.locator("#writer-timeline-panel");
+  await panel.getByRole("button", { name: "Narrative Pulse", exact: true }).click();
+  await expect(panel.locator(".writer-pulse-point")).toHaveCount(10);
+  await panel.locator(".writer-pulse-point").nth(8).click();
+  await expect(sceneItem(9)).toHaveClass(/is-active/);
+  await selectBlock(3, 2);
+
+  await panel.getByRole("button", { name: "Ideas", exact: true }).click();
+  await expect(panel.locator(".writer-ideas-panel")).toBeVisible();
+  await selectBlock(6, 4);
+
+  await page.getByRole("button", { name: "Ocultar panel izquierdo" }).click();
+  await selectBlock(8, 2);
+  await page.getByRole("button", { name: "Mostrar panel izquierdo" }).click();
+  await expect(sceneItem(8)).toHaveClass(/is-active/);
+  await expect.poll(() => sceneItem(8).evaluate((item) => {
+    const region = item.closest<HTMLElement>(".writer-scene-region");
+    if (!region) return false;
+    const itemRect = item.getBoundingClientRect();
+    const regionRect = region.getBoundingClientRect();
+    return itemRect.top >= regionRect.top - 1 && itemRect.bottom <= regionRect.bottom + 1;
+  })).toBe(true);
+
+  await page.getByRole("button", { name: "Focus", exact: true }).click();
+  await selectBlock(10, 2);
+  await page.getByRole("button", { name: "Salir de Focus", exact: true }).click();
+  await expect(sceneItem(10)).toHaveClass(/is-active/);
+
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await selectBlock(1, 2);
   expect(writeRequests).toBe(0);
 });
 

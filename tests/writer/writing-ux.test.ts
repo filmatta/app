@@ -11,6 +11,7 @@ import {
   insertWriterBlock,
   insertWriterPlainText,
   replaceWriterBlockWithSceneHeading,
+  writerSceneAtSelectionHead,
   writerSceneForSelection,
   writerSelectionTargetIsCurrent,
 } from "../../lib/writer/editor-actions.ts";
@@ -165,6 +166,62 @@ test("scene navigation resolves stable ids even when headings have identical tex
   )));
   assert.equal(writerSceneForSelection(state).sceneId, null);
   assert.match(writerSceneForSelection(state).reason ?? "", /más de una escena/i);
+});
+
+test("the selection head resolves every canonical block kind to its containing scene", () => {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: "screenplayBlock+" },
+      text: { group: "inline" },
+      screenplayBlock: {
+        group: "block",
+        content: "inline*",
+        attrs: { id: { default: null }, kind: { default: "action" } },
+      },
+    },
+  });
+  const firstSceneId = crypto.randomUUID();
+  const firstActionId = crypto.randomUUID();
+  const secondSceneId = crypto.randomUUID();
+  const blocks = [
+    { id: firstSceneId, kind: "sceneHeading", text: "INT. PRIMERA - DÍA" },
+    { id: firstActionId, kind: "action", text: "Primera escena." },
+    { id: secondSceneId, kind: "sceneHeading", text: "EXT. SEGUNDA - NOCHE" },
+    { id: crypto.randomUUID(), kind: "action", text: "Acción." },
+    { id: crypto.randomUUID(), kind: "character", text: "MARA" },
+    { id: crypto.randomUUID(), kind: "dialogue", text: "Diálogo." },
+    { id: crypto.randomUUID(), kind: "parenthetical", text: "(bajo)" },
+    { id: crypto.randomUUID(), kind: "transition", text: "CORTE A:" },
+    { id: crypto.randomUUID(), kind: "authorNote", text: "Nota." },
+  ] as const;
+  const doc = schema.node("doc", null, blocks.map((block) => schema.node(
+    "screenplayBlock",
+    { id: block.id, kind: block.kind },
+    schema.text(block.text),
+  )));
+  const positions = new Map<string, number>();
+  doc.descendants((node, position) => {
+    if (node.type.name === "screenplayBlock") positions.set(String(node.attrs.id), position);
+  });
+  let state = EditorState.create({ schema, doc });
+
+  for (const block of blocks.slice(2)) {
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, positions.get(block.id)! + 1)));
+    assert.equal(writerSceneAtSelectionHead(state), secondSceneId, block.kind);
+  }
+
+  state = state.apply(state.tr.setSelection(TextSelection.create(
+    state.doc,
+    positions.get(firstActionId)! + 1,
+    positions.get(blocks.at(-1)!.id)! + 2,
+  )));
+  assert.equal(writerSceneAtSelectionHead(state), secondSceneId);
+  state = state.apply(state.tr.setSelection(TextSelection.create(
+    state.doc,
+    positions.get(blocks.at(-1)!.id)! + 2,
+    positions.get(firstActionId)! + 1,
+  )));
+  assert.equal(writerSceneAtSelectionHead(state), firstSceneId);
 });
 
 test("same-kind conversion is a no-op and multiline menu paste creates unique action blocks", () => {

@@ -106,6 +106,7 @@ import {
   findWriterBlockById,
   insertWriterEmptyBlock,
   writerSelectionTargetIsCurrent,
+  writerSceneAtSelectionHead,
   writerSceneForSelection,
   duplicateWriterScene,
   moveWriterScene,
@@ -350,6 +351,7 @@ export default function WriterWorkspace({
   const exportButtonRef = useRef<HTMLButtonElement>(null);
   const shotlistTriggerRef = useRef<HTMLButtonElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const sceneRegionRef = useRef<HTMLElement>(null);
   const appearanceRootRef = useRef<HTMLDivElement>(null);
   const appearanceButtonRef = useRef<HTMLButtonElement>(null);
   const appearanceRef = useRef<WriterAppearance>(WRITER_APPEARANCE_DEFAULTS);
@@ -607,6 +609,13 @@ export default function WriterWorkspace({
     return () => window.removeEventListener("resize", fit);
   }, [focusMode, observationsOpen]);
 
+  const syncActiveSceneFromEditor = useCallback((state: EditorState) => {
+    const nextScene = writerSceneAtSelectionHead(state);
+    if (nextScene === activeSceneRef.current) return;
+    activeSceneRef.current = nextScene;
+    setActiveScene(nextScene);
+  }, []);
+
   const editor = useEditor({
     immediatelyRender: false,
     shouldRerenderOnTransaction: false,
@@ -783,16 +792,12 @@ export default function WriterWorkspace({
     },
     onSelectionUpdate: ({ editor: current }) => {
       if (current.isFocused) activeWriterSelectionRef.current = captureWriterSelectionTarget(current.state);
-      const parent = current.state.selection.$head.parent;
-      const nextScene = findSceneForPosition(documentRef.current, parent.attrs.id);
-      if (nextScene !== activeSceneRef.current) {
-        activeSceneRef.current = nextScene;
-        setActiveScene(nextScene);
-      }
+      syncActiveSceneFromEditor(current.state);
       syncAutocomplete(current);
     },
     onFocus: ({ editor: current }) => {
       activeWriterSelectionRef.current = captureWriterSelectionTarget(current.state);
+      syncActiveSceneFromEditor(current.state);
     },
   });
   const applicationMenuEditorState = useEditorState({
@@ -804,6 +809,22 @@ export default function WriterWorkspace({
   });
 
   useEffect(() => { activeSceneRef.current = activeScene; }, [activeScene]);
+
+  useEffect(() => {
+    if (!activeScene) return;
+    const region = sceneRegionRef.current;
+    if (!region || region.clientHeight <= 0) return;
+    const target = region.querySelector<HTMLElement>(`[data-writer-scene-id="${CSS.escape(activeScene)}"]`);
+    if (!target) return;
+    const regionRect = region.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const padding = 8;
+    if (targetRect.top < regionRect.top + padding) {
+      region.scrollBy({ top: targetRect.top - regionRect.top - padding, behavior: "auto" });
+    } else if (targetRect.bottom > regionRect.bottom - padding) {
+      region.scrollBy({ top: targetRect.bottom - regionRect.bottom + padding, behavior: "auto" });
+    }
+  }, [activeScene, focusMode, mobileSidebar, workspaceLayout.leftSidebarVisible]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -2771,7 +2792,7 @@ export default function WriterWorkspace({
           <small>Guion</small>
           <strong>{title || "Guion sin título"}</strong>
         </div>
-        <nav className="writer-scene-region" aria-label="Escenas del guion" tabIndex={0}>
+        <nav ref={sceneRegionRef} className="writer-scene-region" aria-label="Escenas del guion" tabIndex={0}>
           <p className="writer-sidebar-heading">Escenas <span>{scenes.length}</span></p>
           {scenes.length ? (
             <ol className="writer-scene-list">
