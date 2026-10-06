@@ -17,6 +17,35 @@ let writerSaveCount = 0;
 let writerReadCount = 0;
 let writerCreateCount = 0;
 let writerCheckpoints = [];
+const shotlistId = "44444444-4444-4444-8444-444444444444";
+const shotlistGroups = [
+  { id: "44444444-4444-4444-8444-444444444401", shotlist_id: shotlistId, source_scene_id: null, source_scene_title: null, title: "INT. RADIO K-17 / CABINA — NOCHE", position: 0, source_status: "manual", revision: 1 },
+  { id: "44444444-4444-4444-8444-444444444402", shotlist_id: shotlistId, source_scene_id: null, source_scene_title: null, title: "EXT. AZOTEA — AMANECER", position: 1, source_status: "manual", revision: 1 },
+];
+const shotlistShots = Array.from({ length: 8 }, (_, index) => ({
+  id: `44444444-4444-4444-8444-${String(index + 100).padStart(12, "0")}`,
+  shotlist_id: shotlistId,
+  group_id: shotlistGroups[index < 5 ? 0 : 1].id,
+  source_block_id: null,
+  origin: "manual",
+  shot_type: ["Plano general", "Plano medio", "Primer plano"][index % 3],
+  composition: index % 2 ? "Regla de tercios" : "Centrada",
+  subject: ["Mara entra en cuadro", "El técnico revisa la consola", "La alarma cambia a rojo"][index % 3],
+  angle: index % 3 === 2 ? "Picado" : "A nivel",
+  movement: index % 3 === 0 ? "Travelling lateral" : "Fijo",
+  support: index % 3 === 0 ? "Dolly" : "Trípode",
+  lens: ["24 mm", "50 mm", "85 mm"][index % 3],
+  setup: String.fromCharCode(65 + (index % 3)),
+  duration_seconds: 4 + index,
+  status: index % 4 === 0 ? "ready" : "pending",
+  description: "Cobertura de prueba local para verificar la Beta UX sin tocar datos reales.",
+  intention: null,
+  notes: index % 3 === 0 ? "Confirmar continuidad y reflejos." : null,
+  asset_id: null,
+  position: index < 5 ? index : index - 5,
+  source_revision: null,
+  revision: 1,
+}));
 const profile = {
   slug: "test-profile",
   display_name: "Persona P.",
@@ -202,6 +231,14 @@ http
           updated_at: "2026-09-27T12:00:00Z",
         }]));
       }
+    }
+    if (scenario === "shotlist-ux") {
+      if (url.pathname === "/rest/v1/writer_shotlists" && req.method === "GET") {
+        const row = { id: shotlistId, script_id: null, title: "LA FRECUENCIA — Shotlist Beta", source_revision: null, revision: 1, updated_at: "2026-10-06T12:00:00Z" };
+        return res.end(req.headers.accept?.includes("vnd.pgrst.object") ? JSON.stringify(row) : JSON.stringify([row]));
+      }
+      if (url.pathname === "/rest/v1/writer_shotlist_groups" && req.method === "GET") return res.end(JSON.stringify(shotlistGroups));
+      if (url.pathname === "/rest/v1/writer_shotlist_shots" && req.method === "GET") return res.end(JSON.stringify(shotlistShots));
     }
     if (scenario === "unconfigured") {
       res.statusCode = 404;

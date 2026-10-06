@@ -9,30 +9,36 @@ const ai = readFileSync("lib/writer/production-ai-server.ts", "utf8");
 const productionServer = readFileSync("lib/writer/production-server.ts", "utf8");
 const assetRoute = readFileSync("app/api/writer/production-assets/route.ts", "utf8");
 const importFlow = readFileSync("components/writer/WriterImportFlow.tsx", "utf8");
+const applicationMenu = readFileSync("components/shotlist/ShotlistApplicationMenu.tsx", "utf8");
+const proposalRoute = readFileSync("app/api/shotlists/[id]/proposals/route.ts", "utf8");
 
 test("Shotlist follows the mockup hierarchy with real panels and one persistent grid", () => {
   assert.match(shotCss, /grid-template-columns:240px minmax\(600px,1fr\) 360px/);
   assert.match(workspace, /shotlist-scenes/);
   assert.match(workspace, /shotlist-grid-panel/);
   assert.match(workspace, /shotlist-inspector/);
-  assert.match(workspace, /showSecondaryColumns/);
+  assert.match(workspace, /visibleColumns/);
+  assert.match(workspace, /ShotlistFilters/);
+  assert.match(workspace, /data-shot-id/);
   assert.match(workspace, /↑ Subir/);
   assert.match(workspace, /↓ Bajar/);
 });
 
 test("Libre, Asistido, and Sugerido remain distinct and AI requires an explicit action", () => {
-  assert.match(workspace, /No usa IA y cada plano queda editable/);
-  assert.match(workspace, /addAssistedCoverage/);
-  assert.match(workspace, /Propuesta contextual con IA/);
-  assert.match(workspace, /window\.confirm\(`Preparar una propuesta/);
+  assert.match(workspace, /no se inventará cobertura/);
+  assert.match(workspace, /IA: 0 llamadas/);
+  assert.match(workspace, /Puede proponer cobertura nueva con IA/);
+  assert.match(workspace, /window\.confirm\("Sugerir planos puede usar IA/);
   assert.match(workspace, /Añadir seleccionados/);
+  assert.match(proposalRoute, /body\.value\.mode !== "suggested"/);
+  assert.doesNotMatch(proposalRoute, /body\.value\.mode !== "assisted"/);
 });
 
 test("Storyboard and sharing disclose the private V1 contract instead of faking features", () => {
-  assert.match(workspace, /Copiar enlace privado/);
+  assert.match(applicationMenu, /Copiar enlace privado/);
   assert.match(workspace, /Abrir Storyboard/);
-  assert.doesNotMatch(workspace, />Generar storyboard</);
-  assert.match(workspace, /Quitar referencia/);
+  assert.match(workspace, /Crear Storyboard/);
+  assert.match(workspace, /Referencia privada del plano/);
 });
 
 test("Breakdown keeps human review, recovery, categories, and canonical navigation visible", () => {

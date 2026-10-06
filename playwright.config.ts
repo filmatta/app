@@ -7,7 +7,7 @@ export default defineConfig({
   timeout: 60000,
   expect: { timeout: 15000 },
   use: { baseURL: 'http://127.0.0.1:3105', channel: 'chrome', headless: true },
-  webServer: [
+  webServer: process.env.PLAYWRIGHT_EXTERNAL_SERVERS === '1' ? undefined : [
     { command: 'node tests/e2e/mock-supabase.mjs', url: 'http://127.0.0.1:54329/health', reuseExistingServer: false },
     {
       command: 'npm run dev -- --hostname 127.0.0.1 --port 3105',
