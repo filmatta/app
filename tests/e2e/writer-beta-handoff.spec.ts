@@ -177,10 +177,13 @@ test("Ideas stays non-modal, uses one explicit request, navigates centrally and 
   await panel.getByRole("button", { name: "Ideas", exact: true }).click();
   expect(api.ideaPosts).toBe(0);
 
-  await ideas.getByRole("button", { name: "Esta escena" }).click();
-  await ideas.getByLabel("¿Qué quieres explorar?").fill("¿Cómo volver incómodo este encuentro sin una pelea?");
-  await ideas.getByRole("button", { name: "Subtexto" }).click();
-  await ideas.getByRole("button", { name: "Explorar direcciones" }).click();
+  const sceneScope = ideas.getByRole("button", { name: "Esta escena", exact: true });
+  await sceneScope.click();
+  await expect(sceneScope).toHaveAttribute("aria-pressed", "true");
+  await ideas.getByLabel("Breve opcional", { exact: true }).fill("¿Cómo volver incómodo este encuentro sin una pelea?");
+  const generateIdeas = ideas.getByRole("button", { name: "Generar ideas", exact: true });
+  await expect(generateIdeas).toBeEnabled();
+  await generateIdeas.click();
   await expect(ideas.getByRole("heading", { name: "Volver incómodo el silencio" })).toBeVisible();
   expect(api.ideaPosts).toBe(1);
   fs.mkdirSync(evidence, { recursive: true });
@@ -202,7 +205,7 @@ test("Ideas stays non-modal, uses one explicit request, navigates centrally and 
     return (delta <= container.height * .3 || (atEnd && fullyVisible)) && scroller.scrollLeft === 0;
   }, blockB)).toBe(true);
 
-  await ideas.getByRole("button", { name: "Pensarlo juntos →" }).click();
+  await ideas.getByRole("button", { name: "Llevar a Guía →", exact: true }).click();
   const assistant = page.getByRole("complementary", { name: "Asistente" });
   const composer = assistant.getByLabel("Cuéntame qué decisión estás intentando tomar.");
   await expect(assistant.getByText("Volver incómodo el silencio")).toBeVisible();
@@ -210,8 +213,8 @@ test("Ideas stays non-modal, uses one explicit request, navigates centrally and 
   expect(api.guidePosts).toBe(0);
   const exactQuestion = "Quiero que el encuentro entre A y B sea incómodo sin una pelea";
   await composer.fill(exactQuestion);
-  await assistant.getByRole("button", { name: "Pensarlo juntos", exact: true }).click();
-  await expect(assistant.getByText("Lo que parece estar ocurriendo")).toBeVisible();
+  await assistant.getByRole("button", { name: "Analizar", exact: true }).click();
+  await expect(assistant.getByRole("heading", { name: "Conclusión provisional", exact: true })).toBeVisible();
   expect(api.guidePosts).toBe(1);
   expect(api.lastGuideBody?.question).toBe(exactQuestion);
   expect((api.lastGuideBody?.ideaContext as Record<string, unknown>)?.title).toBe("Volver incómodo el silencio");
@@ -229,7 +232,7 @@ test("Ideas stays non-modal, uses one explicit request, navigates centrally and 
   await page.screenshot({ path: `${evidence}/guide-response-start-1440x900.png` });
 
   await composer.fill("Quiero comparar una segunda consecuencia");
-  await assistant.getByRole("button", { name: "Pensarlo juntos", exact: true }).click();
+  await assistant.getByRole("button", { name: "Analizar", exact: true }).click();
   await expect(assistant.getByText("Pensando con el contexto actual…")).toBeVisible();
   await assistant.locator(".writer-observations-scroll").dispatchEvent("wheel", { deltaY: -80 });
   await expect(assistant.getByRole("button", { name: "Ver nueva respuesta" })).toBeVisible();
@@ -336,13 +339,16 @@ test("Ideas distinguishes an unavailable provider and preserves the user's promp
   });
   await page.getByRole("button", { name: /Ideas/ }).first().click();
   const ideas = page.locator(".writer-ideas-panel");
-  const prompt = ideas.getByLabel("¿Qué quieres explorar?");
+  await expect(ideas.getByRole("button", { name: "Todo el guion", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const prompt = ideas.getByRole("textbox", { name: "Breve opcional", exact: true });
   const question = "¿Cómo cambia la escena si nadie responde?";
   await prompt.fill(question);
-  await ideas.getByRole("button", { name: "Explorar direcciones" }).click();
+  const generateIdeas = ideas.getByRole("button", { name: "Generar ideas", exact: true });
+  await expect(generateIdeas).toBeEnabled();
+  await generateIdeas.click();
   await expect(ideas.getByRole("status")).toContainText("no está disponible");
   await expect(ideas.locator(".writer-tool-message")).toHaveClass(/is-unavailable/);
-  await expect(prompt).toHaveValue(question);
+  await expect(ideas.getByRole("textbox", { name: "Breve opcional", exact: true })).toHaveValue(question);
   expect(requests).toBe(1);
 });
 
