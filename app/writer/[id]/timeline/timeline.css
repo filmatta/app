@@ -355,6 +355,8 @@
 .writer-pulse-area { fill: rgba(126,199,216,.055); stroke: none; }
 .writer-pulse-curve { fill: none; stroke: #7ec7d8; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .writer-pulse-point { position: absolute; z-index: 3; display: grid; width: 30px; height: 30px; place-items: center; padding: 0; touch-action: manipulation; border: 0 !important; border-radius: 50% !important; background: transparent !important; transform: translate(-50%,-50%); pointer-events: auto; }
+/* Keep the chart anchor stable instead of inheriting the generic button press translation. */
+.writer-workspace .writer-pulse-point:active:not(:disabled) { transform: translate(-50%,-50%); }
 .writer-pulse-point span { display: block; width: 8px; height: 8px; border: 2px solid #080b0e; border-radius: 50%; background: #7ec7d8; box-shadow: 0 0 0 1px #7ec7d8; }
 .writer-pulse-point.is-selected span { width: 12px; height: 12px; background: #ed5a55; box-shadow: 0 0 0 2px rgba(237,90,85,.35); }
 .writer-pulse-point:focus-visible { outline: 2px solid #f5d37d !important; outline-offset: 1px; }

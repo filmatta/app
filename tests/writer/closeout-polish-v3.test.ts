@@ -26,7 +26,7 @@ test("Pulse points use shared Writer navigation and reveal the screenplay", () =
   assert.match(pulse, /onClick=\{\(\) => selectPoint\(scene\)\}/u);
   assert.match(timeline, /onSelectScene=\{\(scene\) => activateScene\(scene, true\)\}/u);
   assert.match(timeline, /onGoToWriter\(scene\.sourceId, \{ preservePanel \}\)/u);
-  assert.match(workspace, /if \(!options\?\.preservePanel\) setTimelineExpanded\(false\)/u);
+  assert.match(workspace, /onGoToWriter=\{\(sceneId, options\) => \{\s*\/\/[^\n]*\n\s*setTimelineExpanded\(false\)/u);
   assert.match(workspace, /navigateToWriterReference\(\{ sceneId \}, \{ preservePanel: options\?\.preservePanel \}\)/u);
 });
 

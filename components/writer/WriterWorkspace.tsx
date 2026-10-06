@@ -3146,7 +3146,8 @@ export default function WriterWorkspace({
               />
             )}
             onGoToWriter={(sceneId, options) => {
-              if (!options?.preservePanel) setTimelineExpanded(false);
+              // Preserve the open panel, not the expanded surface hiding the destination.
+              setTimelineExpanded(false);
               if (!editor) {
                 setFeedback("El editor todavía no está preparado.");
                 return;
