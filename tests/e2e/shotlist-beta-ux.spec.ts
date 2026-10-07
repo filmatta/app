@@ -401,6 +401,26 @@ test("value checkbox label, Space, search, none and Escape keep one applied filt
   await expect(dialog.getByRole("checkbox", { name: /50 mm/u })).not.toBeChecked();
 });
 
+test("reselecting the current Writer source keeps its visible scene preview", async ({ page, context }) => {
+  await openShotlist(page, context, 834, 900);
+  const sourceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  await page.route(`**/api/shotlists/${shotlistId}/import**`, (route) => {
+    const selected = new URL(route.request().url()).searchParams.get("scriptId");
+    return json(route, selected ? { script: { id: sourceId, title: "Guion QA", revision: 1 }, scenes: [{ sceneId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", heading: "INT. ESCENA QA - NOCHE", context: "Acción sintética." }] } : { scripts: [{ id: sourceId, title: "Guion QA", revision: 1, updatedAt: "2026-10-07T00:00:00Z" }] });
+  });
+  await page.getByRole("button", { name: "⇩ Importar" }).click();
+  const dialog = page.getByRole("dialog", { name: "Importar a Shotlist" });
+  const selector = dialog.getByLabel("Guion propio");
+  await selector.selectOption(sourceId);
+  await expect(dialog.getByText("INT. ESCENA QA - NOCHE")).toBeVisible();
+  await selector.selectOption(sourceId);
+  await expect(dialog.getByText("INT. ESCENA QA - NOCHE")).toBeVisible();
+  await selector.selectOption("");
+  await expect(dialog.getByText("INT. ESCENA QA - NOCHE")).toHaveCount(0);
+  await selector.selectOption(sourceId);
+  await expect(dialog.getByText("INT. ESCENA QA - NOCHE")).toBeVisible();
+});
+
 test("Writer handoff, Storyboard and Production keep their approved surfaces", async ({ page, context }) => {
   await session(context);
   await page.request.get("http://127.0.0.1:54329/__scenario?value=writer-ux");

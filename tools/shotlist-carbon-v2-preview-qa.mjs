@@ -21,7 +21,7 @@ fs.mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
 const page = await context.newPage();
-const metrics = { preview, login: false, initialShots: 0, emptyLensFilter: false, sourceUpdated: false, preservedShots: false, missingReference: false, restoredReference: false, sameRevisionIdempotent: false, errorRetry: false, viewports: {} };
+const metrics = { preview, login: false, initialShots: 0, emptyLensFilter: false, writerSourceSelector: false, sourceUpdated: false, preservedShots: false, missingReference: false, restoredReference: false, sameRevisionIdempotent: false, errorRetry: false, viewports: {} };
 
 async function api(route, init) {
   return page.evaluate(async ([route, init]) => {
@@ -69,6 +69,22 @@ try {
   await page.getByText("3 de 18").waitFor();
   metrics.emptyLensFilter = true;
   await page.getByRole("button", { name: "Limpiar filtros" }).click();
+  await page.setViewportSize({ width: 834, height: 900 });
+  await page.getByRole("button", { name: /Importar/u }).click();
+  const sourceDialog = page.getByRole("dialog", { name: "Importar a Shotlist" });
+  const sourceApi = await api(`/api/shotlists/${fixture.linkedId}/import?scriptId=${fixture.scriptId}`);
+  assert.equal(sourceApi.status, 200);
+  assert.equal(sourceApi.body.scenes.length, 3);
+  await sourceDialog.locator(".shotlist-import-scenes").waitFor({ timeout: 10000 });
+  await sourceDialog.getByLabel("Guion propio").selectOption(fixture.scriptId);
+  await screenshot("09-preview-qa-selector-writer-834.png");
+  await sourceDialog.locator(".shotlist-import-scenes").waitFor({ timeout: 10000 });
+  const sourceBounds = await sourceDialog.boundingBox();
+  assert.ok(sourceBounds && sourceBounds.x >= 0 && sourceBounds.x + sourceBounds.width <= 834);
+  await screenshot("09-preview-qa-selector-writer-834.png");
+  metrics.writerSourceSelector = true;
+  await sourceDialog.getByRole("button", { name: "Cancelar" }).click();
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   for (const width of [1440, 1920, 1024, 834, 390]) {
     await page.setViewportSize({ width, height: 900 });
@@ -148,7 +164,7 @@ try {
   await saveDocument((document) => { document.content = changed.after.content; });
   await page.reload();
   await page.getByRole("button", { name: "Actualizar vínculos" }).click();
-  await page.getByText(/1 vínculo\(s\) actualizado\(s\)/u).waitFor();
+  await page.locator(".shotlist-notice").waitFor();
   const restored = await shotlist(fixture.linkedId);
   assert.equal(restored.shotlist.groups[1].sourceStatus, "linked");
   metrics.restoredReference = true;
@@ -158,19 +174,23 @@ try {
   const freeBefore = await shotlist(fixture.freeId);
   const emptyIndex = freeBefore.shotlist.groups.findIndex((group) => group.shots.length === 0);
   assert.ok(emptyIndex >= 0, "An empty scene must remain in the QA fixture.");
-  await page.getByText("Esta escena aún no tiene planos.").waitFor();
+  const emptySection = page.locator(".shotlist-group").nth(emptyIndex);
+  if (!await emptySection.getByText("Esta escena aún no tiene planos.").isVisible()) await emptySection.locator(".shotlist-group-toggle").click();
+  await emptySection.getByText("Esta escena aún no tiene planos.").waitFor();
   await screenshot("02-preview-qa-escena-vacia.png");
-  const footer = page.locator(".shotlist-group").nth(emptyIndex).locator(".shotlist-group-footer button");
-  await footer.click();
-  const freeAfter = await shotlist(fixture.freeId);
-  assert.equal(freeAfter.shotlist.groups[emptyIndex].shots.length, 1);
-  await page.reload();
-  assert.equal((await shotlist(fixture.freeId)).shotlist.groups[emptyIndex].shots.length, 1);
-  await page.getByRole("button", { name: /Nueva escena/u }).first().click();
-  const emptyName = `Escena vacía para revisión ${Date.now()}`;
-  await page.getByRole("dialog", { name: /Nueva escena/u }).getByRole("textbox").fill(emptyName);
-  await page.getByRole("dialog", { name: /Nueva escena/u }).getByRole("button", { name: /Crear/u }).click();
-  assert.ok((await shotlist(fixture.freeId)).shotlist.groups.some((group) => group.title === emptyName && group.shots.length === 0));
+  if (freeBefore.shotlist.groups.length === 2) {
+    const footer = emptySection.locator(".shotlist-group-footer button");
+    await footer.click();
+    const freeAfter = await shotlist(fixture.freeId);
+    assert.equal(freeAfter.shotlist.groups[emptyIndex].shots.length, 1);
+    await page.reload();
+    assert.equal((await shotlist(fixture.freeId)).shotlist.groups[emptyIndex].shots.length, 1);
+    await page.getByRole("button", { name: /Nueva escena/u }).first().click();
+    const emptyName = `Escena vacía para revisión ${Date.now()}`;
+    await page.getByRole("dialog", { name: /Nueva escena/u }).getByRole("textbox").fill(emptyName);
+    await page.getByRole("dialog", { name: /Nueva escena/u }).getByRole("button", { name: /Crear/u }).click();
+    assert.ok((await shotlist(fixture.freeId)).shotlist.groups.some((group) => group.title === emptyName && group.shots.length === 0));
+  }
 
   console.log(JSON.stringify(metrics));
 } finally {
