@@ -167,8 +167,12 @@ export const WRITER_SHOT_MOVEMENTS = [
 
 const categorySet = new Set<string>(WRITER_BREAKDOWN_CATEGORIES);
 const natureSet = new Set<string>(["present", "used", "mentioned", "inferred"]);
-const explicitUsePattern = /\b(?:sostiene|toma|agarra|abre|cierra|enciende|apaga|guarda|esconde|encuentra|descubre|extrae|saca|dispara|conduce|viste|lleva|usa)\s+(?:un|una|el|la|los|las|su|sus)\s+([\p{L}\p{N}][\p{L}\p{N}\s-]{1,48})/giu;
-const trailingClause = /\s+(?:mientras|cuando|que|y|pero|para|porque|con|sin|sobre|bajo|en)\b.*$/iu;
+const physicalActionPattern = /\b(sostiene|toma|agarra|abre|cierra|enciende|apaga|guarda|esconde|encuentra|descubre|extrae|saca|dispara|conduce|viste|lleva|usa|deja|coloca|levanta|recoge|hay|aparecen?)\s+((?:(?:un(?:a|o)?s?|el|la|los|las|su|sus)\s+)[^.!?;\n]+)/giu;
+const carriedEntrancePattern = /\b(?:entra|sale|camina|aparece|llega)\s+con\s+((?:(?:un(?:a|o)?s?|el|la|los|las|su|sus)\s+)[^.!?;\n]+)/giu;
+const visibleSubjectPattern = /\b((?:un(?:a|o)?s?|el|la|los|las)\s+[\p{L}\p{N}][\p{L}\p{N}\s-]{1,60}?)\s+(?:descansa|yace|permanece|está|espera)\b/giu;
+const physicalPlacementPattern = /\b(?:sobre|contra|junto a|debajo de)\s+((?:un(?:a|o)?s?|el|la|los|las)\s+[\p{L}\p{N}][\p{L}\p{N}\s-]{1,48})/giu;
+const phraseEnd = /\s+(?:mientras|cuando|que|pero|para|porque|con|sin|sobre|bajo|en|contra|junto|dentro|hacia|desde|al|del)\b.*$/iu;
+const article = /^(?:un(?:a|o)?s?|el|la|los|las|su|sus)\s+/iu;
 
 export function normalizeProductionName(value: string) {
   return value
@@ -206,8 +210,8 @@ export function detectWriterBreakdownRules(document: WriterDocument, sceneIds?: 
       }));
     }
     for (const block of scene.blocks) {
-      const text = block.text.trim();
-      if (!text) continue;
+      const text = block.text;
+      if (!text.trim()) continue;
       if (block.kind === "character") {
         const name = normalizeProductionName(text.replace(/\s*\([^)]*\)\s*$/u, ""));
         if (name) candidates.push(ruleCandidate({
@@ -222,25 +226,38 @@ export function detectWriterBreakdownRules(document: WriterDocument, sceneIds?: 
         continue;
       }
       if (block.kind !== "action") continue;
-      for (const match of text.matchAll(explicitUsePattern)) {
-        const raw = match[1]?.replace(/[.,;:!?]+$/u, "").replace(trailingClause, "").trim();
-        const name = raw ? normalizeProductionName(raw) : "";
-        if (!name || name.split(/\s+/u).length > 6) continue;
-        const fromOffset = (match.index ?? 0) + match[0].lastIndexOf(match[1] ?? "");
-        candidates.push(ruleCandidate({
-          name,
-          category: "prop",
-          scene,
-          blockId: block.id,
-          excerpt: text.slice(0, 500),
-          nature: "used",
-          fromOffset,
-          toOffset: fromOffset + name.length,
-        }));
+      const addPhysicalPhrases = (raw: string, start: number, nature: WriterBreakdownNature, category: WriterBreakdownCategory = "prop") => {
+        const bounded = raw.replace(phraseEnd, "");
+        for (const part of bounded.matchAll(/(?:^|,\s*|\s+y\s+)((?:(?:un(?:a|o)?s?|el|la|los|las|su|sus)\s+)?[\p{L}\p{N}][\p{L}\p{N}\s-]*?)(?=,|\s+y\s+|$)/giu)) {
+          const phrase = part[1]?.trim().replace(/[.,;:!?]+$/u, "").trim() ?? "";
+          const name = normalizeProductionName(phrase.replace(/^(?:su|sus)\s+/iu, ""));
+          if (!name || name.split(/\s+/u).length > 5) continue;
+          const localOffset = raw.indexOf(phrase, part.index ?? 0) + (phrase.match(article)?.[0].length ?? 0);
+          const fromOffset = start + localOffset;
+          if (text.slice(fromOffset, fromOffset + name.length) !== name) continue;
+          candidates.push(ruleCandidate({ name, category, scene, blockId: block.id, excerpt: text.slice(0, 500), nature, fromOffset, toOffset: fromOffset + name.length }));
+        }
+      };
+      for (const match of text.matchAll(physicalActionPattern)) {
+        const category: WriterBreakdownCategory = match[1]?.toLocaleLowerCase("es-MX") === "conduce" ? "vehicle" : match[1]?.toLocaleLowerCase("es-MX") === "viste" ? "wardrobe" : "prop";
+        addPhysicalPhrases(match[2] ?? "", (match.index ?? 0) + match[0].indexOf(match[2] ?? ""), match[1]?.toLocaleLowerCase("es-MX") === "hay" ? "present" : "used", category);
       }
+      for (const match of text.matchAll(carriedEntrancePattern)) addPhysicalPhrases(match[1] ?? "", (match.index ?? 0) + match[0].indexOf(match[1] ?? ""), "present");
+      for (const match of text.matchAll(visibleSubjectPattern)) addPhysicalPhrases(match[1] ?? "", (match.index ?? 0) + match[0].indexOf(match[1] ?? ""), "present");
+      for (const match of text.matchAll(physicalPlacementPattern)) addPhysicalPhrases(match[1] ?? "", (match.index ?? 0) + match[0].indexOf(match[1] ?? ""), "present");
     }
   }
-  return dedupeBreakdownCandidates(candidates);
+  const occurrences = new Map<string, number>();
+  const seenRanges = new Set<string>();
+  return candidates.filter((candidate) => {
+    const range = `${candidate.fingerprint}:${candidate.fromOffset ?? "none"}:${candidate.toOffset ?? "none"}`;
+    if (seenRanges.has(range)) return false;
+    seenRanges.add(range);
+    const previous = occurrences.get(candidate.fingerprint) ?? 0;
+    occurrences.set(candidate.fingerprint, previous + 1);
+    if (previous) candidate.fingerprint += `:at:${candidate.fromOffset ?? previous}`;
+    return true;
+  });
 }
 
 function ruleCandidate(input: {

@@ -18,6 +18,7 @@ import {
 } from "./provider-diagnostics.ts";
 
 const MAX_OUTPUT_TOKENS = 2_200;
+const BREAKDOWN_OUTPUT_TOKENS = 4_000;
 const MAX_OPERATION_COST_MICRO_USD = 200_000;
 const VERSION = "writer-production-v1";
 
@@ -36,7 +37,7 @@ export async function analyzeBreakdownWithAi(input: {
   if (scenes.length > 12) throw new WriterProductionAiError("too_large", "La detección asistida procesa hasta 12 escenas por operación. Usa Escena actual o divide el ámbito.", 413);
   const providerInput = JSON.stringify({ scenes: scenes.map((scene) => ({ sceneId: scene.sceneId, heading: scene.heading, blocks: scene.blocks })) });
   if (providerInput.length > 70_000) throw new WriterProductionAiError("too_large", "Analiza menos escenas por operación.", 413);
-  const instructions = "Detecta sólo elementos de producción explícitamente sostenidos por el texto. No inventes. Devuelve referencias exactas a sceneId y blockId. Distingue present, used, mentioned e inferred. No propongas equipo de cámara.";
+  const instructions = "Haz un inventario de producción con prioridad al recall: incluye objetos manipulados y visibles, utilería, vestuario, vehículos, extras y elementos físicos del espacio que el texto respalda. No exijas que se usen: un elemento visible también es candidato revisable. Recorre todas las escenas y no reduzcas una enumeración a su primer objeto. Excluye metáforas y conceptos sin presencia física; no inventes elementos ni equipo de cámara. Cita un fragmento literal exacto y sus sceneId y blockId. Distingue present, used, mentioned e inferred. El usuario decidirá qué candidatos conservar.";
   const output = await executeOperation({ userId: input.userId, scriptId: input.scriptId, sourceRevision: script.revision, kind: "breakdown_detect", scope: input.sceneIds?.length === 1 ? "scene" : "document", source: providerInput, instructions, schema: breakdownSchema(), operationId: input.operationId, signal: input.signal, force: input.force });
   const candidates = validateWriterBreakdownCandidates((output.result as { candidates?: unknown }).candidates, script.document);
   return { candidates, operationId: output.operationId, ...output.metrics };
@@ -100,7 +101,8 @@ async function executeOperation(input: { userId: string; scriptId?: string | nul
   let operationId = input.operationId ?? randomUUID();
   const ownerScope = `${input.userId}:${input.scriptId ?? input.shotlistId ?? "none"}`;
   const requestHash = sha256(`${ownerScope}:${sourceHash}:${input.kind}:${input.scope}`);
-  const estimated = estimateWriterSceneAnalysisMaximumCost(countWriterSceneAnalysisTokens(`${input.instructions}\n${input.source}`), MAX_OUTPUT_TOKENS);
+  const outputTokenLimit = input.kind === "breakdown_detect" ? BREAKDOWN_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS;
+  const estimated = estimateWriterSceneAnalysisMaximumCost(countWriterSceneAnalysisTokens(`${input.instructions}\n${input.source}`), outputTokenLimit);
   if (estimated > MAX_OPERATION_COST_MICRO_USD) throw new WriterProductionAiError("budget", "La operación excede el límite técnico de US$0.20.", 413);
   const admin = createAdminClient();
   const existing = await admin.from("writer_production_operations").select("id,status,actual_cost_microusd,latency_ms")
@@ -120,7 +122,7 @@ async function executeOperation(input: { userId: string; scriptId?: string | nul
   try {
     response = await client.responses.create({
       model: WRITER_SCRIPT_ASSISTANT_MODEL, reasoning: { effort: "none" }, store: false,
-      max_output_tokens: MAX_OUTPUT_TOKENS, instructions: input.instructions, input: input.source,
+      max_output_tokens: outputTokenLimit, instructions: input.instructions, input: input.source,
       prompt_cache_key: writerProviderCacheKey("writer-production", input.userId, input.scriptId ?? input.shotlistId ?? "none", input.kind, sourceHash),
       text: { format: { type: "json_schema", name: "writer_production", strict: true, schema: input.schema } },
     }, { headers: { "Idempotency-Key": `writer-production-${operationId}-${requestHash.slice(0, 16)}` }, signal: input.signal });

@@ -42,6 +42,53 @@ test("Breakdown reanalysis recognizes a newly found prop in normal prose without
   assert.equal(revised.some((candidate) => /disparo|corazón/iu.test(candidate.name)), false);
 });
 
+test("Breakdown recall-first fixture recovers physical inventories without turning metaphors into props", () => {
+  const actions = [
+    "Mara abre un cajón. Dentro hay una pistola, una libreta roja y unas llaves.",
+    "Diego deja su casco sobre la mesa.",
+    "Una bicicleta descansa contra la pared.",
+    "Ana lleva un abrigo amarillo y gafas oscuras.",
+    "Mara entra con una cámara, una mochila y un paraguas.",
+    "Rubén conduce un coche antiguo. Deja una carpeta azul sobre el asiento.",
+    "Inés viste una chaqueta verde y botas negras.",
+    "Hay una radio, una lámpara y unos vasos.",
+    "Tomás coloca una caja y un reloj sobre la repisa.",
+    "La noticia fue un disparo al corazón. Su relación era una bomba de tiempo. El silencio pesaba toneladas.",
+  ];
+  const expected = ["cajón", "pistola", "libreta roja", "llaves", "casco", "mesa", "bicicleta", "pared", "abrigo amarillo", "gafas oscuras", "cámara", "mochila", "paraguas", "coche antiguo", "carpeta azul", "asiento", "chaqueta verde", "botas negras", "radio", "lámpara", "vasos", "caja", "reloj", "repisa"];
+  const document: WriterDocument = { type: "doc", content: actions.flatMap((text, index) => [createBlock("sceneHeading", `INT. LUGAR ${index + 1} - DÍA`), createBlock("action", text)]) };
+  const found = detectWriterBreakdownRules(document).filter((candidate) => candidate.category !== "location");
+  const names = new Set(found.map((candidate) => candidate.name));
+  const missed = expected.filter((name) => !names.has(name));
+  const falsePositives = found.filter((candidate) => /disparo|corazón|bomba|toneladas/iu.test(candidate.name));
+  assert.equal(missed.length, 0, `missed: ${missed.join(", ")}`);
+  assert.equal(falsePositives.length, 0, `false positives: ${falsePositives.map((item) => item.name).join(", ")}`);
+  assert.ok(found.some((candidate) => candidate.name === "coche antiguo" && candidate.category === "vehicle"));
+  assert.ok(found.some((candidate) => candidate.name === "chaqueta verde" && candidate.category === "wardrobe"));
+});
+
+test("Breakdown decision keys are scoped to evidence, never a global noun blacklist", () => {
+  const document: WriterDocument = { type: "doc", content: [
+    createBlock("sceneHeading", "INT. CASA - DÍA"),
+    createBlock("action", "Mara coloca una bomba sobre la mesa."),
+    createBlock("sceneHeading", "EXT. CALLE - NOCHE"),
+    createBlock("action", "Diego coloca una bomba sobre la mesa."),
+  ] };
+  const bombs = detectWriterBreakdownRules(document).filter((candidate) => candidate.name === "bomba");
+  assert.equal(bombs.length, 2);
+  assert.notEqual(bombs[0]?.fingerprint, bombs[1]?.fingerprint);
+});
+
+test("repeated physical occurrences inside one block keep separate review keys", () => {
+  const document: WriterDocument = { type: "doc", content: [
+    createBlock("sceneHeading", "INT. TALLER - DÍA"),
+    createBlock("action", "Mara toma una caja. Diego toma una caja."),
+  ] };
+  const boxes = detectWriterBreakdownRules(document).filter((candidate) => candidate.name === "caja");
+  assert.equal(boxes.length, 2);
+  assert.notEqual(boxes[0]?.fingerprint, boxes[1]?.fingerprint);
+});
+
 test("hybrid evidence validation accepts exact wardrobe and prop references without fixture dictionaries", () => {
   const heading = createBlock("sceneHeading", "EXT. BOSQUE - NOCHE", "51111111-1111-4111-8111-111111111111");
   const action = createBlock("action", "Mara entra con un abrigo rojo. Rubén saca una pistola y apunta a Mara.", "52222222-2222-4222-8222-222222222222");
