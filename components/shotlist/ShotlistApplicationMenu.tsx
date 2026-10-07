@@ -115,6 +115,10 @@ export default function ShotlistApplicationMenu({
 
   function toggle(name: MenuName, button: HTMLButtonElement) {
     trigger.current = button;
+    const rect = button.getBoundingClientRect();
+    const width = Math.min(260, window.innerWidth - 16);
+    // Anchor the portal in the same update as the open menu; never reuse the previous menu's coordinates.
+    setPosition({ top: rect.bottom + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)), width });
     setOpen((current) => current === name ? null : name);
   }
 

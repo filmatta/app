@@ -814,3 +814,111 @@ test("V4 compact menus fit desktop and mobile viewports without horizontal scrol
   await page.getByRole("dialog", { name: "Nueva escena" }).getByRole("button", { name: "Cancelar" }).click();
   await page.screenshot({ path: "output/screenshots/shotlist-interaction-v4/11-mobile-390.png" });
 });
+
+test("V5 filter checkboxes share the row circle and keep their alignment through mixed selection", async ({ page, context }) => {
+  await openShotlist(page, context, 1440, 900);
+  const filterTrigger = page.locator(".shotlist-filter-trigger");
+  await filterTrigger.click();
+  const filter = page.getByRole("dialog", { name: "Filtrar planos" });
+  await filter.getByLabel("Columna").selectOption("lens");
+  const all = filter.getByRole("checkbox", { name: /Seleccionar todos/u });
+  const first = filter.getByRole("checkbox", { name: /24 mm/u });
+  const second = filter.getByRole("checkbox", { name: /50 mm/u });
+  const row = page.getByRole("checkbox", { name: "Seleccionar plano 1", exact: true });
+  const circle = async (locator: typeof all) => locator.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    const style = getComputedStyle(node);
+    return { x: box.x, y: box.y, width: box.width, height: box.height, centerX: box.x + box.width / 2, centerY: box.y + box.height / 2, background: style.backgroundColor, radius: style.borderRadius, padding: style.padding, mark: getComputedStyle(node, "::after").content };
+  });
+  const rowCircle = await circle(row);
+  const initialAll = await circle(all);
+  const initialFirst = await circle(first);
+  expect(initialAll.width).toBe(rowCircle.width);
+  expect(initialAll.height).toBe(rowCircle.height);
+  expect(initialFirst.width).toBe(rowCircle.width);
+  expect(initialFirst.height).toBe(rowCircle.height);
+  expect(initialAll.x).toBe(initialFirst.x);
+  expect(initialAll.radius).toBe(rowCircle.radius);
+  expect(initialAll.padding).toBe("0px");
+  await all.uncheck();
+  const unchecked = await circle(first);
+  await first.check();
+  await expect(all).toHaveJSProperty("indeterminate", true);
+  const mixed = await circle(all);
+  const checked = await circle(first);
+  expect(checked.centerX).toBe(unchecked.centerX);
+  expect(checked.centerY).toBe(unchecked.centerY);
+  expect(mixed.centerX).toBe(initialAll.centerX);
+  expect(mixed.centerY).toBe(initialAll.centerY);
+  expect(mixed.mark).toContain("−");
+  expect(checked.background).not.toBe(unchecked.background);
+  await second.check();
+  await all.check();
+  await expect(all).toBeChecked();
+  await first.uncheck();
+  await expect(all).toHaveJSProperty("indeterminate", true);
+  await filter.getByRole("button", { name: "Cancelar" }).click();
+  await filterTrigger.click();
+  await filter.getByLabel("Columna").selectOption("lens");
+  await expect(all).toBeChecked();
+  await all.uncheck();
+  await filter.getByRole("textbox", { name: "Buscar valor" }).fill("50");
+  await second.check();
+  await filter.getByRole("button", { name: "Aplicar" }).click();
+  await expect(page.getByText("3 de 8")).toBeVisible();
+  await filterTrigger.click();
+  await filter.getByLabel("Columna").selectOption("lens");
+  await expect(second).toBeChecked();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(second).toHaveCSS("transition-duration", "0s");
+});
+
+test("V5 application menu triggers and floating popovers never move the document", async ({ page, context }) => {
+  await openShotlist(page, context, 1440, 900);
+  const names = ["Archivo", "Editar", "Formato", "Ayuda"] as const;
+  for (const width of [1440, 834, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1200 && await page.getByRole("button", { name: "Cerrar inspector" }).isVisible()) {
+      await page.getByRole("button", { name: "Cerrar inspector" }).click();
+    }
+    const geometry = () => page.evaluate(() => ({
+      triggers: [...document.querySelectorAll<HTMLButtonElement>(".shotlist-app-menu-trigger")].map((node) => {
+        const { x, y, width, height } = node.getBoundingClientRect();
+        return { x, y, width, height };
+      }),
+      menu: (() => { const { x, y, width, height } = document.querySelector(".shotlist-app-menu")!.getBoundingClientRect(); return { x, y, width, height }; })(),
+      bodyWidth: document.body.scrollWidth,
+    }));
+    const closed = await geometry();
+    expect(closed.bodyWidth).toBeLessThanOrEqual(width);
+    for (const name of names) {
+      const trigger = page.getByRole("button", { name, exact: true });
+      await trigger.click();
+      const menu = page.getByRole("menu", { name });
+      await expect(menu).toBeVisible();
+      expect(await geometry()).toEqual(closed);
+      const popup = await menu.evaluate((node) => {
+        const box = node.getBoundingClientRect();
+        return { left: box.left, right: box.right, clientWidth: node.clientWidth, scrollWidth: node.scrollWidth, overflowX: getComputedStyle(node).overflowX };
+      });
+      expect(popup.left).toBeGreaterThanOrEqual(8);
+      expect(popup.right).toBeLessThanOrEqual(width - 8);
+      expect(popup.scrollWidth).toBeLessThanOrEqual(popup.clientWidth);
+      expect(popup.overflowX).toBe("hidden");
+      await page.keyboard.press("ArrowDown");
+      await expect(menu.locator("button:focus").first()).toBeVisible();
+      expect(await geometry()).toEqual(closed);
+      await page.keyboard.press("Escape");
+      await expect(menu).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+      expect(await geometry()).toEqual(closed);
+    }
+  }
+  const archivo = page.getByRole("button", { name: "Archivo", exact: true });
+  await archivo.focus();
+  await archivo.press("Enter");
+  await expect(page.getByRole("menu", { name: "Archivo" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await archivo.press("Space");
+  await expect(page.getByRole("menu", { name: "Archivo" })).toBeVisible();
+});
