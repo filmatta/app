@@ -11,6 +11,9 @@ const assetRoute = readFileSync("app/api/writer/production-assets/route.ts", "ut
 const importFlow = readFileSync("components/writer/WriterImportFlow.tsx", "utf8");
 const applicationMenu = readFileSync("components/shotlist/ShotlistApplicationMenu.tsx", "utf8");
 const proposalRoute = readFileSync("app/api/shotlists/[id]/proposals/route.ts", "utf8");
+const storyboardDialogs = readFileSync("components/shotlist/ShotlistDialogs.tsx", "utf8");
+const storyboardRoute = readFileSync("app/api/shotlists/[id]/storyboard/route.ts", "utf8");
+const privateAssetRoute = readFileSync("app/api/writer/production-assets/[assetId]/route.ts", "utf8");
 
 test("Shotlist follows the mockup hierarchy with real panels and one persistent grid", () => {
   assert.match(shotCss, /grid-template-columns:240px minmax\(600px,1fr\) 360px/);
@@ -34,11 +37,22 @@ test("Libre, Asistido, and Sugerido remain distinct and AI requires an explicit 
   assert.doesNotMatch(proposalRoute, /body\.value\.mode !== "assisted"/);
 });
 
-test("Storyboard and sharing disclose the private V1 contract instead of faking features", () => {
+test("Storyboard preview and sharing retain the private, shot-scoped contract", () => {
   assert.match(applicationMenu, /Copiar enlace privado/);
   assert.match(workspace, /Abrir Storyboard/);
   assert.match(workspace, /Crear Storyboard/);
-  assert.match(workspace, /Referencia privada del plano/);
+  assert.match(workspace, /storyboardShots\.get\(selectedShot\.id\)\?\.panels/);
+  assert.match(workspace, /storyboardShots\.get\(storyboardPreviewShotId\)\?\.panels/);
+  assert.match(workspace, /<StoryboardPreviewDialog[^>]+panel=\{previewPanel\}/);
+  assert.match(workspace, /<StoryboardPreviewImage panel=\{storyboardPanel\}/);
+  assert.match(storyboardDialogs, /role="dialog" aria-modal="true"/);
+  assert.match(storyboardDialogs, /<img src=\{`\/api\/writer\/production-assets\/\$\{panel\.previewAssetId\}`\}/);
+  assert.doesNotMatch(storyboardDialogs, /getPublicUrl|\/storage\/v1\/object\/public\//);
+  assert.ok(storyboardRoute.indexOf("writerApiSession()") < storyboardRoute.indexOf("loadStoryboardBoard(session.supabase, session.user.id, id)"));
+  assert.ok(privateAssetRoute.indexOf("writerApiSession()") < privateAssetRoute.indexOf('createSignedUrl(storagePath, 60)'));
+  assert.match(privateAssetRoute, /\.eq\("owner_id", session\.user\.id\)\.maybeSingle\(\)/);
+  assert.match(privateAssetRoute, /createSignedUrl\(storagePath, 60\)/);
+  assert.doesNotMatch(privateAssetRoute, /getPublicUrl/);
 });
 
 test("Breakdown keeps human review, recovery, categories, and canonical navigation visible", () => {
