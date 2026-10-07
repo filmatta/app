@@ -19,7 +19,7 @@ function appearance(id: string, excerpt: string) {
 }
 
 test("same-document Breakdown reanalysis uses the saved revision, refreshes inline and preserves human decisions", async ({ page, context }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(180_000);
   await page.request.get("http://127.0.0.1:54329/__scenario?value=writer-ux");
   await session(context);
   const confirmed: WriterBreakdownElement = {
@@ -29,18 +29,28 @@ test("same-document Breakdown reanalysis uses the saved revision, refreshes inli
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2", scriptId, category: "prop", name: "Pistola metafórica", status: "dismissed", source: "ai", canonicalIdentityKey: null, note: "Descartado por el usuario", assetId: null, fingerprint: "human:dismissed:metaphor", revision: 4, appearances: [appearance("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2", metaphor)],
   };
   let elements: WriterBreakdownElement[] = [confirmed, dismissed];
+  const rejected = new Set<string>([dismissed.fingerprint]);
   let posts = 0;
   let savedSourceObserved = false;
   await page.route(`**/api/writer/scripts/${scriptId}/breakdown`, async (route: Route) => {
     if (route.request().method() === "GET") {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ elements, pendingCount: 0, analysis: null }) });
     }
+    if (route.request().method() === "PATCH") {
+      const payload = route.request().postDataJSON() as { elementId: string; action: string; status: string };
+      const target = elements.find((element) => element.id === payload.elementId);
+      if (target && payload.action === "status" && payload.status === "dismissed") {
+        rejected.add(target.fingerprint);
+        elements = elements.map((element) => element.id === target.id ? { ...element, status: "dismissed" } : element);
+      }
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ saved: true, breakdown: { elements, pendingCount: elements.filter((element) => element.status === "suggested").length } }) });
+    }
     posts += 1;
     const stateResponse = await page.request.get("http://127.0.0.1:54329/__writer_state");
     const state = await stateResponse.json() as { revision: number; document: WriterDocument };
     const source = JSON.stringify(state.document);
     savedSourceObserved = source.includes(addedText) && source.includes(metaphor) && state.revision > 1;
-    const props = detectWriterBreakdownRules(state.document).filter((candidate) => candidate.category === "prop");
+    const props = detectWriterBreakdownRules(state.document).filter((candidate) => candidate.category === "prop" && !rejected.has(candidate.fingerprint));
     const detected = props.map<WriterBreakdownElement>((candidate, index) => ({
       id: `bbbbbbbb-bbbb-4bbb-8bbb-${String(index + 1).padStart(12, "0")}`,
       scriptId,
@@ -99,4 +109,30 @@ test("same-document Breakdown reanalysis uses the saved revision, refreshes inli
   await expect(page.getByRole("tabpanel").getByText("Descartado · 1 aparición")).toBeVisible();
   expect(posts).toBe(3);
   expect(savedSourceObserved).toBe(true);
+
+  await page.getByRole("tab", { name: "Props / utilería" }).click();
+  const baselineTop = await page.locator(".writer-breakdown-list").evaluate((node) => node.getBoundingClientRect().top);
+  const scope = page.getByRole("button", { name: "Mostrar elementos detectados" });
+  for (let index = 0; index < 30; index += 1) {
+    await scope.click();
+    const menu = page.getByRole("menu", { name: "Mostrar elementos detectados" });
+    await expect(menu).toBeVisible();
+    const box = await menu.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(1441);
+    await menu.getByRole("menuitemradio", { name: "Escena actual" }).click();
+    await expect(menu).toHaveCount(0);
+    await scope.click();
+    await menu.getByRole("menuitemradio", { name: "Todo el guion" }).click();
+    await page.getByRole("tab", { name: "Personajes" }).click();
+    await page.getByRole("tab", { name: "Props / utilería" }).click();
+    const top = await page.locator(".writer-breakdown-list").evaluate((node) => node.getBoundingClientRect().top);
+    expect(Math.abs(top - baselineTop), `Breakdown list shift at iteration ${index + 1}`).toBeLessThanOrEqual(1);
+  }
+  await page.getByRole("tabpanel").getByRole("button", { name: /pistola.*Ver/iu }).click();
+  await page.getByRole("button", { name: "Esto no es un elemento" }).click();
+  await expect(page.getByRole("tabpanel").getByText("pistola", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: /Reanalizar todo/ }).click();
+  await expect(page.getByRole("tabpanel").getByText("pistola", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tabpanel").getByText("Llave maestra", { exact: true })).toBeVisible();
 });

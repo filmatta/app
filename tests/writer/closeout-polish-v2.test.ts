@@ -19,7 +19,7 @@ test("Breakdown exposes one full-document detection action and a presentation-on
   assert.equal((panel.match(/onClick=\{\(\) => void detect\(\)\}/gu) ?? []).length, 1);
   assert.match(panel, /"Reanalizar todo" : "Detectar elementos"/u);
   assert.match(panel, /action: "detectAll", scope: "document"/u);
-  assert.match(panel, /<label>Mostrar<select/u);
+  assert.match(panel, /writer-breakdown-scope.*Mostrar.*aria-haspopup="menu"/u);
   assert.match(panel, /className="writer-breakdown-more"/u);
   assert.match(fs.readFileSync("app/writer/writer.css", "utf8"), /\.writer-character-section \{[^}]*width:100%;[^}]*max-width:100%;[^}]*min-width:0;/u);
   assert.match(fs.readFileSync("app/writer/writer.css", "utf8"), /\.writer-sidebar \{[^}]*min-width:\s*0;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/u);

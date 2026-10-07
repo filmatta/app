@@ -2799,6 +2799,7 @@ export default function WriterWorkspace({
         )}
       </header>
 
+      <div className="writer-workspace-body">
       <aside className={`writer-sidebar ${mobileSidebar ? "writer-sidebar--open" : ""} writer-sidebar--mobile-${mobileSidebar ?? "closed"}`}>
         <div className="writer-sidebar-mobile-head">
           <strong>{mobileSidebar === "characters" ? "Personajes" : "Escenas"}</strong>
@@ -3430,6 +3431,7 @@ export default function WriterWorkspace({
           </section>
         </div>
       )}
+      </div>
     </div>
   );
 }

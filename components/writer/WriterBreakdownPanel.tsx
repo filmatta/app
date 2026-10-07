@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element -- authenticated image route is intentionally not sent through the public optimizer */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   WRITER_BREAKDOWN_CATEGORIES,
   WRITER_BREAKDOWN_CATEGORY_LABELS,
@@ -50,12 +51,55 @@ export default function WriterBreakdownPanel({
   const [detectionIssue, setDetectionIssue] = useState<"provider" | "error" | null>(null);
   const [tabsWidth, setTabsWidth] = useState(Number.POSITIVE_INFINITY);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [scopePosition, setScopePosition] = useState({ left: 0, top: 0, width: 0 });
+  const [scopePortalRoot, setScopePortalRoot] = useState<Element | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const moreTriggerRef = useRef<HTMLButtonElement>(null);
+  const scopeTriggerRef = useRef<HTMLButtonElement>(null);
+  const scopeMenuRef = useRef<HTMLDivElement>(null);
+  const bindScopeTrigger = useCallback((node: HTMLButtonElement | null) => {
+    scopeTriggerRef.current = node;
+    setScopePortalRoot(node?.closest(".writer-workspace") ?? null);
+  }, []);
 
   const closeMore = useCallback(() => setMoreOpen(false), []);
   useWriterPopoverDismissal({ open: moreOpen, rootRef: moreRef, triggerRef: moreTriggerRef, onDismiss: closeMore });
+
+  useEffect(() => {
+    if (!scopeOpen) return;
+    const update = () => {
+      const rect = scopeTriggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(Math.max(170, rect.width), window.innerWidth - 16);
+      const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+      const menuHeight = 78;
+      const top = rect.bottom + menuHeight + 8 <= window.innerHeight ? rect.bottom + 4 : Math.max(8, rect.top - menuHeight - 4);
+      setScopePosition({ left, top, width });
+    };
+    const dismiss = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!scopeTriggerRef.current?.contains(target) && !scopeMenuRef.current?.contains(target)) setScopeOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setScopeOpen(false);
+      scopeTriggerRef.current?.focus();
+    };
+    update();
+    window.addEventListener("resize", update);
+    document.addEventListener("scroll", update, true);
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      document.removeEventListener("scroll", update, true);
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", escape, true);
+    };
+  }, [scopeOpen]);
 
   useEffect(() => {
     const tabs = tabsRef.current;
@@ -92,6 +136,7 @@ export default function WriterBreakdownPanel({
   }, [scriptId]);
   async function detect() {
     if (busy) return;
+    setScopeOpen(false);
     setBusy(true); setMessage(null); setDetectionIssue(null);
     try {
       await onEnsureSaved();
@@ -200,12 +245,13 @@ export default function WriterBreakdownPanel({
     {category === "character" && !reviewMode && !showDismissed ? characters : <div className="writer-breakdown-list" role="tabpanel">
       {visible.map((element) => <article key={element.id} className={selectedId === element.id ? "is-selected" : ""}>
         <button className="writer-breakdown-item" type="button" onClick={() => setSelectedId((current) => current === element.id ? null : element.id)}><span className={`writer-breakdown-check is-${element.status}`}>{element.status === "confirmed" ? "✓" : element.status === "suggested" ? "?" : "×"}</span><span><strong>{element.name}</strong><small>{element.status === "confirmed" ? "Confirmado" : element.status === "suggested" ? "Detectado · sin confirmar" : "Descartado"} · {element.appearances.some((item) => item.stale) ? "revisar aparición" : element.appearances.length ? `${element.appearances.length} ${element.appearances.length === 1 ? "aparición" : "apariciones"}` : "sin aparición vinculada"}</small></span><b>Ver</b></button>
-        {(reviewMode || (selectedId === element.id && element.status === "suggested")) && <div className="writer-breakdown-review"><p>¿“{element.name}” es {WRITER_BREAKDOWN_CATEGORY_LABELS[element.category].toLocaleLowerCase("es-MX")} de esta escena?</p><blockquote>{element.appearances[0]?.excerpt ?? "Sin fragmento vinculado"}</blockquote><div><button type="button" onClick={() => void mutate(element, { action: "status", status: "confirmed" })}>Sí</button><button type="button" onClick={() => void mutate(element, { action: "status", status: "dismissed" })}>No</button></div></div>}
+        {(reviewMode || (selectedId === element.id && element.status === "suggested")) && <div className="writer-breakdown-review"><p>¿“{element.name}” es {WRITER_BREAKDOWN_CATEGORY_LABELS[element.category].toLocaleLowerCase("es-MX")} de esta escena?</p><blockquote>{element.appearances[0]?.excerpt ?? "Sin fragmento vinculado"}</blockquote><div><button type="button" onClick={() => void mutate(element, { action: "status", status: "confirmed" })}>Sí</button><button type="button" onClick={() => void mutate(element, { action: "status", status: "dismissed" })}>Esto no es un elemento</button></div></div>}
         {showDismissed && <div className="writer-breakdown-review"><p>Este candidato fue descartado y no reaparecerá en una nueva detección.</p><blockquote>{element.appearances[0]?.excerpt ?? "Sin fragmento vinculado"}</blockquote><div><button type="button" onClick={() => void mutate(element, { action: "status", status: "suggested" })}>Recuperar</button></div></div>}
         {selectedId === element.id && !showDismissed && <div className="writer-breakdown-detail">{element.assetId && <img className="writer-breakdown-thumbnail" src={`/api/writer/production-assets/${element.assetId}`} alt="Referencia visual privada" />}<label>Nombre<input defaultValue={element.name} onBlur={(event) => { const name = event.target.value.trim(); if (name && name !== element.name) void mutate(element, { action: "edit", name }); }} /></label><label>Categoría<select value={element.category} onChange={(event) => void mutate(element, { action: "edit", category: event.target.value })}>{WRITER_BREAKDOWN_CATEGORIES.filter((value) => value !== "character").map((value) => <option key={value} value={value}>{WRITER_BREAKDOWN_CATEGORY_LABELS[value]}</option>)}</select></label><label>Nota<textarea defaultValue={element.note ?? ""} placeholder="Nota de producción" onBlur={(event) => { if (event.target.value !== (element.note ?? "")) void mutate(element, { action: "edit", note: event.target.value }); }} /></label><h4>Apariciones</h4>{element.appearances.length ? <ul>{element.appearances.map((appearance) => <li key={appearance.id}><p>{appearance.excerpt}</p><button type="button" disabled={appearance.stale} onClick={() => onNavigate({ sceneId: appearance.sceneId, blockId: appearance.blockId, fromOffset: appearance.fromOffset, toOffset: appearance.toOffset })}>{appearance.stale ? "Referencia obsoleta" : "Ir al fragmento"}</button></li>)}</ul> : <p>Sin aparición vinculada.</p>}<label className="writer-breakdown-image">{element.assetId ? "Cambiar imagen" : "Añadir imagen"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(element, file); event.target.value = ""; }} /></label>{element.assetId && <button className="writer-breakdown-remove-image" type="button" disabled={busy} onClick={() => void removeImage(element)}>Quitar imagen</button>}</div>}
       </article>)}
       {!visible.length && <div className="writer-sidebar-empty"><p>{showDismissed ? "No hay descartes que recuperar." : reviewMode ? "No hay elementos pendientes." : analysis ? "No hay elementos de esta categoría en el último análisis." : "Esta categoría todavía no fue analizada."}</p></div>}
     </div>}
-    <div className="writer-breakdown-detect"><label>Mostrar<select value={displayScope} onChange={(event) => setDisplayScope(event.target.value as typeof displayScope)} aria-label="Mostrar elementos detectados"><option value="document">Todo el guion</option><option value="scene">Escena actual</option></select></label>{message && <p role="status">{message}</p>}</div>
+    <div className="writer-breakdown-detect"><div className="writer-breakdown-scope"><span>Mostrar</span><button ref={bindScopeTrigger} type="button" aria-label="Mostrar elementos detectados" aria-haspopup="menu" aria-expanded={scopeOpen} disabled={busy} onClick={() => setScopeOpen((open) => !open)}>{displayScope === "document" ? "Todo el guion" : "Escena actual"}<span aria-hidden="true">⌄</span></button></div>{message && <p role="status">{message}</p>}</div>
+    {scopeOpen && scopePortalRoot && createPortal(<div ref={scopeMenuRef} className="writer-breakdown-scope-menu" role="menu" aria-label="Mostrar elementos detectados" style={scopePosition}>{(["document", "scene"] as const).map((scope) => <button key={scope} type="button" role="menuitemradio" aria-checked={displayScope === scope} onClick={() => { setDisplayScope(scope); setScopeOpen(false); scopeTriggerRef.current?.focus(); }}>{scope === "document" ? "Todo el guion" : "Escena actual"}</button>)}</div>, scopePortalRoot)}
   </div>;
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { ScreenplayKind } from "@/lib/writer/document";
 import type { WriterSkin } from "@/lib/writer/appearance";
 import WriterIcon from "./WriterIcon";
@@ -62,13 +63,14 @@ export default function WriterApplicationMenu(props: WriterApplicationMenuProps)
   useEffect(() => {
     if (!open) return;
     const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Node && rootRef.current?.contains(event.target)) return;
+      if (event.target instanceof Node && (rootRef.current?.contains(event.target) || (event.target as Element).closest?.(".writer-app-submenu-popover"))) return;
       setOpen(null);
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(null);
+      if (event.key === "Escape") { setOpen(null); return; }
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-      const items = [...(rootRef.current?.querySelectorAll<HTMLButtonElement>('[role="menu"] button:not(:disabled)') ?? [])];
+      const activeMenu = (document.activeElement as Element | null)?.closest?.('[role="menu"]');
+      const items = [...((activeMenu ?? rootRef.current?.querySelector(".writer-app-menu-popover"))?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
       if (!items.length) return;
       event.preventDefault();
       const current = items.indexOf(document.activeElement as HTMLButtonElement);
@@ -149,12 +151,6 @@ export default function WriterApplicationMenu(props: WriterApplicationMenuProps)
       </MenuButton>
       <MenuButton label="Ayuda" name="help" open={open} onToggle={toggle}>
         <MenuItem onClick={() => run(props.onShortcuts)}>Atajos de teclado</MenuItem>
-        <MenuSeparator />
-        <MenuItem disabled>Cómo empezar · Próximamente</MenuItem>
-        <MenuItem disabled>Importar un guion · Próximamente</MenuItem>
-        <MenuItem disabled>Asistente de escritura · Próximamente</MenuItem>
-        <MenuItem disabled>Timeline y Narrative Pulse · Próximamente</MenuItem>
-        <MenuItem disabled>Reportar un problema · Próximamente</MenuItem>
       </MenuButton>
     </div>
   );
@@ -174,7 +170,47 @@ function MenuCheck({ children, checked, onClick }: { children: ReactNode; checke
 }
 
 function MenuGroup({ label, children }: { label: string; children: ReactNode }) {
-  return <details className="writer-app-submenu"><summary><span>{label}</span><WriterIcon name="chevronDown" size={13} /></summary><div>{children}</div></details>;
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ left: 0, top: 0, width: 230, maxHeight: 400 });
+  const [portalRoot, setPortalRoot] = useState<Element | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const keyboardOpenRef = useRef(false);
+  const bindTrigger = useCallback((node: HTMLButtonElement | null) => {
+    triggerRef.current = node;
+    setPortalRoot(node?.closest(".writer-workspace") ?? null);
+  }, []);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(230, window.innerWidth - 16);
+      const right = rect.right + 4;
+      const left = right + width <= window.innerWidth - 8 ? right : rect.left - width - 4 >= 8 ? rect.left - width - 4 : Math.max(8, window.innerWidth - width - 8);
+      const height = Math.min(panelRef.current?.scrollHeight ?? 400, window.innerHeight - 16);
+      setPosition({ left, top: Math.min(Math.max(8, rect.top), window.innerHeight - height - 8), width, maxHeight: window.innerHeight - 16 });
+    };
+    const dismiss = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!triggerRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false);
+    };
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "ArrowRight" && document.activeElement === triggerRef.current) { event.preventDefault(); panelRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus(); }
+      if (event.key !== "Escape" && event.key !== "ArrowLeft") return;
+      if (!panelRef.current?.contains(document.activeElement) && document.activeElement !== triggerRef.current) return;
+      event.preventDefault(); event.stopPropagation(); setOpen(false); triggerRef.current?.focus();
+    };
+    update();
+    if (keyboardOpenRef.current) panelRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    keyboardOpenRef.current = false;
+    window.addEventListener("resize", update);
+    document.addEventListener("scroll", update, true);
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", keydown, true);
+    return () => { window.removeEventListener("resize", update); document.removeEventListener("scroll", update, true); document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", keydown, true); };
+  }, [open]);
+  return <div className="writer-app-submenu"><button ref={bindTrigger} type="button" role="menuitem" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} onKeyDown={(event) => { if (event.key === "ArrowRight") { event.preventDefault(); keyboardOpenRef.current = true; setOpen(true); } }}><span>{label}</span><WriterIcon name="chevronDown" size={13} /></button>{open && portalRoot && createPortal(<div ref={panelRef} className="writer-app-submenu-popover" role="menu" aria-label={label} style={position}>{children}</div>, portalRoot)}</div>;
 }
 
 function MenuSeparator() {

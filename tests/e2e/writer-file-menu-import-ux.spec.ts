@@ -37,7 +37,9 @@ test("application menus keep one surface open and preserve the screenplay contex
   const edit = page.getByRole("menu", { name: "Editar" });
   await expect(edit).toBeVisible();
   await edit.getByText("Cambiar tipo de bloque", { exact: true }).click();
-  await expect(edit.getByRole("menuitem", { name: "Acción", exact: true }).last()).toBeEnabled();
+  await expect(page.getByRole("menu", { name: "Cambiar tipo de bloque" }).getByRole("menuitem", { name: "Acción", exact: true })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: "Cambiar tipo de bloque" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(edit).toHaveCount(0);
 
@@ -63,7 +65,7 @@ test("Shotlist query failure is not presented as Generate and Cream keeps readab
   await menuBar.getByRole("button", { name: "Ver", exact: true }).click();
   const view = page.getByRole("menu", { name: "Ver" });
   await view.getByText("Apariencia", { exact: true }).click();
-  await view.getByRole("menuitemcheckbox", { name: "Cream" }).click();
+  await page.getByRole("menu", { name: "Apariencia" }).getByRole("menuitemcheckbox", { name: "Cream" }).click();
   await expect(page.locator(".writer-workspace")).toHaveAttribute("data-writer-skin", "cream");
   await page.waitForTimeout(250);
 
@@ -124,4 +126,61 @@ test("final menu and header geometry stay inside the viewport at approved widths
   if (await notice.isVisible()) await notice.getByRole("button", { name: "Entendido" }).click();
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${evidence}/writer-mobile-390x844.png` });
+});
+
+test("Writer action bar remains a shell sibling through 50 panel alternations", async ({ page }) => {
+  test.setTimeout(120_000);
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube");
+  const initial = await page.locator(".writer-header").evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const actions = node.querySelector(".writer-header-actions")!.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, actionsX: actions.x, actionsWidth: actions.width };
+  });
+  console.info("QA_ACTION_BAR", JSON.stringify(initial));
+  await expect(page.locator(".writer-workspace-body")).toBeVisible();
+  await expect(page.locator(".writer-header")).not.toBeEmpty();
+  const assistantToggle = page.locator('.writer-header .writer-panel-toggles button[aria-label*="Asistente"]');
+  for (let index = 0; index < 50; index += 1) {
+    await assistantToggle.click();
+    const rect = await page.locator(".writer-header").evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      const actions = node.querySelector(".writer-header-actions")!.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height, actionsX: actions.x, actionsWidth: actions.width };
+    });
+    expect(rect, `panel alternation ${index + 1}`).toEqual(initial);
+  }
+  await page.locator(".writer-header .writer-timeline-button").click();
+  await expect(page.locator(".writer-header")).toHaveJSProperty("offsetWidth", initial.width);
+  await page.locator(".writer-header .writer-timeline-button").click();
+});
+
+test("Writer cascade menus flip or shift inside the viewport with keyboard and themes", async ({ page }) => {
+  test.setTimeout(120_000);
+  const menuBar = page.getByLabel("Menú de aplicación de Writer");
+  for (const skin of ["Carbon", "Marino", "Cream"]) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole("button", { name: "Apariencia de Writer" }).click();
+    await page.getByRole("dialog", { name: "Apariencia de Writer" }).getByRole("radio", { name: skin }).click();
+    await page.keyboard.press("Escape");
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 834, height: 900 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await menuBar.getByRole("button", { name: "Editar", exact: true }).click();
+      const edit = page.getByRole("menu", { name: "Editar" });
+      const trigger = edit.getByRole("menuitem", { name: "Cambiar tipo de bloque" });
+      await trigger.focus();
+      await page.keyboard.press("ArrowRight");
+      const cascade = page.getByRole("menu", { name: "Cambiar tipo de bloque" });
+      await expect(cascade).toBeVisible();
+      const box = await cascade.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width + 1);
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height + 1);
+      await page.keyboard.press("Escape");
+      await expect(cascade).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+      await page.keyboard.press("Escape");
+    }
+  }
 });
