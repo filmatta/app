@@ -35,14 +35,15 @@ export default function ShotlistContextMenu({ position, count, canPaste, onClose
     return () => { cancelAnimationFrame(frame); document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", keyboard, true); window.removeEventListener("resize", dismiss); window.removeEventListener("scroll", dismiss, true); };
   }, [position, onClose]);
   if (!position) return null;
-  const x = Math.max(8, Math.min(position.x, window.innerWidth - 202));
-  const y = Math.max(8, Math.min(position.y, window.innerHeight - 174));
+  const width = Math.min(250, window.innerWidth - 16);
+  const x = Math.max(8, Math.min(position.x, window.innerWidth - width - 8));
+  const y = Math.max(8, Math.min(position.y, window.innerHeight - 168));
   function run(action: () => void) { onClose(); action(); }
-  return createPortal(<div ref={root} className="shotlist-context-menu shotlist-scroll" role="menu" aria-label="Acciones de planos" style={{ left: x, top: y }}>
+  return createPortal(<div ref={root} className="shotlist-context-menu shotlist-scroll" role="menu" aria-label="Acciones de planos" style={{ left: x, top: y, width, maxHeight: Math.max(96, window.innerHeight - 16) }}>
     <button type="button" role="menuitem" disabled={!count} onClick={() => run(onCopy)}>Copiar {count > 1 ? `(${count})` : ""}</button>
-    <button type="button" role="menuitem" disabled={!canPaste} title={canPaste ? undefined : "Copia planos de esta Shotlist antes de pegar"} onClick={() => run(onPaste)}>Pegar después{!canPaste && <small className="shotlist-menu-reason">Primero copia planos</small>}</button>
-    <button type="button" role="menuitem" disabled={!count || count > 50} title={count > 50 ? "Duplica hasta 50 planos por operación" : undefined} onClick={() => run(onDuplicate)}>Duplicar {count > 1 ? `(${count})` : ""}{count > 50 && <small className="shotlist-menu-reason">Máx. 50</small>}</button>
+    <button type="button" role="menuitem" disabled={!canPaste} title={canPaste ? undefined : "Copia planos de esta Shotlist antes de pegar"} aria-label={canPaste ? undefined : "Pegar. Copia planos de esta Shotlist antes de pegar"} onClick={() => run(onPaste)}>Pegar</button>
+    <button type="button" role="menuitem" disabled={!count || count > 50} title={count > 50 ? "Duplica hasta 50 planos por operación" : undefined} aria-label={count > 50 ? `Duplicar (${count}). Duplica hasta 50 planos por operación` : undefined} onClick={() => run(onDuplicate)}>Duplicar {count > 1 ? `(${count})` : ""}</button>
     <span role="separator" />
-    <button type="button" role="menuitem" className="is-danger" disabled={!count || count > 500} title={count > 500 ? "Elimina hasta 500 planos por operación" : undefined} onClick={() => run(onDelete)}>Eliminar {count > 1 ? `(${count})` : ""}{count > 500 && <small className="shotlist-menu-reason">Máx. 500</small>}</button>
+    <button type="button" role="menuitem" className="is-danger" disabled={!count || count > 500} title={count > 500 ? "Elimina hasta 500 planos por operación" : undefined} aria-label={count > 500 ? `Eliminar (${count}). Elimina hasta 500 planos por operación` : undefined} onClick={() => run(onDelete)}>Eliminar {count > 1 ? `(${count})` : ""}</button>
   </div>, document.body);
 }
