@@ -328,8 +328,9 @@ test("visible circle stays under the pointer during a deliberate scene 38 click"
   const during = await point.boundingBox();
   const geometry = await point.evaluate((element) => {
     const curve = document.querySelector<SVGPathElement>(".writer-pulse-curve")!;
-    const coords = [...curve.getAttribute("d")!.matchAll(/[ML]([\d.]+),([\d.]+)/gu)][37];
-    const vertex = new DOMPoint(Number(coords[1]), Number(coords[2])).matrixTransform(curve.getScreenCTM()!);
+    const commands = curve.getAttribute("d")!.match(/[MLC][^MLC]+/gu) ?? [];
+    const end = [...commands[37].matchAll(/(-?[\d.]+),(-?[\d.]+)/gu)].at(-1)!;
+    const vertex = new DOMPoint(Number(end[1]), Number(end[2])).matrixTransform(curve.getScreenCTM()!);
     return { vertex: { x: vertex.x, y: vertex.y }, circle: element.firstElementChild!.getBoundingClientRect().toJSON(), transform: getComputedStyle(element).transform, hitTarget: element.getBoundingClientRect().toJSON() };
   });
   const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-pulse-scene-id]")?.dataset.pulseSceneId ?? null, center);
@@ -413,7 +414,10 @@ test.describe("Pulse emulated touch activation", () => {
 async function pulseAlignmentError(panel: Locator) {
   return panel.locator(".writer-pulse-canvas").evaluate((canvas) => {
     const path = canvas.querySelector<SVGPathElement>(".writer-pulse-curve")?.getAttribute("d") ?? "";
-    const coordinates = [...path.matchAll(/[ML]([\d.]+),([\d.]+)/gu)].map((match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+    const coordinates = (path.match(/[MLC][^MLC]+/gu) ?? []).map((command) => {
+      const end = [...command.matchAll(/(-?[\d.]+),(-?[\d.]+)/gu)].at(-1)!;
+      return { x: Number(end[1]), y: Number(end[2]) };
+    });
     const matrix = canvas.querySelector<SVGPathElement>(".writer-pulse-curve")!.getScreenCTM()!;
     const vertices = coordinates.map(({ x, y }) => new DOMPoint(x, y).matrixTransform(matrix));
     const points = [...canvas.querySelectorAll<HTMLElement>(".writer-pulse-point > span")].map((point) => {

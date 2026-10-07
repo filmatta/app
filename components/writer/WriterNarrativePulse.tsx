@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject }
 import { createPortal } from "react-dom";
 import { PULSE_DIMENSIONS, WRITER_NARRATIVE_PULSE_MIN_SCENES, writerPulseDisplaySeries, writerPulseMilestoneLabel, writerPulsePlotPoints, writerPulseTooltipPosition, type WriterPulseMilestone, type WriterPulseMilestoneType } from "@/lib/writer/narrative-pulse";
 import { useWriterNarrativePulse } from "@/lib/writer/narrative-pulse-client";
+import { writerPulseVisualPath } from "@/lib/writer/narrative-pulse-visual-path";
 import type { TimelineScene } from "@/lib/writer/timeline";
 import { SmartFeatureIndicator } from "./WriterSmartFormatting";
 import WriterIcon from "./WriterIcon";
@@ -56,7 +57,7 @@ export default function WriterNarrativePulse({ scriptId, scenes, active, expande
   const graphHeight = expanded ? 320 : 230;
   const displayPoints = useMemo(() => writerPulseDisplaySeries(orderedPoints.map((item) => item.point)), [orderedPoints]);
   const plotPoints = useMemo(() => writerPulsePlotPoints(displayPoints, graphWidth, graphHeight, 24), [displayPoints, graphHeight, graphWidth]);
-  const path = plotPoints.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+  const path = writerPulseVisualPath(plotPoints);
   const areaPath = path && plotPoints.length
     ? `${path} L${plotPoints.at(-1)!.x.toFixed(2)},${graphHeight - 24} L${plotPoints[0].x.toFixed(2)},${graphHeight - 24} Z`
     : "";
