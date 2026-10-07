@@ -264,13 +264,13 @@ export default function ShotlistWorkspace({ initialState, userId, initialMode = 
     if (syncBusy || saveState === "saving") return;
     const requestedId = shotlist.id;
     const expectedEpoch = editEpoch.current;
-    setSyncBusy(true); setSaveState("saving"); setError(null);
+    setSyncBusy(true); setSaveState("saving"); setError(null); setNotice(null);
     try {
       const result = await api({ action: "syncSource", expectedRevision: shotlist.revision });
       if (requestedId !== shotlist.id) return;
       const refreshed = await reload(selectedShotId ?? undefined, expectedEpoch);
       setNotice(refreshed ? result.updatedGroups || result.missingGroups || result.addedScenes ? `${result.updatedGroups} vínculo(s) actualizado(s).${result.missingGroups ? ` ${result.missingGroups} referencia(s) no disponible(s).` : ""}${result.addedScenes ? ` ${result.addedScenes} escena(s) nueva(s) disponible(s) para importar.` : ""}` : "Vínculos al día." : "Vínculos actualizados. Hay ediciones recientes; vuelve a abrir la shotlist para consultar ambas versiones guardadas.");
-    } catch (cause) { setSaveState("error"); setError(message(cause, "No pudimos actualizar los vínculos. Reintenta.")); }
+    } catch (cause) { setSaveState("error"); setError(cause instanceof TypeError ? "No pudimos conectar para actualizar los vínculos. Reintenta." : message(cause, "No pudimos actualizar los vínculos. Reintenta.")); }
     finally { setSyncBusy(false); }
   }
 

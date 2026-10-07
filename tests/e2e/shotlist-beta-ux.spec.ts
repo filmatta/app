@@ -364,6 +364,43 @@ test("value catalogue includes a custom lens beyond the first 240 mounted rows",
   await expect(dialog.getByRole("checkbox", { name: /43 mm/u })).toBeVisible();
 });
 
+test("value checkbox label, Space, search, none and Escape keep one applied filter state", async ({ page, context }) => {
+  const state = await openShotlist(page, context, 1440, 900);
+  await page.getByRole("button", { name: /Filtros/u }).click();
+  let dialog = page.getByRole("dialog", { name: "Filtrar planos" });
+  await dialog.getByLabel("Columna").selectOption("lens");
+  const all = dialog.getByRole("checkbox", { name: /Seleccionar todos/u });
+  await all.uncheck();
+  await dialog.getByRole("textbox", { name: "Buscar valor" }).fill("50");
+  await dialog.getByText("Seleccionar resultados").click();
+  await expect(dialog.getByRole("checkbox", { name: /50 mm/u })).toBeChecked();
+  await dialog.getByRole("textbox", { name: "Buscar valor" }).fill("");
+  expect(await all.evaluate((node: HTMLInputElement) => node.indeterminate)).toBe(true);
+  await all.focus();
+  await all.press("Space");
+  await expect(all).toBeChecked();
+  await all.press("Space");
+  await expect(all).not.toBeChecked();
+  await dialog.getByRole("button", { name: "Aplicar" }).click();
+  await expect(page.getByText("0 de 8")).toBeVisible();
+  await page.getByRole("button", { name: /Filtros/u }).click();
+  dialog = page.getByRole("dialog", { name: "Filtrar planos" });
+  await dialog.getByLabel("Columna").selectOption("lens");
+  await dialog.getByRole("checkbox", { name: /24 mm/u }).check();
+  await dialog.getByRole("button", { name: "Aplicar" }).click();
+  await expect(page.getByText("3 de 8")).toBeVisible();
+  expect(await page.locator(".shotlist-row").first().getAttribute("data-shot-id")).toBe(state.groups[0]!.shots[0]!.id);
+  await page.getByRole("button", { name: /Filtros/u }).click();
+  dialog = page.getByRole("dialog", { name: "Filtrar planos" });
+  await dialog.getByLabel("Columna").selectOption("lens");
+  await dialog.getByRole("checkbox", { name: /50 mm/u }).check();
+  await dialog.press("Escape");
+  await page.getByRole("button", { name: /Filtros/u }).click();
+  dialog = page.getByRole("dialog", { name: "Filtrar planos" });
+  await dialog.getByLabel("Columna").selectOption("lens");
+  await expect(dialog.getByRole("checkbox", { name: /50 mm/u })).not.toBeChecked();
+});
+
 test("Writer handoff, Storyboard and Production keep their approved surfaces", async ({ page, context }) => {
   await session(context);
   await page.request.get("http://127.0.0.1:54329/__scenario?value=writer-ux");
