@@ -200,3 +200,72 @@ body:has(.shotlist-workspace), body:has(.shotlist-index) { margin:0; background:
 @media(max-width:1200px){.shotlist-workspace,.shotlist-workspace.has-inspector{grid-template-columns:200px minmax(0,1fr);grid-template-rows:30px 48px 44px minmax(0,1fr)}.shotlist-app-menu{position:relative;left:auto;top:auto;order:0;grid-row:1;grid-column:1/-1}.shotlist-scenes,.shotlist-grid-panel,.shotlist-inspector{grid-row:4}.shotlist-workbar{padding:5px 12px}.shotlist-inspector{top:122px;width:min(310px,92vw)}}
 @media(max-width:760px){.shotlist-workspace,.shotlist-workspace.has-inspector{display:block;padding-top:120px;height:auto;min-height:100dvh}.shotlist-app-menu{position:fixed;top:0;left:0;right:0;height:30px}.shotlist-header{position:fixed;top:30px;height:46px}.shotlist-workbar{position:fixed;top:76px;height:44px;padding:5px 8px}.shotlist-modes{min-width:280px}.shotlist-modes button{min-width:90px}.shotlist-grid-title{top:120px}.shotlist-grid-panel{margin:0 6px 15px;overflow:visible}.shotlist-grid-scroll{max-height:none}.shotlist-group-head{top:0}.shotlist-inspector{top:120px;width:100vw}.shotlist-filter-popover{top:170px}.shotlist-export-columns{grid-template-columns:1fr 1fr}.shotlist-group-footer button{min-height:34px}.shotlist-group-footer{height:40px}}
 @media(forced-colors:active){.shotlist-workspace :focus-visible,.shotlist-dialog :focus-visible{outline-color:Highlight}.shotlist-grid-scroll,.shotlist-scenes ol,.shotlist-inspector{scrollbar-color:auto}.shotlist-row.is-selected{outline:1px solid Highlight}}
+
+/* Interaction polish V3: stable icon-only insertion and genuine multi-select controls. */
+.shotlist-insert-slot:not(.is-scene){min-height:6px}
+.shotlist-insert-slot{justify-content:flex-start}
+.shotlist-insert-slot button,.shotlist-insert-slot button:hover,.shotlist-insert-slot button:focus-visible{
+  box-sizing:border-box;display:grid;place-items:center;gap:0;width:30px;min-width:30px;max-width:30px;height:30px;min-height:30px;padding:0;
+  border:1px solid #506d9e;border-radius:50%;background:#111b2a;color:#b9d0f3;font-size:20px;font-weight:400;line-height:1;
+  transition:background-color .15s,border-color .15s,color .15s,opacity .15s;transform:none;
+}
+.shotlist-insert-slot button span{display:block;line-height:1;transform:translateY(-1px)}
+.shotlist-insert-slot:not(.is-scene):not(.is-end) button{top:-12px;left:clamp(60px,30vw,340px)}
+.shotlist-insert-slot.is-end{display:flex;height:36px;min-height:36px;align-items:center;border-bottom:1px solid #252525}
+.shotlist-insert-slot.is-end button{position:relative;top:auto;left:38px;opacity:1}
+.shotlist-insert-slot.is-scene button{top:-10px;left:38px;width:27px;min-width:27px;max-width:27px;height:27px;min-height:27px;border-color:#575057;background:#181316;color:#d3b8bb}
+.shotlist-insert-slot button:focus-visible{outline:2px solid #729ce7;outline-offset:2px}
+.shotlist-group-select{display:grid;place-items:center;flex:0 0 29px;margin-left:3px;cursor:pointer}
+.shotlist-group-select input,.shotlist-number input,.shotlist-filter-all input,.shotlist-filter-values input{
+  appearance:none;-webkit-appearance:none;box-sizing:border-box;width:15px;height:15px;min-width:15px;min-height:15px;margin:0;
+  border:1px solid #747474;border-radius:50%;background:#171717;cursor:pointer;display:grid;place-items:center;
+}
+.shotlist-group-select input:checked,.shotlist-number input:checked,.shotlist-filter-all input:checked,.shotlist-filter-values input:checked{border-color:#6d98da;background:#496d9f}
+.shotlist-group-select input:checked::after,.shotlist-number input:checked::after,.shotlist-filter-all input:checked::after,.shotlist-filter-values input:checked::after{content:'✓';color:#fff;font-size:11px;line-height:1}
+.shotlist-group-select input:indeterminate,.shotlist-filter-all input:indeterminate{border-color:#6d98da;background:#354d70}
+.shotlist-group-select input:indeterminate::after,.shotlist-filter-all input:indeterminate::after{content:'−';color:#fff;font-size:12px;line-height:1}
+.shotlist-group-select input:disabled{opacity:.45;cursor:not-allowed}
+.shotlist-group-select input:focus-visible,.shotlist-number input:focus-visible,.shotlist-filter-all input:focus-visible,.shotlist-filter-values input:focus-visible{outline:2px solid #729ce7;outline-offset:2px}
+@media(hover:none){.shotlist-insert-slot:not(.is-scene) button{opacity:1}}
+
+@media(min-width:1201px){
+  .shotlist-workspace,.shotlist-workspace.has-inspector{grid-template-columns:var(--shotlist-left-width,260px) minmax(560px,1fr) var(--shotlist-right-width,320px)}
+  .shotlist-workspace:not(.has-inspector){grid-template-columns:var(--shotlist-left-width,260px) minmax(560px,1fr)}
+  .shotlist-resize-handle{position:relative;z-index:24;grid-row:4;align-self:stretch;width:10px;cursor:col-resize;touch-action:none;user-select:none}
+  .shotlist-resize-handle.is-left{grid-column:1;justify-self:end;transform:translateX(50%)}
+  .shotlist-resize-handle.is-right{grid-column:3;justify-self:start;transform:translateX(-50%)}
+  .shotlist-resize-handle::after{content:'';position:absolute;top:0;bottom:0;left:4px;width:1px;background:transparent;transition:background-color .15s}
+  .shotlist-resize-handle:hover::after,.shotlist-resize-handle:focus-visible::after,.shotlist-resize-handle[data-dragging=true]::after{background:#729ce7}
+  .shotlist-resize-handle:focus-visible{outline:2px solid #729ce7;outline-offset:-2px}
+}
+@media(max-width:1200px){.shotlist-resize-handle{display:none}}
+.shotlist-panel-resizing *{cursor:col-resize!important;user-select:none!important}
+.shotlist-scenes li button{grid-template-columns:29px minmax(0,1fr);padding-left:11px;padding-right:11px}
+.shotlist-scenes li strong{letter-spacing:.005em}
+.shotlist-scenes li small{color:#aaa}
+.shotlist-scenes>label:focus-within,.shotlist-grid-title>label:focus-within{border-color:#4d6c9d;background:#111;box-shadow:0 0 0 1px #4d6c9d}
+.shotlist-scenes input:focus,.shotlist-grid-title input:focus{outline:0;background:transparent;box-shadow:none;color:#f3f3f3;caret-color:#b8d0ff}
+.shotlist-workspace :is(input,textarea,select):focus-visible,.shotlist-dialog :is(input,textarea,select):focus-visible{outline:2px solid #6589c8;outline-offset:1px}
+.shotlist-workspace :is(.shotlist-scenes>label input,.shotlist-grid-title>label input):focus-visible{outline:0}
+.shotlist-cell>input:focus{background:#1a1a1a;box-shadow:inset 0 0 0 1px #5779ad}
+.shotlist-badge-popover,.shotlist-more-popover,.shotlist-app-menu-popover,.shotlist-filter-popover{background:#111;opacity:1;backdrop-filter:none}
+.shotlist-scroll,.shotlist-workspace :is(.shotlist-grid-scroll,.shotlist-scenes ol,.shotlist-inspector,.shotlist-app-menu-popover,.shotlist-proposals),.shotlist-filter-values,.shotlist-badge-options,.shotlist-dialog :is(.shotlist-dialog-body,.shotlist-export-columns,.shotlist-import-scenes,.shotlist-import-preview){scrollbar-color:#5a5a5a #111;scrollbar-width:thin;color-scheme:dark}
+.shotlist-scroll::-webkit-scrollbar,.shotlist-workspace :is(.shotlist-grid-scroll,.shotlist-scenes ol,.shotlist-inspector,.shotlist-app-menu-popover,.shotlist-proposals)::-webkit-scrollbar,.shotlist-filter-values::-webkit-scrollbar,.shotlist-badge-options::-webkit-scrollbar,.shotlist-dialog :is(.shotlist-dialog-body,.shotlist-export-columns,.shotlist-import-scenes,.shotlist-import-preview)::-webkit-scrollbar{width:10px;height:10px}
+.shotlist-scroll::-webkit-scrollbar-thumb,.shotlist-workspace :is(.shotlist-grid-scroll,.shotlist-scenes ol,.shotlist-inspector,.shotlist-app-menu-popover,.shotlist-proposals)::-webkit-scrollbar-thumb,.shotlist-filter-values::-webkit-scrollbar-thumb,.shotlist-badge-options::-webkit-scrollbar-thumb,.shotlist-dialog :is(.shotlist-dialog-body,.shotlist-export-columns,.shotlist-import-scenes,.shotlist-import-preview)::-webkit-scrollbar-thumb{background:#555;border:2px solid #111;border-radius:999px}
+.shotlist-scroll::-webkit-scrollbar-thumb:hover,.shotlist-grid-scroll::-webkit-scrollbar-thumb:hover,.shotlist-scenes ol::-webkit-scrollbar-thumb:hover,.shotlist-inspector::-webkit-scrollbar-thumb:hover{background:#777}
+.shotlist-selection-toolbar{display:flex;align-items:center;gap:7px;flex:1 0 100%;min-height:30px;max-width:100%;overflow-x:auto;white-space:nowrap;color:#aaa;font-size:11px}
+.shotlist-selection-toolbar .shotlist-group-select{flex-basis:20px;margin:0 2px 0 0}
+.shotlist-selection-toolbar strong{color:#d7d7d7;font-weight:600;margin-right:5px}
+.shotlist-selection-toolbar button{flex:0 0 auto;min-height:27px;padding:3px 9px;border:1px solid #343434;border-radius:5px;background:#141414;color:#ddd;font-size:11px}
+.shotlist-selection-toolbar button:hover:not(:disabled),.shotlist-selection-toolbar button:focus-visible{background:#242424;border-color:#5d7194}
+.shotlist-selection-toolbar button:disabled{opacity:.42}
+.shotlist-app-menu-popover kbd{margin-left:auto;color:#8b8b8b;font-size:10px;font-family:inherit}
+.shotlist-dialog-body>div>textarea,.shotlist-dialog-body>textarea{box-sizing:border-box;width:100%;min-height:140px;padding:10px;border:1px solid #444;border-radius:5px;background:#101010;color:#eee;resize:vertical}
+.shotlist-context-menu{position:fixed;z-index:130;display:grid;width:194px;padding:5px;border:1px solid #393939;border-radius:7px;background:#111;color:#eee;box-shadow:0 14px 35px #000b}
+.shotlist-context-menu button{min-height:32px;padding:6px 9px;border:0;border-radius:4px;background:transparent;color:#ddd;text-align:left;font-size:12px}
+.shotlist-context-menu button:hover:not(:disabled),.shotlist-context-menu button:focus-visible{background:#282828;color:#fff}
+.shotlist-context-menu button:disabled{color:#777;cursor:not-allowed}
+.shotlist-context-menu .is-danger{color:#e9a6a6}
+.shotlist-context-menu span{height:1px;margin:4px;background:#333}
+.shotlist-workspace>.shotlist-notice,.shotlist-workspace>.shotlist-error{top:auto;left:auto;right:16px;bottom:16px;transform:none;max-width:min(420px,calc(100vw - 32px));box-shadow:0 12px 30px #0009;pointer-events:none}
+.shotlist-workspace>.shotlist-notice button,.shotlist-workspace>.shotlist-error button{pointer-events:auto}

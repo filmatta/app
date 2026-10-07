@@ -43,6 +43,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (owned.error || !owned.data) return writerJson({ error: "Shotlist no encontrada.", code: "not_found" }, 404);
   const admin = createAdminClient();
 
+  if (body.value.action === "previewDelete" && Array.isArray(body.value.shotIds)
+    && body.value.shotIds.length > 0 && body.value.shotIds.length <= 500
+    && body.value.shotIds.every(validUuid) && new Set(body.value.shotIds).size === body.value.shotIds.length) {
+    const ids = body.value.shotIds as string[];
+    const shots = await session.supabase.from("writer_shotlist_shots").select("id,revision")
+      .eq("shotlist_id", id).eq("owner_id", session.user.id).in("id", ids);
+    if (shots.error) return writerJson({ error: "No pudimos comprobar los planos.", code: "server_error" }, 500);
+    if ((shots.data?.length ?? 0) !== ids.length) return writerJson({ error: "La selección cambió. Revísala antes de eliminar.", code: "conflict" }, 409);
+    const schedule = await session.supabase.from("production_schedule_items").select("id", { count: "exact", head: true })
+      .eq("owner_id", session.user.id).in("source_shot_id", ids);
+    if (schedule.error) return writerJson({ error: "No pudimos comprobar la programación de Production.", code: "server_error" }, 500);
+    const impact = await storyboardDeleteImpact(session.supabase, session.user.id, id, ids);
+    return writerJson({ saved: false, shots: shots.data, impact: { ...impact, productionItems: schedule.count ?? 0 } });
+  }
+
   if (body.value.action === "addGroup" && validUuid(body.value.operationId) && clean(body.value.title, 180)) {
     const created = await rpcCall(session.supabase, "writer_add_shotlist_group", {
       p_shotlist_id: id, p_title: String(body.value.title).trim(), p_operation_id: body.value.operationId,
@@ -100,13 +115,32 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return writerJson({ saved: true, id: groupId });
   }
   if (body.value.action === "reorderShot" && validUuid(body.value.shotId) && Number.isSafeInteger(body.value.targetIndex)) {
+    if (body.value.expectedRevision !== undefined && body.value.expectedRevision !== owned.data.revision)
+      return writerJson({ error: "La Shotlist cambió en otra pestaña. Actualiza antes de mover planos.", code: "conflict" }, 409);
     return rpcResult(session.supabase, "writer_reorder_shot", {
       p_shotlist_id: id, p_shot_id: body.value.shotId, p_target_index: body.value.targetIndex,
     });
   }
   if (body.value.action === "deleteShots" && Array.isArray(body.value.shotIds)
-    && body.value.shotIds.length > 0 && body.value.shotIds.length <= 500 && body.value.shotIds.every(validUuid)) {
+    && body.value.shotIds.length > 0 && body.value.shotIds.length <= 500 && body.value.shotIds.every(validUuid)
+    && new Set(body.value.shotIds).size === body.value.shotIds.length) {
+    const ids = body.value.shotIds as string[];
+    if (!Array.isArray(body.value.expectedShots) || body.value.expectedShots.length !== ids.length
+      || !body.value.expectedShots.every((item) => isRecord(item) && validUuid(item.id) && Number.isSafeInteger(item.revision)))
+      return writerJson({ error: "Confirma de nuevo la selección antes de eliminar.", code: "conflict" }, 409);
+    const current = await session.supabase.from("writer_shotlist_shots").select("id,revision")
+      .eq("shotlist_id", id).eq("owner_id", session.user.id).in("id", ids);
+    if (current.error) return writerJson({ error: "No pudimos comprobar los planos.", code: "server_error" }, 500);
+    const expected = new Map((body.value.expectedShots as Array<{ id: string; revision: number }>).map((shot) => [shot.id, shot.revision]));
+    if ((current.data?.length ?? 0) !== ids.length || current.data?.some((shot) => expected.get(shot.id) !== shot.revision))
+      return writerJson({ error: "Los planos cambiaron. Revisa la confirmación actualizada.", code: "conflict" }, 409);
+    const schedule = await session.supabase.from("production_schedule_items").select("id", { count: "exact", head: true })
+      .eq("owner_id", session.user.id).in("source_shot_id", ids);
+    if (schedule.error) return writerJson({ error: "No pudimos comprobar Production.", code: "server_error" }, 500);
+    if ((schedule.count ?? 0) > 0) return writerJson({ error: `Hay ${schedule.count} uso(s) en Production. No se eliminaron planos.`, code: "production_dependencies", impact: { productionItems: schedule.count } }, 409);
     const impact = await storyboardDeleteImpact(session.supabase, session.user.id, id, body.value.shotIds);
+    if (!isRecord(body.value.expectedImpact) || body.value.expectedImpact.panels !== impact.panels || body.value.expectedImpact.approvals !== impact.approvals)
+      return writerJson({ error: "Las dependencias de Storyboard cambiaron. Revisa la confirmación actualizada.", code: "conflict" }, 409);
     if (impact.panels > 0) {
       if (body.value.deleteStoryboard !== true) {
         return writerJson({
@@ -132,12 +166,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return rpcResult(session.supabase, "writer_delete_shots", { p_shotlist_id: id, p_shot_ids: body.value.shotIds });
   }
   if (body.value.action === "deleteGroup" && validUuid(body.value.groupId)) {
-    const group = await session.supabase.from("writer_shotlist_groups").select("id").eq("id", body.value.groupId).eq("shotlist_id", id).eq("owner_id", session.user.id).maybeSingle();
+    const group = await session.supabase.from("writer_shotlist_groups").select("id,revision").eq("id", body.value.groupId).eq("shotlist_id", id).eq("owner_id", session.user.id).maybeSingle();
     if (group.error || !group.data) return writerJson({ error: "Escena no encontrada.", code: "not_found" }, 404);
+    if (body.value.expectedRevision !== group.data.revision) return writerJson({ error: "La escena cambió. Revisa de nuevo antes de eliminar.", code: "conflict" }, 409);
     const shots = await session.supabase.from("writer_shotlist_shots").select("id").eq("group_id", body.value.groupId).eq("shotlist_id", id).eq("owner_id", session.user.id);
     if (shots.error) return writerJson({ error: "No pudimos comprobar el grupo.", code: "server_error" }, 500);
     const shotIds = (shots.data ?? []).map((shot) => String(shot.id));
+    const expectedIds = Array.isArray(body.value.expectedShotIds) ? body.value.expectedShotIds : [];
+    if (expectedIds.length !== shotIds.length || !expectedIds.every((shotId) => typeof shotId === "string" && shotIds.includes(shotId)))
+      return writerJson({ error: "Los planos de esta escena cambiaron. Revisa de nuevo antes de eliminar.", code: "conflict" }, 409);
+    if (shotIds.length) {
+      const schedule = await session.supabase.from("production_schedule_items").select("id", { count: "exact", head: true })
+        .eq("owner_id", session.user.id).in("source_shot_id", shotIds);
+      if (schedule.error) return writerJson({ error: "No pudimos comprobar Production.", code: "server_error" }, 500);
+      if ((schedule.count ?? 0) > 0) return writerJson({ error: `Hay ${schedule.count} uso(s) en Production. No se eliminó la escena.`, code: "production_dependencies" }, 409);
+    }
     const impact = shotIds.length ? await storyboardDeleteImpact(session.supabase, session.user.id, id, shotIds) : { panels: 0, approvals: 0 };
+    if (!isRecord(body.value.expectedImpact) || body.value.expectedImpact.panels !== impact.panels || body.value.expectedImpact.approvals !== impact.approvals)
+      return writerJson({ error: "Las dependencias cambiaron. Revisa de nuevo antes de eliminar.", code: "conflict" }, 409);
     if (impact.panels > 0 && body.value.deleteStoryboard !== true) return writerJson({ error: `Este grupo tiene ${impact.panels} panel(es) de storyboard y ${impact.approvals} aprobación(es).`, code: "storyboard_dependencies", impact }, 409);
     if (impact.panels > 0) {
       const deleted = await deleteShotsWithStoryboard({ db: session.supabase, userId: session.user.id, shotlistId: id, shotIds });

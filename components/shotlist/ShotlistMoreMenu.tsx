@@ -9,6 +9,8 @@ export default function ShotlistMoreMenu({
   canOpenWriter,
   onDuplicate,
   onCopy,
+  onPaste,
+  pasteDisabled = false,
   onOpenWriter,
   onDelete,
   onInsertAfter,
@@ -17,6 +19,8 @@ export default function ShotlistMoreMenu({
   canOpenWriter: boolean;
   onDuplicate: () => void;
   onCopy: () => void;
+  onPaste?: () => void;
+  pasteDisabled?: boolean;
   onOpenWriter?: () => void;
   onDelete: () => void;
   onInsertAfter?: () => void;
@@ -38,6 +42,7 @@ export default function ShotlistMoreMenu({
       {onInsertAfter && <button type="button" role="menuitem" onClick={() => run(onInsertAfter)}>Añadir después</button>}
       <button type="button" role="menuitem" onClick={() => run(onDuplicate)}>Duplicar</button>
       <button type="button" role="menuitem" onClick={() => run(onCopy)}>Copiar</button>
+      {onPaste && <button type="button" role="menuitem" disabled={pasteDisabled} title={pasteDisabled ? "Copia planos en esta Shotlist antes de pegar" : undefined} onClick={() => run(onPaste)}>Pegar después</button>}
       <button type="button" role="menuitem" disabled={!canOpenWriter} onClick={() => onOpenWriter && run(onOpenWriter)}>Ver en guion</button>
       <span role="separator" />
       <button type="button" role="menuitem" className="is-danger" onClick={() => run(onDelete)}>Eliminar</button>

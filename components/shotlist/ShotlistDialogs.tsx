@@ -100,13 +100,23 @@ export function StoryboardPreviewImage({ panel, alt }: { panel: StoryboardPanel 
 
 export function ShotlistHelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return <DialogFrame open={open} title="Atajos y navegación" eyebrow="AYUDA" onClose={onClose} footer={<button type="button" onClick={onClose}>Entendido</button>}>
-    <dl className="shotlist-shortcuts"><div><dt>Tab / Mayús + Tab</dt><dd>Recorrer controles, inserciones y menús.</dd></div><div><dt>Enter</dt><dd>Abrir la fila o confirmar un formulario.</dd></div><div><dt>↑ / ↓</dt><dd>Cambiar de plano cuando la fila tiene foco.</dd></div><div><dt>Escape</dt><dd>Cerrar menú o diálogo y volver al control anterior.</dd></div></dl>
+    <dl className="shotlist-shortcuts"><div><dt>Tab / Mayús + Tab</dt><dd>Recorrer controles, inserciones y menús.</dd></div><div><dt>Enter</dt><dd>Abrir la fila o confirmar un formulario.</dd></div><div><dt>↑ / ↓</dt><dd>Cambiar de plano cuando la fila tiene foco.</dd></div><div><dt>Ctrl/Cmd+C · Ctrl/Cmd+V</dt><dd>Copiar selección y pegar planos compatibles con el grid enfocado.</dd></div><div><dt>Ctrl/Cmd+Z · Ctrl/Cmd+Mayús+Z</dt><dd>Deshacer y rehacer cambios guardados de la sesión. Ctrl+Y también rehace en Windows.</dd></div><div><dt>Ctrl/Cmd+F · Delete</dt><dd>Enfocar búsqueda o confirmar eliminación de la selección.</dd></div><div><dt>Escape</dt><dd>Cerrar la superficie superior o quitar la selección.</dd></div></dl>
     <p className="shotlist-dialog-note">En dispositivos sin hover, las acciones de inserción también están disponibles en Añadir y en los menús ⋮.</p>
   </DialogFrame>;
 }
 
-export function ConfirmDialog({ open, title, description, confirmLabel, danger = false, busy = false, onClose, onConfirm }: { open: boolean; title: string; description: ReactNode; confirmLabel: string; danger?: boolean; busy?: boolean; onClose: () => void; onConfirm: () => void }) {
-  return <DialogFrame open={open} title={title} onClose={onClose} footer={<><button type="button" className="is-secondary" onClick={onClose}>Cancelar</button><button type="button" className={danger ? "is-danger" : ""} disabled={busy} onClick={onConfirm}>{busy ? "Procesando…" : confirmLabel}</button></>}><div>{description}</div></DialogFrame>;
+export function ConfirmDialog({ open, title, description, confirmLabel, danger = false, busy = false, disabled = false, onClose, onConfirm }: { open: boolean; title: string; description: ReactNode; confirmLabel: string; danger?: boolean; busy?: boolean; disabled?: boolean; onClose: () => void; onConfirm: () => void }) {
+  const cancel = useRef<HTMLButtonElement>(null);
+  return <DialogFrame open={open} title={title} onClose={onClose} initialFocus={cancel} footer={<><button ref={cancel} type="button" className="is-secondary" onClick={onClose}>Cancelar</button><button type="button" className={danger ? "is-danger" : ""} disabled={busy || disabled} onClick={onConfirm}>{busy ? "Procesando…" : confirmLabel}</button></>}><div>{description}</div></DialogFrame>;
+}
+
+export function PasteFallbackDialog({ open, value, onChange, onClose, onVerify }: { open: boolean; value: string; onChange: (value: string) => void; onClose: () => void; onVerify: () => void }) {
+  const input = useRef<HTMLTextAreaElement>(null);
+  return <DialogFrame open={open} title="Pegar planos" eyebrow="PORTAPAPELES" onClose={onClose} initialFocus={input}
+    footer={<><button type="button" className="is-secondary" onClick={onClose}>Cancelar</button><button type="button" disabled={!value.trim()} onClick={onVerify}>Comprobar y pegar</button></>}>
+    <p>El navegador no permitió leer el portapapeles. Pega aquí con Ctrl/Cmd+V el texto de los planos que acabas de copiar; verificaremos que coincida antes de crear filas.</p>
+    <textarea ref={input} aria-label="Texto copiado de los planos" value={value} onChange={(event) => onChange(event.target.value)} rows={7} />
+  </DialogFrame>;
 }
 
 export { DialogFrame };

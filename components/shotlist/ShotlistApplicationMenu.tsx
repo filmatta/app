@@ -9,6 +9,9 @@ export default function ShotlistApplicationMenu({
   canBack,
   canForward,
   hasSelection,
+  canPaste,
+  canUndo,
+  canRedo,
   visibleColumns,
   onNew,
   onImport,
@@ -16,6 +19,9 @@ export default function ShotlistApplicationMenu({
   onCopyLink,
   onDuplicate,
   onCopy,
+  onPaste,
+  onUndo,
+  onRedo,
   onDelete,
   onInsertShot,
   onInsertScene,
@@ -27,6 +33,9 @@ export default function ShotlistApplicationMenu({
   canBack: boolean;
   canForward: boolean;
   hasSelection: boolean;
+  canPaste: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
   visibleColumns: ReadonlySet<ShotlistColumnKey>;
   onNew: () => void;
   onImport: () => void;
@@ -34,6 +43,9 @@ export default function ShotlistApplicationMenu({
   onCopyLink: () => void;
   onDuplicate: () => void;
   onCopy: () => void;
+  onPaste: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
   onDelete: () => void;
   onInsertShot: () => void;
   onInsertScene: () => void;
@@ -103,16 +115,17 @@ export default function ShotlistApplicationMenu({
     </Menu>
     <Menu label="Editar" name="edit" open={open} onToggle={toggle}>
       <Item disabled={!hasSelection} onClick={() => run(onDuplicate)}>Duplicar</Item>
-      <Item disabled={!hasSelection} onClick={() => run(onCopy)}>Copiar</Item>
-      <Item disabled={!hasSelection} onClick={() => run(onDelete)}>Eliminar</Item>
+      <Item disabled={!hasSelection} onClick={() => run(onCopy)}>Copiar <kbd>Ctrl/Cmd+C</kbd></Item>
+      <Item disabled={!canPaste} onClick={() => run(onPaste)}>Pegar <kbd>Ctrl/Cmd+V</kbd></Item>
+      <Item disabled={!hasSelection} onClick={() => run(onDelete)}>Eliminar <kbd>Delete</kbd></Item>
       <Separator />
       <Group label="Insertar">
         <Item onClick={() => run(onInsertShot)}>Plano</Item>
         <Item onClick={() => run(onInsertScene)}>Escena</Item>
       </Group>
       <Separator />
-      <Item disabled>Deshacer · No disponible</Item>
-      <Item disabled>Rehacer · No disponible</Item>
+      <Item disabled={!canUndo} onClick={() => run(onUndo)}>Deshacer <kbd>Ctrl/Cmd+Z</kbd></Item>
+      <Item disabled={!canRedo} onClick={() => run(onRedo)}>Rehacer <kbd>Ctrl/Cmd+Mayús+Z</kbd></Item>
     </Menu>
     <Menu label="Formato" name="format" open={open} onToggle={toggle}>
       <Group label="Columnas visibles" initiallyOpen>
