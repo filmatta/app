@@ -265,6 +265,7 @@ body:has(.shotlist-workspace), body:has(.shotlist-index) { margin:0; background:
 .shotlist-context-menu button{min-height:32px;padding:6px 9px;border:0;border-radius:4px;background:transparent;color:#ddd;text-align:left;font-size:12px}
 .shotlist-context-menu button:hover:not(:disabled),.shotlist-context-menu button:focus-visible{background:#282828;color:#fff}
 .shotlist-context-menu button:disabled{color:#777;cursor:not-allowed}
+.shotlist-menu-reason{margin-left:auto;color:#999;font-size:10px;font-weight:400;white-space:nowrap}
 .shotlist-context-menu .is-danger{color:#e9a6a6}
 .shotlist-context-menu span{height:1px;margin:4px;background:#333}
 .shotlist-workspace>.shotlist-notice,.shotlist-workspace>.shotlist-error{top:auto;left:auto;right:16px;bottom:16px;transform:none;max-width:min(420px,calc(100vw - 32px));box-shadow:0 12px 30px #0009;pointer-events:none}

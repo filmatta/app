@@ -40,9 +40,9 @@ export default function ShotlistContextMenu({ position, count, canPaste, onClose
   function run(action: () => void) { onClose(); action(); }
   return createPortal(<div ref={root} className="shotlist-context-menu shotlist-scroll" role="menu" aria-label="Acciones de planos" style={{ left: x, top: y }}>
     <button type="button" role="menuitem" disabled={!count} onClick={() => run(onCopy)}>Copiar {count > 1 ? `(${count})` : ""}</button>
-    <button type="button" role="menuitem" disabled={!canPaste} title={canPaste ? undefined : "Copia planos de esta Shotlist antes de pegar"} onClick={() => run(onPaste)}>Pegar después</button>
-    <button type="button" role="menuitem" disabled={!count || count > 50} onClick={() => run(onDuplicate)}>Duplicar {count > 1 ? `(${count})` : ""}</button>
+    <button type="button" role="menuitem" disabled={!canPaste} title={canPaste ? undefined : "Copia planos de esta Shotlist antes de pegar"} onClick={() => run(onPaste)}>Pegar después{!canPaste && <small className="shotlist-menu-reason">Primero copia planos</small>}</button>
+    <button type="button" role="menuitem" disabled={!count || count > 50} title={count > 50 ? "Duplica hasta 50 planos por operación" : undefined} onClick={() => run(onDuplicate)}>Duplicar {count > 1 ? `(${count})` : ""}{count > 50 && <small className="shotlist-menu-reason">Máx. 50</small>}</button>
     <span role="separator" />
-    <button type="button" role="menuitem" className="is-danger" disabled={!count || count > 500} onClick={() => run(onDelete)}>Eliminar {count > 1 ? `(${count})` : ""}</button>
+    <button type="button" role="menuitem" className="is-danger" disabled={!count || count > 500} title={count > 500 ? "Elimina hasta 500 planos por operación" : undefined} onClick={() => run(onDelete)}>Eliminar {count > 1 ? `(${count})` : ""}{count > 500 && <small className="shotlist-menu-reason">Máx. 500</small>}</button>
   </div>, document.body);
 }

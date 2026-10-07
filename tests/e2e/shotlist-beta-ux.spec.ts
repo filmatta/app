@@ -538,6 +538,13 @@ test("V3 all filtered rows and prunes hidden selection", async ({ page, context 
   await expect(page.getByText("601 planos", { exact: false }).first()).toBeVisible();
   await page.getByRole("checkbox", { name: "Seleccionar todos los planos filtrados" }).check();
   await expect(page.getByText("601 planos seleccionados")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Duplicar (601)" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Eliminar (601)" })).toBeDisabled();
+  await page.getByRole("button", { name: "Editar", exact: true }).click();
+  const editMenu = page.getByRole("menu", { name: "Editar" });
+  await expect(editMenu.getByRole("menuitem", { name: /Duplicar/u })).toBeDisabled();
+  await expect(editMenu.getByRole("menuitem", { name: /Eliminar/u })).toBeDisabled();
+  await page.keyboard.press("Escape");
   await page.getByPlaceholder("Buscar descripción u observaciones…").fill("Mara");
   await expect(page.getByText("200 planos seleccionados")).toBeVisible();
   await expect(page.getByRole("status")).toContainText("salieron de la selección");

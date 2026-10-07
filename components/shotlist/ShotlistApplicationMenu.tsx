@@ -8,7 +8,7 @@ type MenuName = "file" | "edit" | "format" | "help";
 export default function ShotlistApplicationMenu({
   canBack,
   canForward,
-  hasSelection,
+  selectionCount,
   canPaste,
   canUndo,
   canRedo,
@@ -32,7 +32,7 @@ export default function ShotlistApplicationMenu({
 }: {
   canBack: boolean;
   canForward: boolean;
-  hasSelection: boolean;
+  selectionCount: number;
   canPaste: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -114,10 +114,10 @@ export default function ShotlistApplicationMenu({
       <Item onClick={() => run(onCopyLink)}>Copiar enlace privado</Item>
     </Menu>
     <Menu label="Editar" name="edit" open={open} onToggle={toggle}>
-      <Item disabled={!hasSelection} onClick={() => run(onDuplicate)}>Duplicar</Item>
-      <Item disabled={!hasSelection} onClick={() => run(onCopy)}>Copiar <kbd>Ctrl/Cmd+C</kbd></Item>
-      <Item disabled={!canPaste} onClick={() => run(onPaste)}>Pegar <kbd>Ctrl/Cmd+V</kbd></Item>
-      <Item disabled={!hasSelection} onClick={() => run(onDelete)}>Eliminar <kbd>Delete</kbd></Item>
+      <Item disabled={!selectionCount || selectionCount > 50} reason={selectionCount > 50 ? "Duplica hasta 50 planos por operación." : undefined} onClick={() => run(onDuplicate)}>Duplicar</Item>
+      <Item disabled={!selectionCount} onClick={() => run(onCopy)}>Copiar <kbd>Ctrl/Cmd+C</kbd></Item>
+      <Item disabled={!canPaste} reason={!canPaste ? "Copia planos y elige una escena de destino." : undefined} onClick={() => run(onPaste)}>Pegar <kbd>Ctrl/Cmd+V</kbd></Item>
+      <Item disabled={!selectionCount || selectionCount > 500} reason={selectionCount > 500 ? "Elimina hasta 500 planos por operación." : undefined} onClick={() => run(onDelete)}>Eliminar <kbd>Delete</kbd></Item>
       <Separator />
       <Group label="Insertar">
         <Item onClick={() => run(onInsertShot)}>Plano</Item>
@@ -146,8 +146,8 @@ function Menu({ label, name, open, onToggle, children }: { label: string; name: 
   return <div className="shotlist-app-menu-root"><button type="button" className="shotlist-app-menu-trigger" aria-haspopup="menu" aria-expanded={expanded} onPointerDown={(event) => onToggle(name, event.currentTarget)} onClick={(event) => { event.preventDefault(); if (event.detail === 0) onToggle(name, event.currentTarget); }}>{label}</button>{expanded && <div className="shotlist-app-menu-popover" role="menu" aria-label={label}>{children}</div>}</div>;
 }
 
-function Item({ children, disabled = false, onClick }: { children: ReactNode; disabled?: boolean; onClick?: () => void }) {
-  return <button type="button" role="menuitem" disabled={disabled} onClick={onClick}>{children}</button>;
+function Item({ children, disabled = false, reason, onClick }: { children: ReactNode; disabled?: boolean; reason?: string; onClick?: () => void }) {
+  return <button type="button" role="menuitem" disabled={disabled} title={reason} onClick={onClick}>{children}{reason && <small className="shotlist-menu-reason">{reason}</small>}</button>;
 }
 
 function Check({ children, checked, onClick }: { children: ReactNode; checked: boolean; onClick: () => void }) {
