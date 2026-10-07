@@ -8,6 +8,7 @@ const previewAssetId = "55555555-5555-4555-8555-555555555555";
 const previewPanelId = "66666666-6666-4666-8666-666666666666";
 const evidence = "output/screenshots/shotlist-beta-ux-v1";
 const carbonEvidence = "output/screenshots/shotlist-carbon-polish-v1";
+const carbonV2Evidence = "output/screenshots/shotlist-carbon-ux-v2";
 
 type Shot = {
   id: string; shotlistId: string; groupId: string; sourceBlockId: null; origin: "manual";
@@ -119,9 +120,11 @@ test("desktop grid, keyboard, filters, badges, menus and dialogs produce visible
   await page.getByRole("button", { name: "✎ Libre" }).click();
 
   await page.getByRole("button", { name: /Filtros/u }).click();
-  const filterDialog = page.getByRole("dialog", { name: "Añadir filtro" });
-  await filterDialog.getByLabel("Valor").fill("50");
-  await filterDialog.getByRole("button", { name: "Añadir filtro" }).click();
+  const filterDialog = page.getByRole("dialog", { name: "Filtrar planos" });
+  await filterDialog.getByLabel("Columna").selectOption("lens");
+  await filterDialog.getByRole("checkbox", { name: /Seleccionar todos/u }).uncheck();
+  await filterDialog.getByRole("checkbox", { name: /50 mm/u }).check();
+  await filterDialog.getByRole("button", { name: "Aplicar" }).click();
   await expect(page.getByText("3 de 8")).toBeVisible();
   await expect(page.getByRole("row", { name: /Plano 2:/u })).toBeVisible();
   await expect(page.getByRole("row", { name: /Plano 1:/u })).toHaveCount(0);
@@ -236,7 +239,7 @@ test("Carbon menubar, full-width scene bands and final insertion remain function
   await scroller.evaluate((node) => { node.scrollLeft = node.scrollWidth; });
   await expect(firstGroup.getByRole("button", { name: "Acciones de INT. RADIO K-17 / CABINA — NOCHE", exact: true })).toBeVisible();
 
-  const finalInsert = page.getByRole("button", { name: "Añadir plano al final de la shotlist" });
+  const finalInsert = page.getByRole("button", { name: "＋ Añadir plano al final" });
   await finalInsert.focus();
   await expect(finalInsert).toBeVisible();
   await page.screenshot({ path: `${carbonEvidence}/02-insercion-final-shotlist.png` });
@@ -250,8 +253,7 @@ test("Carbon menubar, full-width scene bands and final insertion remain function
   const dialog = page.getByRole("dialog", { name: "Nueva escena" });
   await dialog.getByLabel("Nombre").fill("ESCENA VACÍA QA");
   await dialog.getByRole("button", { name: "Crear" }).click();
-  await page.getByText("ESCENA VACÍA QA", { exact: true }).last().click();
-  await expect(page.getByRole("button", { name: "＋ Añadir primer plano" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "＋ Añadir plano al final" })).toBeVisible();
 });
 
 test("storyboard preview uses the representative panel in row and inspector without writes", async ({ page, context }) => {
@@ -282,6 +284,84 @@ test("storyboard preview uses the representative panel in row and inspector with
   await expect(emptyDialog.getByRole("img")).toHaveCount(0);
   await page.keyboard.press("Escape");
   expect(mutations).toEqual([]);
+});
+
+test("Carbon V2 value filters, empty scene, assistance and export work through visible controls", async ({ page, context }) => {
+  fs.mkdirSync(carbonV2Evidence, { recursive: true });
+  const state = await openShotlist(page, context, 1440, 900);
+  await page.screenshot({ path: `${carbonV2Evidence}/01-workspace-carbon.png` });
+
+  await page.getByRole("button", { name: "◉ Asistido" }).click();
+  const guide = page.locator(".shotlist-assisted-guide");
+  const head = page.locator(".shotlist-grid-head");
+  await expect(guide).toBeVisible();
+  expect((await guide.boundingBox())!.y + (await guide.boundingBox())!.height).toBeLessThanOrEqual((await head.boundingBox())!.y + 1);
+  await page.screenshot({ path: `${carbonV2Evidence}/03-asistido-sin-recorte.png` });
+  await page.getByRole("button", { name: "✎ Libre" }).click();
+
+  await page.getByRole("button", { name: /Filtros/u }).click();
+  let dialog = page.getByRole("dialog", { name: "Filtrar planos" });
+  await dialog.getByRole("checkbox", { name: /Seleccionar todos/u }).uncheck();
+  await dialog.getByRole("checkbox", { name: /RADIO K-17/u }).check();
+  await dialog.getByRole("button", { name: "Aplicar" }).click();
+  await expect(page.getByText("5 de 8")).toBeVisible();
+  await page.getByRole("button", { name: /Filtros/u }).click();
+  dialog = page.getByRole("dialog", { name: "Filtrar planos" });
+  await dialog.getByLabel("Columna").selectOption("lens");
+  await dialog.getByRole("checkbox", { name: /Seleccionar todos/u }).uncheck();
+  await dialog.getByRole("checkbox", { name: /24 mm/u }).check();
+  await dialog.getByRole("checkbox", { name: /50 mm/u }).check();
+  await page.screenshot({ path: `${carbonV2Evidence}/04-filtros-valores-multiples.png` });
+  await dialog.getByRole("button", { name: "Aplicar" }).click();
+  await expect(page.getByText("4 de 8")).toBeVisible();
+  const visibleIds = await page.locator(".shotlist-row").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-shot-id")));
+  expect(visibleIds).toEqual([state.groups[0]!.shots[0]!.id, state.groups[0]!.shots[1]!.id, state.groups[0]!.shots[3]!.id, state.groups[0]!.shots[4]!.id]);
+  await page.getByRole("button", { name: /Filtros/u }).click();
+  dialog = page.getByRole("dialog", { name: "Filtrar planos" });
+  await dialog.getByLabel("Columna").selectOption("lens");
+  await dialog.getByRole("checkbox", { name: /50 mm/u }).uncheck();
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await page.getByRole("button", { name: /Filtros/u }).click();
+  dialog = page.getByRole("dialog", { name: "Filtrar planos" });
+  await dialog.getByLabel("Columna").selectOption("lens");
+  await expect(dialog.getByRole("checkbox", { name: /50 mm/u })).toBeChecked();
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await page.getByRole("button", { name: "⇧ Exportar" }).click();
+  await expect(page.getByRole("dialog", { name: "Exportar Shotlist" }).getByText("Resultado filtrado (4 planos)")).toBeVisible();
+  await page.screenshot({ path: `${carbonV2Evidence}/06-exportar-sin-marcos.png` });
+  await page.getByRole("dialog", { name: "Exportar Shotlist" }).getByRole("button", { name: "Cancelar" }).click();
+  await page.getByRole("button", { name: "Limpiar filtros" }).click();
+
+  await page.getByRole("button", { name: "＋ Nueva escena" }).click();
+  await page.getByRole("dialog", { name: "Nueva escena" }).getByLabel("Nombre").fill("INT. ARCHIVO QA — NOCHE");
+  await page.getByRole("dialog", { name: "Nueva escena" }).getByRole("button", { name: "Crear" }).click();
+  const empty = page.locator(".shotlist-group").last();
+  await expect(empty.getByText("Esta escena aún no tiene planos.")).toBeVisible();
+  await expect(empty.getByRole("button", { name: "＋ Añadir plano al final" })).toBeVisible();
+  await page.screenshot({ path: `${carbonV2Evidence}/02-escena-vacia-anadir-plano.png` });
+  await empty.getByRole("button", { name: "＋ Añadir plano al final" }).click();
+  await expect(empty.getByRole("row")).toHaveCount(1);
+  expect(state.groups.at(-1)!.shots).toHaveLength(1);
+  await expect(empty.getByRole("row").getByRole("textbox", { name: "Acción" })).toBeFocused();
+  const persisted = await page.evaluate(async (id) => (await fetch(`/api/shotlists/${id}`, { cache: "no-store" })).json(), shotlistId);
+  expect(persisted.shotlist.groups.at(-1).shots).toHaveLength(1);
+});
+
+test("value catalogue includes a custom lens beyond the first 240 mounted rows", async ({ page, context }) => {
+  await page.request.get("http://127.0.0.1:54329/__scenario?value=shotlist-ux");
+  await session(context);
+  const state = await mockShotlistApi(page);
+  const target = state.groups[1]!;
+  for (let index = target.shots.length; index < 3000; index += 1) target.shots.push(shot(target.id, index + 100, index));
+  target.shots.at(-1)!.lens = "43 mm";
+  await page.goto(`/shotlists/${shotlistId}`);
+  await page.getByRole("button", { name: "＋ Plano" }).click();
+  await expect(page.locator(".shotlist-summary")).toContainText("3006");
+  expect(await page.locator(".shotlist-row").count()).toBeLessThan(3006);
+  await page.getByRole("button", { name: /Filtros/u }).click();
+  const dialog = page.getByRole("dialog", { name: "Filtrar planos" });
+  await dialog.getByLabel("Columna").selectOption("lens");
+  await expect(dialog.getByRole("checkbox", { name: /43 mm/u })).toBeVisible();
 });
 
 test("Writer handoff, Storyboard and Production keep their approved surfaces", async ({ page, context }) => {

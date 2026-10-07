@@ -7,6 +7,7 @@ import {
   parseShotlistCsv,
   shotlistCsv,
   shotlistRows,
+  shotlistValueCatalog,
   suggestedImportColumn,
   type ShotlistFilter,
 } from "../../lib/shotlist/ux.ts";
@@ -38,6 +39,25 @@ test("filters OR within a column and AND across columns", () => {
     { id: "angle", column: "angle", condition: "equals", value: "A nivel" },
   ];
   assert.deepEqual(filterShotlistRows(rows, "", filters).map((row) => row.shot.subject), ["Mara escucha"]);
+});
+
+test("value catalogue spans the whole shotlist and exact selections keep distinct locations", () => {
+  const list = fixture();
+  const first = list.groups[0]!;
+  const secondId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  list.groups.push({ ...first, id: secondId, position: 1, shots: [{ ...first.shots[0]!, id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", groupId: secondId, lens: "43 mm" }] });
+  const rows = shotlistRows(list);
+  const locations = shotlistValueCatalog(rows, "location");
+  assert.equal(locations.length, 2);
+  assert.deepEqual(locations.map((item) => item.count), [2, 1]);
+  assert.deepEqual(shotlistValueCatalog(rows, "lens").map((item) => item.label), ["150 mm", "43 mm", "50 mm"]);
+  const filters: ShotlistFilter[] = [
+    { id: "loc", column: "location", condition: "in", value: "", values: [first.id] },
+    { id: "lens", column: "lens", condition: "in", value: "", values: ["50 mm"] },
+  ];
+  assert.deepEqual(filterShotlistRows(rows, "", filters).map((row) => row.shot.id), [first.shots[0]!.id]);
+  assert.deepEqual(filterShotlistRows(rows, "", [{ ...filters[1]!, values: ["50 mm", "150 mm"] }]).map((row) => row.shot.lens), ["50 mm", "150 mm"]);
+  assert.equal(filterShotlistRows(rows, "", [{ id: "none", column: "lens", condition: "none", value: "", values: [] }]).length, 0);
 });
 
 test("CSV parser handles BOM, semicolons, escaped quotes and line breaks", () => {

@@ -52,9 +52,33 @@ export const SHOTLIST_COLUMNS: Array<{
 export type ShotlistFilter = {
   id: string;
   column: Exclude<ShotlistColumnKey, "number" | "storyboard">;
-  condition: "equals" | "contains" | "empty";
+  condition: "equals" | "contains" | "empty" | "in" | "none";
   value: string;
+  values?: string[];
 };
+
+export const SHOTLIST_VALUE_COLUMNS: ShotlistFilter["column"][] = ["location", "interiorExterior", "shotType", "lens", "angle", "movement", "support", "status"];
+
+export function shotlistFilterValue(row: ShotlistRowContext, column: ShotlistFilter["column"]) {
+  if (column === "location") return row.group.id;
+  if (column === "lens") return normalizeLens(row.shot.lens);
+  if (column === "status") return row.shot.status;
+  return normalizeText(rowValue(row, column));
+}
+
+export function shotlistValueCatalog(rows: ShotlistRowContext[], column: ShotlistFilter["column"]) {
+  const values = new Map<string, { key: string; label: string; detail: string; count: number }>();
+  for (const row of rows) {
+    const key = shotlistFilterValue(row, column);
+    const raw = rowValue(row, column);
+    const label = column === "status" ? row.shot.status === "ready" ? "Listo" : "Pendiente" : column === "lens" ? normalizeLens(raw) || "(Sin especificar)" : raw.trim() || "(Sin especificar)";
+    const detail = column === "location" ? `Esc. ${row.sceneNumber} · ${row.group.title}` : "";
+    const existing = values.get(key);
+    if (existing) existing.count += 1;
+    else values.set(key, { key, label, detail, count: 1 });
+  }
+  return [...values.values()].sort((a, b) => a.label.localeCompare(b.label, "es-MX") || a.detail.localeCompare(b.detail, "es-MX"));
+}
 
 export type ShotlistRowContext = {
   group: WriterShotlistGroup;
@@ -102,7 +126,7 @@ export function filterShotlistRows(rows: ShotlistRowContext[], search: string, f
     if (query && !searchableValues(row).some((value) => normalizeText(value).includes(query))) return false;
     for (const [column, columnFilters] of filtersByColumn) {
       const actual = rowValue(row, column);
-      if (!columnFilters.some((filter) => filterMatches(column, actual, filter))) return false;
+      if (!columnFilters.some((filter) => filterMatches(column, actual, filter, row))) return false;
     }
     return true;
   });
@@ -232,7 +256,9 @@ function rowValue(row: ShotlistRowContext, column: ShotlistFilter["column"]) {
   return String(row.shot[column] ?? "");
 }
 
-function filterMatches(column: ShotlistFilter["column"], actual: string, filter: ShotlistFilter) {
+function filterMatches(column: ShotlistFilter["column"], actual: string, filter: ShotlistFilter, row: ShotlistRowContext) {
+  if (filter.condition === "none") return false;
+  if (filter.condition === "in") return (filter.values ?? []).includes(shotlistFilterValue(row, column));
   if (filter.condition === "empty") return !actual.trim();
   const expected = filter.value;
   if (column === "lens") {

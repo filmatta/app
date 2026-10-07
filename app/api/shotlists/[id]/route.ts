@@ -183,40 +183,45 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return writerJson({ saved: true });
   }
   if (body.value.action === "syncSource") {
+    try {
+    if (typeof body.value.expectedRevision !== "number" || body.value.expectedRevision !== Number(owned.data.revision))
+      return writerJson({ error: "La shotlist cambió en otra pestaña. Actualiza la vista y reintenta.", code: "conflict" }, 409);
     const current = await loadWriterShotlist(session.supabase, session.user.id, id);
     if (!current.shotlist.scriptId) return writerJson({ error: "Esta shotlist no tiene guion fuente.", code: "invalid" }, 400);
     const script = await assertOwnedWriterScript(session.supabase, session.user.id, current.shotlist.scriptId);
     const scenes = deriveWriterSceneSources(script.document);
-    const groupByScene = new Map(current.shotlist.groups.flatMap((group) => group.sourceSceneId ? [[group.sourceSceneId, group] as const] : []));
-    const manual = current.shotlist.groups.filter((group) => !group.sourceSceneId);
+    const sceneById = new Map(scenes.map((scene) => [scene.sceneId, scene]));
+    let updatedGroups = 0;
+    let missingGroups = 0;
     for (const group of current.shotlist.groups) {
-      await admin.from("writer_shotlist_groups").update({ position: 100_000 + group.position })
-        .eq("id", group.id).eq("owner_id", session.user.id).eq("shotlist_id", id);
+      if (!group.sourceSceneId) continue;
+      const scene = sceneById.get(group.sourceSceneId);
+      if (!scene) missingGroups += 1;
+      const heading = scene?.heading.slice(0, 180) ?? null;
+      const changed = scene
+        ? group.sourceSceneTitle !== heading || group.sourceStatus !== "linked"
+        : group.sourceStatus !== "missing";
+      if (!changed) continue;
+      const fields = scene
+        ? { source_scene_title: heading, title: group.title === group.sourceSceneTitle ? heading : group.title, source_status: "linked" }
+        : { source_status: "missing" };
+      const result = await admin.from("writer_shotlist_groups")
+        .update({ ...fields, revision: group.revision + 1, updated_at: new Date().toISOString() })
+        .eq("id", group.id).eq("owner_id", session.user.id).eq("shotlist_id", id).eq("revision", group.revision)
+        .select("id").maybeSingle();
+      if (result.error || !result.data) return writerJson({ error: "No pudimos actualizar todos los vínculos. Reintenta; los planos se conservaron.", code: "conflict" }, 409);
+      updatedGroups += 1;
     }
-    let position = 0;
-    for (const scene of scenes) {
-      const group = groupByScene.get(scene.sceneId);
-      if (group) {
-        await admin.from("writer_shotlist_groups").update({ source_scene_title: scene.heading, title: scene.heading, source_status: "linked", position, revision: group.revision + 1, updated_at: new Date().toISOString() })
-          .eq("id", group.id).eq("owner_id", session.user.id).eq("shotlist_id", id);
-      } else if (body.value.includeAdded === true) {
-        await admin.from("writer_shotlist_groups").insert({ owner_id: session.user.id, shotlist_id: id, source_scene_id: scene.sceneId, source_scene_title: scene.heading, title: scene.heading, position, source_status: "linked", creation_operation_id: crypto.randomUUID() });
-      }
-      position += 1;
-    }
-    for (const group of current.shotlist.groups.filter((group) => group.sourceSceneId && !scenes.some((scene) => scene.sceneId === group.sourceSceneId))) {
-      await admin.from("writer_shotlist_groups").update({ source_status: "missing", position, revision: group.revision + 1, updated_at: new Date().toISOString() })
-        .eq("id", group.id).eq("owner_id", session.user.id).eq("shotlist_id", id);
-      position += 1;
-    }
-    for (const group of manual) {
-      await admin.from("writer_shotlist_groups").update({ position, revision: group.revision + 1, updated_at: new Date().toISOString() })
-        .eq("id", group.id).eq("owner_id", session.user.id).eq("shotlist_id", id);
-      position += 1;
-    }
-    await admin.from("writer_shotlists").update({ source_revision: script.revision, revision: Number(owned.data.revision) + 1, updated_at: new Date().toISOString() })
-      .eq("id", id).eq("owner_id", session.user.id);
-    return writerJson({ saved: true });
+    const latestScript = await assertOwnedWriterScript(session.supabase, session.user.id, script.id);
+    if (latestScript.revision !== script.revision) return writerJson({ error: "El guion cambió durante la actualización. Reintenta.", code: "conflict" }, 409);
+    const accepted = await admin.from("writer_shotlists")
+      .update({ source_revision: script.revision, revision: Number(owned.data.revision) + 1, updated_at: new Date().toISOString() })
+      .eq("id", id).eq("owner_id", session.user.id).eq("revision", owned.data.revision).eq("script_id", script.id)
+      .select("id").maybeSingle();
+    if (accepted.error || !accepted.data) return writerJson({ error: "No pudimos confirmar la revisión del guion. Reintenta.", code: "conflict" }, 409);
+    const linkedIds = new Set(current.shotlist.groups.flatMap((group) => group.sourceSceneId ? [group.sourceSceneId] : []));
+    return writerJson({ saved: true, updatedGroups, missingGroups, addedScenes: scenes.filter((scene) => !linkedIds.has(scene.sceneId)).length, sourceRevision: script.revision });
+    } catch (cause) { return productionError(cause); }
   }
   return writerJson({ error: "Solicitud inválida.", code: "invalid" }, 400);
 }
