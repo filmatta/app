@@ -51,8 +51,10 @@ function shot(groupId: string, index: number, position: number): Shot {
   };
 }
 
-async function mockShotlistApi(page: Page) {
+async function mockShotlistApi(page: Page, configure?: (state: ReturnType<typeof fixture>) => void) {
   const state = fixture();
+  configure?.(state);
+  let createdSequence = 0;
   await page.route(`**/api/writer/production-assets/${previewAssetId}`, (route) => route.fulfill({ status: 200, contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900"><rect width="1600" height="900" fill="#090909"/><path d="M80 710h1440M160 640l310-310 250 245 210-180 500 315" fill="none" stroke="#dce8eb" stroke-width="18"/><circle cx="1170" cy="250" r="110" fill="none" stroke="#ed5a55" stroke-width="18"/><rect x="110" y="90" width="420" height="120" rx="18" fill="#111" stroke="#79c8df" stroke-width="10"/><text x="150" y="165" fill="#f1efe9" font-family="Arial" font-size="58">PLANO 01 · QA</text></svg>` }));
   await page.route(`**/api/shotlists/${shotlistId}{,/**}`, async (route: Route) => {
     const request = route.request();
@@ -65,23 +67,46 @@ async function mockShotlistApi(page: Page) {
     if (request.method() === "GET" && tail === "") return json(route, { shotlist: state, sourceChanges: { renamed: [], reordered: false, missing: [], added: [] } });
     if (request.method() === "PATCH" && tail === "") {
       const body = request.postDataJSON() as Record<string, unknown>;
+      if (body.action === "previewDelete") {
+        const ids = body.shotIds as string[];
+        const shots = state.groups.flatMap((item) => item.shots).filter((item) => ids.includes(item.id)).map((item) => ({ id: item.id, revision: item.revision }));
+        return json(route, { saved: false, shots, impact: { shots: shots.length, panels: 0, approvals: 0, productionItems: 0 } });
+      }
       if (body.action === "updateShot") {
         const target = state.groups.flatMap((item) => item.shots).find((item) => item.id === body.shotId);
-        if (target) { Object.assign(target, body.changes); target.revision += 1; }
+        if (target && target.revision !== body.expectedRevision) return json(route, { error: "El plano cambió en otra pestaña.", code: "conflict" }, 409);
+        if (target) { Object.assign(target, body.changes); target.revision += 1; state.revision += 1; }
         return json(route, { saved: true, revision: target?.revision ?? 1 });
+      }
+      if (body.action === "reorderShot") {
+        const targetGroup = state.groups.find((item) => item.shots.some((shot) => shot.id === body.shotId));
+        if (!targetGroup) return json(route, { error: "Plano no encontrado" }, 404);
+        const index = targetGroup.shots.findIndex((item) => item.id === body.shotId);
+        const [moved] = targetGroup.shots.splice(index, 1);
+        targetGroup.shots.splice(Number(body.targetIndex), 0, moved!);
+        targetGroup.shots.forEach((item, next) => { item.position = next; item.revision += 1; });
+        state.revision += 1;
+        return json(route, { saved: true });
+      }
+      if (body.action === "deleteShots") {
+        const ids = body.shotIds as string[];
+        for (const group of state.groups) group.shots = group.shots.filter((item) => !ids.includes(item.id));
+        state.revision += 1;
+        return json(route, { saved: true, id: ids.length });
       }
       if (body.action === "addGroup") {
         const id = `44444444-4444-4444-8444-${String(state.groups.length + 500).padStart(12, "0")}`;
         const target = typeof body.targetIndex === "number" ? body.targetIndex : state.groups.length;
         state.groups.splice(target, 0, { id, shotlistId, sourceSceneId: null, sourceSceneTitle: null, title: String(body.title), position: target, sourceStatus: "manual", revision: 1, shots: [] });
-        state.groups.forEach((item, index) => { item.position = index; });
+        state.groups.forEach((item, index) => { item.position = index; }); state.revision += 1;
         return json(route, { saved: true, id });
       }
       if (body.action === "addShot") {
         const targetGroup = state.groups.find((item) => item.id === body.groupId)!;
         const target = typeof body.targetIndex === "number" ? body.targetIndex : targetGroup.shots.length;
-        const created = shot(targetGroup.id, state.groups.flatMap((item) => item.shots).length + 30, target);
-        targetGroup.shots.splice(target, 0, created); targetGroup.shots.forEach((item, index) => { item.position = index; });
+        const created = shot(targetGroup.id, state.groups.flatMap((item) => item.shots).length + 30 + createdSequence++, target);
+        Object.assign(created, { shotType: "General", composition: null, subject: "", angle: "A nivel", movement: "Fijo", support: null, lens: null, setup: null, durationSeconds: null, status: "pending", description: null, intention: null, notes: null });
+        targetGroup.shots.splice(target, 0, created); targetGroup.shots.forEach((item, index) => { item.position = index; }); state.revision += 1;
         return json(route, { saved: true, id: created.id });
       }
       return json(route, { saved: true });
@@ -95,14 +120,14 @@ async function json(route: Route, body: unknown, status = 200) {
   await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
 
-async function openShotlist(page: Page, context: BrowserContext, width: number, height: number) {
+async function openShotlist(page: Page, context: BrowserContext, width: number, height: number, configure?: (state: ReturnType<typeof fixture>) => void) {
   await page.request.get("http://127.0.0.1:54329/__scenario?value=shotlist-ux");
   await session(context);
   await page.setViewportSize({ width, height });
-  const state = await mockShotlistApi(page);
+  const state = await mockShotlistApi(page, configure);
   await page.goto(`/shotlists/${shotlistId}`);
   await expect(page.getByRole("heading", { name: "Lista de planos" })).toBeVisible();
-  await expect(page.getByText("8 planos visibles")).toBeVisible();
+  if (!configure) await expect(page.getByText("8 planos visibles")).toBeVisible();
   return state;
 }
 
@@ -239,7 +264,7 @@ test("Carbon menubar, full-width scene bands and final insertion remain function
   await scroller.evaluate((node) => { node.scrollLeft = node.scrollWidth; });
   await expect(firstGroup.getByRole("button", { name: "Acciones de INT. RADIO K-17 / CABINA — NOCHE", exact: true })).toBeVisible();
 
-  const finalInsert = page.getByRole("button", { name: "＋ Añadir plano al final" });
+  const finalInsert = page.getByRole("button", { name: /Añadir plano después del último de/u }).last();
   await finalInsert.focus();
   await expect(finalInsert).toBeVisible();
   await page.screenshot({ path: `${carbonEvidence}/02-insercion-final-shotlist.png` });
@@ -253,7 +278,7 @@ test("Carbon menubar, full-width scene bands and final insertion remain function
   const dialog = page.getByRole("dialog", { name: "Nueva escena" });
   await dialog.getByLabel("Nombre").fill("ESCENA VACÍA QA");
   await dialog.getByRole("button", { name: "Crear" }).click();
-  await expect(page.getByRole("button", { name: "＋ Añadir plano al final" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Añadir plano después del último de/u }).last()).toBeVisible();
 });
 
 test("storyboard preview uses the representative panel in row and inspector without writes", async ({ page, context }) => {
@@ -337,9 +362,9 @@ test("Carbon V2 value filters, empty scene, assistance and export work through v
   await page.getByRole("dialog", { name: "Nueva escena" }).getByRole("button", { name: "Crear" }).click();
   const empty = page.locator(".shotlist-group").last();
   await expect(empty.getByText("Esta escena aún no tiene planos.")).toBeVisible();
-  await expect(empty.getByRole("button", { name: "＋ Añadir plano al final" })).toBeVisible();
+  await expect(empty.getByRole("button", { name: /Añadir plano después del último de/u })).toBeVisible();
   await page.screenshot({ path: `${carbonV2Evidence}/02-escena-vacia-anadir-plano.png` });
-  await empty.getByRole("button", { name: "＋ Añadir plano al final" }).click();
+  await empty.getByRole("button", { name: /Añadir plano después del último de/u }).click();
   await expect(empty.getByRole("row")).toHaveCount(1);
   expect(state.groups.at(-1)!.shots).toHaveLength(1);
   await expect(empty.getByRole("row").getByRole("textbox", { name: "Acción" })).toBeFocused();
@@ -441,4 +466,204 @@ test("Writer handoff, Storyboard and Production keep their approved surfaces", a
   await page.goto("/production");
   await expect(page.getByRole("heading", { name: "De la escena al plan de rodaje." })).toBeVisible();
   await expect(page.getByText("Writer y Shotlist permanecen intactos")).toBeVisible();
+});
+
+test("V3 selection, clipboard, history, context and splitters use visible controls", async ({ page, context }) => {
+  test.setTimeout(120000);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const state = await openShotlist(page, context, 1440, 900);
+  fs.mkdirSync("output/screenshots/shotlist-interaction-v3", { recursive: true });
+  await page.screenshot({ path: "output/screenshots/shotlist-interaction-v3/01-before-selection-1440.png" });
+
+  const first = page.getByRole("checkbox", { name: "Seleccionar plano 1" });
+  await first.check();
+  await page.getByRole("checkbox", { name: "Seleccionar plano 3" }).click({ modifiers: ["Shift"] });
+  await expect(page.getByText("3 planos seleccionados")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Seleccionar plano 2" })).toBeChecked();
+  await expect(first).toHaveCSS("border-top-left-radius", "50%");
+  await page.screenshot({ path: "output/screenshots/shotlist-interaction-v3/02-selection-1440.png" });
+
+  await page.getByRole("button", { name: "Copiar", exact: true }).click();
+  expect((await page.evaluate(() => navigator.clipboard.readText())).includes("Plano 01")).toBe(true);
+  const beforePaste = state.groups[0]!.shots.length;
+  await page.getByRole("button", { name: "Pegar", exact: true }).click();
+  await expect.poll(() => state.groups[0]!.shots.length).toBe(beforePaste + 3);
+  await page.getByRole("button", { name: "Deshacer edición" }).click();
+  await expect.poll(() => state.groups[0]!.shots.length).toBe(beforePaste);
+  await page.getByRole("button", { name: "Rehacer edición" }).click();
+  await expect.poll(() => state.groups[0]!.shots.length).toBe(beforePaste + 3);
+
+  const selected = page.locator(".shotlist-row").filter({ has: page.getByRole("checkbox", { name: "Seleccionar plano 2" }) });
+  await selected.click({ button: "right", position: { x: 78, y: 17 } });
+  await expect(page.getByRole("menu", { name: "Acciones de planos" }).getByRole("menuitem", { name: "Duplicar (3)" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: "Acciones de planos" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Eliminar (3)" }).click();
+  const dialog = page.getByRole("dialog", { name: "Eliminar 3 plano(s)" });
+  await expect(dialog).toContainText("no se puede deshacer");
+  await expect(dialog.getByRole("button", { name: "Cancelar" })).toBeFocused();
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await expect(page.getByRole("checkbox", { name: "Seleccionar plano 1", exact: true })).toBeChecked();
+
+  const left = page.getByRole("separator", { name: "Ajustar ancho de escenas" });
+  await left.focus();
+  await left.press("ArrowRight");
+  await expect(left).toHaveAttribute("aria-valuenow", "276");
+  await left.dblclick();
+  await expect(left).toHaveAttribute("aria-valuenow", "260");
+  const right = page.getByRole("separator", { name: "Ajustar ancho del inspector" });
+  await right.focus();
+  await right.press("ArrowLeft");
+  await expect(right).toHaveAttribute("aria-valuenow", "336");
+  await page.screenshot({ path: "output/screenshots/shotlist-interaction-v3/03-after-interaction-1440.png" });
+
+  await page.getByRole("button", { name: "Eliminar (3)" }).click();
+  await page.getByRole("dialog", { name: "Eliminar 3 plano(s)" }).getByRole("button", { name: "Eliminar definitivamente" }).click();
+  await expect.poll(() => state.groups[0]!.shots.length).toBe(5);
+  await expect(page.getByRole("button", { name: "Deshacer edición" })).toBeDisabled();
+  await page.reload();
+  await expect(page.getByText("8 planos visibles")).toBeVisible();
+});
+
+test("V3 all filtered rows and prunes hidden selection", async ({ page, context }) => {
+  test.setTimeout(90000);
+  const state = await openShotlist(page, context, 1440, 900, (fixtureState) => {
+    fixtureState.groups[0] = group("401", "INT. RADIO K-17 / CABINA — NOCHE", 0, 600);
+    fixtureState.groups[1] = group("402", "EXT. AZOTEA — AMANECER", 1, 0);
+  });
+  // La primera pintura viene del fixture SSR (8 filas); una mutación visible fuerza
+  // la recarga cliente con el fixture grande de esta prueba.
+  await page.getByRole("button", { name: "＋ Plano" }).click();
+  await expect(page.getByText("601 planos", { exact: false }).first()).toBeVisible();
+  await page.getByRole("checkbox", { name: "Seleccionar todos los planos filtrados" }).check();
+  await expect(page.getByText("601 planos seleccionados")).toBeVisible();
+  await page.getByPlaceholder("Buscar descripción u observaciones…").fill("Mara");
+  await expect(page.getByText("200 planos seleccionados")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("salieron de la selección");
+  await page.getByRole("button", { name: /MANUAL · INT. RADIO/u }).click();
+  await expect(page.getByText("200 planos seleccionados")).toBeVisible();
+  await page.getByRole("button", { name: /MANUAL · INT. RADIO/u }).click();
+  const footer = page.getByRole("button", { name: /Añadir plano después del último de INT. RADIO/u });
+  await footer.click();
+  await expect.poll(() => state.groups[0]!.shots.length).toBe(602);
+  await expect(page.getByText("El plano nuevo se muestra temporalmente")).toBeVisible();
+  await expect(page.locator(`[data-shot-id="${state.groups[0]!.shots.at(-1)!.id}"]`)).toBeVisible();
+});
+
+test("V3 responsive plus, search focus and sidebar persistence", async ({ page, context }) => {
+  test.setTimeout(90000);
+  await openShotlist(page, context, 834, 900);
+  fs.mkdirSync("output/screenshots/shotlist-interaction-v3", { recursive: true });
+  const end = page.getByRole("button", { name: /Añadir plano después del último de/u }).first();
+  await expect(end).toBeVisible();
+  await page.screenshot({ path: "output/screenshots/shotlist-interaction-v3/04-tablet-834.png" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Cerrar inspector" }).click();
+  await expect(end).toBeVisible();
+  await page.screenshot({ path: "output/screenshots/shotlist-interaction-v3/05-mobile-390.png" });
+  await end.click();
+  await expect(page.getByRole("button", { name: "Cerrar inspector" })).toBeVisible();
+  await page.screenshot({ path: "output/screenshots/shotlist-interaction-v3/05b-mobile-added-390.png" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const search = page.getByPlaceholder("Buscar descripción u observaciones…");
+  await search.click();
+  await expect(search).toBeFocused();
+  await expect(search).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await page.screenshot({ path: "output/screenshots/shotlist-interaction-v3/06-search-focus-1440.png" });
+  const left = page.getByRole("separator", { name: "Ajustar ancho de escenas" });
+  await left.focus(); await left.press("ArrowRight");
+  await expect(left).toHaveAttribute("aria-valuenow", "276");
+  await page.reload();
+  await expect(page.getByRole("separator", { name: "Ajustar ancho de escenas" })).toHaveAttribute("aria-valuenow", "276");
+});
+
+test("V3 clipboard read denial uses explicit paste and deletion blocks Production dependencies", async ({ page, context }) => {
+  test.setTimeout(90000);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const state = await openShotlist(page, context, 1440, 900);
+  await page.getByRole("checkbox", { name: "Seleccionar plano 1", exact: true }).check();
+  await page.getByRole("button", { name: "Copiar", exact: true }).click();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  await page.evaluate(() => Object.defineProperty(navigator.clipboard, "readText", { value: () => Promise.reject(new Error("denied")) }));
+  await page.getByRole("button", { name: "Pegar", exact: true }).click();
+  const fallback = page.getByRole("dialog", { name: "Pegar planos" });
+  await expect(fallback).toBeVisible();
+  await fallback.getByRole("textbox", { name: "Texto copiado de los planos" }).fill(copied);
+  await fallback.getByRole("button", { name: "Comprobar y pegar" }).click();
+  await expect.poll(() => state.groups[0]!.shots.length).toBe(6);
+
+  await page.route(`**/api/shotlists/${shotlistId}`, async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    if (body.action !== "previewDelete") return route.fallback();
+    return json(route, { saved: false, shots: [{ id: state.groups[0]!.shots[0]!.id, revision: state.groups[0]!.shots[0]!.revision }], impact: { shots: 1, panels: 0, approvals: 0, productionItems: 1 } });
+  });
+  await page.getByRole("button", { name: "Eliminar (1)" }).click();
+  const dialog = page.getByRole("dialog", { name: "Eliminar 1 plano(s)" });
+  await expect(dialog).toContainText("Production impiden eliminar");
+  await expect(dialog.getByRole("button", { name: "Eliminar definitivamente" })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await expect.poll(() => state.groups[0]!.shots.length).toBe(6);
+});
+
+test("V3 external revision conflict does not fake Undo or overwrite a field", async ({ page, context }) => {
+  test.setTimeout(90000);
+  const state = await openShotlist(page, context, 1440, 900);
+  const firstAction = page.locator(`[data-shot-id="${state.groups[0]!.shots[0]!.id}"]`).getByRole("textbox", { name: "Acción" });
+  await firstAction.fill("Acción editada para QA");
+  await firstAction.press("Tab");
+  await expect.poll(() => state.groups[0]!.shots[0]!.subject).toBe("Acción editada para QA");
+  await expect(page.getByRole("button", { name: "Deshacer edición" })).toBeEnabled();
+  state.revision += 1; // Simula otra pestaña; el clic siguiente sigue siendo sobre el control visible.
+  await page.getByRole("button", { name: "Deshacer edición" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "cambió en otra pestaña" })).toBeVisible();
+  expect(state.groups[0]!.shots[0]!.subject).toBe("Acción editada para QA");
+});
+
+test("V3 checkbox keyboard, Shift range, context singleton and editable text keep distinct actions", async ({ page, context }) => {
+  await openShotlist(page, context, 1440, 900);
+  const first = page.getByRole("checkbox", { name: "Seleccionar plano 1", exact: true });
+  const third = page.getByRole("checkbox", { name: "Seleccionar plano 3", exact: true });
+  await first.focus();
+  await first.press("Space");
+  await expect(first).toBeChecked();
+  await page.keyboard.down("Shift");
+  await third.click();
+  await page.keyboard.up("Shift");
+  await expect(page.getByText("3 planos seleccionados")).toBeVisible();
+  await page.getByRole("row", { name: /Plano 4:/u }).click({ button: "right", position: { x: 76, y: 17 } });
+  await expect(page.getByText("1 plano seleccionado")).toBeVisible();
+  await expect(page.getByRole("menu", { name: "Acciones de planos" }).getByRole("menuitem", { name: "Eliminar", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  const action = page.getByRole("row", { name: /Plano 4:/u }).getByRole("textbox", { name: "Acción" });
+  await action.click({ button: "right" });
+  await expect(page.getByRole("menu", { name: "Acciones de planos" })).toHaveCount(0);
+  await action.press("Delete");
+  await expect(page.getByRole("dialog", { name: /Eliminar/u })).toHaveCount(0);
+});
+
+test("V3 splitter pointer drag survives a storage failure without moving the document", async ({ page, context }) => {
+  const state = await openShotlist(page, context, 1440, 900);
+  const left = page.getByRole("separator", { name: "Ajustar ancho de escenas" });
+  const right = page.getByRole("separator", { name: "Ajustar ancho del inspector" });
+  const before = state.groups[0]!.shots.map((shot) => shot.id);
+  const box = (await left.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 32, box.y + 100, { steps: 4 });
+  await page.mouse.up();
+  await expect(left).toHaveAttribute("aria-valuenow", "292");
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key.startsWith("filmatta:shotlist:panel-widths:")) throw new Error("storage unavailable");
+      return original.call(this, key, value);
+    };
+  });
+  await right.focus();
+  await right.press("ArrowLeft");
+  await expect(right).toHaveAttribute("aria-valuenow", "336");
+  await expect(page.getByRole("status").filter({ hasText: "no pudimos conservarlo" })).toBeVisible();
+  expect(state.groups[0]!.shots.map((shot) => shot.id)).toEqual(before);
 });
