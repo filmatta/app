@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import ProductionCalendar from "@/components/production/ProductionCalendar";
+import ProductionDocuments from "@/components/production/ProductionDocuments";
+import { ContactCatalog, LocationCatalog } from "@/components/production/ProductionCatalogs";
 import {
   createDayAction,
   createRequirementAction,
@@ -39,15 +42,19 @@ import type {
   SourceGroup,
 } from "@/lib/production/types";
 
-type WorkspaceView = "overview" | "days" | "tasks" | "requirements" | "resources";
+type WorkspaceView = "overview" | "calendar" | "days" | "locations" | "contacts" | "documents" | "tasks" | "requirements" | "resources";
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 const nav: Array<{ id: WorkspaceView; icon: string; label: string }> = [
   { id: "overview", icon: "▦", label: "Resumen" },
-  { id: "days", icon: "□", label: "Jornadas" },
-  { id: "tasks", icon: "✓", label: "Tareas" },
-  { id: "requirements", icon: "◇", label: "Necesidades" },
+  { id: "calendar", icon: "▦", label: "Calendario" },
+  { id: "days", icon: "□", label: "Plan de rodaje" },
+  { id: "locations", icon: "⌖", label: "Locaciones" },
+  { id: "contacts", icon: "♧", label: "Contactos" },
   { id: "resources", icon: "◎", label: "Recursos" },
+  { id: "requirements", icon: "◇", label: "Necesidades" },
+  { id: "tasks", icon: "✓", label: "Tareas" },
+  { id: "documents", icon: "▤", label: "Documentos" },
 ];
 
 const requirementLabels: Record<RequirementCategory, string> = {
@@ -70,6 +77,7 @@ export default function ProductionWorkspace({ initialData: data, viewerName }: {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [locationCreateRequest, setLocationCreateRequest] = useState(0);
 
   const resolvedActiveDayId = data.days.some((day) => day.id === activeDayId) ? activeDayId : data.days[0]?.id ?? null;
   const resolvedSelectedItemId = data.scheduleItems.some((item) => item.id === selectedItemId) ? selectedItemId : null;
@@ -95,11 +103,23 @@ export default function ProductionWorkspace({ initialData: data, viewerName }: {
     : null;
   const sourceWarnings = sourceWarningList(data);
   const overlaps = activeDay ? detectOverlaps(dayItems, activeDay) : [];
+  const locations = data.resources.filter((resource) => resource.resourceType === "location");
+  const contacts = data.resources.filter((resource) => resource.resourceType === "person");
+  const locationRequirementIds = new Set(data.requirements.filter((requirement) => requirement.category === "location").map((requirement) => requirement.id));
+  const linkedLocationIds = new Set(activeDay ? data.coverages.filter((coverage) => coverage.dayId === activeDay.id && coverage.resourceId && coverage.status !== "unavailable" && locationRequirementIds.has(coverage.requirementId)).map((coverage) => coverage.resourceId) : []);
+  const dayLocations = locations.filter((location) => linkedLocationIds.has(location.id));
+  const contextLocations = dayLocations.length ? dayLocations : locations;
 
   async function mutate<T>(key: string, operation: Promise<ActionResult<T>>, after?: () => void) {
     if (busyKey) return false;
     setBusyKey(key); setSaveState("saving"); setError(null);
-    const result = await operation;
+    let result: ActionResult<T>;
+    try {
+      result = await operation;
+    } catch {
+      setBusyKey(null); setSaveState("error"); setError("No pudimos guardar el cambio. Revisa tu conexión e intenta de nuevo.");
+      return false;
+    }
     if (!result.ok) {
       setBusyKey(null); setSaveState("error"); setError(result.message);
       return false;
@@ -121,26 +141,26 @@ export default function ProductionWorkspace({ initialData: data, viewerName }: {
   }
 
   const stats = [
-    { icon: "□", value: data.days.length, label: "Jornadas creadas" },
+    { icon: "□", value: data.days.length, label: "Jornadas" },
     sourceShotCount
-      ? { icon: "▣", value: `${scheduledShots.size} / ${sourceShotCount}`, label: "Planos programados" }
-      : { icon: "▣", value: scheduledScenes.size, label: "Escenas programadas" },
-    { icon: "◇", value: activeDay ? `${confirmedDayRequirements} / ${dayRequirements.length}` : data.requirements.length, label: activeDay ? "Necesidades confirmadas" : "Necesidades registradas" },
-    { icon: "✓", value: pendingTasks, label: "Tareas pendientes" },
+      ? { icon: "▣", value: `${scheduledShots.size} / ${sourceShotCount}`, label: "Planos" }
+      : { icon: "▣", value: scheduledScenes.size, label: "Escenas" },
+    { icon: "⌖", value: locations.length, label: "Locaciones" },
+    { icon: "♧", value: contacts.length, label: "Contactos" },
   ];
 
   return (
     <div className="production-workspace">
       <header className="production-header">
-        <div className="production-brand"><Link href="/">FILMATTA</Link><span /><Link href="/production">PRODUCTION</Link></div>
-        <nav aria-label="Flujo creativo"><Link href="/writer">Writer</Link><Link href="/shotlists">Shotlist</Link><b>Production</b></nav>
-        <div className="production-header-context"><strong>{data.production.name}</strong><span className={`production-save is-${saveState}`}>{saveState === "saving" ? "Guardando…" : saveState === "error" ? "Error" : saveState === "saved" ? "Guardado" : "En línea"}</span><div className="production-avatar">{viewerName.slice(0, 2).toUpperCase()}</div></div>
+        <div className="production-brand"><Link href="/">FILMATTA</Link><span /><strong className="production-project-name" title={data.production.name}>{data.production.name}</strong></div>
+        <nav aria-label="Flujo creativo"><Link href="/writer">Writer</Link><span aria-disabled="true">Breakdown</span><Link href="/shotlists">Shotlist</Link>{data.production.shotlistId ? <Link href={`/shotlists/${data.production.shotlistId}/storyboard`}>Storyboard</Link> : <span aria-disabled="true">Storyboard</span>}<b>Production</b><span aria-disabled="true">Rec</span></nav>
+        <div className="production-header-context"><span className={`production-save is-${saveState}`}>{saveState === "saving" ? "Guardando…" : saveState === "error" ? "Error" : saveState === "saved" ? "Guardado" : "En línea"}</span><div className="production-avatar">{viewerName.slice(0, 2).toUpperCase()}</div></div>
       </header>
 
       <aside className="production-sidebar">
         <div><p>PRODUCTION ASSISTANT</p><h2>{data.production.name}</h2><span>{sourceDescription(data)}</span></div>
         <nav aria-label="Secciones de Production">
-          {nav.map((item) => <button key={item.id} type="button" className={view === item.id ? "is-active" : ""} onClick={() => setView(item.id)}><i>{item.icon}</i>{item.label}{item.id === "tasks" && pendingTasks > 0 && <em>{pendingTasks}</em>}</button>)}
+          {nav.map((item) => <button key={item.id} type="button" className={view === item.id ? "is-active" : ""} onClick={() => { if (item.id === "locations") setLocationCreateRequest(0); setView(item.id); }}><i>{item.icon}</i>{item.label}{item.id === "tasks" && pendingTasks > 0 && <em>{pendingTasks}</em>}</button>)}
         </nav>
         <section className="production-sidebar-day">
           <span>Jornada activa</span><strong>{activeDay?.name ?? "Sin jornada"}</strong><small>{activeDay?.shootDate ? formatDate(activeDay.shootDate) : "Fecha por definir"}</small>
@@ -150,12 +170,17 @@ export default function ProductionWorkspace({ initialData: data, viewerName }: {
       </aside>
 
       <main className="production-main">
-        <section className="production-title-row"><div><p className="production-eyebrow">PLANIFICACIÓN MANUAL</p><h1>{viewTitle(view)}</h1><span>{viewSubtitle(view)}</span></div>{activeDay && <div className="production-active-day"><i /> {activeDay.name} · {activeDay.shootDate ? formatDate(activeDay.shootDate) : "sin fecha"}</div>}</section>
-        <section className="production-stats" aria-label="Indicadores de producción">{stats.map((stat) => <article key={stat.label}><i>{stat.icon}</i><div><strong>{stat.value}</strong><span>{stat.label}</span></div></article>)}</section>
+        <section className="production-title-row"><div><p className="production-eyebrow">FILMATTA PRODUCTION</p><h1>{viewTitle(view)}</h1><span>{viewSubtitle(view)}</span></div><div className="production-title-actions"><div className="production-view-switch" aria-label="Vista de producción"><button type="button" className={view === "calendar" ? "is-active" : ""} onClick={() => setView("calendar")}>Calendario</button><button type="button" className={view === "days" ? "is-active" : ""} onClick={() => setView("days")}>Jornadas</button><button type="button" className={view === "locations" ? "is-active" : ""} onClick={() => { setLocationCreateRequest(0); setView("locations"); }}>Locaciones</button></div>{activeDay && <div className="production-active-day"><i /> {activeDay.name} · {activeDay.shootDate ? formatDate(activeDay.shootDate) : "sin fecha"}</div>}</div></section>
+        <section className="production-stats" aria-label="Indicadores de producción">{stats.map((stat) => <article key={stat.label}><i>{stat.icon}</i><div><strong>{stat.value}</strong><span>{stat.label}</span></div></article>)}<button type="button" className="production-pack-link" onClick={() => setView("documents")}>Production Pack →</button></section>
         {error && <div className="production-error-banner" role="alert"><span>{error}</span><button type="button" onClick={() => setError(null)}>×</button></div>}
         {sourceWarnings.length > 0 && <div className="production-source-banner"><strong>Fuente para revisar</strong><span>{sourceWarnings.join(" · ")}</span></div>}
 
-        {view === "overview" && <OverviewView data={data} stats={{ sourceShotCount, scheduledShots: scheduledShots.size, scheduledScenes: scheduledScenes.size, confirmedDayRequirements, dayRequirements: dayRequirements.length, pendingTasks }} setView={setView} />}
+        {view === "overview" && (data.days.length ? <DaysView
+          data={data} activeDay={activeDay} setActiveDayId={setActiveDayId} dayItems={dayItems} overlaps={overlaps}
+          selectedItemId={selectedItemId} setSelectedItemId={setSelectedItemId} scheduledShots={scheduledShots}
+          mutate={mutate} busyKey={busyKey} scheduleGroup={scheduleGroup}
+        /> : <OverviewView data={data} stats={{ sourceShotCount, scheduledShots: scheduledShots.size, scheduledScenes: scheduledScenes.size, confirmedDayRequirements, dayRequirements: dayRequirements.length, pendingTasks }} setView={setView} />)}
+        {view === "calendar" && <ProductionCalendar data={data} activeDayId={resolvedActiveDayId} onSelectDay={(id) => setActiveDayId(id)} onOpenDay={() => setView("days")} />}
         {view === "days" && <DaysView
           data={data} activeDay={activeDay} setActiveDayId={setActiveDayId} dayItems={dayItems} overlaps={overlaps}
           selectedItemId={selectedItemId} setSelectedItemId={setSelectedItemId} scheduledShots={scheduledShots}
@@ -166,16 +191,21 @@ export default function ProductionWorkspace({ initialData: data, viewerName }: {
           selectedCoverage={selectedCoverage} mutate={mutate} busyKey={busyKey}
         />}
         {view === "resources" && <ResourcesView data={data} mutate={mutate} busyKey={busyKey} />}
+        {view === "locations" && <LocationCatalog data={data} mutate={mutate} busyKey={busyKey} createRequest={locationCreateRequest} />}
+        {view === "contacts" && <ContactCatalog data={data} mutate={mutate} busyKey={busyKey} />}
+        {view === "documents" && <ProductionDocuments data={data} activeDayId={resolvedActiveDayId} viewerName={viewerName} />}
         {view === "tasks" && <TasksView data={data} activeDay={activeDay} mutate={mutate} busyKey={busyKey} />}
       </main>
 
       <aside className="production-context">
-        {selectedItem ? <ItemInspector productionId={data.production.id} item={selectedItem} mutate={mutate} busyKey={busyKey} /> : <>
-          <section><header><h3>Detalle de jornada</h3><span>{activeDay ? activeDay.name : "—"}</span></header>{activeDay ? <><dl className="production-context-list"><div><dt>Fecha</dt><dd>{activeDay.shootDate ? formatDate(activeDay.shootDate) : "Por definir"}</dd></div><div><dt>Zona horaria</dt><dd>{data.production.timezone}</dd></div><div><dt>Call</dt><dd>{activeDay.callTime ?? "Por definir"}</dd></div><div><dt>Wrap</dt><dd>{activeDay.wrapTime ? `${activeDay.wrapTime}${activeDay.wrapNextDay ? " +1" : ""}` : "Por definir"}</dd></div></dl><button type="button" className="production-context-action" onClick={() => setView("days")}>Editar jornada</button></> : <p className="production-context-empty">Crea una jornada para empezar a programar.</p>}</section>
-          <section><header><h3>Necesidades del día</h3><span>{activeDay ? `${confirmedDayRequirements}/${dayRequirements.length}` : "—"}</span></header>{dayRequirements.length ? <ul className="production-compact-list">{dayRequirements.slice(0, 6).map((requirement) => { const coverage = data.coverages.find((item) => item.dayId === activeDay?.id && item.requirementId === requirement.id); return <li key={requirement.id}><i className={`is-${coverage?.status ?? "unassigned"}`} /><span><strong>{requirement.name}</strong><small>{coverageLabel(coverage?.status, coverage?.needsReconfirmation)}</small></span><button type="button" onClick={() => { setSelectedRequirementId(requirement.id); setView("requirements"); }}>→</button></li>; })}</ul> : <p className="production-context-empty">{data.requirements.length ? "Programa escenas para ver sus necesidades aquí." : "Sin necesidades registradas. Desglose por revisar."}</p>}</section>
-          <section><header><h3>Clima</h3><span>—</span></header><div className="production-weather"><b>☁</b><span><strong>Sin pronóstico</strong><small>No se muestran temperaturas inventadas.</small></span></div></section>
-          <SettingsPanel data={data} mutate={mutate} busyKey={busyKey} />
-        </>}
+        {selectedItem && (view === "days" || view === "overview" && data.days.length > 0) && <ItemInspector productionId={data.production.id} item={selectedItem} mutate={mutate} busyKey={busyKey} />}
+        <section className="production-context-locations"><header><h3>{dayLocations.length ? "Locaciones del día" : "Locaciones registradas"}</h3><button type="button" className="production-context-link" onClick={() => { setLocationCreateRequest(0); setView("locations"); }}>Ver todas →</button></header>{activeDay && !dayLocations.length && locations.length > 0 && <p className="production-context-empty">Aún no hay locación asignada a esta jornada. Mostrando el directorio de la producción.</p>}{contextLocations.length ? <ul className="production-location-list">{contextLocations.slice(0, 3).map((location) => <li key={location.id}><span className="production-location-glyph" aria-hidden="true">⌖</span><div><strong>{location.name}</strong><small>{location.address ?? "Dirección por agregar"}</small></div></li>)}</ul> : <p className="production-context-empty">Aún no hay locaciones. Agrega la primera para tenerla a mano durante la planificación.</p>}<button type="button" className="production-context-action" onClick={() => { setLocationCreateRequest((current) => current + 1); setView("locations"); }}>＋ Agregar locación</button></section>
+        <section><header><h3>Clima</h3><span>{activeDay?.shootDate ? formatShortDate(activeDay.shootDate) : "—"}</span></header><div className="production-weather"><b>☼</b><span><strong>Pronóstico no disponible</strong><small>{!activeDay?.shootDate ? "Fecha de rodaje pendiente" : !dayLocations.length ? "Locación de la jornada pendiente" : "Pendiente de conexión meteorológica"}</small></span></div></section>
+        <section><header><h3>Notas de producción</h3><span>{activeDay ? activeDay.name : "—"}</span></header>{activeDay?.notes ? <p className="production-context-notes">{activeDay.notes}</p> : <p className="production-context-empty">Sin notas para esta jornada.</p>}<button type="button" className="production-context-action" onClick={() => setView("days")}>{activeDay?.notes ? "Editar notas" : "＋ Añadir nota"}</button></section>
+        <section><header><h3>Detalle de jornada</h3><span>{activeDay ? activeDay.name : "—"}</span></header>{activeDay ? <dl className="production-context-list"><div><dt>Fecha</dt><dd>{activeDay.shootDate ? formatDate(activeDay.shootDate) : "Por definir"}</dd></div><div><dt>Call</dt><dd>{activeDay.callTime ?? "Por definir"}</dd></div><div><dt>Wrap</dt><dd>{activeDay.wrapTime ? `${activeDay.wrapTime}${activeDay.wrapNextDay ? " +1" : ""}` : "Por definir"}</dd></div><div><dt>Bloques</dt><dd>{dayItems.length}</dd></div></dl> : <p className="production-context-empty">Crea una jornada para empezar a programar.</p>}</section>
+        <section><header><h3>Documentos del día</h3><button type="button" className="production-context-link" onClick={() => setView("documents")}>Ver centro →</button></header>{activeDay ? <div className="production-context-docs"><a href={`/production/${data.production.id}/documents/call-sheet?day=${activeDay.id}`} target="_blank" rel="noreferrer">▤ Call Sheet <span>↗</span></a><a href={`/production/${data.production.id}/documents/calendar`} target="_blank" rel="noreferrer">□ Calendario PDF <span>↗</span></a></div> : <p className="production-context-empty">El Call Sheet estará disponible al crear una jornada.</p>}</section>
+        <section><header><h3>Necesidades del día</h3><span>{activeDay ? `${confirmedDayRequirements}/${dayRequirements.length}` : "—"}</span></header>{dayRequirements.length ? <ul className="production-compact-list">{dayRequirements.slice(0, 6).map((requirement) => { const coverage = data.coverages.find((item) => item.dayId === activeDay?.id && item.requirementId === requirement.id); return <li key={requirement.id}><i className={`is-${coverage?.status ?? "unassigned"}`} /><span><strong>{requirement.name}</strong><small>{coverageLabel(coverage?.status, coverage?.needsReconfirmation)}</small></span><button type="button" onClick={() => { setSelectedRequirementId(requirement.id); setView("requirements"); }}>→</button></li>; })}</ul> : <p className="production-context-empty">{data.requirements.length ? "Programa escenas para ver sus necesidades aquí." : "Sin necesidades registradas."}</p>}</section>
+        <SettingsPanel data={data} mutate={mutate} busyKey={busyKey} />
       </aside>
     </div>
   );
@@ -215,7 +245,7 @@ function DaysView({ data, activeDay, setActiveDayId, dayItems, overlaps, selecte
         <header><div><p className="production-eyebrow">PLAN DE RODAJE</p><h2>{activeDay.name}</h2><span>{activeDay.shootDate ? `${formatDate(activeDay.shootDate)} · ${data.production.timezone}` : `Sin fecha · ${data.production.timezone}`}</span></div><details><summary>Editar jornada</summary><DayEditForm productionId={data.production.id} day={activeDay} itemCount={dayItems.length} coverageCount={data.coverages.filter((coverage) => coverage.dayId === activeDay.id).length} mutate={mutate} busyKey={busyKey} /></details></header>
         <div className="production-plan-toolbar"><details><summary>＋ Bloque manual</summary><ScheduleBlockForm productionId={data.production.id} dayId={activeDay.id} kind="manual" mutate={mutate} busyKey={busyKey} /></details><details><summary>＋ Logística</summary><ScheduleBlockForm productionId={data.production.id} dayId={activeDay.id} kind="logistics" mutate={mutate} busyKey={busyKey} /></details><span>{dayItems.length} bloques · {dayItems.filter((item) => item.shootMinutes).reduce((total, item) => total + (item.shootMinutes ?? 0), 0)} min estimados</span></div>
         {overlaps.length > 0 && <div className="production-overlap-warning">Revisar solapamientos: {overlaps.join(", ")}. No se reajustaron horarios automáticamente.</div>}
-        <ProductionTimeline day={activeDay} items={dayItems} selectedItemId={selectedItemId} onSelect={setSelectedItemId} />
+        <ProductionTimeline data={data} day={activeDay} items={dayItems} selectedItemId={selectedItemId} onSelect={setSelectedItemId} />
       </section>
       <section className="production-source-catalog">
         <header><div><h2>Escenas y planos</h2><p>Disponibles y sin programar. La duración en pantalla no se usa como tiempo de rodaje.</p></div><span>{scheduledShots.size}/{data.source.groups.reduce((total, group) => total + group.shots.length, 0) || data.source.scenes.length} programados</span></header>
@@ -229,11 +259,33 @@ function DaysView({ data, activeDay, setActiveDayId, dayItems, overlaps, selecte
   </div>;
 }
 
-function ProductionTimeline({ day, items, selectedItemId, onSelect }: { day: ProductionDay; items: ProductionScheduleItem[]; selectedItemId: string | null; onSelect: (id: string) => void }) {
+function ProductionTimeline({ data, day, items, selectedItemId, onSelect }: { data: ProductionWorkspaceData; day: ProductionDay; items: ProductionScheduleItem[]; selectedItemId: string | null; onSelect: (id: string) => void }) {
   const timed = items.filter((item) => item.startTime);
-  if (!day.shootDate || !timed.length) return <div className="production-sequence"><header><span>ORDEN</span><span>Sin horario</span><span>TIEMPO DE RODAJE</span></header>{items.length ? items.map((item, index) => <button type="button" key={item.id} className={item.id === selectedItemId ? "is-selected" : ""} onClick={() => onSelect(item.id)}><i>{index + 1}</i><span><strong>{item.title}</strong><small>{item.itemType === "logistics" ? "Logística" : item.itemType === "shot" ? "Plano" : item.itemType === "scene" ? "Escena" : "Manual"}</small></span><em>{item.shootMinutes ? `${item.shootMinutes} min` : "Por estimar"}</em></button>) : <div className="production-sequence-empty"><span>□</span><strong>Sin bloques programados</strong><small>Añade una escena, un plano o un bloque manual.</small></div>}</div>;
+  const blocks = timelineVisualBlocks(items, data);
+  if (!day.shootDate || !timed.length) return <div className="production-sequence"><header><span>ORDEN</span><span>Sin horario</span><span>TIEMPO DE RODAJE</span></header>{blocks.length ? blocks.map((block, index) => <button type="button" key={block.id} className={block.items.some((item) => item.id === selectedItemId) ? "is-selected" : ""} onClick={() => onSelect(block.id)}><i>{index + 1}</i><span><strong>{block.title}</strong><small>{block.detail}</small></span><em>{block.minutes ? `${block.minutes} min` : "Por estimar"}</em></button>) : <div className="production-sequence-empty"><span>□</span><strong>Sin bloques programados</strong><small>Añade una escena, un plano o un bloque manual.</small></div>}</div>;
   const scale = timelineScale(day, timed);
-  return <><div className="production-timeline"><div className="production-timeline-axis">{scale.ticks.map((tick) => <span key={tick.value} style={{ left: `${tick.left}%` }}>{tick.label}</span>)}</div><div className="production-timeline-track">{timed.map((item) => { const box = timelineBox(item, scale.start, scale.end); return <button type="button" key={item.id} className={`${item.id === selectedItemId ? "is-selected" : ""} is-${item.itemType}`} style={{ left: `${box.left}%`, width: `${box.width}%` }} onClick={() => onSelect(item.id)}><strong>{item.title}</strong><small>{item.startTime}–{item.endTime ?? "?"}{item.endNextDay ? "+1" : ""}</small></button>; })}</div></div><div className="production-mobile-program">{items.map((item) => <button type="button" key={item.id} onClick={() => onSelect(item.id)}><time>{item.startTime ?? "—"}</time><span><strong>{item.title}</strong><small>{item.shootMinutes ? `${item.shootMinutes} min de rodaje` : "Rodaje por estimar"}</small></span></button>)}</div></>;
+  return <><div className="production-timeline"><div className="production-timeline-axis">{scale.ticks.map((tick) => <span key={tick.value} style={{ left: `${tick.left}%` }}>{tick.label}</span>)}</div><div className="production-timeline-track">{blocks.filter((block) => block.startTime).map((block) => { const last = block.items.at(-1)!; const box = timelineBox({ ...block.items[0], startTime: block.startTime, endTime: last.endTime, endNextDay: last.endNextDay }, scale.start, scale.end); return <button type="button" key={block.id} title={`${block.title}\n${block.detail}`} className={`${block.items.some((item) => item.id === selectedItemId) ? "is-selected" : ""} is-${block.itemType}`} style={{ left: `${box.left}%`, width: `${box.width}%` }} onClick={() => onSelect(block.id)}><strong>{block.title}</strong><small>{block.itemType === "logistics" ? `${block.startTime}–${last.endTime ?? "?"}` : block.detail}</small></button>; })}</div></div><div className="production-mobile-program">{blocks.map((block) => <button type="button" key={block.id} onClick={() => onSelect(block.id)}><time>{block.startTime ?? "—"}</time><span><strong>{block.title}</strong><small>{block.detail}</small></span></button>)}</div></>;
+}
+
+function timelineVisualBlocks(items: ProductionScheduleItem[], data: ProductionWorkspaceData) {
+  const groups: Array<{ id: string; sceneKey: string | null; items: ProductionScheduleItem[] }> = [];
+  for (const item of items) {
+    const sceneKey = item.itemType === "scene" || item.itemType === "shot" ? item.sourceSceneId ?? item.sourceGroupId : null;
+    const previous = groups.at(-1);
+    if (sceneKey && previous?.sceneKey === sceneKey) previous.items.push(item);
+    else groups.push({ id: item.id, sceneKey, items: [item] });
+  }
+  return groups.map((group) => {
+    const first = group.items[0];
+    const minutes = group.items.reduce((total, item) => total + (item.shootMinutes ?? 0), 0);
+    const scene = first.sourceSceneId ? data.source.scenes.find((item) => item.id === first.sourceSceneId) : null;
+    const sourceGroup = first.sourceGroupId ? data.source.groups.find((item) => item.id === first.sourceGroupId) : null;
+    const shotNumbers = group.items.flatMap((item) => sourceGroup?.shots.find((shot) => shot.id === item.sourceShotId)?.position == null ? [] : [sourceGroup.shots.find((shot) => shot.id === item.sourceShotId)!.position + 1]);
+    const range = shotNumbers.length ? `${Math.min(...shotNumbers)}${shotNumbers.length > 1 ? `–${Math.max(...shotNumbers)}` : ""}` : `${group.items.length}`;
+    const title = group.sceneKey ? `ESC. ${scene ? String(scene.position + 1).padStart(2, "0") : "—"} · ${scene?.title ?? sourceGroup?.title ?? first.sourceLabel ?? first.title}` : first.itemType === "logistics" ? first.title.toUpperCase() : first.title;
+    const detail = group.sceneKey ? `Planos ${range} · ${minutes ? `${minutes} min` : "tiempo por estimar"}` : `${first.startTime ?? "—"}–${first.endTime ?? "?"}${minutes ? ` · ${minutes} min` : ""}`;
+    return { ...group, itemType: first.itemType, title, detail, minutes, startTime: group.items.find((item) => item.startTime)?.startTime ?? null };
+  });
 }
 
 function RequirementsView({ data, activeDay, selectedRequirement, setSelectedRequirementId, selectedCoverage, mutate, busyKey }: {
@@ -261,7 +313,7 @@ function TasksView({ data, activeDay, mutate, busyKey }: { data: ProductionWorks
 }
 
 function DayCreateForm({ productionId, nextNumber, mutate, busyKey }: { productionId: string; nextNumber: number; mutate: <T>(key: string, operation: Promise<ActionResult<T>>, after?: () => void) => Promise<boolean>; busyKey: string | null }) {
-  return <form className="production-popover-form" onSubmit={(event) => { event.preventDefault(); const values = new FormData(event.currentTarget); void mutate("create-day", createDayAction({ productionId, name: String(values.get("name")), shootDate: String(values.get("date")), callTime: String(values.get("call")), wrapTime: String(values.get("wrap")), wrapNextDay: values.get("nextDay") === "on", notes: String(values.get("notes")) }), () => event.currentTarget.reset()); }}><label>Nombre<input name="name" defaultValue={`Día ${nextNumber}`} required maxLength={120} /></label><div><label>Fecha<input type="date" name="date" /></label><label>Call<input type="time" name="call" /></label></div><div><label>Wrap<input type="time" name="wrap" /></label><label className="production-check"><input type="checkbox" name="nextDay" /> Día siguiente</label></div><label>Notas<textarea name="notes" maxLength={4000} /></label><button className="production-primary" disabled={Boolean(busyKey)}>Crear jornada</button></form>;
+  return <form className="production-popover-form" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget; const values = new FormData(form); void mutate("create-day", createDayAction({ productionId, name: String(values.get("name")), shootDate: String(values.get("date")), callTime: String(values.get("call")), wrapTime: String(values.get("wrap")), wrapNextDay: values.get("nextDay") === "on", notes: String(values.get("notes")) }), () => form.reset()); }}><label>Nombre<input name="name" defaultValue={`Día ${nextNumber}`} required maxLength={120} /></label><div><label>Fecha<input type="date" name="date" /></label><label>Call<input type="time" name="call" /></label></div><div><label>Wrap<input type="time" name="wrap" /></label><label className="production-check"><input type="checkbox" name="nextDay" /> Día siguiente</label></div><label>Notas<textarea name="notes" maxLength={4000} /></label><button className="production-primary" disabled={Boolean(busyKey)}>Crear jornada</button></form>;
 }
 
 function DayEditForm({ productionId, day, itemCount, coverageCount, mutate, busyKey }: { productionId: string; day: ProductionDay; itemCount: number; coverageCount: number; mutate: <T>(key: string, operation: Promise<ActionResult<T>>, after?: () => void) => Promise<boolean>; busyKey: string | null }) {
@@ -269,13 +321,13 @@ function DayEditForm({ productionId, day, itemCount, coverageCount, mutate, busy
 }
 
 function ScheduleBlockForm({ productionId, dayId, kind, mutate, busyKey }: { productionId: string; dayId: string; kind: "manual" | "logistics"; mutate: <T>(key: string, operation: Promise<ActionResult<T>>, after?: () => void) => Promise<boolean>; busyKey: string | null }) {
-  return <form className="production-popover-form" onSubmit={(event) => { event.preventDefault(); const values = new FormData(event.currentTarget); void mutate(`block-${kind}`, createScheduleBlockAction({ productionId, dayId, itemType: kind, logisticsType: kind === "logistics" ? String(values.get("logistics")) as LogisticsType : null, title: String(values.get("title")), notes: String(values.get("notes")), shootMinutes: values.get("minutes") ? Number(values.get("minutes")) : null, startTime: String(values.get("start")), endTime: String(values.get("end")), endNextDay: values.get("nextDay") === "on" }), () => event.currentTarget.reset()); }}>
+  return <form className="production-popover-form" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget; const values = new FormData(form); void mutate(`block-${kind}`, createScheduleBlockAction({ productionId, dayId, itemType: kind, logisticsType: kind === "logistics" ? String(values.get("logistics")) as LogisticsType : null, title: String(values.get("title")), notes: String(values.get("notes")), shootMinutes: values.get("minutes") ? Number(values.get("minutes")) : null, startTime: String(values.get("start")), endTime: String(values.get("end")), endNextDay: values.get("nextDay") === "on" }), () => form.reset()); }}>
     {kind === "logistics" && <label>Tipo<select name="logistics"><option value="call">Call</option><option value="meal">Comida</option><option value="transfer">Traslado</option><option value="break">Pausa</option><option value="other">Otro</option></select></label>}<label>Nombre<input name="title" required maxLength={200} placeholder={kind === "manual" ? "Escena o bloque manual" : "Comida, traslado…"} /></label><div><label>Inicio<input type="time" name="start" /></label><label>Fin<input type="time" name="end" /></label></div><div><label>Rodaje (min)<input type="number" name="minutes" min={1} max={1440} /></label><label className="production-check"><input type="checkbox" name="nextDay" /> Fin +1 día</label></div><label>Notas<textarea name="notes" maxLength={4000} /></label><button className="production-primary" disabled={Boolean(busyKey)}>Añadir bloque</button>
   </form>;
 }
 
 function RequirementCreateForm({ productionId, mutate, busyKey }: { productionId: string; mutate: <T>(key: string, operation: Promise<ActionResult<T>>, after?: () => void) => Promise<boolean>; busyKey: string | null }) {
-  return <form className="production-popover-form" onSubmit={(event) => { event.preventDefault(); const values = new FormData(event.currentTarget); void mutate("create-requirement", createRequirementAction({ productionId, name: String(values.get("name")), category: String(values.get("category")) as RequirementCategory, notes: String(values.get("notes")) }), () => event.currentTarget.reset()); }}><label>Nombre<input name="name" required maxLength={160} placeholder="Casete, Mara, Casa Principal…" /></label><label>Categoría<select name="category">{Object.entries(requirementLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Notas<textarea name="notes" maxLength={4000} /></label><button className="production-primary" disabled={Boolean(busyKey)}>Crear necesidad</button></form>;
+  return <form className="production-popover-form" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget; const values = new FormData(form); void mutate("create-requirement", createRequirementAction({ productionId, name: String(values.get("name")), category: String(values.get("category")) as RequirementCategory, notes: String(values.get("notes")) }), () => form.reset()); }}><label>Nombre<input name="name" required maxLength={160} placeholder="Casete, Mara, Casa Principal…" /></label><label>Categoría<select name="category">{Object.entries(requirementLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Notas<textarea name="notes" maxLength={4000} /></label><button className="production-primary" disabled={Boolean(busyKey)}>Crear necesidad</button></form>;
 }
 
 function RequirementEditForm({ productionId, requirement, mutate, busyKey }: { productionId: string; requirement: ProductionRequirement; mutate: <T>(key: string, operation: Promise<ActionResult<T>>, after?: () => void) => Promise<boolean>; busyKey: string | null }) {
@@ -283,7 +335,7 @@ function RequirementEditForm({ productionId, requirement, mutate, busyKey }: { p
 }
 
 function ResourceCreateForm({ productionId, mutate, busyKey }: { productionId: string; mutate: <T>(key: string, operation: Promise<ActionResult<T>>, after?: () => void) => Promise<boolean>; busyKey: string | null }) {
-  return <form className="production-popover-form is-wide" onSubmit={(event) => { event.preventDefault(); const values = new FormData(event.currentTarget); void mutate("create-resource", createResourceAction({ productionId, name: String(values.get("name")), resourceType: String(values.get("type")) as ResourceType, contact: String(values.get("contact")), address: String(values.get("address")), availabilityNotes: String(values.get("availability")), notes: String(values.get("notes")) }), () => event.currentTarget.reset()); }}><label>Nombre<input name="name" required maxLength={160} /></label><label>Tipo<select name="type">{Object.entries(resourceLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Contacto opcional<input name="contact" maxLength={500} /></label><label>Dirección (locaciones)<input name="address" maxLength={1000} /></label><label>Disponibilidad declarada<textarea name="availability" maxLength={2000} /></label><label>Notas<textarea name="notes" maxLength={4000} /></label><button className="production-primary" disabled={Boolean(busyKey)}>Guardar recurso</button></form>;
+  return <form className="production-popover-form is-wide" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget; const values = new FormData(form); void mutate("create-resource", createResourceAction({ productionId, name: String(values.get("name")), resourceType: String(values.get("type")) as ResourceType, contact: String(values.get("contact")), address: String(values.get("address")), availabilityNotes: String(values.get("availability")), notes: String(values.get("notes")) }), () => form.reset()); }}><label>Nombre<input name="name" required maxLength={160} /></label><label>Tipo<select name="type">{Object.entries(resourceLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Contacto opcional<input name="contact" maxLength={500} /></label><label>Dirección (locaciones)<input name="address" maxLength={1000} /></label><label>Disponibilidad declarada<textarea name="availability" maxLength={2000} /></label><label>Notas<textarea name="notes" maxLength={4000} /></label><button className="production-primary" disabled={Boolean(busyKey)}>Guardar recurso</button></form>;
 }
 
 function ResourceEditForm({ productionId, resource, mutate, busyKey }: { productionId: string; resource: ProductionWorkspaceData["resources"][number]; mutate: <T>(key: string, operation: Promise<ActionResult<T>>, after?: () => void) => Promise<boolean>; busyKey: string | null }) {
@@ -303,7 +355,7 @@ function CoverageForm({ data, day, requirement, coverage, mutate, busyKey }: { d
 }
 
 function TaskCreateForm({ data, activeDay, mutate, busyKey }: { data: ProductionWorkspaceData; activeDay: ProductionDay | null; mutate: <T>(key: string, operation: Promise<ActionResult<T>>, after?: () => void) => Promise<boolean>; busyKey: string | null }) {
-  return <form className="production-popover-form is-wide" onSubmit={(event) => { event.preventDefault(); const values = new FormData(event.currentTarget); const dayId = String(values.get("day")); void mutate("create-task", createTaskAction({ productionId: data.production.id, title: String(values.get("title")), status: "pending", priority: String(values.get("priority")) as "low" | "medium" | "high", assigneeText: String(values.get("assignee")), dueDate: String(values.get("date")), department: String(values.get("department")), notes: String(values.get("notes")), linkType: dayId ? "day" : null, linkId: dayId || null }), () => event.currentTarget.reset()); }}><label>Título<input name="title" required maxLength={240} /></label><div><label>Prioridad<select name="priority"><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option></select></label><label>Fecha<input type="date" name="date" /></label></div><label>Responsable manual<input name="assignee" maxLength={160} placeholder="Nombre o rol" /></label><label>Departamento<input name="department" maxLength={120} /></label><label>Jornada opcional<select name="day" defaultValue={activeDay?.id ?? ""}><option value="">Sin vínculo</option>{data.days.map((day) => <option value={day.id} key={day.id}>{day.name}</option>)}</select></label><label>Nota<textarea name="notes" maxLength={4000} /></label><button className="production-primary" disabled={Boolean(busyKey)}>Crear tarea</button></form>;
+  return <form className="production-popover-form is-wide" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget; const values = new FormData(form); const dayId = String(values.get("day")); void mutate("create-task", createTaskAction({ productionId: data.production.id, title: String(values.get("title")), status: "pending", priority: String(values.get("priority")) as "low" | "medium" | "high", assigneeText: String(values.get("assignee")), dueDate: String(values.get("date")), department: String(values.get("department")), notes: String(values.get("notes")), linkType: dayId ? "day" : null, linkId: dayId || null }), () => form.reset()); }}><label>Título<input name="title" required maxLength={240} /></label><div><label>Prioridad<select name="priority"><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option></select></label><label>Fecha<input type="date" name="date" /></label></div><label>Responsable manual<input name="assignee" maxLength={160} placeholder="Nombre o rol" /></label><label>Departamento<input name="department" maxLength={120} /></label><label>Jornada opcional<select name="day" defaultValue={activeDay?.id ?? ""}><option value="">Sin vínculo</option>{data.days.map((day) => <option value={day.id} key={day.id}>{day.name}</option>)}</select></label><label>Nota<textarea name="notes" maxLength={4000} /></label><button className="production-primary" disabled={Boolean(busyKey)}>Crear tarea</button></form>;
 }
 
 function TaskEditForm({ productionId, task, mutate, busyKey }: { productionId: string; task: ProductionWorkspaceData["tasks"][number]; mutate: <T>(key: string, operation: Promise<ActionResult<T>>, after?: () => void) => Promise<boolean>; busyKey: string | null }) {
@@ -327,8 +379,8 @@ function sourceWarningList(data: ProductionWorkspaceData) {
   return warnings;
 }
 function sourceDescription(data: ProductionWorkspaceData) { return data.source.shotlist?.available ? data.source.shotlist.title : data.source.script?.available ? data.source.script.title : data.production.scriptId || data.production.shotlistId ? "Fuente no disponible" : "Planificación manual"; }
-function viewTitle(view: WorkspaceView) { return ({ overview: "Production Assistant", days: "Jornadas", tasks: "Tareas", requirements: "Necesidades", resources: "Recursos" } as const)[view]; }
-function viewSubtitle(view: WorkspaceView) { return ({ overview: "Convierte tus escenas en un plan de rodaje real.", days: "Ordena escenas, planos y logística en una línea de tiempo.", tasks: "Trabajo pendiente sin convertir Production en un gestor genérico.", requirements: "Qué se necesita, con qué recurso y para qué jornada.", resources: "Personas y elementos reales disponibles para el plan." } as const)[view]; }
+function viewTitle(view: WorkspaceView) { return ({ overview: "Production Assistant", calendar: "Calendario", days: "Plan de rodaje", locations: "Locaciones", contacts: "Contactos", documents: "Documentos", tasks: "Tareas", requirements: "Necesidades", resources: "Recursos" } as const)[view]; }
+function viewSubtitle(view: WorkspaceView) { return ({ overview: "Planifica. Organiza. Rueda.", calendar: "Consulta tus fechas de rodaje y abre cada jornada.", days: "Ordena escenas, planos y logística en una línea de tiempo.", locations: "Direcciones e indicaciones listas para el equipo.", contacts: "Tu agenda de personas vinculadas a esta producción.", documents: "Prepara hojas de producción con datos vigentes.", tasks: "Trabajo pendiente de la producción.", requirements: "Qué se necesita, con qué recurso y para qué jornada.", resources: "Elementos reales disponibles para el plan." } as const)[view]; }
 function coverageLabel(status?: CoverageStatus, reconfirm = false) { if (reconfirm) return "Reconfirmar"; return ({ unassigned: "Sin asignar", tentative: "Tentativo", confirmed: "Confirmado", unavailable: "No disponible" } as const)[status ?? "unassigned"]; }
 function taskStatusLabel(status: "pending" | "in_progress" | "done") { return status === "pending" ? "Pendientes" : status === "in_progress" ? "En progreso" : "Listas"; }
 function priorityLabel(priority: "low" | "medium" | "high") { return priority === "low" ? "Baja" : priority === "medium" ? "Media" : "Alta"; }

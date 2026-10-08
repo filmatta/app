@@ -381,15 +381,22 @@ export async function createResourceAction(input: {
   address?: string | null;
   notes?: string | null;
   availabilityNotes?: string | null;
+  role?: string | null;
+  phone?: string | null;
+  includeInCallSheet?: boolean;
 }): Promise<ActionResult<{ id: string }>> {
   try {
     const { db, userId } = await session();
     if (!validUuid(input.productionId) || !clean(input.name, 160) || !RESOURCE_TYPES.has(input.resourceType)
-      || !optionalText(input.contact, 500) || !optionalText(input.address, 1000) || !optionalText(input.notes, 4000) || !optionalText(input.availabilityNotes, 2000)) invalid();
+      || !optionalText(input.contact, 500) || !optionalText(input.address, 1000) || !optionalText(input.notes, 4000) || !optionalText(input.availabilityNotes, 2000)
+      || !optionalText(input.role, 120) || !optionalText(input.phone, 60) || input.includeInCallSheet !== undefined && typeof input.includeInCallSheet !== "boolean") invalid();
     await assertOwnedProduction(db, userId, input.productionId);
     const result = await db.from("production_resources").insert({
       owner_id: userId, production_id: input.productionId, name: input.name.trim(), resource_type: input.resourceType,
       contact: cleanNull(input.contact), address: cleanNull(input.address), notes: cleanNull(input.notes), availability_notes: cleanNull(input.availabilityNotes),
+      role: input.resourceType === "person" ? cleanNull(input.role) : null,
+      phone: input.resourceType === "person" ? cleanNull(input.phone) : null,
+      include_in_call_sheet: input.resourceType === "person" && input.includeInCallSheet === true,
     }).select("id").single();
     if (result.error || !result.data) storage("No pudimos crear el recurso.");
     await touch(db, userId, input.productionId); refresh(input.productionId);
@@ -407,15 +414,24 @@ export async function updateResourceAction(input: {
   address?: string | null;
   notes?: string | null;
   availabilityNotes?: string | null;
+  role?: string | null;
+  phone?: string | null;
+  includeInCallSheet?: boolean;
 }): Promise<ActionResult> {
   try {
     const { db, userId } = await session();
     if (![input.productionId, input.resourceId].every(validUuid) || !positiveInteger(input.expectedRevision) || !clean(input.name, 160)
       || !RESOURCE_TYPES.has(input.resourceType) || !optionalText(input.contact, 500) || !optionalText(input.address, 1000)
-      || !optionalText(input.notes, 4000) || !optionalText(input.availabilityNotes, 2000)) invalid();
+      || !optionalText(input.notes, 4000) || !optionalText(input.availabilityNotes, 2000)
+      || !optionalText(input.role, 120) || !optionalText(input.phone, 60) || input.includeInCallSheet !== undefined && typeof input.includeInCallSheet !== "boolean") invalid();
     const result = await db.from("production_resources").update({
       name: input.name.trim(), resource_type: input.resourceType, contact: cleanNull(input.contact), address: cleanNull(input.address),
       notes: cleanNull(input.notes), availability_notes: cleanNull(input.availabilityNotes), revision: input.expectedRevision + 1, updated_at: now(),
+      ...(input.resourceType !== "person" ? { role: null, phone: null, include_in_call_sheet: false } : {
+        ...(input.role !== undefined ? { role: cleanNull(input.role) } : {}),
+        ...(input.phone !== undefined ? { phone: cleanNull(input.phone) } : {}),
+        ...(input.includeInCallSheet !== undefined ? { include_in_call_sheet: input.includeInCallSheet } : {}),
+      }),
     }).eq("id", input.resourceId).eq("production_id", input.productionId).eq("owner_id", userId).eq("revision", input.expectedRevision)
       .select("id").maybeSingle();
     if (result.error) storage("No pudimos guardar el recurso.");
@@ -441,12 +457,22 @@ export async function upsertCoverageAction(input: {
     if (![input.productionId, input.requirementId, input.dayId].every(validUuid) || input.resourceId && !validUuid(input.resourceId)
       || !["unassigned", "tentative", "confirmed", "unavailable"].includes(input.status)
       || !optionalTime(input.requiredTime) || !optionalTime(input.arrivalTime) || !optionalText(input.notes, 2000)) invalid();
-    const [day] = await Promise.all([
+    const [day, requirement, resource] = await Promise.all([
       assertOwnedChild(db, "production_days", input.dayId, input.productionId, userId, "id,shoot_date"),
-      assertOwnedChild(db, "production_requirements", input.requirementId, input.productionId, userId),
-      input.resourceId ? assertOwnedChild(db, "production_resources", input.resourceId, input.productionId, userId) : Promise.resolve(null),
+      assertOwnedChild(db, "production_requirements", input.requirementId, input.productionId, userId, "id,category"),
+      input.resourceId ? assertOwnedChild(db, "production_resources", input.resourceId, input.productionId, userId, "id,resource_type") : Promise.resolve(null),
     ]);
     if (input.status !== "unassigned" && !input.resourceId) invalid("Selecciona un recurso para cambiar el estado.");
+    if (input.status !== "unassigned" && resource) {
+      const category = String(requirement.category);
+      const type = String(resource.resource_type);
+      if (category === "location" && type !== "location" || category !== "location" && type === "location") {
+        invalid("Asigna una locación únicamente a una necesidad de locación.");
+      }
+      if ((category === "talent" || category === "crew") && type !== "person") {
+        invalid("Asigna una persona a las necesidades de talento o crew.");
+      }
+    }
     if (input.status === "confirmed" && !day.shoot_date) invalid("Define la fecha de la jornada antes de confirmar un recurso.");
     const values = {
       resource_id: input.status === "unassigned" ? null : input.resourceId,

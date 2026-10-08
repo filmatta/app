@@ -7,6 +7,7 @@ import type {
   EligibleRequirement,
   ProductionCoverage,
   ProductionDay,
+  ProductionDocumentExport,
   ProductionListItem,
   ProductionPlan,
   ProductionRequirement,
@@ -160,7 +161,7 @@ export async function loadEligibleRequirements(
 
 export async function loadProductionWorkspace(db: SupabaseClient, ownerId: string, productionId: string): Promise<ProductionWorkspaceData> {
   const production = await assertOwnedProduction(db, ownerId, productionId);
-  const [days, schedule, requirements, links, resources, coverages, tasks, sourceOptions] = await Promise.all([
+  const [days, schedule, requirements, links, resources, coverages, tasks, documentExports, sourceOptions] = await Promise.all([
     db.from("production_days").select("id,production_id,position,name,shoot_date,call_time,wrap_time,wrap_next_day,notes,revision")
       .eq("owner_id", ownerId).eq("production_id", productionId).order("position"),
     db.from("production_schedule_items").select("id,production_id,day_id,position,item_type,logistics_type,title,notes,source_scene_id,source_group_id,source_shot_id,source_label,source_revision,shoot_minutes,start_time,end_time,end_next_day,revision")
@@ -168,18 +169,25 @@ export async function loadProductionWorkspace(db: SupabaseClient, ownerId: strin
     db.from("production_requirements").select("id,production_id,category,name,origin,source_element_id,source_script_id,source_identity_key,source_label,source_revision,notes,revision")
       .eq("owner_id", ownerId).eq("production_id", productionId).order("category").order("name"),
     db.from("production_requirement_scenes").select("requirement_id,source_scene_id").eq("owner_id", ownerId).eq("production_id", productionId),
-    db.from("production_resources").select("id,production_id,name,resource_type,contact,address,notes,availability_notes,revision")
+    db.from("production_resources").select("id,production_id,name,resource_type,contact,address,notes,availability_notes,role,phone,include_in_call_sheet,revision")
       .eq("owner_id", ownerId).eq("production_id", productionId).order("resource_type").order("name"),
     db.from("production_coverages").select("id,production_id,requirement_id,day_id,resource_id,status,required_time,arrival_time,notes,confirmed_for_date,needs_reconfirmation,revision")
       .eq("owner_id", ownerId).eq("production_id", productionId),
     db.from("production_tasks").select("id,production_id,title,status,priority,assignee_text,assignee_resource_id,due_date,department,notes,day_id,schedule_item_id,requirement_id,resource_id,revision")
       .eq("owner_id", ownerId).eq("production_id", productionId).order("created_at", { ascending: false }),
+    db.from("production_document_exports").select("document_key,version_major,version_minor,generated_at,generated_by,source_updated_at,source_fingerprint,revision")
+      .eq("owner_id", ownerId).eq("production_id", productionId),
     listProductionSourceOptions(db, ownerId),
   ]);
-  if ([days, schedule, requirements, links, resources, coverages, tasks].some((result) => result.error)) {
+  if ([days, schedule, requirements, links, resources, coverages, tasks, documentExports].some((result) => result.error)) {
     throw new ProductionError("storage", "No pudimos cargar el espacio de producción.");
   }
   const source = await loadProductionSourceState(db, ownerId, production);
+  const storyboardPanels = production.shotlistId
+    ? await db.from("storyboard_panels").select("id,current_revision_id,updated_at")
+      .eq("owner_id", ownerId).eq("shotlist_id", production.shotlistId).order("id")
+    : null;
+  if (storyboardPanels?.error) throw new ProductionError("storage", "No pudimos cargar el estado del Storyboard.");
   const linksByRequirement = new Map<string, string[]>();
   for (const row of links.data ?? []) {
     const id = String(row.requirement_id);
@@ -193,6 +201,9 @@ export async function loadProductionWorkspace(db: SupabaseClient, ownerId: strin
     resources: (resources.data ?? []).map(mapResource),
     coverages: (coverages.data ?? []).map(mapCoverage),
     tasks: (tasks.data ?? []).map(mapTask),
+    documentExports: (documentExports.data ?? []).map(mapDocumentExport),
+    storyboardFingerprint: storyboardPanels?.data?.map((row) => `${row.id}:${row.current_revision_id}`).join("|") ?? null,
+    storyboardUpdatedAt: storyboardPanels?.data?.reduce<string | null>((latest, row) => !latest || String(row.updated_at) > latest ? String(row.updated_at) : latest, null) ?? null,
     source,
     sourceOptions,
   };
@@ -202,11 +213,11 @@ async function loadProductionSourceState(db: SupabaseClient, ownerId: string, pr
   let script: ProductionSourceState["script"] = null;
   let scenes: ProductionSourceState["scenes"] = [];
   if (production.scriptId) {
-    const result = await db.from("writer_scripts").select("id,title,document,revision").eq("id", production.scriptId).eq("owner_id", ownerId).maybeSingle();
+    const result = await db.from("writer_scripts").select("id,title,document,revision,updated_at").eq("id", production.scriptId).eq("owner_id", ownerId).maybeSingle();
     if (result.error || !result.data) script = { id: production.scriptId, available: false };
     else {
       const scriptRevision = Number(result.data.revision);
-      script = { id: production.scriptId, title: String(result.data.title), revision: scriptRevision, available: true };
+      script = { id: production.scriptId, title: String(result.data.title), revision: scriptRevision, updatedAt: String(result.data.updated_at), available: true };
       const document = validateWriterDocument(result.data.document);
       if (document.ok) scenes = deriveWriterSceneSources(document.document).map((scene, position) => ({ id: scene.sceneId, title: scene.heading, position, revision: scriptRevision }));
     }
@@ -214,10 +225,10 @@ async function loadProductionSourceState(db: SupabaseClient, ownerId: string, pr
   let shotlist: ProductionSourceState["shotlist"] = null;
   let groups: SourceGroup[] = [];
   if (production.shotlistId) {
-    const result = await db.from("writer_shotlists").select("id,title,script_id,revision").eq("id", production.shotlistId).eq("owner_id", ownerId).maybeSingle();
+    const result = await db.from("writer_shotlists").select("id,title,script_id,revision,updated_at").eq("id", production.shotlistId).eq("owner_id", ownerId).maybeSingle();
     if (result.error || !result.data) shotlist = { id: production.shotlistId, available: false };
     else {
-      shotlist = { id: production.shotlistId, title: String(result.data.title), revision: Number(result.data.revision), scriptId: result.data.script_id ? String(result.data.script_id) : null, available: true };
+      shotlist = { id: production.shotlistId, title: String(result.data.title), revision: Number(result.data.revision), updatedAt: String(result.data.updated_at), scriptId: result.data.script_id ? String(result.data.script_id) : null, available: true };
       const [groupsResult, shotsResult] = await Promise.all([
         db.from("writer_shotlist_groups").select("id,source_scene_id,title,position,source_status,revision").eq("owner_id", ownerId).eq("shotlist_id", production.shotlistId).order("position"),
         db.from("writer_shotlist_shots").select("id,group_id,shot_type,subject,duration_seconds,position,revision").eq("owner_id", ownerId).eq("shotlist_id", production.shotlistId).order("position"),
@@ -277,7 +288,17 @@ function mapRequirement(row: Record<string, unknown>, sourceSceneIds: string[]):
 function mapResource(row: Record<string, unknown>): ProductionResource {
   return { id: String(row.id), productionId: String(row.production_id), name: String(row.name), resourceType: row.resource_type as ProductionResource["resourceType"],
     contact: row.contact ? String(row.contact) : null, address: row.address ? String(row.address) : null, notes: row.notes ? String(row.notes) : null,
-    availabilityNotes: row.availability_notes ? String(row.availability_notes) : null, revision: Number(row.revision) };
+    availabilityNotes: row.availability_notes ? String(row.availability_notes) : null,
+    role: row.role ? String(row.role) : null, phone: row.phone ? String(row.phone) : null,
+    includeInCallSheet: Boolean(row.include_in_call_sheet), revision: Number(row.revision) };
+}
+
+function mapDocumentExport(row: Record<string, unknown>): ProductionDocumentExport {
+  return {
+    documentKey: String(row.document_key), versionMajor: Number(row.version_major), versionMinor: Number(row.version_minor),
+    generatedAt: String(row.generated_at), generatedBy: String(row.generated_by), sourceUpdatedAt: String(row.source_updated_at),
+    sourceFingerprint: String(row.source_fingerprint), revision: Number(row.revision),
+  };
 }
 
 function mapCoverage(row: Record<string, unknown>): ProductionCoverage {

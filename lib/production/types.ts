@@ -82,6 +82,20 @@ export type ProductionResource = {
   address: string | null;
   notes: string | null;
   availabilityNotes: string | null;
+  role: string | null;
+  phone: string | null;
+  includeInCallSheet: boolean;
+  revision: number;
+};
+
+export type ProductionDocumentExport = {
+  documentKey: string;
+  versionMajor: number;
+  versionMinor: number;
+  generatedAt: string;
+  generatedBy: string;
+  sourceUpdatedAt: string;
+  sourceFingerprint: string;
   revision: number;
 };
 
@@ -156,8 +170,8 @@ export type EligibleRequirement = {
 };
 
 export type ProductionSourceState = {
-  script: { id: string; title: string; revision: number; available: true } | { id: string; available: false } | null;
-  shotlist: { id: string; title: string; revision: number; scriptId: string | null; available: true } | { id: string; available: false } | null;
+  script: { id: string; title: string; revision: number; updatedAt?: string; available: true } | { id: string; available: false } | null;
+  shotlist: { id: string; title: string; revision: number; updatedAt?: string; scriptId: string | null; available: true } | { id: string; available: false } | null;
   scenes: SourceScene[];
   groups: SourceGroup[];
   eligibleRequirements: EligibleRequirement[];
@@ -171,6 +185,9 @@ export type ProductionWorkspaceData = {
   resources: ProductionResource[];
   coverages: ProductionCoverage[];
   tasks: ProductionTask[];
+  documentExports: ProductionDocumentExport[];
+  storyboardFingerprint?: string | null;
+  storyboardUpdatedAt?: string | null;
   source: ProductionSourceState;
   sourceOptions: { scripts: SourceScriptOption[]; shotlists: SourceShotlistOption[] };
 };
