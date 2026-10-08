@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { validateWriterDocument } from "@/lib/writer/document";
 import { deriveWriterSceneSources } from "@/lib/writer/script-assistant";
+import { recordCreateEvent, reportCreateFailure } from "@/lib/create/telemetry";
 import {
   assertOwnedProduction,
   loadEligibleRequirements,
@@ -63,8 +64,9 @@ export async function createProductionAction(input: {
     if (!id) storage();
     if (input.importRequirements && sources.script) await importRequirements(db, userId, id, sources.script.id);
     revalidatePath("/production");
+    recordCreateEvent("production_created", { userId, projectId: input.projectId, artifactId: id });
     return { ok: true, data: { id } };
-  } catch (cause) { return actionFailure(cause); }
+  } catch (cause) { reportCreateFailure("production", "create", cause, input.projectId); return actionFailure(cause); }
 }
 
 export async function updateProductionSettingsAction(input: {

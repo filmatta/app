@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { emitMonetizationEvent } from "@/lib/entitlements/analytics";
 import { getEntitlementDefinition } from "@/lib/entitlements/catalog";
 import type { EntitlementCheck } from "@/lib/entitlements/types";
@@ -20,6 +20,7 @@ export function UpgradeGate({
   className?: string;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const [returnPath, setReturnPath] = useState<string | null>(null);
   const feature = getEntitlementDefinition(access.entitlement);
   const featureName = feature?.name ?? "Esta función";
 
@@ -43,6 +44,9 @@ export function UpgradeGate({
   }
 
   const openGate = () => {
+    if (window.location.pathname !== "/planes") {
+      setReturnPath(window.location.pathname + window.location.search + window.location.hash);
+    }
     emitMonetizationEvent({
       event: "feature_gate_triggered",
       entitlement: access.entitlement,
@@ -90,6 +94,7 @@ export function UpgradeGate({
         dialogRef={dialogRef}
         access={access}
         context={context}
+        returnPath={returnPath}
       />
     </>
   );
@@ -99,17 +104,22 @@ function UpgradeModal({
   dialogRef,
   access,
   context,
+  returnPath,
 }: {
   dialogRef: React.RefObject<HTMLDialogElement | null>;
   access: EntitlementCheck;
   context?: string;
+  returnPath: string | null;
 }) {
   const feature = getEntitlementDefinition(access.entitlement);
   const copy = gateCopy(access, feature?.upgradeTitle, feature?.upgradeDescription);
   const requiredPlan = access.requiredPlan;
-  const plansHref = requiredPlan && requiredPlan !== "free"
-    ? `/planes#${requiredPlan}`
-    : "/planes";
+  const planQuery = new URLSearchParams();
+  if (returnPath) {
+    planQuery.set("from", returnPath);
+    planQuery.set("capability", access.entitlement);
+  }
+  const plansHref = `/planes${planQuery.size ? `?${planQuery}` : ""}${requiredPlan && requiredPlan !== "free" ? `#${requiredPlan}` : ""}`;
 
   return (
     <dialog

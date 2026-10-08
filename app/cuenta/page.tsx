@@ -10,6 +10,8 @@ import {
 } from "@/lib/account/dashboard";
 import { getBillingAccess } from "@/lib/billing/access";
 import { surfacesFor } from "@/lib/create/catalog";
+import { listCreateProjects } from "@/lib/create/project";
+import { createClient } from "@/lib/supabase/server";
 import "./dashboard.css";
 
 export const metadata = {
@@ -53,9 +55,10 @@ export default async function AccountDashboardPage({
 
   const viewer = await getViewer();
   if (!viewer) redirect("/login?next=%2Fcuenta");
-  const [dashboard, billing] = await Promise.all([
+  const [dashboard, billing, projects] = await Promise.all([
     getAccountDashboard(viewer.id),
     getBillingAccess(),
+    createClient().then((db) => listCreateProjects(db, viewer.id)),
   ]);
   const [continueItem, ...otherRecent] = dashboard.recent;
   const available = surfacesFor("dashboard").filter((surface) => surface.href);
@@ -92,8 +95,8 @@ export default async function AccountDashboardPage({
             </div>
           ) : (
             <div className="create-dashboard-empty">
-              <div><span>PRIMER PASO</span><h3>Empieza una historia en Writer.</h3><p>Crea un guion o importa uno existente. No necesitas crear un proyecto antes.</p></div>
-              <Link href="/writer">Empezar con Writer <span>↗</span></Link>
+              <div><span>{projects.length ? "TU PROYECTO" : "PRIMER PASO"}</span><h3>{projects.length ? "Retoma tu proyecto." : "Crea tu primer proyecto y comienza a escribir."}</h3><p>{projects.length ? "Tu guion y las herramientas de planificación viven en el mismo proyecto." : "Dale nombre a tu historia. Crearemos el proyecto y su guion inicial para abrir Writer directamente."}</p></div>
+              <Link href={projects.length === 1 ? `/create/projects/${projects[0].id}` : "/create"}>{projects.length ? "Ver proyectos" : "Crear proyecto"} <span>↗</span></Link>
             </div>
           )}
         </section>

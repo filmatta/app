@@ -25,7 +25,7 @@ test("public CREATE home communicates real and conceptual states without marketp
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "De la primera página al set." })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Empezar con Writer/ }).first()).toHaveAttribute("href", "/writer");
+  await expect(page.getByRole("link", { name: /Crear proyecto y empezar/ }).first()).toHaveAttribute("href", "/create");
   await expect(page.getByText("STORYBOARD · EN DESARROLLO")).toBeVisible();
   await expect(page.getByText("PRODUCTION · EN DESARROLLO")).toBeVisible();
 
@@ -44,6 +44,7 @@ test("authenticated dashboard and CREATE menu expose only owned creation surface
   await expect(page.getByText("Todavía no tienes guiones.")).toBeVisible();
   await expect(page.getByText("Todavía no tienes shotlists.")).toBeVisible();
 
+  await expect(page.getByRole("link", { name: /Crear proyecto/ }).first()).toHaveAttribute("href", "/create");
   await page.getByRole("button", { name: "Crear", exact: true }).click();
   await expect(page.getByRole("link", { name: /Nuevo guion/ })).toHaveAttribute("href", "/writer");
   await expect(page.getByRole("link", { name: /Nueva shotlist/ })).toHaveAttribute("href", "/shotlists");

@@ -133,7 +133,7 @@ export default function GlobalNavigation({ authenticated, role, accountName = "C
           <div className="nav-account-slot hidden min-[1280px]:flex"><AccountNavigation role={role ?? "user"} displayName={accountName} portrait={accountPortrait} /></div>
         </> : <>
           <Link href="/login" className="nav-trigger hidden sm:inline-flex">Iniciar sesión</Link>
-          <Link href="/writer" className="nav-signup hidden sm:inline-flex">Empezar con Writer</Link>
+          <Link href="/create" className="nav-signup hidden sm:inline-flex">Empezar en Create</Link>
         </>}
         <button type="button" ref={menuButton} aria-haspopup="dialog" aria-controls="global-navigation-drawer"
           className="nav-trigger min-[1440px]:hidden" onClick={() => {
@@ -173,7 +173,7 @@ export default function GlobalNavigation({ authenticated, role, accountName = "C
               <p className="mb-2 mt-7 text-xs uppercase tracking-[0.2em] text-white/50">Crear</p>
               <MenuLinks items={createLinks} />
               <form action={logout} className="mt-5"><LoadingButton type="submit" loadingText="Saliendo…" className="nav-menu-link">Cerrar sesión</LoadingButton></form>
-            </> : <div className="flex flex-wrap gap-4"><Link href="/login" className="nav-trigger">Iniciar sesión</Link><Link href="/writer" className="nav-signup">Empezar con Writer</Link></div>}
+            </> : <div className="flex flex-wrap gap-4"><Link href="/login" className="nav-trigger">Iniciar sesión</Link><Link href="/create" className="nav-signup">Empezar en Create</Link></div>}
           </div>
         </nav>
       </div>

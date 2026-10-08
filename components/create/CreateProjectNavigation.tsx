@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCreateProjectContext, type CreateProjectContext } from "@/lib/create/project";
 import { createProjectModuleRoute, type CreateModule } from "@/lib/create/routes";
+import { recordCreateEvent } from "@/lib/create/telemetry";
 import "./create-project-navigation.css";
 
 export default async function CreateProjectNavigation({ projectId, ownerId, active, context }: {
@@ -12,6 +13,9 @@ export default async function CreateProjectNavigation({ projectId, ownerId, acti
 }) {
   if (!projectId) return null;
   const project = context ?? await getCreateProjectContext(await createClient(), ownerId, projectId);
+  if (active === "writer" || active === "storyboard") {
+    recordCreateEvent(active === "writer" ? "writer_opened" : "storyboard_opened", { userId: ownerId, projectId });
+  }
   const modules: { id: CreateModule; label: string }[] = [
     { id: "writer", label: "Writer" }, { id: "breakdown", label: "Breakdown" },
     { id: "shotlist", label: "Shotlist" }, { id: "storyboard", label: "Storyboard" },

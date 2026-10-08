@@ -22,6 +22,8 @@ export default function CreateProductionDialog({
 }) {
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
+  const submitting = useRef(false);
+  const operation = useRef<{ key: string; id: string } | null>(null);
   const [projectId, setProjectId] = useState(preferredProjectId ?? "");
   const [mode, setMode] = useState<"source" | "manual">("source");
   const [scriptId, setScriptId] = useState(preferredScriptId ?? "");
@@ -46,17 +48,23 @@ export default function CreateProductionDialog({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || incompatible || !projectId) return;
+    if (submitting.current || incompatible || !projectId) return;
+    submitting.current = true;
     setBusy(true); setError(null);
     const fallbackName = mode === "manual" ? "Producción sin título" : shotlist?.title || script?.title || "Producción sin título";
-    const result = await createProductionAction({
-      operationId: crypto.randomUUID(), projectId, name: name.trim() || fallbackName, timezone,
+    const input = { projectId, name: name.trim() || fallbackName, timezone,
       scriptId: mode === "source" ? effectiveScriptId || null : null,
       shotlistId: mode === "source" ? shotlistId || null : null,
-      importRequirements: mode === "source" && importRequirements,
-    });
-    if (!result.ok) { setError(result.message); setBusy(false); return; }
-    router.push(`/production/${result.data.id}?project=${projectId}`);
+      importRequirements: mode === "source" && importRequirements };
+    const key = JSON.stringify(input);
+    if (operation.current?.key !== key) operation.current = { key, id: crypto.randomUUID() };
+    try {
+      const result = await createProductionAction({ ...input, operationId: operation.current.id });
+      if (!result.ok) { setError(result.message); return; }
+      router.push(`/production/${result.data.id}?project=${projectId}`);
+    } catch {
+      setError("No pudimos confirmar la creación. Reintenta para recuperar la misma producción.");
+    } finally { submitting.current = false; setBusy(false); }
   }
 
   return (

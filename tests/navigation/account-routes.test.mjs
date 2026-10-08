@@ -18,7 +18,8 @@ test("account navigation has one canonical CREATE dashboard and preserves accoun
  assert.ok(nav.every(x=>x.href!=="/mi-cuenta"));
  const menu=read("components/navigation/GlobalNavigation.tsx");
  assert.ok(menu.includes('href="/cuenta" className={'));
- assert.match(menu,/Empezar con Writer/);
+ assert.match(menu,/href="\/create" className="nav-signup"/);
+ assert.match(menu,/Empezar en Create/);
  assert.doesNotMatch(menu,/Mi cuenta|\/mi-cuenta/);
 });
 test("canonical dashboard and settings retain gated routes and legacy feedback",()=>{

@@ -9,6 +9,7 @@ import { documentSourceUpdatedAt, nextDocumentVersion, productionDocumentFingerp
 import { loadProductionDocumentSources } from "@/lib/production/document-sources";
 import { ProductionPdfDocument, type ProductionPdfKind, type ProductionPdfOptions, type ProductionPdfSelection } from "@/lib/production/pdf-document";
 import type { ProductionWorkspaceData } from "@/lib/production/types";
+import { recordCreateEvent, reportCreateFailure } from "@/lib/create/telemetry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,6 +82,7 @@ async function documentRequest(request: Request, context: RouteContext, submitte
       const recorded = await recordExport(db, viewer.id, data, key, version, latest?.revision ?? null, generatedAt);
       if (!recorded) return new Response("El documento cambió mientras se generaba. Revisa el centro y vuelve a exportar.", { status: 409 });
       revalidatePath(`/production/${id}`);
+      if (kind === "pack") recordCreateEvent("production_pack_exported", { userId: viewer.id, projectId: data.production.projectId, artifactId: id });
     }
     const filename = filenameFor(data, kind, selection, version);
     return new Response(new Uint8Array(buffer), { headers: {
@@ -91,6 +93,7 @@ async function documentRequest(request: Request, context: RouteContext, submitte
       "X-Production-Version": version,
     } });
   } catch (cause) {
+    reportCreateFailure("production", "document_export", cause);
     if (cause instanceof ProductionError) return new Response(cause.code === "not_found" ? "Producción no encontrada." : cause.message, { status: cause.code === "not_found" ? 404 : cause.code === "invalid" ? 422 : 500 });
     if (cause instanceof DocumentInputError) return new Response(cause.message, { status: cause.status });
     console.error("Production PDF failed", cause instanceof Error ? cause.name : "unknown");

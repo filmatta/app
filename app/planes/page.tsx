@@ -4,7 +4,8 @@ import { PlanBadge } from "@/components/entitlements/PlanBadge";
 import { PlanPageViewEvent } from "@/components/entitlements/PlanPageViewEvent";
 import { UpgradeGate } from "@/components/entitlements/UpgradeGate";
 import { getViewer } from "@/lib/auth/get-viewer";
-import { COMMERCIAL_PLAN_CODES } from "@/lib/entitlements/catalog";
+import { COMMERCIAL_PLAN_CODES, getEntitlementDefinition } from "@/lib/entitlements/catalog";
+import { getSafePostAuthPath } from "@/lib/auth/safe-next-path";
 import {
   checkEntitlement,
   getEntitlementContext,
@@ -24,7 +25,11 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function PlanesPage() {
+export default async function PlanesPage({ searchParams }: { searchParams: Promise<{ from?: string; capability?: string }> }) {
+  const query = await searchParams;
+  const returnPath = typeof query.from === "string" ? getSafePostAuthPath(query.from, "/create") : null;
+  const returnHref = returnPath && !returnPath.startsWith("/planes") ? returnPath : null;
+  const requestedFeature = typeof query.capability === "string" ? getEntitlementDefinition(query.capability) : null;
   const viewer = await getViewer();
   const [catalog, entitlementContext] = await Promise.all([
     getPlanCatalog(),
@@ -56,6 +61,11 @@ export default async function PlanesPage() {
     <main className="min-h-screen bg-[#080808] text-white">
       <PlanPageViewEvent currentPlan={currentPlan} />
       <SiteHeader contextLink={{ href: "/cursos", label: "← Aprender" }} />
+
+      {returnHref && <div className="mx-auto max-w-7xl px-6 pt-5 lg:px-8">
+        <p className="text-sm text-white/60">{requestedFeature ? `Consultaste los planes para ${requestedFeature.name}.` : "Consulta los planes y vuelve a tu trabajo cuando quieras."}</p>
+        <Link href={returnHref} className="mt-2 inline-block text-sm font-semibold text-white underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">← Volver a mi trabajo</Link>
+      </div>}
 
       <section className="pb-24 pt-16 lg:pb-32 lg:pt-24">
         <div className={PAGE_CONTAINER_CLASS_NAME}>

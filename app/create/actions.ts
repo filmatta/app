@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createProject, CreateProjectError } from "@/lib/create/project";
 import { getCreateProjectContext } from "@/lib/create/project";
 import { createEmptyWriterDocument, WRITER_SCHEMA_VERSION } from "@/lib/writer/document";
+import { recordCreateEvent, reportCreateFailure } from "@/lib/create/telemetry";
 
 export async function createProjectAction(name: string, operationId: string): Promise<
   | { ok: true; id: string; writerId: string }
@@ -14,8 +15,10 @@ export async function createProjectAction(name: string, operationId: string): Pr
   if (auth.error || !auth.data.user) return { ok: false, message: "Inicia sesión para crear un proyecto." };
   try {
     const result = await createProject(db, auth.data.user.id, name, operationId);
+    recordCreateEvent("project_created", { userId: auth.data.user.id, projectId: result.id, artifactId: result.writerId });
     return { ok: true, ...result };
   } catch (cause) {
+    reportCreateFailure("project", "create", cause);
     if (cause instanceof CreateProjectError) return { ok: false, message: cause.message };
     return { ok: false, message: "No pudimos crear el proyecto." };
   }
@@ -43,6 +46,7 @@ export async function createWriterInProjectAction(projectId: string, operationId
     if (created.error || typeof created.data !== "string") return { ok: false, message: "No pudimos crear el guion en este proyecto." };
     return { ok: true, writerId: created.data };
   } catch (cause) {
+    reportCreateFailure("writer", "create_in_project", cause, projectId);
     if (cause instanceof CreateProjectError) return { ok: false, message: cause.message };
     return { ok: false, message: "No pudimos crear el guion en este proyecto." };
   }

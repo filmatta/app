@@ -40,7 +40,7 @@ export default function CreateHome() {
               preparar tu proyecto audiovisual.
             </p>
             <div className="create-actions">
-              <Link className="create-primary" href="/writer">Empezar con Writer <span>↗</span></Link>
+              <Link className="create-primary" href="/create">Crear proyecto y empezar <span>↗</span></Link>
               <a className="create-secondary" href="#herramientas">Explorar herramientas <span>↓</span></a>
             </div>
             <div className="create-availability">
@@ -200,7 +200,7 @@ export default function CreateHome() {
           <p className="create-lockup"><span>FILMATTA</span> CREATE</p>
           <h2>Tu historia ya tiene una primera página.</h2>
           <p>Escríbela en Writer y prepara sus planos en Shotlist.</p>
-          <Link className="create-primary" href="/writer">Empezar con Writer <span>↗</span></Link>
+          <Link className="create-primary" href="/create">Crear proyecto y empezar <span>↗</span></Link>
         </section>
       </main>
       <footer className="create-footer">
