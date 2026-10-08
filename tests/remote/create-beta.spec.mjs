@@ -17,7 +17,7 @@ test("new Test account keeps one Create Project through login, Writer, Shotlist 
   const prefix = `create-beta-${randomUUID()}`;
   const owner = { email: `${prefix}-owner@example.invalid`, password: `${randomBytes(22).toString("base64url")}aA1!`, id: null };
   const stranger = { email: `${prefix}-stranger@example.invalid`, password: `${randomBytes(22).toString("base64url")}aA1!`, id: null, client: null };
-  const report = { preview: previewBase, backend: TEST_REF, checks: [], ids: {}, viewports: {} };
+  const report = { preview: previewBase, backend: TEST_REF, checks: [], ids: {}, viewports: {}, moduleViewports: {} };
   const context = await browser.newContext({ baseURL: previewBase, viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
   try {
@@ -38,6 +38,10 @@ test("new Test account keeps one Create Project through login, Writer, Shotlist 
     await expect(page.getByRole("heading", { name: "Tu primera historia empieza aquí" })).toBeVisible();
     await page.screenshot({ path: "test-results/create-beta-empty-1280.png", fullPage: true });
     report.checks.push("empty account explains first Project and Writer");
+    await page.getByLabel("Nombre del proyecto").focus();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "Crear proyecto y comenzar en Writer" })).toBeFocused();
+    report.checks.push("first-run form has a keyboard path and labelled input");
 
     await page.getByLabel("Nombre del proyecto").fill("QA · Primera historia");
     await page.getByRole("button", { name: "Crear proyecto y comenzar en Writer" }).dblclick();
@@ -69,7 +73,24 @@ test("new Test account keeps one Create Project through login, Writer, Shotlist 
     assert.equal(saved.error, null);
     await page.reload();
     await expect(page.getByText("INT. TALLER — DÍA").first()).toBeVisible();
-    report.checks.push("three real scenes persisted after Writer reload");
+    const takeOver = page.getByRole("button", { name: "Editar aquí" });
+    if (await takeOver.isVisible()) await takeOver.click();
+    const editor = page.getByLabel("Editor de guion");
+    await editor.locator('[data-screenplay-kind="action"]').last().click();
+    await page.keyboard.press("End");
+    await page.keyboard.type(" Se cierra el rodaje.");
+    await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube", { timeout: 15_000 });
+    await page.reload();
+    await expect(page.getByLabel("Editor de guion").getByText("Se cierra el rodaje.", { exact: false })).toBeVisible();
+    report.checks.push("three real scenes and a UI edit persisted after Writer reload");
+    const breakdown = await context.request.post(`/api/writer/scripts/${writerId}/breakdown`, {
+      data: { action: "detect", scope: "document" },
+    });
+    assert.equal(breakdown.status(), 200);
+    const breakdownResult = await breakdown.json();
+    assert.ok(breakdownResult.breakdown);
+    report.checks.push("basic local Breakdown ran on the saved Writer document");
+    report.moduleViewports.writer = await viewportChecks(page);
 
     await page.goto(`/create/projects/${projectId}`);
     await expect(page.getByRole("heading", { name: "QA · Primera historia" })).toBeVisible();
@@ -93,6 +114,7 @@ test("new Test account keeps one Create Project through login, Writer, Shotlist 
     assert.equal(shots.error, null);
     assert.equal(shots.data.length, 2);
     report.checks.push("two shots persisted through Shotlist UI");
+    report.moduleViewports.shotlist = await viewportChecks(page);
 
     await page.goto(`/shotlists/${shotlistId}/storyboard?project=${projectId}`);
     await expect(page.getByRole("heading", { name: "Shotlist sin título" })).toBeVisible();
@@ -103,6 +125,7 @@ test("new Test account keeps one Create Project through login, Writer, Shotlist 
     await page.reload();
     await expect(page.getByLabel("Nota visual")).toHaveValue("QA · Encuadre de apertura");
     report.checks.push("Storyboard panel and note persisted after reload");
+    report.moduleViewports.storyboard = await viewportChecks(page);
 
     await page.goto(`/production?project=${projectId}`);
     await page.getByRole("button", { name: /GENERAR PRODUCCIÓN/ }).click();
@@ -125,6 +148,7 @@ test("new Test account keeps one Create Project through login, Writer, Shotlist 
     const download = await downloadPromise;
     assert.match(download.suggestedFilename(), /\.pdf$/i);
     report.checks.push("Production Pack PDF exported from the Test production");
+    report.moduleViewports.production = await viewportChecks(page);
 
     await page.goto("/create");
     await page.getByLabel("Nombre del proyecto").fill("QA · Segunda historia");
@@ -143,6 +167,10 @@ test("new Test account keeps one Create Project through login, Writer, Shotlist 
     assert.equal(secondProductions.data.length, 0);
     await page.goto(`/create/projects/${secondProjectId}`);
     await expect(page.getByText("Todavía no hay Shotlists.")).toBeVisible();
+    const mismatchedShotlist = await context.request.get(`/shotlists/${shotlistId}?project=${secondProjectId}`);
+    const mismatchedProduction = await context.request.get(`/production/${productionId}?project=${secondProjectId}`);
+    assert.equal(mismatchedShotlist.status(), 404);
+    assert.equal(mismatchedProduction.status(), 404);
     report.checks.push("second Project has no Shotlist or Production from the first");
 
     const strangerCreated = await service.auth.admin.createUser({ email: stranger.email, password: stranger.password, email_confirm: true });
@@ -156,10 +184,19 @@ test("new Test account keeps one Create Project through login, Writer, Shotlist 
       const denied = await strangerContext.request.get(`/create/projects/${projectId}`);
       const deniedWriter = await strangerContext.request.get(`/writer/${writerId}?project=${projectId}`);
       const deniedProduction = await strangerContext.request.get(`/production/${productionId}?project=${projectId}`);
-      report.deniedStatuses = { project: denied.status(), writer: deniedWriter.status(), production: deniedProduction.status() };
-      for (const response of [denied, deniedWriter, deniedProduction]) {
+      const deniedPack = await strangerContext.request.get(`/production/${productionId}/documents/pack`);
+      const deniedShotlistPdf = await strangerContext.request.post(`/api/shotlists/${shotlistId}/pdf`, { data: { columns: ["shotType"] } });
+      report.deniedStatuses = { project: denied.status(), writer: deniedWriter.status(), production: deniedProduction.status(), pack: deniedPack.status(), shotlistPdf: deniedShotlistPdf.status() };
+      for (const response of [denied, deniedWriter, deniedProduction, deniedPack, deniedShotlistPdf]) {
         assert.equal((await response.text()).includes("QA · Primera historia"), false, "Foreign creative data leaked");
       }
+      for (const key of ["project", "writer", "production", "pack", "shotlistPdf"]) assert.equal(report.deniedStatuses[key], 404, `${key} must return 404`);
+      const foreignPanels = await stranger.client.from("storyboard_panels").select("id").eq("shotlist_id", shotlistId);
+      const foreignExports = await stranger.client.from("production_document_exports").select("id").eq("production_id", productionId);
+      assert.equal(foreignPanels.error, null);
+      assert.equal(foreignExports.error, null);
+      assert.equal(foreignPanels.data.length, 0);
+      assert.equal(foreignExports.data.length, 0);
       report.checks.push("second user receives no foreign Project content; HTTP statuses recorded separately");
     } finally { await strangerContext.close(); }
 
@@ -197,4 +234,14 @@ test("new Test account keeps one Create Project through login, Writer, Shotlist 
     }
   }
 });
+
+async function viewportChecks(page) {
+  const results = {};
+  for (const width of [1536, 1280, 1024, 834, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    results[width] = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  return results;
+}
 

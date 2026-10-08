@@ -11,7 +11,18 @@ test("Supabase Test persists editable panels and enforces A/B isolation", { time
   const config = testConfiguration();
   const admin = createClient(config.NEXT_PUBLIC_SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   await withStoryboardUsers(config, admin, async ({ owner, stranger }) => {
-    const createdList = await owner.client.rpc("writer_create_shotlist", { p_script_id: null, p_title: "QA Storyboard manual", p_operation_id: crypto.randomUUID() });
+    const createdScript = await owner.client.rpc("writer_create_script", {
+      p_operation_id: crypto.randomUUID(), p_title: "QA Storyboard Project",
+      p_document: { type: "doc", content: [] }, p_schema_version: 1,
+    });
+    assert.equal(createdScript.error, null);
+    const scriptId = createdScript.data[0].id;
+    const project = await owner.client.from("writer_scripts").select("project_id").eq("id", scriptId).single();
+    assert.equal(project.error, null);
+    const createdList = await owner.client.rpc("writer_create_project_shotlist_v1", {
+      p_project_id: project.data.project_id, p_script_id: null,
+      p_title: "QA Storyboard manual", p_operation_id: crypto.randomUUID(),
+    });
     assert.equal(createdList.error, null);
     const shotlistId = createdList.data;
     const group = await owner.client.from("writer_shotlist_groups").select("id").eq("shotlist_id", shotlistId).single();
