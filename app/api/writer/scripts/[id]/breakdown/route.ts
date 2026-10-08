@@ -168,11 +168,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         return writerJson({ error: "La selección cambió. Selecciona el texto otra vez.", code: "stale", }, 409);
       }
       const normalized = productionIdentityKey(name);
+      if (!normalized) return writerJson({ error: "Escribe un nombre de elemento válido.", code: "invalid" }, 400);
       const match = await db.from("writer_breakdown_elements").select("id,status,revision")
         .eq("owner_id", session.user.id).eq("script_id", id)
         .eq("category", body.value.category).eq("normalized_name", normalized)
         .neq("status", "dismissed").order("created_at", { ascending: true }).limit(1).maybeSingle();
       if (match.error) throw new WriterProductionError("storage", "No pudimos buscar el elemento existente.", 500);
+      if (!selected && match.data?.id) {
+        return writerJson({
+          error: `${name} ya existe en esta categoría. Abre el elemento existente.`,
+          code: "existing_element",
+          existingId: match.data.id,
+        }, 409);
+      }
       let elementId = match.data?.id ? String(match.data.id) : null;
       if (!elementId) {
         const element = await db.from("writer_breakdown_elements").insert({

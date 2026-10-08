@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import {
   WRITER_BREAKDOWN_CATEGORIES,
   WRITER_BREAKDOWN_CATEGORY_LABELS,
+  productionIdentityKey,
   type WriterBreakdownCategory,
   type WriterBreakdownElement,
 } from "@/lib/writer/production";
@@ -30,6 +31,7 @@ export default function WriterBreakdownPanel({
   characterCount,
   onEnsureSaved,
   onNavigate,
+  onElementsChange,
 }: {
   scriptId: string;
   focusCategory: WriterBreakdownCategory | null;
@@ -38,6 +40,7 @@ export default function WriterBreakdownPanel({
   characterCount: number;
   onEnsureSaved: () => Promise<void>;
   onNavigate: (reference: { sceneId: string | null; blockId: string | null; fromOffset: number | null; toOffset: number | null }) => void;
+  onElementsChange?: (elements: WriterBreakdownElement[]) => void;
 }) {
   const [category, setCategory] = useState<WriterBreakdownCategory>(focusCategory ?? "character");
   const [reviewMode, setReviewMode] = useState(false);
@@ -56,6 +59,12 @@ export default function WriterBreakdownPanel({
   const [scopeOpen, setScopeOpen] = useState(false);
   const [scopePosition, setScopePosition] = useState({ left: 0, top: 0, width: 0 });
   const [scopePortalRoot, setScopePortalRoot] = useState<Element | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualName, setManualName] = useState("");
+  const [manualCategory, setManualCategory] = useState<WriterBreakdownCategory>("prop");
+  const [manualError, setManualError] = useState<string | null>(null);
+  const manualDialogRef = useRef<HTMLDialogElement>(null);
+  const manualSubmittingRef = useRef(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const moreTriggerRef = useRef<HTMLButtonElement>(null);
@@ -68,6 +77,16 @@ export default function WriterBreakdownPanel({
 
   const closeMore = useCallback(() => setMoreOpen(false), []);
   useWriterPopoverDismissal({ open: moreOpen, rootRef: moreRef, triggerRef: moreTriggerRef, onDismiss: closeMore });
+  useEffect(() => {
+    const dialog = manualDialogRef.current;
+    if (!dialog || !manualOpen) return;
+    dialog.showModal();
+    return () => { if (dialog.open) dialog.close(); };
+  }, [manualOpen]);
+  const applyElements = useCallback((next: WriterBreakdownElement[]) => {
+    setElements(next);
+    onElementsChange?.(next);
+  }, [onElementsChange]);
 
   useEffect(() => {
     if (!scopeOpen) return;
@@ -121,21 +140,21 @@ export default function WriterBreakdownPanel({
     const response = await fetch(`/api/writer/scripts/${scriptId}/breakdown`, { cache: "no-store" });
     if (!response.ok) { setLoadError(true); return; }
     const data = await response.json();
-    setElements(data.elements ?? []); setPendingCount(Number(data.pendingCount ?? 0)); setAnalysis(data.analysis ?? null); setLoadError(false);
-  }, [scriptId]);
+    applyElements(data.elements ?? []); setPendingCount(Number(data.pendingCount ?? 0)); setAnalysis(data.analysis ?? null); setLoadError(false);
+  }, [applyElements, scriptId]);
   useEffect(() => {
     let cancelled = false;
     void fetch(`/api/writer/scripts/${scriptId}/breakdown`, { cache: "no-store" })
       .then(async (response) => response.ok ? response.json() : null)
       .then((data) => {
         if (cancelled || !data) return;
-        setElements(data.elements ?? []);
+        applyElements(data.elements ?? []);
         setPendingCount(Number(data.pendingCount ?? 0));
         setAnalysis(data.analysis ?? null);
         setLoadError(false);
       });
     return () => { cancelled = true; };
-  }, [scriptId]);
+  }, [applyElements, scriptId]);
   async function detect() {
     if (busy) return;
     setScopeOpen(false);
@@ -148,7 +167,7 @@ export default function WriterBreakdownPanel({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "No pudimos detectar los elementos.");
-      setElements(data.breakdown.elements); setPendingCount(data.breakdown.pendingCount);
+      applyElements(data.breakdown.elements); setPendingCount(data.breakdown.pendingCount);
       setAnalysis(data.partial
         ? { status: "partial", stale: false, sourceRevision: data.revision, scope: "document", errorCode: data.errorCode ?? null, model: "hybrid", updatedAt: new Date().toISOString() }
         : data.breakdown.analysis ?? { status: "completed", stale: false, sourceRevision: data.revision, scope: "document", errorCode: null, model: "hybrid", updatedAt: new Date().toISOString() });
@@ -166,26 +185,34 @@ export default function WriterBreakdownPanel({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "No pudimos guardar la decisión.");
-      setElements(data.breakdown.elements); setPendingCount(data.breakdown.pendingCount);
+      applyElements(data.breakdown.elements); setPendingCount(data.breakdown.pendingCount);
       if (body.action === "status" && body.status !== "suggested") setSelectedId(null);
     } catch (cause) { setMessage(cause instanceof Error ? cause.message : "No pudimos guardar la decisión."); }
     finally { setBusy(false); }
   }
+  const existingManual = elements.find((element) => !element.retired && element.status !== "dismissed"
+    && element.category === manualCategory && productionIdentityKey(element.name) === productionIdentityKey(manualName));
   async function addManual() {
-    const name = window.prompt("Nombre del elemento");
-    if (!name?.trim()) return;
-    const selectedCategory = category === "character" ? "other" : category;
+    const name = manualName.trim();
+    if (!name || existingManual || manualSubmittingRef.current) return;
+    manualSubmittingRef.current = true;
     setBusy(true);
     try {
       const response = await fetch(`/api/writer/scripts/${scriptId}/breakdown`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "manual", category: selectedCategory, name, sceneId: activeSceneId }),
+        body: JSON.stringify({ action: "manual", category: manualCategory, name, sceneId: null }),
       });
       const data = await response.json();
+      if (response.status === 409 && data.code === "existing_element") {
+        await load();
+        setManualError(data.error ?? "El elemento ya existe.");
+        return;
+      }
       if (!response.ok) throw new Error(data.error ?? "No pudimos añadir el elemento.");
-      setElements(data.breakdown.elements); setPendingCount(data.breakdown.pendingCount);
-    } catch (cause) { setMessage(cause instanceof Error ? cause.message : "No pudimos añadir el elemento."); }
-    finally { setBusy(false); }
+      applyElements(data.breakdown.elements); setPendingCount(data.breakdown.pendingCount);
+      setCategory(manualCategory); setReviewMode(false); setShowDismissed(false); setDisplayScope("document"); setSelectedId(data.id); setManualOpen(false); setManualName(""); setManualError(null);
+    } catch (cause) { setManualError(cause instanceof Error ? cause.message : "No pudimos añadir el elemento."); }
+    finally { manualSubmittingRef.current = false; setBusy(false); }
   }
   async function uploadImage(element: WriterBreakdownElement, file: File) {
     setBusy(true); setMessage(null);
@@ -215,7 +242,9 @@ export default function WriterBreakdownPanel({
     : reviewMode ? element.status === "suggested"
     : category === "other" ? OTHER.has(element.category) && element.status !== "dismissed"
       : element.category === category && element.status !== "dismissed")), [activeSceneId, category, displayScope, elements, reviewMode, showDismissed]);
-  const countFor = (id: WriterBreakdownCategory) => id === "character" ? characterCount
+  const displayedElements = category === "character" && !reviewMode && !showDismissed
+    ? visible.filter((element) => element.source === "user") : visible;
+  const countFor = (id: WriterBreakdownCategory) => id === "character" ? characterCount + elements.filter((element) => !element.retired && element.source === "user" && element.category === "character" && element.status !== "dismissed").length
     : elements.filter((element) => !element.retired && (id === "other" ? OTHER.has(element.category) : element.category === id) && element.status !== "dismissed").length;
   const chooseCategory = (id: WriterBreakdownCategory) => {
     setReviewMode(false);
@@ -232,6 +261,16 @@ export default function WriterBreakdownPanel({
     const visibleIds = new Set(visibleCategories.map((item) => item.id));
     return PRIMARY.filter((item) => !visibleIds.has(item.id));
   }, [visibleCategories]);
+  const openManual = () => {
+    setManualName(""); setManualError(null);
+    setManualCategory(category);
+    setManualOpen(true);
+  };
+  const openExisting = () => {
+    if (!existingManual) return;
+    setCategory(existingManual.category); setReviewMode(false); setShowDismissed(false);
+    setDisplayScope("document"); setSelectedId(existingManual.id); setManualOpen(false);
+  };
 
   return <div className="writer-breakdown">
     <div ref={tabsRef} className="writer-breakdown-tabs" role="tablist" aria-label="Categorías de elementos detectados" data-visible-category-count={visibleCategories.length}>
@@ -242,18 +281,30 @@ export default function WriterBreakdownPanel({
       </div>}
     </div>
     <div className="writer-breakdown-title"><div><span>ELEMENTOS DETECTADOS</span><details><summary aria-label="Ayuda sobre Elementos detectados">?</summary><p>Revisa todo el guion con IA para encontrar elementos de producción. El filtro Mostrar no cambia el alcance del análisis.</p></details></div><button type="button" title="Revisa todo el guion guardado con IA" onClick={() => void detect()} disabled={busy}><SmartFeatureIndicator label={busy ? "Detectando…" : analysis && !analysis.stale && analysis.status === "completed" ? "Reanalizar todo" : "Detectar elementos"} /></button></div>
-    <div className="writer-breakdown-head"><div><small>INVENTARIO</small><strong>{showDismissed ? "Descartados" : reviewMode ? "Por revisar" : WRITER_BREAKDOWN_CATEGORY_LABELS[category]} <b>{showDismissed ? visible.length : reviewMode ? pendingCount : countFor(category)}</b></strong></div><div className="writer-breakdown-head-actions"><button type="button" onClick={() => { setReviewMode(true); setShowDismissed(false); setSelectedId(null); }} aria-pressed={reviewMode}>Por revisar {pendingCount}</button><details><summary aria-label="Más opciones">···</summary><button type="button" onClick={() => { setReviewMode(false); setShowDismissed(true); setSelectedId(null); }}>Ver descartados ({elements.filter((element) => element.status === "dismissed").length})</button><button type="button" onClick={() => void addManual()} disabled={busy || category === "character"}>Añadir manualmente</button></details></div></div>
+    <div className="writer-breakdown-head"><div><small>INVENTARIO</small><strong>{showDismissed ? "Descartados" : reviewMode ? "Por revisar" : WRITER_BREAKDOWN_CATEGORY_LABELS[category]} <b>{showDismissed ? visible.length : reviewMode ? pendingCount : countFor(category)}</b></strong></div><div className="writer-breakdown-head-actions"><button className="writer-breakdown-add" type="button" title="Agregar elemento manual" aria-label="Agregar elemento manual" onClick={openManual} disabled={busy}>+</button><button type="button" onClick={() => { setReviewMode(true); setShowDismissed(false); setSelectedId(null); }} aria-pressed={reviewMode}>Por revisar {pendingCount}</button><details><summary aria-label="Más opciones">···</summary><button type="button" onClick={() => { setReviewMode(false); setShowDismissed(true); setSelectedId(null); }}>Ver descartados ({elements.filter((element) => element.status === "dismissed").length})</button></details></div></div>
     <div className={`writer-breakdown-analysis is-${loadError || detectionIssue ? "error" : busy ? "analyzing" : !analysis ? "never" : analysis.stale ? "stale" : analysis.status === "partial" || analysis.model.startsWith("local-") ? "partial" : analysis.status === "completed" ? "complete" : "error"}`} role={loadError || detectionIssue ? "alert" : "status"}>{loadError ? "No pudimos cargar el estado de detección." : detectionIssue === "provider" ? "La asistencia no está disponible. El inventario local verificable permanece visible." : detectionIssue === "error" ? "La última detección falló. El inventario anterior permanece intacto." : busy ? "Analizando el guion guardado: reglas locales y asistencia por lotes…" : !analysis ? "Aún no se ejecutó la detección completa. El inventario local puede ser parcial." : analysis.stale ? "El resultado corresponde a una revisión anterior." : analysis.status === "partial" ? "Análisis asistido parcial. Se conservaron los lotes válidos y el inventario local." : analysis.model.startsWith("local-") ? "Detección local completada. La cobertura asistida de todo el guion sigue pendiente." : analysis.status === "completed" ? (elements.length ? `Análisis completo · ${elements.filter((item) => !item.retired && item.status !== "dismissed").length} elementos en inventario.` : "Análisis completo sin elementos adicionales.") : "La última detección no pudo completarse."}</div>
-    {category === "character" && !reviewMode && !showDismissed ? characters : <div className="writer-breakdown-list" role="tabpanel">
-      {visible.map((element) => <article key={element.id} className={selectedId === element.id ? "is-selected" : ""}>
+    <div className="writer-breakdown-list" role="tabpanel">
+      {category === "character" && !reviewMode && !showDismissed && characters}
+      {displayedElements.map((element) => <article key={element.id} className={selectedId === element.id ? "is-selected" : ""}>
         <button className="writer-breakdown-item" type="button" onClick={() => setSelectedId((current) => current === element.id ? null : element.id)}><span className={`writer-breakdown-check is-${element.status}`}>{element.status === "confirmed" ? "✓" : element.status === "suggested" ? "?" : "×"}</span><span><strong>{element.name}</strong><small>{element.status === "confirmed" ? "Confirmado" : element.status === "suggested" ? "Detectado · sin confirmar" : "Descartado"} · {element.appearances.some((item) => item.stale) ? "revisar aparición" : element.appearances.length ? `${element.appearances.length} ${element.appearances.length === 1 ? "aparición" : "apariciones"}` : "sin aparición vinculada"}</small></span><b>Ver</b></button>
         {(reviewMode || (selectedId === element.id && element.status === "suggested")) && <div className="writer-breakdown-review"><p>¿“{element.name}” es {WRITER_BREAKDOWN_CATEGORY_LABELS[element.category].toLocaleLowerCase("es-MX")} de esta escena?</p><blockquote>{element.appearances[0]?.excerpt ?? "Sin fragmento vinculado"}</blockquote><div><button type="button" onClick={() => void mutate(element, { action: "status", status: "confirmed" })}>Sí</button><button type="button" onClick={() => void mutate(element, { action: "status", status: "dismissed" })}>Esto no es un elemento</button></div></div>}
         {showDismissed && <div className="writer-breakdown-review"><p>Este candidato fue descartado y no reaparecerá en una nueva detección.</p><blockquote>{element.appearances[0]?.excerpt ?? "Sin fragmento vinculado"}</blockquote><div><button type="button" onClick={() => void mutate(element, { action: "status", status: "suggested" })}>Recuperar</button></div></div>}
         {selectedId === element.id && !showDismissed && <div className="writer-breakdown-detail">{element.assetId && <img className="writer-breakdown-thumbnail" src={`/api/writer/production-assets/${element.assetId}`} alt="Referencia visual privada" />}<label>Nombre<input defaultValue={element.name} onBlur={(event) => { const name = event.target.value.trim(); if (name && name !== element.name) void mutate(element, { action: "edit", name }); }} /></label><label>Categoría<select value={element.category} onChange={(event) => void mutate(element, { action: "edit", category: event.target.value })}>{WRITER_BREAKDOWN_CATEGORIES.filter((value) => value !== "character").map((value) => <option key={value} value={value}>{WRITER_BREAKDOWN_CATEGORY_LABELS[value]}</option>)}</select></label><label>Nota<textarea defaultValue={element.note ?? ""} placeholder="Nota de producción" onBlur={(event) => { if (event.target.value !== (element.note ?? "")) void mutate(element, { action: "edit", note: event.target.value }); }} /></label><h4>Apariciones</h4>{element.appearances.length ? <ul>{element.appearances.map((appearance) => <li key={appearance.id}><p>{appearance.excerpt}</p><button type="button" disabled={appearance.stale} onClick={() => onNavigate({ sceneId: appearance.sceneId, blockId: appearance.blockId, fromOffset: appearance.fromOffset, toOffset: appearance.toOffset })}>{appearance.stale ? "Referencia obsoleta" : "Ir al fragmento"}</button>{appearance.manual && <button type="button" disabled={busy} onClick={() => void mutate(element, { action: "removeManualAppearance", appearanceId: appearance.id })}>Quitar etiqueta</button>}</li>)}</ul> : <p>Sin aparición vinculada.</p>}<label className="writer-breakdown-image">{element.assetId ? "Cambiar imagen" : "Añadir imagen"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(element, file); event.target.value = ""; }} /></label>{element.assetId && <button className="writer-breakdown-remove-image" type="button" disabled={busy} onClick={() => void removeImage(element)}>Quitar imagen</button>}</div>}
       </article>)}
-      {!visible.length && <div className="writer-sidebar-empty"><p>{showDismissed ? "No hay descartes que recuperar." : reviewMode ? "No hay elementos pendientes." : analysis ? "No hay elementos de esta categoría en el último análisis." : "Esta categoría todavía no fue analizada."}</p></div>}
-    </div>}
+      {!visible.length && category !== "character" && <div className="writer-sidebar-empty"><p>{showDismissed ? "No hay descartes que recuperar." : reviewMode ? "No hay elementos pendientes." : analysis ? "No hay elementos de esta categoría en el último análisis." : "Esta categoría todavía no fue analizada."}</p></div>}
+    </div>
     <div className="writer-breakdown-detect"><div className="writer-breakdown-scope"><span>Mostrar</span><button ref={bindScopeTrigger} type="button" aria-label="Mostrar elementos detectados" aria-haspopup="menu" aria-expanded={scopeOpen} disabled={busy} onClick={() => setScopeOpen((open) => !open)}>{displayScope === "document" ? "Todo el guion" : "Escena actual"}<span aria-hidden="true">⌄</span></button></div>{message && <p role="status">{message}</p>}</div>
     {scopeOpen && scopePortalRoot && createPortal(<div ref={scopeMenuRef} className="writer-breakdown-scope-menu" role="menu" aria-label="Mostrar elementos detectados" style={scopePosition}>{(["document", "scene"] as const).map((scope) => <button key={scope} type="button" role="menuitemradio" aria-checked={displayScope === scope} onClick={() => { setDisplayScope(scope); setScopeOpen(false); scopeTriggerRef.current?.focus(); }}>{scope === "document" ? "Todo el guion" : "Escena actual"}</button>)}</div>, scopePortalRoot)}
+    {manualOpen && scopePortalRoot && createPortal(<dialog ref={manualDialogRef} className="writer-modal writer-breakdown-manual-dialog" aria-labelledby="writer-breakdown-manual-title" onCancel={(event) => { event.preventDefault(); setManualOpen(false); }}>
+      <h2 id="writer-breakdown-manual-title">Agregar elemento</h2>
+      <p>Elemento de producción sin aparición vinculada al guion.</p>
+      <form onSubmit={(event) => { event.preventDefault(); void addManual(); }}>
+        <label htmlFor="writer-breakdown-manual-name">Nombre</label><input id="writer-breakdown-manual-name" autoFocus maxLength={160} required value={manualName} onChange={(event) => { setManualName(event.target.value); setManualError(null); }} />
+        <label htmlFor="writer-breakdown-manual-category">Categoría</label><select id="writer-breakdown-manual-category" value={manualCategory} onChange={(event) => { setManualCategory(event.target.value as WriterBreakdownCategory); setManualError(null); }}>{WRITER_BREAKDOWN_CATEGORIES.map((item) => <option key={item} value={item}>{WRITER_BREAKDOWN_CATEGORY_LABELS[item]}</option>)}</select>
+        {existingManual && <p className="writer-breakdown-manual-existing" role="status">{existingManual.name} ya existe como {WRITER_BREAKDOWN_CATEGORY_LABELS[existingManual.category]}. <button type="button" onClick={openExisting}>Ver elemento existente</button></p>}
+        {manualError && <p className="writer-breakdown-manual-error" role="alert">{manualError}</p>}
+        <div className="writer-modal-actions"><button type="button" onClick={() => setManualOpen(false)}>Cancelar</button><button type="submit" disabled={busy || !manualName.trim() || Boolean(existingManual)}>{busy ? "Agregando…" : "Agregar"}</button></div>
+      </form>
+    </dialog>, scopePortalRoot)}
   </div>;
 }

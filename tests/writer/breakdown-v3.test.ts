@@ -74,14 +74,18 @@ test("V3 keeps physical modifiers in atomic names and lexicon category hints", (
   assert.ok(detected.every((item) => !item.name.includes("encuentra")));
 });
 
-test("manual tag selection trims only outer whitespace and preserves the screenplay", () => {
+test("manual tag selection trims only outer whitespace and punctuation without changing screenplay", () => {
   const text = "Sobre la repisa descansa un prisma de obsidiana.";
   const from = text.indexOf(" prisma");
   const to = text.indexOf(".");
   assert.deepEqual(normalizeManualTagSelection(text, from, to), {
     name: "prisma de obsidiana", fromOffset: from + 1, toOffset: to,
   });
-  assert.equal(normalizeManualTagSelection(text, 0, text.length), null);
+  assert.deepEqual(normalizeManualTagSelection("  «tótem de cuarzo»,  ", 0, 21), {
+    name: "tótem de cuarzo", fromOffset: 3, toOffset: 18,
+  });
+  assert.equal(normalizeManualTagSelection("  ... ", 0, 6), null);
+  assert.equal(normalizeManualTagSelection(text, 0, text.length)?.name, text.slice(0, -1));
   assert.equal(text, "Sobre la repisa descansa un prisma de obsidiana.");
 });
 

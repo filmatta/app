@@ -36,6 +36,7 @@ import { startWriterTabLease, type WriterTabLease } from "@/lib/writer/tab-lease
 import {
   ScreenplayBlockExtension,
   setWriterAssistantMarkers,
+  setWriterBreakdownHoverDecorations,
   setWriterImportReviewDecorations,
   setWriterObservationMarkers,
   setWriterSceneHighlight,
@@ -73,7 +74,7 @@ import { WRITER_KIND_SHORTCUTS, writerKindShortcut, writerShortcutLabel } from "
 import WriterImportFlow from "./WriterImportFlow";
 import WriterBreakdownPanel from "./WriterBreakdownPanel";
 import { normalizeManualTagSelection } from "@/lib/writer/breakdown-tagging";
-import type { WriterBreakdownCategory } from "@/lib/writer/production";
+import { WRITER_BREAKDOWN_CATEGORY_LABELS, productionIdentityKey, type WriterBreakdownCategory, type WriterBreakdownElement } from "@/lib/writer/production";
 import WriterAssistantNarrative from "./WriterAssistantNarrative";
 import WriterGuidedWriting from "./WriterGuidedWriting";
 import WriterSelectionAnalysisDialog from "./WriterSelectionAnalysisDialog";
@@ -321,9 +322,11 @@ export default function WriterWorkspace({
   const [analysisEpoch, setAnalysisEpoch] = useState(0);
   const [contextMenu, setContextMenu] = useState<WriterContextMenuState | null>(null);
   const [tagMode, setTagMode] = useState(false);
-  const [tagSelection, setTagSelection] = useState<{ target: WriterSelectionTarget; x: number; y: number } | null>(null);
+  const [tagSelection, setTagSelection] = useState<{ target: WriterSelectionTarget; name: string; x: number; y: number; anchorTop: number } | null>(null);
   const [breakdownRefreshToken, setBreakdownRefreshToken] = useState(0);
   const [manualTagCategory, setManualTagCategory] = useState<WriterBreakdownCategory | null>(null);
+  const [breakdownElements, setBreakdownElements] = useState<WriterBreakdownElement[]>([]);
+  const [breakdownHover, setBreakdownHover] = useState<{ label: string; x: number; y: number } | null>(null);
   const [insertState, setInsertState] = useState<WriterInsertState | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [timelineMounted, setTimelineMounted] = useState(false);
@@ -372,6 +375,7 @@ export default function WriterWorkspace({
   const activeWriterSelectionRef = useRef<WriterSelectionTarget | null>(null);
   const rightClickSelectionRef = useRef<WriterSelectionTarget | null>(null);
   const tagModeRef = useRef(false);
+  const tagEditorRef = useRef<Editor | null>(null);
   const deepLinkHandledRef = useRef(false);
   const importNoticeHandledRef = useRef(false);
   const highlightTimeoutRef = useRef<number | null>(null);
@@ -419,11 +423,28 @@ export default function WriterWorkspace({
     const target = captureWriterSelectionTarget(current.state);
     if (!target || target.multipleBlocks) { setTagSelection(null); return; }
     const block = findWriterBlockById(current, target.targetId);
-    if (!block || !normalizeManualTagSelection(block.text, target.from - block.position - 1, target.to - block.position - 1)) {
+    const selected = block && normalizeManualTagSelection(block.text, target.from - block.position - 1, target.to - block.position - 1);
+    if (!block || !selected) {
       setTagSelection(null); return;
     }
     const coords = current.view.coordsAtPos(target.to);
-    setTagSelection({ target, x: coords.left, y: coords.bottom + 5 });
+    const anchorTop = current.view.coordsAtPos(target.from).top;
+    setTagSelection({ target, name: selected.name, x: coords.left, y: coords.bottom + 5, anchorTop });
+  }
+  function finalizeTagSelection(current: Editor) {
+    if (!tagModeRef.current || current.view.composing) return;
+    const native = current.view.dom.ownerDocument.getSelection();
+    if (native?.anchorNode && native.focusNode && !native.isCollapsed
+      && current.view.dom.contains(native.anchorNode) && current.view.dom.contains(native.focusNode)) {
+      try {
+        const anchor = current.view.posAtDOM(native.anchorNode, native.anchorOffset);
+        const head = current.view.posAtDOM(native.focusNode, native.focusOffset);
+        if (anchor !== head && (current.state.selection.anchor !== anchor || current.state.selection.head !== head)) {
+          current.view.dispatch(current.state.tr.setSelection(TextSelection.create(current.state.doc, anchor, head)));
+        }
+      } catch { /* Native selection no longer belongs to a screenplay block. */ }
+    }
+    showTagSelection(current);
   }
   const openContextMenuAtPointer = useCallback((
     state: EditorState,
@@ -724,6 +745,16 @@ export default function WriterWorkspace({
           }
           return false;
         },
+        pointerup: (_view, event) => {
+          const pointer = event as PointerEvent;
+          if (pointer.button === 0 && pointer.pointerType !== "touch" && tagEditorRef.current) finalizeTagSelection(tagEditorRef.current);
+          return false;
+        },
+        keyup: (_view, event) => {
+          const key = (event as KeyboardEvent).key;
+          if ((key === "Shift" || key.startsWith("Arrow")) && tagEditorRef.current) finalizeTagSelection(tagEditorRef.current);
+          return false;
+        },
         click: (view, event) => {
           if ((event as MouseEvent).button !== 0) return false;
           const target = event.target instanceof Element
@@ -847,7 +878,6 @@ export default function WriterWorkspace({
       if (current.isFocused) activeWriterSelectionRef.current = captureWriterSelectionTarget(current.state);
       syncActiveSceneFromEditor(current.state);
       syncAutocomplete(current);
-      if (tagModeRef.current) showTagSelection(current);
     },
     onFocus: ({ editor: current }) => {
       activeWriterSelectionRef.current = captureWriterSelectionTarget(current.state);
@@ -861,6 +891,44 @@ export default function WriterWorkspace({
       canRedo: current?.can().chain().redo().run() ?? false,
     }),
   });
+
+  useEffect(() => { tagEditorRef.current = editor; return () => { tagEditorRef.current = null; }; }, [editor]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    if (focusMode) {
+      setWriterBreakdownHoverDecorations(editor, []);
+      return;
+    }
+    const blockTextById = new Map<string, string>();
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "screenplayBlock") blockTextById.set(String(node.attrs.id ?? ""), node.textContent);
+    });
+    const grouped = new Map<string, { blockId: string; fromOffset: number; toOffset: number; text: string; labels: Set<string> }>();
+    for (const element of breakdownElements) {
+      if (element.retired || element.status !== "confirmed") continue;
+      for (const appearance of element.appearances) {
+        const { blockId, fromOffset, toOffset } = appearance;
+        if (appearance.stale || !blockId || fromOffset == null || toOffset == null) continue;
+        const text = blockTextById.get(blockId)?.slice(fromOffset, toOffset);
+        if (!text || !text.trim()) continue;
+        const key = `${blockId}:${fromOffset}:${toOffset}`;
+        const entry = grouped.get(key) ?? { blockId, fromOffset, toOffset, text, labels: new Set<string>() };
+        entry.labels.add(`${WRITER_BREAKDOWN_CATEGORY_LABELS[element.category]} · ${element.name}`);
+        grouped.set(key, entry);
+      }
+    }
+    setWriterBreakdownHoverDecorations(editor, [...grouped.values()].map(({ labels, ...item }) => ({ ...item, label: [...labels].join("\n") })));
+    return () => { if (!editor.isDestroyed) setWriterBreakdownHoverDecorations(editor, []); };
+  }, [breakdownElements, editor, focusMode]);
+
+  useEffect(() => {
+    if (!breakdownHover) return;
+    const hide = () => setBreakdownHover(null);
+    window.document.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+    return () => { window.document.removeEventListener("scroll", hide, true); window.removeEventListener("resize", hide); };
+  }, [breakdownHover]);
 
   useEffect(() => { activeSceneRef.current = activeScene; }, [activeScene]);
 
@@ -1658,6 +1726,8 @@ export default function WriterWorkspace({
       if (exportMenu) return setExportMenu(false);
       if (pdfExportOpen) return setPdfExportOpen(false);
       if (feedback) return setFeedback(null);
+      if (tagSelection) return setTagSelection(null);
+      if (tagModeRef.current) { tagModeRef.current = false; setTagMode(false); return; }
       if (timelineExpanded) return setTimelineExpanded(false);
       if (observationsOpen) {
         setObservationsOpen(false);
@@ -1677,7 +1747,7 @@ export default function WriterWorkspace({
     };
     window.addEventListener("keydown", closeSurfaceOrFocus);
     return () => window.removeEventListener("keydown", closeSurfaceOrFocus);
-  }, [appearanceOpen, autoFormatPlan, contextMenu, exportMenu, feedback, focusMode, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pasteAssist, pdfExportOpen, restoreTimelineAfterFocus, searchOpen, shortcutsOpen, shotlistBusy, shotlistModalOpen, timelineExpanded, timelineOpen, versionsOpen]);
+  }, [appearanceOpen, autoFormatPlan, contextMenu, exportMenu, feedback, focusMode, importOpen, insertState, mobileMoreOpen, mobileNavigateOpen, observationsOpen, pasteAssist, pdfExportOpen, restoreTimelineAfterFocus, searchOpen, shortcutsOpen, shotlistBusy, shotlistModalOpen, tagSelection, timelineExpanded, timelineOpen, versionsOpen]);
 
   useEffect(() => {
     if (!editor || !ready || deepLinkHandledRef.current) return;
@@ -2968,6 +3038,7 @@ export default function WriterWorkspace({
             activeSceneId={activeScene}
             characterCount={characterRows.length}
             onEnsureSaved={ensureCurrentDocumentSaved}
+            onElementsChange={setBreakdownElements}
             onNavigate={(reference) => {
               if (!reference.sceneId) return;
               navigateToWriterReference({
@@ -3048,7 +3119,7 @@ export default function WriterWorkspace({
             const next = !tagModeRef.current;
             tagModeRef.current = next;
             setTagMode(next);
-            if (next && editor) showTagSelection(editor);
+            if (next && editor) finalizeTagSelection(editor);
             else setTagSelection(null);
           }}
           onAutoFormat={() => startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document")}
@@ -3071,6 +3142,24 @@ export default function WriterWorkspace({
           ref={paperRef}
           className="writer-paper"
           aria-busy={!ready}
+          onPointerOver={(event) => {
+            if (event.pointerType === "touch") return;
+            const range = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-writer-breakdown-label]") : null;
+            if (!range) return;
+            const rect = range.getBoundingClientRect();
+            setBreakdownHover({ label: range.dataset.writerBreakdownLabel ?? "", x: Math.max(8, Math.min(rect.left, window.innerWidth - 248)), y: rect.bottom + 38 < window.innerHeight ? rect.bottom + 6 : Math.max(8, rect.top - 42) });
+          }}
+          onPointerOut={(event) => {
+            if (event.relatedTarget instanceof Element && event.relatedTarget.closest("[data-writer-breakdown-label]")) return;
+            setBreakdownHover(null);
+          }}
+          onFocusCapture={(event) => {
+            const range = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-writer-breakdown-label]") : null;
+            if (!range) return;
+            const rect = range.getBoundingClientRect();
+            setBreakdownHover({ label: range.dataset.writerBreakdownLabel ?? "", x: Math.max(8, Math.min(rect.left, window.innerWidth - 248)), y: rect.bottom + 38 < window.innerHeight ? rect.bottom + 6 : Math.max(8, rect.top - 42) });
+          }}
+          onBlurCapture={() => setBreakdownHover(null)}
           onPointerDownCapture={(event) => {
             pointerRef.current = { type: event.pointerType || "mouse", at: Date.now() };
             if (event.button !== 2 || pointerRef.current.type !== "mouse") return;
@@ -3160,10 +3249,12 @@ export default function WriterWorkspace({
         />
       )}
       {tagSelection && !contextMenu && !focusMode && <WriterTagMenu
-        x={tagSelection.x} y={tagSelection.y}
+        x={tagSelection.x} y={tagSelection.y} anchorTop={tagSelection.anchorTop} selectedName={tagSelection.name}
+        existingCategories={breakdownElements.filter((element) => !element.retired && element.status !== "dismissed" && productionIdentityKey(element.name) === productionIdentityKey(tagSelection.name)).map((element) => element.category)}
         onClose={() => setTagSelection(null)}
         onChoose={(category) => void createManualTag(tagSelection.target, category)}
       />}
+      {breakdownHover && !focusMode && <div className="writer-breakdown-hover-label" role="tooltip" style={{ left: breakdownHover.x, top: breakdownHover.y }}>{breakdownHover.label}</div>}
       {guidedSelection && <WriterSelectionAnalysisDialog
         selection={guidedSelection}
         currentDocumentHash={guidedWriting.documentHash}
@@ -3636,7 +3727,7 @@ function WriterToolbar({
       <button className="writer-auto-format-button" type="button" onMouseDown={preserveSelection} onClick={onAutoFormat}>
         <SmartFeatureIndicator label="FORMATO AUTOMÁTICO" />
       </button>
-      <button className="writer-tag-button" type="button" aria-label="Etiquetar elemento" aria-pressed={tagMode} title="Etiquetar elemento" onMouseDown={preserveSelection} onClick={onToggleTag}><WriterIcon name="tag" /><span className="writer-toolbar-label">Etiquetar</span></button>
+      <button className="writer-tag-button" type="button" aria-label="Etiquetar elemento" aria-pressed={tagMode} title={tagMode ? "Modo Etiquetar activo" : "Etiquetar elemento"} onMouseDown={preserveSelection} onClick={onToggleTag}><WriterIcon name="tag" /><span className="writer-toolbar-label">Etiquetar</span></button>
       <div className="writer-toolbar-desktop-actions">
         <div className="writer-toolbar-formatting-actions">
         <span className="writer-toolbar-divider" aria-hidden="true" />

@@ -25,6 +25,43 @@ type ImportReviewDecorationState = {
   onOpen: (id: string) => void;
 };
 const importReviewDecorationKey = new PluginKey<ImportReviewDecorationState>("writerImportReviewDecorations");
+const breakdownHoverKey = new PluginKey<{ decorations: DecorationSet; items: readonly WriterBreakdownHoverDecoration[] }>("writerBreakdownHover");
+
+export type WriterBreakdownHoverDecoration = {
+  blockId: string;
+  fromOffset: number;
+  toOffset: number;
+  text: string;
+  label: string;
+};
+
+function breakdownHoverDecorations(doc: ProseMirrorNode, items: readonly WriterBreakdownHoverDecoration[]) {
+  const byBlock = new Map<string, WriterBreakdownHoverDecoration[]>();
+  for (const item of items) byBlock.set(item.blockId, [...(byBlock.get(item.blockId) ?? []), item]);
+  const decorations: Decoration[] = [];
+  doc.descendants((node, position) => {
+    if (node.type.name !== "screenplayBlock") return;
+    const blockItems = byBlock.get(String(node.attrs.id ?? "")) ?? [];
+    for (const item of blockItems) {
+      if (item.fromOffset < 0 || item.toOffset > node.content.size || item.toOffset <= item.fromOffset) continue;
+      if (node.textContent.slice(item.fromOffset, item.toOffset) !== item.text) continue;
+      decorations.push(Decoration.inline(position + 1 + item.fromOffset, position + 1 + item.toOffset, {
+        class: "writer-breakdown-hover-range",
+        "data-writer-breakdown-label": item.label,
+        role: "note",
+        tabindex: "0",
+        "aria-label": item.label,
+      }, { inclusiveStart: false, inclusiveEnd: false }));
+    }
+  });
+  return DecorationSet.create(doc, decorations);
+}
+
+export function setWriterBreakdownHoverDecorations(editor: Editor, items: readonly WriterBreakdownHoverDecoration[]) {
+  editor.view.dispatch(editor.state.tr.setMeta(breakdownHoverKey, {
+    decorations: breakdownHoverDecorations(editor.state.doc, items), items,
+  }));
+}
 
 export type WriterImportReviewDecoration = {
   id: string;
@@ -351,6 +388,20 @@ export const ScreenplayBlockExtension = Node.create({
             return true;
           },
         },
+      }),
+      new Plugin<{ decorations: DecorationSet; items: readonly WriterBreakdownHoverDecoration[] }>({
+        key: breakdownHoverKey,
+        state: {
+          init: () => ({ decorations: DecorationSet.empty, items: [] }),
+          apply(transaction, current) {
+            const next = transaction.getMeta(breakdownHoverKey) as typeof current | undefined;
+            if (next) return next;
+            return transaction.docChanged
+              ? { ...current, decorations: breakdownHoverDecorations(transaction.doc, current.items) }
+              : current;
+          },
+        },
+        props: { decorations: (state) => breakdownHoverKey.getState(state)?.decorations },
       }),
     ];
   },
