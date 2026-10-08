@@ -80,7 +80,7 @@ test("same-document Breakdown reanalysis uses the saved revision, refreshes inli
   await page.evaluate(() => { (window as Window & { __breakdownMountToken?: string }).__breakdownMountToken = crypto.randomUUID(); });
   const mountToken = await page.evaluate(() => (window as Window & { __breakdownMountToken?: string }).__breakdownMountToken);
 
-  const action = page.locator(`[data-block-id="${actionId}"]`);
+  const action = page.locator(`p[data-block-id="${actionId}"]`);
   await action.click();
   await page.keyboard.press("End");
   await page.keyboard.type(` ${addedText} ${metaphor}`);
@@ -135,4 +135,69 @@ test("same-document Breakdown reanalysis uses the saved revision, refreshes inli
   await page.getByRole("button", { name: /Reanalizar todo/ }).click();
   await expect(page.getByRole("tabpanel").getByText("pistola", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("tabpanel").getByText("Llave maestra", { exact: true })).toBeVisible();
+});
+
+test("physical inventory appears after save and a dismissed occurrence stays dismissed after reload and reanalysis", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await page.request.get("http://127.0.0.1:54329/__scenario?value=writer-ux");
+  await session(context);
+  let elements: WriterBreakdownElement[] = [];
+  const dismissed = new Set<string>();
+  await page.route(`**/api/writer/scripts/${scriptId}/breakdown`, async (route: Route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ elements, pendingCount: elements.filter((element) => element.status === "suggested").length, analysis: null }) });
+    }
+    if (route.request().method() === "PATCH") {
+      const payload = route.request().postDataJSON() as { elementId: string; action: string; status: string };
+      const target = elements.find((element) => element.id === payload.elementId);
+      if (target && payload.action === "status" && payload.status === "dismissed") {
+        dismissed.add(target.fingerprint);
+        elements = elements.map((element) => element.id === target.id ? { ...element, status: "dismissed" } : element);
+      }
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ saved: true, breakdown: { elements, pendingCount: elements.filter((element) => element.status === "suggested").length } }) });
+    }
+    const state = await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json() as { revision: number; document: WriterDocument };
+    const candidates = detectWriterBreakdownRules(state.document).filter((candidate) => candidate.category === "prop" && !dismissed.has(candidate.fingerprint));
+    const detected = candidates.map<WriterBreakdownElement>((candidate, index) => ({
+      id: `dddddddd-dddd-4ddd-8ddd-${String(index + 1).padStart(12, "0")}`,
+      scriptId,
+      category: candidate.category,
+      name: candidate.name,
+      status: "suggested",
+      source: "rule",
+      canonicalIdentityKey: null,
+      note: null,
+      assetId: null,
+      fingerprint: candidate.fingerprint,
+      revision: 1,
+      appearances: [{ id: `eeeeeeee-eeee-4eee-8eee-${String(index + 1).padStart(12, "0")}`, sceneId: candidate.sceneId, blockId: candidate.blockId, excerpt: candidate.excerpt, nature: candidate.nature, fromOffset: candidate.fromOffset ?? null, toOffset: candidate.toOffset ?? null, sourceRevision: state.revision, stale: false }],
+    }));
+    elements = [...elements.filter((element) => element.status === "dismissed"), ...detected];
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ detected: detected.length, candidates: [], reusedScenes: 0, revision: state.revision, partial: false, breakdown: { elements, pendingCount: detected.length, analysis: { status: "completed", stale: false, sourceRevision: state.revision, scope: "document", errorCode: null, model: "local-rules-v1", updatedAt: new Date().toISOString() } } }) });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/writer/${scriptId}`);
+  await page.getByRole("tab", { name: "Props / utilería" }).click();
+  const action = page.locator(`p[data-block-id="${actionId}"]`);
+  await action.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Mara entra.");
+  await expect(page.locator(".writer-save-status")).toContainText("Guardado en la nube");
+  await page.getByRole("button", { name: /Detectar elementos/ }).click();
+  await expect(page.getByRole("tabpanel").getByText("cámara", { exact: true })).toHaveCount(0);
+
+  await action.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Mara entra con una cámara, una mochila y un paraguas.");
+  await expect.poll(async () => JSON.stringify((await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json() as { document: WriterDocument }).document).includes("Mara entra con una cámara, una mochila y un paraguas.")).toBe(true);
+  await page.getByRole("button", { name: /Reanalizar todo/ }).click();
+  for (const name of ["cámara", "mochila", "paraguas"]) await expect(page.getByRole("tabpanel").getByText(name, { exact: true })).toBeVisible();
+  await page.getByRole("tabpanel").getByRole("button", { name: /cámara.*Ver/iu }).click();
+  await page.getByRole("button", { name: "Esto no es un elemento" }).click();
+  await page.reload();
+  await page.getByRole("tab", { name: "Props / utilería" }).click();
+  await page.getByRole("button", { name: /Reanalizar todo|Detectar elementos/ }).click();
+  await expect(page.getByRole("tabpanel").getByText("cámara", { exact: true })).toHaveCount(0);
+  for (const name of ["mochila", "paraguas"]) await expect(page.getByRole("tabpanel").getByText(name, { exact: true })).toHaveCount(1);
 });

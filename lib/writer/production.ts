@@ -167,12 +167,19 @@ export const WRITER_SHOT_MOVEMENTS = [
 
 const categorySet = new Set<string>(WRITER_BREAKDOWN_CATEGORIES);
 const natureSet = new Set<string>(["present", "used", "mentioned", "inferred"]);
-const physicalActionPattern = /\b(sostiene|toma|agarra|abre|cierra|enciende|apaga|guarda|esconde|encuentra|descubre|extrae|saca|dispara|conduce|viste|lleva|usa|deja|coloca|levanta|recoge|hay|aparecen?)\s+((?:(?:un(?:a|o)?s?|el|la|los|las|su|sus)\s+)[^.!?;\n]+)/giu;
-const carriedEntrancePattern = /\b(?:entra|sale|camina|aparece|llega)\s+con\s+((?:(?:un(?:a|o)?s?|el|la|los|las|su|sus)\s+)[^.!?;\n]+)/giu;
+const physicalActionVerb = "sostiene|toma|agarra|abre|cierra|enciende|apaga|guarda|esconde|encuentra|descubre|extrae|saca|dispara|conduce|viste|lleva|usa|deja|coloca|levanta|recoge|hay|aparecen?";
+const physicalDeterminer = "un(?:a|o)?s?|el|la|los|las|su|sus|\\d+|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez";
+// Only consume the verb: a later verb in the same sentence must still be examined.
+const physicalActionPattern = new RegExp(`\\b(${physicalActionVerb})\\s+(?=(?:${physicalDeterminer})\\s+)`, "giu");
+const carriedEntrancePattern = new RegExp(`\\b(?:entra|sale|camina|aparece|llega)\\s+con\\s+(?=(?:${physicalDeterminer})\\s+)`, "giu");
 const visibleSubjectPattern = /\b((?:un(?:a|o)?s?|el|la|los|las)\s+[\p{L}\p{N}][\p{L}\p{N}\s-]{1,60}?)\s+(?:descansa|yace|permanece|está|espera)\b/giu;
 const physicalPlacementPattern = /\b(?:sobre|contra|junto a|debajo de)\s+((?:un(?:a|o)?s?|el|la|los|las)\s+[\p{L}\p{N}][\p{L}\p{N}\s-]{1,48})/giu;
-const phraseEnd = /\s+(?:mientras|cuando|que|pero|para|porque|con|sin|sobre|bajo|en|contra|junto|dentro|hacia|desde|al|del)\b.*$/iu;
-const article = /^(?:un(?:a|o)?s?|el|la|los|las|su|sus)\s+/iu;
+const sourcePlacementPattern = /\bde\s+((?:un(?:a|o)?s?|el|la|los|las|su|sus)\s+[\p{L}\p{N}][\p{L}\p{N}\s-]{1,48})/giu;
+const phraseEnd = /\s+(?:mientras|cuando|que|pero|para|porque|con|sin|sobre|bajo|en|contra|junto|dentro|hacia|desde|al|del|hay)\b.*$/iu;
+const sourcePhraseEnd = new RegExp(`\\s+de\\s+(?=(?:${physicalDeterminer})\\s+).*$`, "iu");
+const article = new RegExp(`^(?:${physicalDeterminer})\\s+`, "iu");
+const clauseInsideNominal = new RegExp(`\\b(?:${physicalActionVerb}|descansa|yace|permanece|está|espera|se|no|que|quien|alguien|nadie|todo|algo|ambos|era|fue|parece)\\b`, "iu");
+const determinerInsideNominal = new RegExp(`\\b(?:${physicalDeterminer})\\b`, "iu");
 
 export function normalizeProductionName(value: string) {
   return value
@@ -227,22 +234,39 @@ export function detectWriterBreakdownRules(document: WriterDocument, sceneIds?: 
       }
       if (block.kind !== "action") continue;
       const addPhysicalPhrases = (raw: string, start: number, nature: WriterBreakdownNature, category: WriterBreakdownCategory = "prop") => {
-        const bounded = raw.replace(phraseEnd, "");
+        const bounded = raw.replace(phraseEnd, "").replace(sourcePhraseEnd, "");
+        let precedingNominal = false;
         for (const part of bounded.matchAll(/(?:^|,\s*|\s+y\s+)((?:(?:un(?:a|o)?s?|el|la|los|las|su|sus)\s+)?[\p{L}\p{N}][\p{L}\p{N}\s-]*?)(?=,|\s+y\s+|$)/giu)) {
           const phrase = part[1]?.trim().replace(/[.,;:!?]+$/u, "").trim() ?? "";
-          const name = normalizeProductionName(phrase.replace(/^(?:su|sus)\s+/iu, ""));
-          if (!name || name.split(/\s+/u).length > 5) continue;
-          const localOffset = raw.indexOf(phrase, part.index ?? 0) + (phrase.match(article)?.[0].length ?? 0);
+          const prefix = phrase.match(article)?.[0] ?? "";
+          if (!prefix && !precedingNominal) break;
+          const name = phrase.slice(prefix.length);
+          const wordCount = name.split(/\s+/u).length;
+          // A bare coordinated token alone is too easily a finite verb ("y ríe").
+          if (!name || wordCount > 5 || (!prefix && (wordCount < 2 || /^\p{Lu}/u.test(name)))
+            || clauseInsideNominal.test(name) || determinerInsideNominal.test(name)) break;
+          const localOffset = raw.indexOf(phrase, part.index ?? 0) + prefix.length;
           const fromOffset = start + localOffset;
-          if (text.slice(fromOffset, fromOffset + name.length) !== name) continue;
+          if (text.slice(fromOffset, fromOffset + name.length) !== name) break;
           candidates.push(ruleCandidate({ name, category, scene, blockId: block.id, excerpt: text.slice(0, 500), nature, fromOffset, toOffset: fromOffset + name.length }));
+          precedingNominal = true;
         }
       };
       for (const match of text.matchAll(physicalActionPattern)) {
         const category: WriterBreakdownCategory = match[1]?.toLocaleLowerCase("es-MX") === "conduce" ? "vehicle" : match[1]?.toLocaleLowerCase("es-MX") === "viste" ? "wardrobe" : "prop";
-        addPhysicalPhrases(match[2] ?? "", (match.index ?? 0) + match[0].indexOf(match[2] ?? ""), match[1]?.toLocaleLowerCase("es-MX") === "hay" ? "present" : "used", category);
+        const start = (match.index ?? 0) + match[0].length;
+        const raw = text.slice(start).split(/[.!?;\n]/u, 1)[0] ?? "";
+        addPhysicalPhrases(raw, start, match[1]?.toLocaleLowerCase("es-MX") === "hay" ? "present" : "used", category);
+        if (/^(?:saca|extrae|recoge)$/iu.test(match[1] ?? "")) {
+          for (const source of raw.matchAll(sourcePlacementPattern)) {
+            addPhysicalPhrases(source[1] ?? "", start + (source.index ?? 0) + source[0].indexOf(source[1] ?? ""), "present");
+          }
+        }
       }
-      for (const match of text.matchAll(carriedEntrancePattern)) addPhysicalPhrases(match[1] ?? "", (match.index ?? 0) + match[0].indexOf(match[1] ?? ""), "present");
+      for (const match of text.matchAll(carriedEntrancePattern)) {
+        const start = (match.index ?? 0) + match[0].length;
+        addPhysicalPhrases(text.slice(start).split(/[.!?;\n]/u, 1)[0] ?? "", start, "present");
+      }
       for (const match of text.matchAll(visibleSubjectPattern)) addPhysicalPhrases(match[1] ?? "", (match.index ?? 0) + match[0].indexOf(match[1] ?? ""), "present");
       for (const match of text.matchAll(physicalPlacementPattern)) addPhysicalPhrases(match[1] ?? "", (match.index ?? 0) + match[0].indexOf(match[1] ?? ""), "present");
     }

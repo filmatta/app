@@ -67,6 +67,53 @@ test("Breakdown recall-first fixture recovers physical inventories without turni
   assert.ok(found.some((candidate) => candidate.name === "chaqueta verde" && candidate.category === "wardrobe"));
 });
 
+test("Breakdown physicality gate keeps expanded concrete recall and atomic names", () => {
+  const actions = [
+    "Mara abre el cajón y encuentra una pistola.",
+    "Sobre la mesa hay una libreta roja, unas llaves y una grabadora.",
+    "Diego deja el casco junto a la puerta.",
+    "Una bicicleta descansa contra la pared.",
+    "Ana lleva un abrigo amarillo, botas negras y gafas oscuras.",
+    "Tomás saca una cámara de la mochila.",
+    "Mara sostiene un paraguas roto.",
+    "En la esquina hay tres cajas de cartón.",
+    "El camarero coloca dos vasos y una botella sobre la mesa.",
+    "Diego encuentra un dispositivo extraño.",
+  ];
+  const expected = ["cajón", "pistola", "mesa", "libreta roja", "llaves", "grabadora", "casco", "puerta", "bicicleta", "pared", "abrigo amarillo", "botas negras", "gafas oscuras", "cámara", "mochila", "paraguas roto", "cajas de cartón", "vasos", "botella", "dispositivo extraño"];
+  const document: WriterDocument = { type: "doc", content: actions.flatMap((text, index) => [createBlock("sceneHeading", `INT. LUGAR ${index + 1} - DÍA`), createBlock("action", text)]) };
+  const physical = detectWriterBreakdownRules(document).filter((candidate) => !["location", "character"].includes(candidate.category));
+  const names = new Set(physical.map((candidate) => candidate.name));
+  assert.deepEqual(expected.filter((name) => !names.has(name)), []);
+  assert.deepEqual(physical.filter((candidate) => /\b(?:abre|encuentra|deja|saca|coloca|lleva|sostiene)\b/iu.test(candidate.name)).map((candidate) => candidate.name), []);
+  for (const candidate of physical) {
+    const block = document.content?.find((item) => item.attrs?.id === candidate.blockId);
+    if (candidate.fromOffset != null && candidate.toOffset != null && block?.content?.[0]?.type === "text") {
+      assert.equal(block.content[0].text.slice(candidate.fromOffset, candidate.toOffset), candidate.name);
+    }
+  }
+});
+
+test("Breakdown physicality gate rejects clauses, states and metaphors without a noun blacklist", () => {
+  const actions = [
+    "Ambos se asustan.", "No pasa nada.", "Mara está nerviosa.", "Diego se arrepiente.",
+    "La tensión aumenta.", "Todo parece perdido.", "Nadie responde.",
+    "La conversación se complica.", "Algo ha cambiado entre ellos.", "El silencio se vuelve insoportable.",
+    "La noticia fue un disparo al corazón. Su relación era una bomba de tiempo. El silencio pesaba toneladas.",
+    "Mara encuentra una pistola y no sabe si es real, se la da a su hermano, él apunta a un ave y jala el gatillo, no pasa nada. Ambos se asustan.",
+    "Mara coloca una bomba sobre la mesa.",
+    "Mara abre una puerta y ríe. Diego sostiene un casco y Ana grita.",
+  ];
+  const document: WriterDocument = { type: "doc", content: actions.flatMap((text, index) => [createBlock("sceneHeading", `INT. LUGAR ${index + 1} - DÍA`), createBlock("action", text)]) };
+  const physical = detectWriterBreakdownRules(document).filter((candidate) => !["location", "character"].includes(candidate.category));
+  const invalid = /ambos se asustan|no pasa nada|no sabe si es real|se la da|apunta a un ave|jala el gatillo|disparo al corazón|bomba de tiempo|pesaba toneladas|ríe|Ana grita/iu;
+  assert.deepEqual(physical.filter((candidate) => invalid.test(candidate.name)).map((candidate) => candidate.name), []);
+  assert.equal(physical.filter((candidate) => candidate.name === "bomba").length, 1);
+  assert.equal(physical.filter((candidate) => candidate.name === "pistola").length, 1);
+  const abstractOnly = new Set(actions.slice(0, 11).flatMap((_, index) => [document.content![index * 2]!.attrs!.id, document.content![index * 2 + 1]!.attrs!.id]));
+  assert.equal(physical.filter((candidate) => abstractOnly.has(candidate.sceneId) || abstractOnly.has(candidate.blockId)).length, 0);
+});
+
 test("Breakdown decision keys are scoped to evidence, never a global noun blacklist", () => {
   const document: WriterDocument = { type: "doc", content: [
     createBlock("sceneHeading", "INT. CASA - DÍA"),
