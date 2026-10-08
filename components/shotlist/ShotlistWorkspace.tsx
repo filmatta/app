@@ -623,7 +623,7 @@ export default function ShotlistWorkspace({ initialState, userId, initialMode = 
     finally { setExportBusy(false); }
   }
 
-  async function createNewShotlist() { try { const response = await fetch("/api/shotlists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Shotlist sin título", operationId: crypto.randomUUID() }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); router.push(`/shotlists/${data.id}`); } catch (cause) { setError(message(cause, "No pudimos crear una Shotlist.")); } }
+  async function createNewShotlist() { if (!shotlist.projectId) { router.push("/create"); return; } try { const response = await fetch("/api/shotlists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId: shotlist.projectId, title: "Shotlist sin título", operationId: crypto.randomUUID() }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); router.push(`/shotlists/${data.id}`); } catch (cause) { setError(message(cause, "No pudimos crear una Shotlist.")); } }
 
   function selectShot(shot: WriterShot) { setSelectedShotId(shot.id); setActiveGroupId(shot.groupId); setInspectorOpen(true); }
   function navigateRow(shotId: string, direction: -1 | 1) {

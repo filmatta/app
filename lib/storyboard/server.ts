@@ -61,7 +61,7 @@ export async function loadStoryboardBoard(
   for (const panels of panelsByShot.values()) panels.sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
 
   return {
-    shotlist: { id: shotlist.id, title: shotlist.title, scriptId: shotlist.scriptId, revision: shotlist.revision },
+    shotlist: { id: shotlist.id, projectId: shotlist.projectId, title: shotlist.title, scriptId: shotlist.scriptId, revision: shotlist.revision },
     groups: shotlist.groups.map((group) => ({
       id: group.id,
       title: group.title,
@@ -79,7 +79,7 @@ export async function loadStoryboardBoard(
 
 async function loadStoryboardShotlist(db: SupabaseClient, userId: string, shotlistId: string): Promise<WriterShotlist> {
   const shotlistResult = await db.from("writer_shotlists")
-    .select("id,script_id,title,source_revision,revision")
+    .select("id,project_id,script_id,title,source_revision,revision")
     .eq("id", shotlistId)
     .eq("owner_id", userId)
     .maybeSingle();
@@ -115,6 +115,7 @@ async function loadStoryboardShotlist(db: SupabaseClient, userId: string, shotli
   })).sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
   return {
     id: String(shotlistResult.data.id),
+    projectId: shotlistResult.data.project_id ? String(shotlistResult.data.project_id) : null,
     scriptId: shotlistResult.data.script_id ? String(shotlistResult.data.script_id) : null,
     title: String(shotlistResult.data.title),
     sourceRevision: shotlistResult.data.source_revision == null ? null : Number(shotlistResult.data.source_revision),

@@ -5,6 +5,7 @@ import { getViewer } from "@/lib/auth/get-viewer";
 import { createClient } from "@/lib/supabase/server";
 import { listProductions, listProductionSourceOptions } from "@/lib/production/server";
 import CreateProductionDialog from "@/components/production/CreateProductionDialog";
+import { listCreateProjects } from "@/lib/create/project";
 
 export const metadata: Metadata = { title: "Production · FILMATTA", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -12,18 +13,22 @@ export const dynamic = "force-dynamic";
 export default async function ProductionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ script?: string; shotlist?: string }>;
+  searchParams: Promise<{ script?: string; shotlist?: string; project?: string }>;
 }) {
   const viewer = await getViewer();
   if (!viewer) redirect("/login?next=/production");
   const db = await createClient();
-  const [productions, sourceOptions, requested] = await Promise.all([
+  const [allProductions, sourceOptions, projects, requested] = await Promise.all([
     listProductions(db, viewer.id),
     listProductionSourceOptions(db, viewer.id),
+    listCreateProjects(db, viewer.id),
     searchParams,
   ]);
   const preferredScriptId = requested.script && sourceOptions.scripts.some((source) => source.id === requested.script) ? requested.script : null;
   const preferredShotlistId = requested.shotlist && sourceOptions.shotlists.some((source) => source.id === requested.shotlist) ? requested.shotlist : null;
+  const sourceProjectId = sourceOptions.shotlists.find((source) => source.id === preferredShotlistId)?.projectId ?? sourceOptions.scripts.find((source) => source.id === preferredScriptId)?.projectId ?? null;
+  const preferredProjectId = requested.project && projects.some((project) => project.id === requested.project) ? requested.project : sourceProjectId ?? (projects.length === 1 ? projects[0].id : null);
+  const productions = requested.project && preferredProjectId === requested.project ? allProductions.filter((item) => item.projectId === preferredProjectId) : allProductions;
 
   return (
     <main className="production-index">
@@ -39,7 +44,7 @@ export default async function ProductionPage({
           <h1>De la escena al plan de rodaje.</h1>
           <p>Organiza jornadas, planos, necesidades, recursos y tareas sin alterar tus fuentes creativas.</p>
         </div>
-        {productions.length > 0 && <CreateProductionDialog sources={sourceOptions} preferredScriptId={preferredScriptId} preferredShotlistId={preferredShotlistId} compact />}
+        {productions.length > 0 && <CreateProductionDialog sources={sourceOptions} projects={projects} preferredProjectId={preferredProjectId} preferredScriptId={preferredScriptId} preferredShotlistId={preferredShotlistId} compact />}
       </section>
       {productions.length ? (
         <ul className="production-index-grid">
@@ -68,7 +73,7 @@ export default async function ProductionPage({
             <p className="production-eyebrow">DE GUION A SET</p>
             <h2>Prepara tu producción</h2>
             <p>Crea una estructura desde tus fuentes existentes o empieza con un espacio completamente manual.</p>
-            <CreateProductionDialog sources={sourceOptions} preferredScriptId={preferredScriptId} preferredShotlistId={preferredShotlistId} />
+            <CreateProductionDialog sources={sourceOptions} projects={projects} preferredProjectId={preferredProjectId} preferredScriptId={preferredScriptId} preferredShotlistId={preferredShotlistId} />
           </div>
         </section>
       )}

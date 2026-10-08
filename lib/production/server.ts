@@ -32,7 +32,7 @@ export class ProductionError extends Error {
 
 export async function listProductions(db: SupabaseClient, ownerId: string): Promise<ProductionListItem[]> {
   const [plans, days, schedule, tasks] = await Promise.all([
-    db.from("production_plans").select("id,owner_id,name,timezone,script_id,shotlist_id,source_script_revision,source_shotlist_revision,revision,created_at,updated_at")
+    db.from("production_plans").select("id,owner_id,project_id,name,timezone,script_id,shotlist_id,source_script_revision,source_shotlist_revision,revision,created_at,updated_at")
       .eq("owner_id", ownerId).order("updated_at", { ascending: false }),
     db.from("production_days").select("id,production_id").eq("owner_id", ownerId),
     db.from("production_schedule_items").select("id,production_id,day_id").eq("owner_id", ownerId).not("day_id", "is", null),
@@ -54,8 +54,8 @@ export async function listProductions(db: SupabaseClient, ownerId: string): Prom
 
 export async function listProductionSourceOptions(db: SupabaseClient, ownerId: string) {
   const [scriptsResult, shotlistsResult, groupsResult, shotsResult, elementsResult, appearancesResult] = await Promise.all([
-    db.from("writer_scripts").select("id,title,document,revision").eq("owner_id", ownerId).order("updated_at", { ascending: false }),
-    db.from("writer_shotlists").select("id,script_id,title,revision").eq("owner_id", ownerId).order("updated_at", { ascending: false }),
+    db.from("writer_scripts").select("id,project_id,title,document,revision").eq("owner_id", ownerId).order("updated_at", { ascending: false }),
+    db.from("writer_shotlists").select("id,project_id,script_id,title,revision").eq("owner_id", ownerId).order("updated_at", { ascending: false }),
     db.from("writer_shotlist_groups").select("id,shotlist_id").eq("owner_id", ownerId),
     db.from("writer_shotlist_shots").select("id,shotlist_id").eq("owner_id", ownerId),
     db.from("writer_breakdown_elements").select("id,script_id,status").eq("owner_id", ownerId).eq("status", "confirmed"),
@@ -68,13 +68,13 @@ export async function listProductionSourceOptions(db: SupabaseClient, ownerId: s
   const scripts: SourceScriptOption[] = (scriptsResult.data ?? []).map((row) => {
     const document = validateWriterDocument(row.document);
     return {
-      id: String(row.id), title: String(row.title), revision: Number(row.revision),
+      id: String(row.id), projectId: row.project_id ? String(row.project_id) : null, title: String(row.title), revision: Number(row.revision),
       sceneCount: document.ok ? deriveWriterSceneSources(document.document).length : 0,
       eligibleRequirementCount: (elementsResult.data ?? []).filter((element) => element.script_id === row.id && eligibleIds.has(String(element.id))).length,
     };
   });
   const shotlists: SourceShotlistOption[] = (shotlistsResult.data ?? []).map((row) => ({
-    id: String(row.id), scriptId: row.script_id ? String(row.script_id) : null, title: String(row.title), revision: Number(row.revision),
+    id: String(row.id), projectId: row.project_id ? String(row.project_id) : null, scriptId: row.script_id ? String(row.script_id) : null, title: String(row.title), revision: Number(row.revision),
     groupCount: (groupsResult.data ?? []).filter((group) => group.shotlist_id === row.id).length,
     shotCount: (shotsResult.data ?? []).filter((shot) => shot.shotlist_id === row.id).length,
   }));
@@ -83,7 +83,7 @@ export async function listProductionSourceOptions(db: SupabaseClient, ownerId: s
 
 export async function assertOwnedProduction(db: SupabaseClient, ownerId: string, productionId: string) {
   const result = await db.from("production_plans")
-    .select("id,owner_id,name,timezone,script_id,shotlist_id,source_script_revision,source_shotlist_revision,revision,created_at,updated_at")
+    .select("id,owner_id,project_id,name,timezone,script_id,shotlist_id,source_script_revision,source_shotlist_revision,revision,created_at,updated_at")
     .eq("id", productionId).eq("owner_id", ownerId).maybeSingle();
   if (result.error || !result.data) throw new ProductionError("not_found", "Producción no encontrada.");
   return mapPlan(result.data);
@@ -91,11 +91,11 @@ export async function assertOwnedProduction(db: SupabaseClient, ownerId: string,
 
 export async function validateOwnedSources(db: SupabaseClient, ownerId: string, scriptId: string | null, shotlistId: string | null) {
   const scriptResult = scriptId
-    ? await db.from("writer_scripts").select("id,title,revision").eq("id", scriptId).eq("owner_id", ownerId).maybeSingle()
+    ? await db.from("writer_scripts").select("id,project_id,title,revision").eq("id", scriptId).eq("owner_id", ownerId).maybeSingle()
     : { data: null, error: null };
   if (scriptId && (scriptResult.error || !scriptResult.data)) throw new ProductionError("not_found", "Guion no encontrado.");
   const shotlistResult = shotlistId
-    ? await db.from("writer_shotlists").select("id,script_id,title,revision").eq("id", shotlistId).eq("owner_id", ownerId).maybeSingle()
+    ? await db.from("writer_shotlists").select("id,project_id,script_id,title,revision").eq("id", shotlistId).eq("owner_id", ownerId).maybeSingle()
     : { data: null, error: null };
   if (shotlistId && (shotlistResult.error || !shotlistResult.data)) throw new ProductionError("not_found", "Shotlist no encontrada.");
   const shotlistScriptId = shotlistResult.data?.script_id ? String(shotlistResult.data.script_id) : null;
@@ -105,14 +105,14 @@ export async function validateOwnedSources(db: SupabaseClient, ownerId: string, 
   const effectiveScriptId = scriptId ?? shotlistScriptId;
   let effectiveScript = scriptResult.data;
   if (!effectiveScript && effectiveScriptId) {
-    const adopted = await db.from("writer_scripts").select("id,title,revision").eq("id", effectiveScriptId).eq("owner_id", ownerId).maybeSingle();
+    const adopted = await db.from("writer_scripts").select("id,project_id,title,revision").eq("id", effectiveScriptId).eq("owner_id", ownerId).maybeSingle();
     if (adopted.error || !adopted.data) throw new ProductionError("not_found", "El guion vinculado a la Shotlist no está disponible.");
     effectiveScript = adopted.data;
   }
   return {
-    script: effectiveScript ? { id: String(effectiveScript.id), title: String(effectiveScript.title), revision: Number(effectiveScript.revision) } : null,
+    script: effectiveScript ? { id: String(effectiveScript.id), projectId: effectiveScript.project_id ? String(effectiveScript.project_id) : null, title: String(effectiveScript.title), revision: Number(effectiveScript.revision) } : null,
     shotlist: shotlistResult.data ? {
-      id: String(shotlistResult.data.id), scriptId: shotlistScriptId, title: String(shotlistResult.data.title), revision: Number(shotlistResult.data.revision),
+      id: String(shotlistResult.data.id), projectId: shotlistResult.data.project_id ? String(shotlistResult.data.project_id) : null, scriptId: shotlistScriptId, title: String(shotlistResult.data.title), revision: Number(shotlistResult.data.revision),
     } : null,
   };
 }
@@ -242,7 +242,7 @@ async function loadProductionSourceState(db: SupabaseClient, ownerId: string, pr
 
 function mapPlan(row: Record<string, unknown>): ProductionPlan {
   return {
-    id: String(row.id), ownerId: String(row.owner_id), name: String(row.name), timezone: String(row.timezone),
+    id: String(row.id), ownerId: String(row.owner_id), projectId: row.project_id ? String(row.project_id) : null, name: String(row.name), timezone: String(row.timezone),
     scriptId: row.script_id ? String(row.script_id) : null, shotlistId: row.shotlist_id ? String(row.shotlist_id) : null,
     sourceScriptRevision: row.source_script_revision == null ? null : Number(row.source_script_revision),
     sourceShotlistRevision: row.source_shotlist_revision == null ? null : Number(row.source_shotlist_revision),

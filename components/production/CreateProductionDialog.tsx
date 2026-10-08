@@ -7,17 +7,22 @@ import type { SourceScriptOption, SourceShotlistOption } from "@/lib/production/
 
 export default function CreateProductionDialog({
   sources,
+  projects,
+  preferredProjectId,
   preferredScriptId,
   preferredShotlistId,
   compact = false,
 }: {
   sources: { scripts: SourceScriptOption[]; shotlists: SourceShotlistOption[] };
+  projects: { id: string; name: string }[];
+  preferredProjectId: string | null;
   preferredScriptId: string | null;
   preferredShotlistId: string | null;
   compact?: boolean;
 }) {
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
+  const [projectId, setProjectId] = useState(preferredProjectId ?? "");
   const [mode, setMode] = useState<"source" | "manual">("source");
   const [scriptId, setScriptId] = useState(preferredScriptId ?? "");
   const [shotlistId, setShotlistId] = useState(preferredShotlistId ?? "");
@@ -26,9 +31,11 @@ export default function CreateProductionDialog({
   const [importRequirements, setImportRequirements] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const shotlist = useMemo(() => sources.shotlists.find((item) => item.id === shotlistId) ?? null, [shotlistId, sources.shotlists]);
+  const projectScripts = useMemo(() => sources.scripts.filter((item) => item.projectId === projectId), [sources.scripts, projectId]);
+  const projectShotlists = useMemo(() => sources.shotlists.filter((item) => item.projectId === projectId), [sources.shotlists, projectId]);
+  const shotlist = useMemo(() => projectShotlists.find((item) => item.id === shotlistId) ?? null, [shotlistId, projectShotlists]);
   const effectiveScriptId = scriptId || shotlist?.scriptId || "";
-  const script = sources.scripts.find((item) => item.id === effectiveScriptId) ?? null;
+  const script = projectScripts.find((item) => item.id === effectiveScriptId) ?? null;
   const incompatible = Boolean(scriptId && shotlist?.scriptId && scriptId !== shotlist.scriptId);
 
   function open(nextMode: "source" | "manual") {
@@ -39,11 +46,11 @@ export default function CreateProductionDialog({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || incompatible) return;
+    if (busy || incompatible || !projectId) return;
     setBusy(true); setError(null);
     const fallbackName = mode === "manual" ? "Producción sin título" : shotlist?.title || script?.title || "Producción sin título";
     const result = await createProductionAction({
-      operationId: crypto.randomUUID(), name: name.trim() || fallbackName, timezone,
+      operationId: crypto.randomUUID(), projectId, name: name.trim() || fallbackName, timezone,
       scriptId: mode === "source" ? effectiveScriptId || null : null,
       shotlistId: mode === "source" ? shotlistId || null : null,
       importRequirements: mode === "source" && importRequirements,
@@ -63,12 +70,13 @@ export default function CreateProductionDialog({
             <button type="button" className="production-icon-button" onClick={() => dialog.current?.close()} aria-label="Cerrar">×</button>
           </header>
           <p className="production-dialog-lead">{mode === "source" ? "Elige fuentes tuyas y revisa lo que estará disponible. No se inventarán jornadas, horarios ni responsables." : "Empezarás sin fuentes. Podrás vincularlas e incorporar necesidades después."}</p>
+          <label>Proyecto<select value={projectId} onChange={(event) => { setProjectId(event.target.value); setScriptId(""); setShotlistId(""); }} required><option value="">Selecciona un proyecto</option>{projects.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
           <label>Nombre de la producción<input value={name} onChange={(event) => setName(event.target.value)} placeholder={shotlist?.title || script?.title || "Mi producción"} maxLength={160} /></label>
           <label>Zona horaria<input value={timezone} onChange={(event) => setTimezone(event.target.value)} list="production-timezones" maxLength={80} required /><datalist id="production-timezones"><option value="America/Mexico_City" /><option value="America/Tijuana" /><option value="America/New_York" /><option value="America/Los_Angeles" /><option value="Europe/Madrid" /></datalist></label>
           {mode === "source" && <>
             <div className="production-dialog-grid">
-              <label>Guion<select value={scriptId} onChange={(event) => setScriptId(event.target.value)}><option value="">Sin guion directo</option>{sources.scripts.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
-              <label>Shotlist<select value={shotlistId} onChange={(event) => setShotlistId(event.target.value)}><option value="">Sin Shotlist</option>{sources.shotlists.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
+              <label>Guion<select value={scriptId} onChange={(event) => setScriptId(event.target.value)}><option value="">Sin guion directo</option>{projectScripts.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
+              <label>Shotlist<select value={shotlistId} onChange={(event) => setShotlistId(event.target.value)}><option value="">Sin Shotlist</option>{projectShotlists.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
             </div>
             {incompatible && <p className="production-form-error" role="alert">La Shotlist pertenece a otro guion. Selecciona fuentes compatibles.</p>}
             {!effectiveScriptId && !shotlistId && <p className="production-form-note">Selecciona al menos una fuente o usa “Crear manualmente”.</p>}
@@ -84,7 +92,7 @@ export default function CreateProductionDialog({
             <p className="production-foundation-note">La organización inteligente de jornadas no está incluida en esta Foundation.</p>
           </>}
           {error && <p className="production-form-error" role="alert">{error}</p>}
-          <footer><button type="button" className="production-secondary" onClick={() => dialog.current?.close()}>Cancelar</button><button className="production-primary" disabled={busy || mode === "source" && (!effectiveScriptId && !shotlistId || incompatible)}>{busy ? "Creando…" : mode === "source" ? "Crear estructura" : "Crear producción"}</button></footer>
+          <footer><button type="button" className="production-secondary" onClick={() => dialog.current?.close()}>Cancelar</button><button className="production-primary" disabled={busy || !projectId || mode === "source" && (!effectiveScriptId && !shotlistId || incompatible)}>{busy ? "Creando…" : mode === "source" ? "Crear estructura" : "Crear producción"}</button></footer>
         </form>
       </dialog>
     </div>

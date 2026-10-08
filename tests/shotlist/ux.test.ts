@@ -89,6 +89,7 @@ function fixture(): WriterShotlist {
   const groupId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
   return {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    projectId: null,
     scriptId: null,
     title: "Prueba",
     sourceRevision: null,

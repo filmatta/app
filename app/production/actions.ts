@@ -27,6 +27,7 @@ const RESOURCE_TYPES = new Set<ResourceType>(["person", "location", "prop", "war
 
 export async function createProductionAction(input: {
   operationId: string;
+  projectId: string;
   name: string;
   timezone: string;
   scriptId?: string | null;
@@ -35,13 +36,17 @@ export async function createProductionAction(input: {
 }): Promise<ActionResult<{ id: string }>> {
   try {
     const { db, userId } = await session();
-    if (!validUuid(input.operationId) || !clean(input.name, 160) || !validTimezone(input.timezone)) invalid("Revisa el nombre y la zona horaria.");
+    if (!validUuid(input.operationId) || !validUuid(input.projectId) || !clean(input.name, 160) || !validTimezone(input.timezone)) invalid("Revisa el nombre y la zona horaria.");
     const scriptId = nullableUuid(input.scriptId);
     const shotlistId = nullableUuid(input.shotlistId);
     if (input.scriptId && !scriptId || input.shotlistId && !shotlistId) invalid();
+    const project = await db.from("projects").select("id").eq("id", input.projectId).eq("owner_id", userId).neq("lifecycle_status", "archived").maybeSingle();
+    if (project.error || !project.data) invalid("Proyecto no disponible.");
     const sources = await validateOwnedSources(db, userId, scriptId, shotlistId);
+    if (sources.script && sources.script.projectId !== input.projectId || sources.shotlist && sources.shotlist.projectId !== input.projectId) invalid("Las fuentes pertenecen a otro proyecto.");
     const created = await db.from("production_plans").insert({
       owner_id: userId,
+      project_id: input.projectId,
       name: input.name.trim(),
       timezone: input.timezone,
       script_id: sources.script?.id ?? null,
@@ -98,7 +103,10 @@ export async function linkProductionSourcesAction(input: {
       invalid("No se reemplaza una fuente vinculada desde esta Foundation.");
     }
     const sources = await validateOwnedSources(db, userId, scriptId, shotlistId);
+    const targetProjectId = production.projectId ?? sources.script?.projectId ?? sources.shotlist?.projectId;
+    if (!targetProjectId || sources.script && sources.script.projectId !== targetProjectId || sources.shotlist && sources.shotlist.projectId !== targetProjectId) invalid("Las fuentes pertenecen a otro proyecto.");
     const result = await db.from("production_plans").update({
+      project_id: targetProjectId,
       script_id: sources.script?.id ?? null,
       shotlist_id: sources.shotlist?.id ?? null,
       source_script_revision: sources.script?.revision ?? null,

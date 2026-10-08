@@ -81,6 +81,7 @@ export type WriterBreakdownAppearance = {
 
 export type WriterShotlist = {
   id: string;
+  projectId: string | null;
   scriptId: string | null;
   title: string;
   sourceRevision: number | null;

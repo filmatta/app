@@ -236,7 +236,7 @@ export async function detectAndStoreWriterBreakdown(
 
 export async function listWriterShotlists(db: SupabaseClient, userId: string, scriptId?: string) {
   let query = db.from("writer_shotlists")
-    .select("id,script_id,title,source_revision,revision,updated_at")
+    .select("id,project_id,script_id,title,source_revision,revision,updated_at")
     .eq("owner_id", userId)
     .order("updated_at", { ascending: false });
   if (scriptId) query = query.eq("script_id", scriptId);
@@ -244,6 +244,7 @@ export async function listWriterShotlists(db: SupabaseClient, userId: string, sc
   if (result.error) throw new WriterProductionError("storage", "No pudimos cargar tus shotlists.", 500);
   return (result.data ?? []).map((row) => ({
     id: String(row.id),
+    projectId: row.project_id ? String(row.project_id) : null,
     scriptId: row.script_id ? String(row.script_id) : null,
     title: String(row.title),
     sourceRevision: row.source_revision == null ? null : Number(row.source_revision),
@@ -254,7 +255,7 @@ export async function listWriterShotlists(db: SupabaseClient, userId: string, sc
 
 export async function loadWriterShotlist(db: SupabaseClient, userId: string, shotlistId: string) {
   const shotlistResult = await db.from("writer_shotlists")
-    .select("id,script_id,title,source_revision,revision,updated_at")
+    .select("id,project_id,script_id,title,source_revision,revision,updated_at")
     .eq("id", shotlistId)
     .eq("owner_id", userId)
     .maybeSingle();
@@ -294,6 +295,7 @@ export async function loadWriterShotlist(db: SupabaseClient, userId: string, sho
   }));
   const shotlist: WriterShotlist = {
     id: String(shotlistResult.data.id),
+    projectId: shotlistResult.data.project_id ? String(shotlistResult.data.project_id) : null,
     scriptId: shotlistResult.data.script_id ? String(shotlistResult.data.script_id) : null,
     title: String(shotlistResult.data.title),
     sourceRevision: shotlistResult.data.source_revision == null ? null : Number(shotlistResult.data.source_revision),

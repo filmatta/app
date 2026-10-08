@@ -130,7 +130,7 @@ export type StoryboardGroup = {
 };
 
 export type StoryboardBoard = {
-  shotlist: { id: string; title: string; scriptId: string | null; revision: number };
+  shotlist: { id: string; projectId: string | null; title: string; scriptId: string | null; revision: number };
   groups: StoryboardGroup[];
 };
 

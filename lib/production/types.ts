@@ -1,6 +1,7 @@
 export type ProductionPlan = {
   id: string;
   ownerId: string;
+  projectId: string | null;
   name: string;
   timezone: string;
   scriptId: string | null;
@@ -119,8 +120,8 @@ export type ProductionTask = {
   revision: number;
 };
 
-export type SourceScriptOption = { id: string; title: string; revision: number; sceneCount: number; eligibleRequirementCount: number };
-export type SourceShotlistOption = { id: string; scriptId: string | null; title: string; revision: number; groupCount: number; shotCount: number };
+export type SourceScriptOption = { id: string; projectId: string | null; title: string; revision: number; sceneCount: number; eligibleRequirementCount: number };
+export type SourceShotlistOption = { id: string; projectId: string | null; scriptId: string | null; title: string; revision: number; groupCount: number; shotCount: number };
 export type SourceScene = { id: string; title: string; position: number; revision: number };
 export type SourceShot = {
   id: string;
