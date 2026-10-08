@@ -185,3 +185,23 @@ test("mobile Action Bar and critical buttons keep their geometry through drawers
   expectUnchangedScript(await writerState(page), beforeAppearance);
   await testInfo.attach("mobile-after-appearance", { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
 });
+
+test("Cream application menu keeps flat options without changing their hit boxes", async ({ page, context }) => {
+  await openWriter(page, context, 1440, 900);
+  await page.getByRole("button", { name: "Apariencia de Writer" }).click();
+  await page.getByRole("dialog", { name: "Apariencia de Writer" }).getByRole("radio", { name: "Cream" }).click();
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Editar", exact: true }).click();
+  const item = page.getByRole("menu", { name: "Editar" }).getByRole("menuitem", { name: "Buscar…" });
+  const baseline = await rectangle(item, "Cream menu item");
+  const colors = await item.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, border: style.borderTopColor };
+  });
+  expect(colors.background).toBe("rgba(0, 0, 0, 0)");
+  expect(colors.border).toBe("rgba(0, 0, 0, 0)");
+
+  await item.hover();
+  expectSameCoordinates(await rectangle(item, "Cream menu item hover"), baseline, ["x", "y", "width", "height"], "Cream menu item hover");
+});
