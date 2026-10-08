@@ -23,7 +23,9 @@ export function getSafePostAuthPath(
   if (
     pathname === "/acceso" ||
     pathname === "/login" ||
-    pathname === "/registro"
+    pathname === "/registro" ||
+    pathname === "/recuperar-contrasena" ||
+    pathname === "/auth/callback"
   ) {
     return getSafeNextPath(fallback, "/cuenta");
   }

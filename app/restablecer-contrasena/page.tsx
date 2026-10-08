@@ -16,6 +16,7 @@ export default async function ResetPasswordPage({
 }) {
   const params = await searchParams;
   const nextPath = getSafeNextPath(params.next ?? null, "/cuenta");
+  const error = resetErrorMessage(params.error);
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   const hasSession = Boolean(data?.claims?.sub);
@@ -63,9 +64,9 @@ export default async function ResetPasswordPage({
               Verifica tu identidad con tu aplicación de autenticación antes de
               cambiar la contraseña.
             </p>
-            {params.error && (
+            {error && (
               <p className="mt-5 text-sm text-amber-200" role="alert">
-                {params.error}
+                {error}
               </p>
             )}
             <div className="mt-9">
@@ -92,8 +93,8 @@ export default async function ResetPasswordPage({
                 name="password_confirmation"
                 label="Confirmar contraseña"
               />
-              {params.error && (
-                <p className="text-sm text-red-300">{params.error}</p>
+              {error && (
+                <p className="text-sm text-red-300" role="alert">{error}</p>
               )}
               <LoadingButton
                 type="submit"
@@ -120,6 +121,16 @@ export default async function ResetPasswordPage({
       </section>
     </main>
   );
+}
+
+function resetErrorMessage(value: string | undefined) {
+  switch (value) {
+    case "too_short": return "Usa al menos 8 caracteres.";
+    case "mismatch": return "Las contraseñas no coinciden.";
+    case "mfa_required": return "Verifica tu identidad con MFA antes de actualizar la contraseña.";
+    case "update_failed": return "No pudimos actualizar la contraseña. Inténtalo de nuevo.";
+    default: return null;
+  }
 }
 
 function PasswordField({

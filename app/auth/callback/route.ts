@@ -15,38 +15,40 @@ export async function GET(request: NextRequest) {
     "/cuenta"
   );
 
-  if (tokenHash && type === "recovery") {
+  if (tokenHash && !code && (type === "recovery" || type === "email")) {
     if (
       tokenHash.length > 2048 ||
       !(await allowAuthAttempt("callback"))
     ) {
-      return recoveryFailureRedirect(request, nextPath);
+      return type === "recovery" ? recoveryFailureRedirect(request, nextPath) : confirmationFailureRedirect(request, nextPath);
     }
 
     const supabase = await createClient();
     const { error } = await supabase.auth.verifyOtp({
       token_hash: tokenHash,
-      type: "recovery",
+      type,
     });
 
     if (!error) {
-      return NextResponse.redirect(new URL(nextPath, request.url));
+      const destination = type === "recovery" ? recoveryResetPath(nextPath)
+        : getRecoveryReturnPath(nextPath) ? "/cuenta" : nextPath;
+      return safeRedirect(new URL(destination, request.url));
     }
 
-    console.error("Error verificando el token de recuperación:", error);
-    return recoveryFailureRedirect(request, nextPath);
+    console.error("Auth callback verification failed", { type, code: error.code ?? "unknown" });
+    return type === "recovery" ? recoveryFailureRedirect(request, nextPath) : confirmationFailureRedirect(request, nextPath);
   }
 
-  if (code) {
+  if (code && !tokenHash) {
     if (code.length <= 2048 && await allowAuthAttempt("callback")) {
       const supabase = await createClient();
       const { error } = await supabase.auth.exchangeCodeForSession(code);
 
       if (!error) {
-        return NextResponse.redirect(new URL(nextPath, request.url));
+        return safeRedirect(new URL(nextPath, request.url));
       }
 
-      console.error("Error confirmando la sesión de Supabase:", error);
+      console.error("Auth callback code exchange failed", { code: error.code ?? "unknown" });
     }
 
     const recoveryReturnPath = getRecoveryReturnPath(nextPath);
@@ -55,13 +57,19 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  return confirmationFailureRedirect(request, nextPath);
+}
+
+function confirmationFailureRedirect(request: NextRequest, nextPath: string) {
   const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("next", nextPath);
-  loginUrl.searchParams.set(
-    "error",
-    "No pudimos confirmar la cuenta. Solicita un enlace nuevo."
-  );
-  return NextResponse.redirect(loginUrl);
+  loginUrl.searchParams.set("error", "confirmation_invalid");
+  return safeRedirect(loginUrl);
+}
+
+function recoveryResetPath(nextPath: string) {
+  const returnPath = getRecoveryReturnPath(nextPath) ?? "/cuenta";
+  return `/restablecer-contrasena?next=${encodeURIComponent(returnPath)}`;
 }
 
 function recoveryFailureRedirect(request: NextRequest, nextPath: string) {
@@ -71,5 +79,12 @@ function recoveryFailureRedirect(request: NextRequest, nextPath: string) {
     getRecoveryReturnPath(nextPath) ?? "/cuenta"
   );
   recoveryUrl.searchParams.set("error", "invalid_recovery");
-  return NextResponse.redirect(recoveryUrl);
+  return safeRedirect(recoveryUrl);
+}
+
+function safeRedirect(url: URL) {
+  const response = NextResponse.redirect(url);
+  response.headers.set("Cache-Control", "no-store");
+  response.headers.set("Referrer-Policy", "no-referrer");
+  return response;
 }

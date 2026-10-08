@@ -64,7 +64,7 @@ test("recovery and password reset sanitize every caller-controlled next", () => 
 test("the callback resolves only the sanitized path", () => {
   assert.match(
     files.callback,
-    /NextResponse\.redirect\(new URL\(nextPath, request\.url\)\)/,
+    /safeRedirect\(new URL\(nextPath, request\.url\)\)/,
   );
   assert.doesNotMatch(
     files.callback,

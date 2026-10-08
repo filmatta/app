@@ -10,7 +10,9 @@ export async function updateSession(request: NextRequest) {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set(
       "x-filmatta-request-path",
-      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+      request.nextUrl.pathname === "/auth/callback"
+        ? request.nextUrl.pathname
+        : `${request.nextUrl.pathname}${request.nextUrl.search}`,
     );
 
     return NextResponse.next({

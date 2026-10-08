@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { login } from "@/app/auth/actions";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { getSafePostAuthPath } from "@/lib/auth/safe-next-path";
+import { authFeedbackError, authFeedbackMessage } from "@/lib/auth/feedback";
 import LoadingButton from "@/components/ui/LoadingButton";
 import GoogleSignInForm from "@/components/auth/GoogleSignInForm";
 
@@ -13,6 +14,8 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
   const nextPath = getSafePostAuthPath(params.next ?? null);
+  const error = authFeedbackError(params.error);
+  const message = authFeedbackMessage(params.message);
   const viewer = await getViewer();
 
   if (viewer) {
@@ -52,9 +55,9 @@ export default async function LoginPage({
           Inicia sesión para continuar.
         </p>
 
-        {params.message && (
+        {message && (
           <p className="mt-6 rounded-xl border border-green-500/20 bg-green-500/5 p-4 text-sm leading-6 text-green-200">
-            {params.message}
+            {message}
           </p>
         )}
 
@@ -96,7 +99,7 @@ export default async function LoginPage({
             />
           </Field>
 
-          {params.error && <p className="text-sm text-red-400">{params.error}</p>}
+          {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
 
           <LoadingButton
             type="submit"

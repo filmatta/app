@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSafeNextPath } from "@/lib/auth/safe-next-path";
+import { getAuthCallbackOrigin } from "@/lib/auth/callback-origin";
+import { isEmailRateLimit } from "@/lib/auth/feedback";
 import { createClient } from "@/lib/supabase/server";
 import { allowAuthAttempt } from "@/lib/security/auth-rate-limit";
 
@@ -42,20 +44,17 @@ export async function requestEmailChange(formData: FormData) {
   const supabase = await createClient();
   await requireUser(supabase);
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const origin = (await headers()).get("origin");
+  const origin = getAuthCallbackOrigin(await headers());
 
   if (!isValidEmail(email)) {
     redirect(accountFeedback("email_error", "Escribe un correo válido", "configuracion"));
   }
+  if (!origin) redirect(accountFeedback("email_error", "No pudimos iniciar el cambio de correo", "configuracion"));
 
   const confirmedPath = "/cuenta/configuracion?email=confirmed#configuracion";
   const { error } = await supabase.auth.updateUser(
     { email },
-    origin
-      ? {
-          emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(confirmedPath)}`,
-        }
-      : undefined
+    { emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(confirmedPath)}` }
   );
 
   if (error) {
@@ -89,7 +88,8 @@ export async function requestPasswordReset(formData: FormData) {
   const supabase = await createClient();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const nextPath = getSafeNextPath(formData.get("next"), "/cuenta");
-  const origin = (await headers()).get("origin");
+  const origin = getAuthCallbackOrigin(await headers());
+  let limited = false;
 
   if (isValidEmail(email) && origin && await allowAuthAttempt("recovery", email)) {
     const resetPage = `/restablecer-contrasena?next=${encodeURIComponent(nextPath)}`;
@@ -98,14 +98,13 @@ export async function requestPasswordReset(formData: FormData) {
     });
 
     if (error) {
-      console.error("Error solicitando recuperación de contraseña:", error);
+      limited = isEmailRateLimit(error);
+      console.error("Auth recovery request failed", { code: error.code ?? "unknown", status: error.status });
     }
   }
 
-  const searchParams = new URLSearchParams({
-    next: nextPath,
-    sent: "1",
-  });
+  const searchParams = new URLSearchParams({ next: nextPath });
+  searchParams.set(limited ? "error" : "sent", limited ? "recovery_limited" : "1");
   redirect(`/recuperar-contrasena?${searchParams.toString()}`);
 }
 
@@ -208,6 +207,9 @@ function accountFeedback(key: string, value: string, anchor: string) {
 }
 
 function passwordFeedback(nextPath: string, error: string) {
-  const searchParams = new URLSearchParams({ next: nextPath, error });
+  const code = error === "Usa al menos 8 caracteres" ? "too_short"
+    : error === "Las contraseñas no coinciden" ? "mismatch"
+    : error.startsWith("Verifica tu identidad con MFA") ? "mfa_required" : "update_failed";
+  const searchParams = new URLSearchParams({ next: nextPath, error: code });
   return `/restablecer-contrasena?${searchParams.toString()}`;
 }

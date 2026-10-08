@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSafePostAuthPath } from "@/lib/auth/safe-next-path";
+import { getAuthCallbackOrigin } from "@/lib/auth/callback-origin";
+import { isEmailRateLimit } from "@/lib/auth/feedback";
 import { createClient } from "@/lib/supabase/server";
 import { allowAuthAttempt } from "@/lib/security/auth-rate-limit";
 
@@ -14,7 +16,7 @@ export async function login(formData: FormData) {
   const nextPath = getSafePostAuthPath(formData.get("next"));
 
   if (!(await allowAuthAttempt("login", email))) {
-    redirect(getAuthFeedbackUrl("/login", nextPath, { error: "No pudimos iniciar sesión. Revisa tus datos o inténtalo más tarde." }));
+    redirect(getAuthFeedbackUrl("/login", nextPath, { error: "login_limited" }));
   }
 
   const { error } = await supabase.auth.signInWithPassword({
@@ -25,7 +27,7 @@ export async function login(formData: FormData) {
   if (error) {
     redirect(
       getAuthFeedbackUrl("/login", nextPath, {
-        error: "Credenciales incorrectas",
+        error: "login_failed",
       })
     );
   }
@@ -37,10 +39,7 @@ export async function login(formData: FormData) {
 export async function signInWithGoogle(formData: FormData) {
   const nextPath = getSafePostAuthPath(formData.get("next"));
   const requestHeaders = await headers();
-  const callbackUrl = getOAuthCallbackUrl(
-    requestHeaders.get("origin"),
-    nextPath,
-  );
+  const callbackUrl = getOAuthCallbackUrl(getAuthCallbackOrigin(requestHeaders), nextPath);
 
   if (!callbackUrl) {
     redirect(
@@ -77,18 +76,22 @@ export async function signUp(formData: FormData) {
   const fullName = String(formData.get("full_name") ?? "").trim();
   const nextPath = getSafePostAuthPath(formData.get("next"));
   const requestHeaders = await headers();
-  const origin = requestHeaders.get("origin");
+  const origin = getAuthCallbackOrigin(requestHeaders);
 
   if (!(await allowAuthAttempt("signup", email))) {
-    redirect(getAuthFeedbackUrl("/registro", nextPath, { error: "No pudimos procesar la solicitud. Inténtalo más tarde." }));
+    redirect(getAuthFeedbackUrl("/registro", nextPath, { error: "signup_limited" }));
   }
 
-  if (!email || password.length < 8) {
+  if (!isValidEmail(email) || password.length < 8) {
     redirect(
       getAuthFeedbackUrl("/registro", nextPath, {
-        error: "Usa un correo válido y una contraseña de al menos 8 caracteres.",
+        error: "signup_invalid",
       })
     );
+  }
+
+  if (!origin) {
+    redirect(getAuthFeedbackUrl("/registro", nextPath, { error: "signup_failed" }));
   }
 
   const { data, error } = await supabase.auth.signUp({
@@ -96,17 +99,15 @@ export async function signUp(formData: FormData) {
     password,
     options: {
       data: fullName ? { full_name: fullName } : undefined,
-      emailRedirectTo: origin
-        ? `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
-        : undefined,
+      emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
     },
   });
 
   if (error) {
-    console.error("Error registrando usuario:", error);
+    console.error("Auth signup failed", { code: error.code ?? "unknown", status: error.status });
     redirect(
       getAuthFeedbackUrl("/registro", nextPath, {
-        error: "No se pudo crear la cuenta. Revisa los datos e inténtalo de nuevo.",
+        error: isEmailRateLimit(error) ? "signup_limited" : "signup_failed",
       })
     );
   }
@@ -119,7 +120,7 @@ export async function signUp(formData: FormData) {
 
   redirect(
     getAuthFeedbackUrl("/login", nextPath, {
-      message: "Revisa tu correo para confirmar la cuenta y después inicia sesión.",
+      message: "check_email",
     })
   );
 }
@@ -154,4 +155,8 @@ function getOAuthCallbackUrl(origin: string | null, nextPath: string) {
   } catch {
     return null;
   }
+}
+
+function isValidEmail(value: string) {
+  return value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }

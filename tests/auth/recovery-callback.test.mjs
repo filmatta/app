@@ -10,7 +10,7 @@ function callbackWith(auth, allowAuthAttempt = async () => true) {
       NextRequest: Request,
       NextResponse: {
         redirect(url) {
-          return Response.redirect(url, 307);
+          return new Response(null, { status: 307, headers: { Location: String(url) } });
         },
       },
     },
@@ -102,6 +102,37 @@ test("recovery token hash is verified server-side and establishes a session", as
     response.headers.get("location"),
     "https://app.filmatta.com/restablecer-contrasena?next=%2Fcuenta",
   );
+  assert.equal(response.headers.get("Referrer-Policy"), "no-referrer");
+  assert.equal(response.headers.get("Cache-Control"), "no-store");
+});
+
+test("email confirmation token establishes a session and keeps the safe Create return", async () => {
+  const verified = [];
+  const route = callbackWith({
+    async verifyOtp(params) { verified.push(params); return { data: { session: {} }, error: null }; },
+  });
+  const response = await route.GET(request("/auth/callback?token_hash=redacted-token&type=email&next=%2Fcreate"));
+  assert.equal(verified.length, 1);
+  assert.equal(verified[0].token_hash, "redacted-token");
+  assert.equal(verified[0].type, "email");
+  assert.equal(response.headers.get("location"), "https://app.filmatta.com/create");
+});
+
+test("recovery token cannot skip the password reset page", async () => {
+  const route = callbackWith({
+    async verifyOtp() { return { data: { session: {} }, error: null }; },
+  });
+  const response = await route.GET(request("/auth/callback?token_hash=redacted-token&type=recovery&next=%2Fcreate"));
+  assert.equal(response.headers.get("location"), "https://app.filmatta.com/restablecer-contrasena?next=%2Fcuenta");
+});
+
+test("invalid or reused email confirmation link fails without reflecting the token", async () => {
+  const route = callbackWith({
+    async verifyOtp() { return { data: { session: null }, error: { code: "otp_expired" } }; },
+  });
+  const response = await route.GET(request("/auth/callback?token_hash=sensitive-token&type=email&next=https%3A%2F%2Fevil.example"));
+  assert.equal(response.headers.get("location"), "https://app.filmatta.com/login?next=%2Fcuenta&error=confirmation_invalid");
+  assert.equal(response.headers.get("location").includes("sensitive-token"), false);
 });
 
 test("recovery token hash fails safely when callback attempts are limited", async () => {

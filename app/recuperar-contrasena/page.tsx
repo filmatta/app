@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requestPasswordReset } from "@/app/cuenta/actions";
 import { getSafeNextPath } from "@/lib/auth/safe-next-path";
+import { authFeedbackError } from "@/lib/auth/feedback";
 import LoadingButton from "@/components/ui/LoadingButton";
 
 export default async function PasswordRecoveryPage({
@@ -37,6 +38,11 @@ export default async function PasswordRecoveryPage({
           <p className="mt-7 rounded-xl border border-red-500/20 bg-red-500/[0.05] p-4 text-sm leading-6 text-red-200">
             No pudimos validar el enlace. Solicita uno nuevo desde este
             navegador.
+          </p>
+        )}
+        {params.error === "recovery_limited" && (
+          <p className="mt-7 rounded-xl border border-red-500/20 bg-red-500/[0.05] p-4 text-sm leading-6 text-red-200" role="alert">
+            {authFeedbackError(params.error)}
           </p>
         )}
 

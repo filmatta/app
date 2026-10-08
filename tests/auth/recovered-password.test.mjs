@@ -16,6 +16,8 @@ function actionsWith(client) {
       },
     },
     "@/lib/auth/safe-next-path": load("lib/auth/safe-next-path.ts"),
+    "@/lib/auth/callback-origin": { getAuthCallbackOrigin: () => "https://app.filmatta.com" },
+    "@/lib/auth/feedback": { isEmailRateLimit: () => false },
     "@/lib/security/auth-rate-limit": {
       async allowAuthAttempt() {
         return true;
@@ -97,6 +99,6 @@ test("recovered password update routes MFA accounts to verification", async () =
     actions.updateRecoveredPassword(passwordForm()),
     (error) =>
       error.destination ===
-      "/restablecer-contrasena?next=%2Fcuenta&error=Verifica+tu+identidad+con+MFA+antes+de+actualizar+la+contrase%C3%B1a",
+      "/restablecer-contrasena?next=%2Fcuenta&error=mfa_required",
   );
 });
