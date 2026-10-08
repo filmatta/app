@@ -192,3 +192,46 @@ test("Breakdown plus creates an unlinked manual entity and prevents duplicate cr
   await expect(page.getByRole("button", { name: /Máquina de humo.*Ver/ })).toBeVisible();
   expect(elements[0].appearances).toHaveLength(0);
 });
+
+test("mobile Breakdown plus keeps a 44px touch target and creates the same unlinked element", async ({ page, context }) => {
+  await page.request.get("http://127.0.0.1:54329/__scenario?value=writer-ux");
+  await session(context);
+  const elements: WriterBreakdownElement[] = [];
+  let created: Record<string, unknown> | null = null;
+  await page.route(`**/api/writer/scripts/${scriptId}/breakdown`, async (route: Route) => {
+    if (route.request().method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ elements, pendingCount: 0, analysis: null }) });
+    const payload = route.request().postDataJSON() as Record<string, unknown>;
+    if (payload.action === "manual") {
+      created = payload;
+      elements.push({ id: crypto.randomUUID(), scriptId, category: payload.category as WriterBreakdownElement["category"], name: String(payload.name), status: "confirmed", source: "user", canonicalIdentityKey: null, note: null, assetId: null, fingerprint: "user:mobile", revision: 1, appearances: [] });
+      return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: elements[0].id, breakdown: { elements, pendingCount: 0, analysis: null } }) });
+    }
+    return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "Unexpected action" }) });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/writer/${scriptId}`);
+  await page.getByRole("button", { name: "Entendido" }).click();
+  await page.getByRole("button", { name: /Navegar/ }).click();
+  await page.getByRole("dialog", { name: "Navegar por el guion" }).getByRole("button", { name: "Personajes" }).click();
+  const plus = page.getByRole("button", { name: "Agregar elemento manual" });
+  await expect(plus).toBeVisible();
+  await expect.poll(async () => (await plus.boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
+  const plusBox = await plus.boundingBox();
+  const reviewBox = await page.getByRole("button", { name: /^Por revisar/ }).boundingBox();
+  expect(plusBox).not.toBeNull();
+  expect(reviewBox).not.toBeNull();
+  expect(plusBox!.width).toBe(44);
+  expect(plusBox!.height).toBeGreaterThanOrEqual(44);
+  expect(plusBox!.x).toBeGreaterThanOrEqual(0);
+  expect(plusBox!.x + plusBox!.width).toBeLessThanOrEqual(390);
+  expect(plusBox!.x + plusBox!.width).toBeLessThanOrEqual(reviewBox!.x);
+  await plus.click();
+  const dialog = page.getByRole("dialog", { name: "Agregar elemento" });
+  await dialog.getByLabel("Nombre").fill("Extintor QA móvil");
+  await dialog.getByLabel("Categoría").selectOption("prop");
+  await dialog.getByRole("button", { name: "Agregar", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Extintor QA móvil.*sin aparición vinculada/ })).toBeVisible();
+  expect(created).toMatchObject({ action: "manual", name: "Extintor QA móvil", category: "prop", sceneId: null });
+  expect(elements[0].appearances).toHaveLength(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+});

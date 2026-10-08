@@ -1170,6 +1170,7 @@
   .writer-sidebar--mobile-characters nav { display: none; }
   .writer-sidebar--mobile-characters .writer-character-section { grid-row: 2 / -1; max-height: none; min-height: 0; }
   .writer-sidebar--mobile-characters .writer-character-section > ul { max-height: calc(100dvh - 126px); }
+  .writer-sidebar--mobile-characters .writer-breakdown-head-actions .writer-breakdown-add { width: 44px; min-height: 44px; }
   .writer-scene-list > li { grid-template-columns: minmax(0,1fr) 34px 36px; }
   .writer-scene-drag-handle { display: none; }
   .writer-scene-pencil,
