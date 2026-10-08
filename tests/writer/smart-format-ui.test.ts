@@ -66,7 +66,7 @@ test("desktop layout keeps both sidebars and splitters full-height with Timeline
   assert.match(css, /\.writer-observations-panel \{[^}]*grid-row: 3 \/ -1/u);
   assert.match(css, /\.writer-panel-resize-handle--left \{[^}]*grid-row: 3 \/ -1/u);
   assert.match(css, /\.writer-panel-resize-handle--right \{[^}]*grid-row: 3 \/ -1/u);
-  assert.match(css, /\.writer-timeline-panel \{ grid-column: 2; grid-row: 4/u);
+  assert.match(css, /\.writer-timeline-panel \{[^}]*grid-column: 2; grid-row: 4/u);
 });
 
 test("navigation uses one reference contract and a bounded highlight", () => {
@@ -94,10 +94,10 @@ test("character references use global navigation, stale copy, mobile close, and 
   assert.doesNotMatch(css, /writer-screenplay-block\.writer-scene-target-highlight[^}]*box-shadow/u);
 });
 
-test("Writer review uses calm intelligence and review colors with compact satin controls", () => {
+test("Writer review keeps semantic colors on solid, compact controls", () => {
   assert.match(css, /--writer-intelligence:/u);
   assert.match(css, /--writer-review:/u);
-  assert.match(css, /\.writer-character-review-card[^}]*border-radius: 14px/u);
+  assert.match(css, /\.writer-character-review-card[^}]*border-radius: var\(--writer-radius-card\)[^}]*background: var\(--writer-panel-raised\)/u);
   assert.match(css, /\.writer-satin-button/u);
   assert.match(css, /\.writer-satin-button--primary/u);
 });
