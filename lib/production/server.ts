@@ -53,10 +53,16 @@ export async function listProductions(db: SupabaseClient, ownerId: string): Prom
   }));
 }
 
-export async function listProductionSourceOptions(db: SupabaseClient, ownerId: string) {
+export async function listProductionSourceOptions(db: SupabaseClient, ownerId: string, projectId?: string | null) {
+  const scriptSourceQuery = db.from("writer_scripts").select("id,project_id,title,document,revision").eq("owner_id", ownerId);
+  const shotlistSourceQuery = db.from("writer_shotlists").select("id,project_id,script_id,title,revision").eq("owner_id", ownerId);
+  if (projectId) {
+    scriptSourceQuery.eq("project_id", projectId);
+    shotlistSourceQuery.eq("project_id", projectId);
+  }
   const [scriptsResult, shotlistsResult, groupsResult, shotsResult, elementsResult, appearancesResult] = await Promise.all([
-    db.from("writer_scripts").select("id,project_id,title,document,revision").eq("owner_id", ownerId).order("updated_at", { ascending: false }),
-    db.from("writer_shotlists").select("id,project_id,script_id,title,revision").eq("owner_id", ownerId).order("updated_at", { ascending: false }),
+    scriptSourceQuery.order("updated_at", { ascending: false }),
+    shotlistSourceQuery.order("updated_at", { ascending: false }),
     db.from("writer_shotlist_groups").select("id,shotlist_id").eq("owner_id", ownerId),
     db.from("writer_shotlist_shots").select("id,shotlist_id").eq("owner_id", ownerId),
     db.from("writer_breakdown_elements").select("id,script_id,status").eq("owner_id", ownerId).eq("status", "confirmed"),
@@ -177,7 +183,7 @@ export async function loadProductionWorkspace(db: SupabaseClient, ownerId: strin
       .eq("owner_id", ownerId).eq("production_id", productionId).order("created_at", { ascending: false }),
     db.from("production_document_exports").select("document_key,version_major,version_minor,generated_at,generated_by,source_updated_at,source_fingerprint,revision")
       .eq("owner_id", ownerId).eq("production_id", productionId),
-    listProductionSourceOptions(db, ownerId),
+    listProductionSourceOptions(db, ownerId, production.projectId),
   ]);
   if ([days, schedule, requirements, links, resources, coverages, tasks, documentExports].some((result) => result.error)) {
     throw new ProductionError("storage", "No pudimos cargar el espacio de producción.");
