@@ -68,7 +68,9 @@ const resourceLabels: Record<ResourceType, string> = {
   equipment: "Equipo", service: "Servicio", other: "Otro",
 };
 
-export default function ProductionWorkspace({ initialData: data, viewerName }: { initialData: ProductionWorkspaceData; viewerName: string }) {
+type ProjectRoutes = { writer: string; breakdown: string; shotlist: string; storyboard: string };
+
+export default function ProductionWorkspace({ initialData: data, viewerName, projectRoutes }: { initialData: ProductionWorkspaceData; viewerName: string; projectRoutes?: ProjectRoutes | null }) {
   const router = useRouter();
   const [view, setView] = useState<WorkspaceView>("overview");
   const [activeDayId, setActiveDayId] = useState<string | null>(data.days[0]?.id ?? null);
@@ -153,7 +155,7 @@ export default function ProductionWorkspace({ initialData: data, viewerName }: {
     <div className="production-workspace">
       <header className="production-header">
         <div className="production-brand"><Link href="/">FILMATTA</Link><span /><strong className="production-project-name" title={data.production.name}>{data.production.name}</strong></div>
-        <nav aria-label="Flujo creativo"><Link href="/writer">Writer</Link><span aria-disabled="true">Breakdown</span><Link href="/shotlists">Shotlist</Link>{data.production.shotlistId ? <Link href={`/shotlists/${data.production.shotlistId}/storyboard`}>Storyboard</Link> : <span aria-disabled="true">Storyboard</span>}<b>Production</b><span aria-disabled="true">Rec</span></nav>
+        <nav aria-label="Flujo creativo"><Link href={projectRoutes?.writer ?? "/writer"}>Writer</Link>{projectRoutes ? <Link href={projectRoutes.breakdown}>Breakdown</Link> : <span aria-disabled="true">Breakdown</span>}<Link href={projectRoutes?.shotlist ?? "/shotlists"}>Shotlist</Link>{projectRoutes ? <Link href={projectRoutes.storyboard}>Storyboard</Link> : data.production.shotlistId ? <Link href={`/shotlists/${data.production.shotlistId}/storyboard`}>Storyboard</Link> : <span aria-disabled="true">Storyboard</span>}<b>Production</b><span aria-disabled="true">Rec</span></nav>
         <div className="production-header-context"><span className={`production-save is-${saveState}`}>{saveState === "saving" ? "Guardando…" : saveState === "error" ? "Error" : saveState === "saved" ? "Guardado" : "En línea"}</span><div className="production-avatar">{viewerName.slice(0, 2).toUpperCase()}</div></div>
       </header>
 

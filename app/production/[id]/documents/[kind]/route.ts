@@ -23,8 +23,18 @@ export async function GET(request: Request, context: RouteContext) {
 
 export async function POST(request: Request, context: RouteContext) {
   const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) return new Response("Origen no permitido.", { status: 403 });
+  if (origin && !matchesRequestHost(request, origin)) return new Response("Origen no permitido.", { status: 403 });
   return documentRequest(request, context, true);
+}
+
+function matchesRequestHost(request: Request, rawOrigin: string) {
+  try {
+    const origin = new URL(rawOrigin);
+    const host = request.headers.get("host");
+    return Boolean(host) && origin.host === host && !origin.username && !origin.password
+      && (origin.protocol === "https:" || process.env.NODE_ENV === "development"
+        && origin.protocol === "http:" && ["localhost", "127.0.0.1"].includes(origin.hostname));
+  } catch { return false; }
 }
 
 async function documentRequest(request: Request, context: RouteContext, submitted: boolean) {

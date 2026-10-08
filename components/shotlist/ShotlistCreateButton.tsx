@@ -15,7 +15,7 @@ export default function ShotlistCreateButton({ projectId }: { projectId?: string
       const response = await fetch("/api/shotlists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, title: "Shotlist sin título", operationId: crypto.randomUUID() }) });
       const data = await response.json();
       if (!response.ok || typeof data.id !== "string") throw new Error(data.error ?? "No pudimos crearla.");
-      router.push(`/shotlists/${data.id}`);
+      router.push(`/shotlists/${data.id}?project=${projectId}`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos crearla."); setBusy(false); }
   }
   if (!projectId) return <div className="shotlist-create"><Link href="/create">Elegir proyecto para Shotlist</Link></div>;

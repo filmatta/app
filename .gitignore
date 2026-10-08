@@ -43,3 +43,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local Project Model V1 QA evidence (includes temporary QA credentials)
+/output/project-model-v1/

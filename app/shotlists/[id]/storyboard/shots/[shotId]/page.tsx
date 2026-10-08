@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import StoryboardSketcher from "@/components/storyboard/StoryboardSketcher";
+import CreateProjectNavigation from "@/components/create/CreateProjectNavigation";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { createClient } from "@/lib/supabase/server";
 import { loadStoryboardShot } from "@/lib/storyboard/server";
@@ -12,7 +13,7 @@ export default async function StoryboardShotPage({
   searchParams,
 }: {
   params: Promise<{ id: string; shotId: string }>;
-  searchParams: Promise<{ panel?: string | string[] }>;
+  searchParams: Promise<{ panel?: string | string[]; project?: string | string[] }>;
 }) {
   const { id, shotId } = await params;
   const query = await searchParams;
@@ -24,8 +25,11 @@ export default async function StoryboardShotPage({
   } catch {
     notFound();
   }
+  if (query.project && query.project !== state.board.shotlist.projectId) notFound();
   if (!state.shot.panels.length) redirect(`/shotlists/${id}/storyboard`);
   const requestedPanel = typeof query.panel === "string" ? query.panel : null;
   const initialPanelId = state.shot.panels.some((panel) => panel.id === requestedPanel) ? requestedPanel! : state.shot.panels[0]!.id;
-  return <StoryboardSketcher initialState={state} initialPanelId={initialPanelId} userId={viewer.id} />;
+  return <><StoryboardSketcher initialState={state} initialPanelId={initialPanelId} userId={viewer.id} />
+    <CreateProjectNavigation projectId={state.board.shotlist.projectId} ownerId={viewer.id} active="storyboard" />
+  </>;
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getViewer } from "@/lib/auth/get-viewer";
 import { createClient } from "@/lib/supabase/server";
 import { listProductions, listProductionSourceOptions } from "@/lib/production/server";
@@ -24,11 +24,17 @@ export default async function ProductionPage({
     listCreateProjects(db, viewer.id),
     searchParams,
   ]);
-  const preferredScriptId = requested.script && sourceOptions.scripts.some((source) => source.id === requested.script) ? requested.script : null;
-  const preferredShotlistId = requested.shotlist && sourceOptions.shotlists.some((source) => source.id === requested.shotlist) ? requested.shotlist : null;
-  const sourceProjectId = sourceOptions.shotlists.find((source) => source.id === preferredShotlistId)?.projectId ?? sourceOptions.scripts.find((source) => source.id === preferredScriptId)?.projectId ?? null;
+  if (requested.project && !projects.some((project) => project.id === requested.project)) notFound();
+  const scopedSources = requested.project ? {
+    scripts: sourceOptions.scripts.filter((source) => source.projectId === requested.project),
+    shotlists: sourceOptions.shotlists.filter((source) => source.projectId === requested.project),
+  } : sourceOptions;
+  const scopedProjects = requested.project ? projects.filter((project) => project.id === requested.project) : projects;
+  const preferredScriptId = requested.script && scopedSources.scripts.some((source) => source.id === requested.script) ? requested.script : null;
+  const preferredShotlistId = requested.shotlist && scopedSources.shotlists.some((source) => source.id === requested.shotlist) ? requested.shotlist : null;
+  const sourceProjectId = scopedSources.shotlists.find((source) => source.id === preferredShotlistId)?.projectId ?? scopedSources.scripts.find((source) => source.id === preferredScriptId)?.projectId ?? null;
   const preferredProjectId = requested.project && projects.some((project) => project.id === requested.project) ? requested.project : sourceProjectId ?? (projects.length === 1 ? projects[0].id : null);
-  const productions = requested.project && preferredProjectId === requested.project ? allProductions.filter((item) => item.projectId === preferredProjectId) : allProductions;
+  const productions = requested.project ? allProductions.filter((item) => item.projectId === requested.project) : allProductions;
 
   return (
     <main className="production-index">
@@ -44,13 +50,13 @@ export default async function ProductionPage({
           <h1>De la escena al plan de rodaje.</h1>
           <p>Organiza jornadas, planos, necesidades, recursos y tareas sin alterar tus fuentes creativas.</p>
         </div>
-        {productions.length > 0 && <CreateProductionDialog sources={sourceOptions} projects={projects} preferredProjectId={preferredProjectId} preferredScriptId={preferredScriptId} preferredShotlistId={preferredShotlistId} compact />}
+        {productions.length > 0 && <CreateProductionDialog sources={scopedSources} projects={scopedProjects} preferredProjectId={preferredProjectId} preferredScriptId={preferredScriptId} preferredShotlistId={preferredShotlistId} compact />}
       </section>
       {productions.length ? (
         <ul className="production-index-grid">
           {productions.map((production) => (
             <li key={production.id}>
-              <Link href={`/production/${production.id}`}>
+              <Link href={`/production/${production.id}${requested.project ? `?project=${requested.project}` : ""}`}>
                 <span className="production-index-status"><i /> Planificación activa</span>
                 <h2>{production.name}</h2>
                 <p>{production.shotlistId ? "Guion + Shotlist" : production.scriptId ? "Guion vinculado" : "Producción manual"}</p>
@@ -73,7 +79,7 @@ export default async function ProductionPage({
             <p className="production-eyebrow">DE GUION A SET</p>
             <h2>Prepara tu producción</h2>
             <p>Crea una estructura desde tus fuentes existentes o empieza con un espacio completamente manual.</p>
-            <CreateProductionDialog sources={sourceOptions} projects={projects} preferredProjectId={preferredProjectId} preferredScriptId={preferredScriptId} preferredShotlistId={preferredShotlistId} />
+            <CreateProductionDialog sources={scopedSources} projects={scopedProjects} preferredProjectId={preferredProjectId} preferredScriptId={preferredScriptId} preferredShotlistId={preferredShotlistId} />
           </div>
         </section>
       )}

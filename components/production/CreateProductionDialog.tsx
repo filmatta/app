@@ -56,7 +56,7 @@ export default function CreateProductionDialog({
       importRequirements: mode === "source" && importRequirements,
     });
     if (!result.ok) { setError(result.message); setBusy(false); return; }
-    router.push(`/production/${result.data.id}`);
+    router.push(`/production/${result.data.id}?project=${projectId}`);
   }
 
   return (

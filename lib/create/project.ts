@@ -41,24 +41,19 @@ export async function createProject(db: SupabaseClient, ownerId: string, name: s
 }
 
 export async function listCreateProjects(db: SupabaseClient, ownerId: string) {
-  const [projects, writers, shotlists, productions] = await Promise.all([
-    db.from("projects").select("id,title,updated_at").eq("owner_id", ownerId).neq("lifecycle_status", "archived").order("updated_at", { ascending: false }),
-    db.from("writer_scripts").select("project_id").eq("owner_id", ownerId).not("project_id", "is", null),
-    db.from("writer_shotlists").select("project_id").eq("owner_id", ownerId).not("project_id", "is", null),
-    db.from("production_plans").select("project_id").eq("owner_id", ownerId).not("project_id", "is", null),
-  ]);
-  if (projects.error || writers.error || shotlists.error || productions.error) {
+  const projects = await db.from("projects").select("id,title,updated_at").eq("owner_id", ownerId)
+    .eq("create_enabled", true).neq("lifecycle_status", "archived").order("updated_at", { ascending: false });
+  if (projects.error) {
     throw new CreateProjectError("storage", "No pudimos cargar tus proyectos Create.");
   }
-  const activeIds = new Set([...writers.data ?? [], ...shotlists.data ?? [], ...productions.data ?? []].map((row) => String(row.project_id)));
-  return (projects.data ?? []).filter((row) => activeIds.has(String(row.id)))
+  return (projects.data ?? [])
     .map((row) => ({ id: String(row.id), name: String(row.title), updatedAt: String(row.updated_at) }));
 }
 
 export async function getCreateProjectContext(db: SupabaseClient, ownerId: string, projectId: string): Promise<CreateProjectContext> {
   if (!UUID.test(projectId)) throw new CreateProjectError("not_found", "Proyecto no encontrado.");
   const project = await db.from("projects").select("id,owner_id,title,lifecycle_status")
-    .eq("id", projectId).eq("owner_id", ownerId).maybeSingle();
+    .eq("id", projectId).eq("owner_id", ownerId).eq("create_enabled", true).maybeSingle();
   if (project.error || !project.data || project.data.lifecycle_status === "archived") {
     throw new CreateProjectError("not_found", "Proyecto no encontrado.");
   }

@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { CreateProjectError, getCreateProjectContext } from "@/lib/create/project";
 import ShotlistCreateButton from "@/components/shotlist/ShotlistCreateButton";
+import CreateProjectWriterButton from "@/components/create/CreateProjectWriterButton";
 
 export const metadata: Metadata = { title: "Project · Create", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -33,7 +34,7 @@ export default async function CreateProjectPage({ params }: { params: Promise<{ 
       <div className="mt-9 grid gap-8 md:grid-cols-2">
         <section id="writer"><h2 className="text-xl font-semibold">Writer</h2>
           {project.writers.length ? <ul className="mt-4 grid gap-2">{project.writers.map((writer) => <li key={writer.id}><Link className="block rounded-md border border-white/20 p-3 hover:border-white/50" href={`/writer/${writer.id}?project=${id}`}>{writer.title}</Link></li>)}</ul>
-            : <p className="mt-4 text-white/60">No hay guion activo en este proyecto.</p>}
+            : <><p className="mt-4 text-white/60">No hay guion activo en este proyecto.</p><CreateProjectWriterButton projectId={id} /></>}
         </section>
         <section id="shotlists"><h2 className="text-xl font-semibold">Shotlists</h2>
           {project.shotlists.length ? <ul className="mt-4 grid gap-2">{project.shotlists.map((shotlist) => <li key={shotlist.id}><Link className="block rounded-md border border-white/20 p-3 hover:border-white/50" href={`/shotlists/${shotlist.id}?project=${id}`}>{shotlist.title}</Link></li>)}</ul>

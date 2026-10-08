@@ -1,0 +1,28 @@
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { getCreateProjectContext, type CreateProjectContext } from "@/lib/create/project";
+import { createProjectModuleRoute, type CreateModule } from "@/lib/create/routes";
+import "./create-project-navigation.css";
+
+export default async function CreateProjectNavigation({ projectId, ownerId, active, context }: {
+  projectId: string | null;
+  ownerId: string;
+  active: CreateModule;
+  context?: CreateProjectContext;
+}) {
+  if (!projectId) return null;
+  const project = context ?? await getCreateProjectContext(await createClient(), ownerId, projectId);
+  const modules: { id: CreateModule; label: string }[] = [
+    { id: "writer", label: "Writer" }, { id: "breakdown", label: "Breakdown" },
+    { id: "shotlist", label: "Shotlist" }, { id: "storyboard", label: "Storyboard" },
+    { id: "production", label: "Production" },
+  ];
+  return <details className="create-project-navigation">
+    <summary aria-label={`Navegar por el proyecto ${project.name}`}>Proyecto · {project.name}</summary>
+    <nav aria-label={`Módulos de ${project.name}`}>
+      <Link href={`/create/projects/${project.id}`}>Ver proyecto</Link>
+      {modules.map((module) => <Link key={module.id} href={createProjectModuleRoute(project, module.id)} aria-current={active === module.id ? "page" : undefined}>{module.label}</Link>)}
+      <span aria-disabled="true">Rec · próximamente</span>
+    </nav>
+  </details>;
+}
