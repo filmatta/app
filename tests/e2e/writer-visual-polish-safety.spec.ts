@@ -205,3 +205,28 @@ test("Cream application menu keeps flat options without changing their hit boxes
   await item.hover();
   expectSameCoordinates(await rectangle(item, "Cream menu item hover"), baseline, ["x", "y", "width", "height"], "Cream menu item hover");
 });
+
+test("Etiquetar elemento shows a distinct active state in every Writer theme without moving", async ({ page, context }) => {
+  await openWriter(page, context, 1440, 900);
+  const tag = page.getByRole("button", { name: "Etiquetar elemento" });
+  const appearanceButton = page.getByRole("button", { name: "Apariencia de Writer" });
+
+  for (const skin of ["Carbon", "Marino", "Cream"]) {
+    await appearanceButton.click();
+    await page.getByRole("dialog", { name: "Apariencia de Writer" }).getByRole("radio", { name: skin }).click();
+    await page.keyboard.press("Escape");
+    await expect(tag).toHaveAttribute("aria-pressed", "false");
+    const baseline = await rectangle(tag, `${skin} OFF`);
+    const offBackground = await tag.evaluate((element) => getComputedStyle(element).backgroundColor);
+
+    await tag.click();
+    await expect(tag).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(() => tag.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(offBackground);
+    expectSameCoordinates(await rectangle(tag, `${skin} ON`), baseline, ["x", "y", "width", "height"], `${skin} ON`);
+    if (skin === "Cream") {
+      await expect.poll(() => tag.evaluate((element) => getComputedStyle(element).color)).toBe("rgb(255, 255, 255)");
+    }
+    await tag.click();
+    await expect(tag).toHaveAttribute("aria-pressed", "false");
+  }
+});

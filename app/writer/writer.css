@@ -849,6 +849,7 @@
 .writer-workspace[data-writer-skin="cream"] .writer-primary-button:hover:not(:disabled) { border-color:#cf4641; color:#fff; background:#cf4641; }
 .writer-workspace[data-writer-skin="cream"] .writer-toolbar .writer-insert-button { border-color:var(--writer-primary-bg); color:#fff; background:var(--writer-primary-bg); }
 .writer-workspace[data-writer-skin="cream"] .writer-toolbar .writer-insert-button:hover:not(:disabled) { border-color:var(--writer-primary-hover); color:#fff; background:var(--writer-primary-hover); }
+.writer-workspace[data-writer-skin="cream"] .writer-toolbar .writer-tag-button[aria-pressed="true"] { border-color:#8f302e; color:#fff; background:#8f302e; box-shadow:inset 0 -2px #5c1715; }
 .writer-workspace[data-writer-skin="cream"] :is(.writer-save-status--cloud,.writer-fragment-link,.writer-smart-indicator>span:first-child) { color:#00627b!important; }
 .writer-workspace[data-writer-skin="cream"] :is(.writer-feedback--error,.writer-save-status--error,.writer-save-status--conflict,.writer-save-status--sessionExpired,.writer-save-status--deleted) { color:#7f1e1b; }
 .writer-workspace[data-writer-skin="cream"] :is(.writer-app-menu-popover,.writer-context-menu,.writer-insert-panel,.writer-tool-panel,.writer-import-shell,.writer-modal) { color-scheme:light; }
