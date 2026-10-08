@@ -63,6 +63,7 @@ export type WriterBreakdownElement = {
   fingerprint: string;
   revision: number;
   appearances: WriterBreakdownAppearance[];
+  retired?: boolean;
 };
 
 export type WriterBreakdownAppearance = {

@@ -76,9 +76,10 @@ test("production AI and assets fail closed and never expose screenplay content i
   assert.match(importFlow, /router\.push\(`\/shotlists\/\$\{payload\.id\}`\)/);
 });
 
-test("reanalyzing a newer revision stales only automated evidence from older revisions", () => {
-  assert.match(productionServer, /\.neq\("source", "user"\)/);
-  assert.match(productionServer, /\.lt\("source_revision", script\.revision\)/);
+test("reanalyzing the same revision retires absent automatic evidence but preserves manual occurrences", () => {
+  assert.match(productionServer, /\.in\("source", options\.includeRules === false \? \["ai"\] : \["rule", "ai"\]\)/);
+  assert.match(productionServer, /row\.source_hash === "0"\.repeat\(64\)/);
+  assert.match(productionServer, /currentEvidenceKeys/);
   assert.match(productionServer, /update\(\{ stale: true/);
   assert.match(productionServer, /options\.sceneIds\?\.size/);
   assert.match(breakdown, /appearance\.stale \? "Referencia obsoleta" : "Ir al fragmento"/);

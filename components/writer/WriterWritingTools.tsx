@@ -22,6 +22,7 @@ import {
 } from "@/lib/writer/writing-ux";
 import { parseSceneHeading } from "@/lib/writer/timeline";
 import WriterIcon from "./WriterIcon";
+import { WRITER_BREAKDOWN_CATEGORIES, WRITER_BREAKDOWN_CATEGORY_LABELS, type WriterBreakdownCategory } from "@/lib/writer/production";
 
 export const WRITER_KIND_LABELS: Record<ScreenplayKind, string> = {
   sceneHeading: "Encabezado de escena",
@@ -65,6 +66,7 @@ export function WriterContextMenu({
   onAnalyzeSelection,
   onAssistant,
   onFeedback,
+  onTagSelection,
 }: {
   editor: Editor;
   state: WriterContextMenuState;
@@ -75,10 +77,12 @@ export function WriterContextMenu({
   onAnalyzeSelection: (target: WriterSelectionTarget) => void;
   onAssistant: (sceneId: string) => void;
   onFeedback: (message: string) => void;
+  onTagSelection: (target: WriterSelectionTarget, category: WriterBreakdownCategory) => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: state.x, top: state.y });
   const [clipboardBusy, setClipboardBusy] = useState(false);
+  const [tagOpen, setTagOpen] = useState(false);
   const target = state.target;
   const hasValidTarget = Boolean(target);
   const currentTarget = target ? findWriterBlockById(editor, target.targetId) : null;
@@ -100,7 +104,7 @@ export function WriterContextMenu({
       top: Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8)),
     });
     menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
-  }, [state.touch, state.x, state.y]);
+  }, [state.touch, state.x, state.y, tagOpen]);
 
   useEffect(() => {
     const closeOnPointer = (event: PointerEvent) => {
@@ -247,6 +251,12 @@ export function WriterContextMenu({
         </button>
       ))}
       <div className="writer-context-menu-separator" />
+      {hasSelection && target && !target.multipleBlocks && <>
+        <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={tagOpen} onMouseDown={(event) => event.preventDefault()} onClick={() => setTagOpen((open) => !open)}><span><WriterIcon name="tag" size={14} /> Etiquetar elemento como</span><span aria-hidden="true">▸</span></button>
+        {tagOpen && <div className="writer-context-tag-categories" role="menu" aria-label="Categorías de Breakdown">
+          {WRITER_BREAKDOWN_CATEGORIES.map((category) => <button key={category} type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => { if (!contextIsCurrent()) return staleContext(); onTagSelection(target, category); onClose(); }}>{WRITER_BREAKDOWN_CATEGORY_LABELS[category]}</button>)}
+        </div>}
+      </>}
       {hasSelection && target && <button type="button" role="menuitem" onClick={() => contextIsCurrent() ? onAnalyzeSelection(target) : staleContext()}>
         <span className="writer-smart-indicator"><WriterIcon name="sparkle" size={14} /><span>Analizar selección</span></span><small>Usar sólo el fragmento y su contexto cercano</small>
       </button>}
@@ -263,6 +273,50 @@ export function WriterContextMenu({
     </div>
   );
 }
+export function WriterTagMenu({
+  x, y, onChoose, onClose,
+}: {
+  x: number; y: number;
+  onChoose: (category: WriterBreakdownCategory) => void;
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const [position, setPosition] = useState({ left: x, top: y });
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    if (!returnFocusRef.current && document.activeElement instanceof HTMLElement) returnFocusRef.current = document.activeElement;
+    const rect = menu.getBoundingClientRect();
+    setPosition({
+      left: Math.max(8, Math.min(x, window.innerWidth - rect.width - 8)),
+      top: Math.max(8, Math.min(y, window.innerHeight - rect.height - 8)),
+    });
+    menu.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [x, y]);
+  useEffect(() => {
+    const pointer = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) onClose();
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); returnFocusRef.current?.focus({ preventScroll: true }); }
+    };
+    window.addEventListener("pointerdown", pointer);
+    window.addEventListener("keydown", key, true);
+    return () => { window.removeEventListener("pointerdown", pointer); window.removeEventListener("keydown", key, true); };
+  }, [onClose]);
+  return <div ref={menuRef} className="writer-tag-menu" role="menu" aria-label="Etiquetar como" style={position} onMouseDown={(event) => event.preventDefault()} onKeyDown={(event) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const buttons = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+    const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    buttons[(current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
+  }}>
+    <p className="writer-context-menu-label">Etiquetar como</p>
+    {WRITER_BREAKDOWN_CATEGORIES.map((category) => <button type="button" key={category} role="menuitem" onClick={() => { onChoose(category); returnFocusRef.current?.focus({ preventScroll: true }); }}>{WRITER_BREAKDOWN_CATEGORY_LABELS[category]}</button>)}
+  </div>;
+}
+
 export function WriterInsertPanel({
   editor,
   state,

@@ -12,7 +12,10 @@ import type {
   WriterShotlist,
   WriterShotlistGroup,
 } from "./production.ts";
-import { detectWriterBreakdownRules, productionIdentityKey } from "./production.ts";
+import { productionIdentityKey } from "./production.ts";
+import { detectWriterBreakdownV3 } from "./breakdown-detector-v3.ts";
+import { BREAKDOWN_LEXICON_VERSION } from "./breakdown-lexicon.ts";
+import { currentBreakdownEvidenceKey, staleAutomaticAppearanceIds } from "./breakdown-reconcile.ts";
 
 export class WriterProductionError extends Error {
   constructor(readonly code: string, message: string, readonly status: number) {
@@ -46,7 +49,7 @@ export async function loadWriterBreakdown(db: SupabaseClient, userId: string, sc
       .eq("script_id", scriptId)
       .order("updated_at", { ascending: false }),
     db.from("writer_breakdown_appearances")
-      .select("id,element_id,scene_id,block_id,excerpt,nature,from_offset,to_offset,source_revision,stale")
+      .select("id,element_id,scene_id,block_id,excerpt,nature,from_offset,to_offset,source_revision,source_hash,stale")
       .eq("owner_id", userId)
       .eq("script_id", scriptId)
       .order("created_at", { ascending: true }),
@@ -59,6 +62,7 @@ export async function loadWriterBreakdown(db: SupabaseClient, userId: string, sc
     throw new WriterProductionError("storage", "No pudimos cargar los elementos detectados.", 500);
   }
   const appearancesByElement = new Map<string, WriterBreakdownAppearance[]>();
+  const currentBlocks = new Map(deriveWriterSceneSources(script.document).flatMap((scene) => scene.blocks.map((block) => [block.id, block.text] as const)));
   for (const row of appearancesResult.data ?? []) {
     const elementId = String(row.element_id);
     const appearance: WriterBreakdownAppearance = {
@@ -70,7 +74,8 @@ export async function loadWriterBreakdown(db: SupabaseClient, userId: string, sc
       fromOffset: row.from_offset == null ? null : Number(row.from_offset),
       toOffset: row.to_offset == null ? null : Number(row.to_offset),
       sourceRevision: Number(row.source_revision),
-      stale: Boolean(row.stale),
+      stale: Boolean(row.stale) || (row.source_hash === "0".repeat(64) && row.block_id != null &&
+        currentBlocks.get(String(row.block_id))?.slice(Number(row.from_offset), Number(row.to_offset)) !== row.excerpt),
     };
     appearancesByElement.set(elementId, [...(appearancesByElement.get(elementId) ?? []), appearance]);
   }
@@ -87,10 +92,12 @@ export async function loadWriterBreakdown(db: SupabaseClient, userId: string, sc
     fingerprint: String(row.fingerprint),
     revision: Number(row.revision),
     appearances: appearancesByElement.get(String(row.id)) ?? [],
+    retired: row.status === "suggested" && row.source !== "user" &&
+      !(appearancesByElement.get(String(row.id)) ?? []).some((appearance) => !appearance.stale),
   }));
   return {
     elements,
-    pendingCount: elements.filter((element) => element.status === "suggested").length,
+    pendingCount: elements.filter((element) => element.status === "suggested" && !element.retired).length,
     analysis: operationResult.data?.[0] ? {
       scope: String(operationResult.data[0].scope),
       status: String(operationResult.data[0].status),
@@ -121,12 +128,12 @@ export async function detectAndStoreWriterBreakdown(
       source_revision: script.revision,
       source_hash: createHash("sha256").update(JSON.stringify(script.document)).digest("hex"),
       request_hash: createHash("sha256").update(`local:${operationId}`).digest("hex"),
-      model: "local-rules-v1", status: "processing", reserved_cost_microusd: 0,
+      model: BREAKDOWN_LEXICON_VERSION, status: "processing", reserved_cost_microusd: 0,
     });
     if (operation.error) throw new WriterProductionError("storage", "No pudimos registrar la detección.", 500);
   }
   const candidates = [
-    ...(options.includeRules === false ? [] : detectWriterBreakdownRules(script.document, options.sceneIds)),
+    ...(options.includeRules === false ? [] : detectWriterBreakdownV3(script.document, options.sceneIds)),
     ...(options.extraCandidates ?? []),
   ].filter((candidate) => candidate.category !== "character");
   const fingerprints = [...new Set(candidates.map((candidate) => candidate.fingerprint))];
@@ -181,26 +188,30 @@ export async function detectAndStoreWriterBreakdown(
     if (appearance.error) throw new WriterProductionError("storage", "No pudimos guardar la evidencia de los elementos detectados.", 500);
   }
   const automatedElements = options.reconcileStale === false ? null : await db.from("writer_breakdown_elements")
-    .select("id")
+    .select("id,fingerprint,status,source")
     .eq("owner_id", userId)
     .eq("script_id", scriptId)
-    .neq("source", "user");
+    .eq("status", "suggested")
+    .in("source", options.includeRules === false ? ["ai"] : ["rule", "ai"]);
   if (automatedElements?.error) {
     throw new WriterProductionError("storage", "No pudimos reconciliar la evidencia anterior.", 500);
   }
-  const automatedElementIds = (automatedElements?.data ?? []).map((row) => String(row.id));
-  if (automatedElementIds.length) {
-    let staleQuery = db.from("writer_breakdown_appearances")
+  const automated = automatedElements?.data ?? [];
+  const currentEvidenceKeys = new Set(accepted.map((item) => currentBreakdownEvidenceKey(item.fingerprint, item.blockId, item.fromOffset ?? null, item.nature)));
+  for (let index = 0; index < automated.length; index += 100) {
+    const batch = automated.slice(index, index + 100);
+    const appearances = await db.from("writer_breakdown_appearances")
+      .select("id,element_id,scene_id,block_id,from_offset,nature,source_hash")
+      .eq("owner_id", userId).eq("script_id", scriptId)
+      .in("element_id", batch.map((row) => String(row.id)));
+    if (appearances.error) throw new WriterProductionError("storage", "No pudimos reconciliar la evidencia anterior.", 500);
+    const fingerprints = new Map(batch.map((row) => [String(row.id), String(row.fingerprint)]));
+    const staleIds = staleAutomaticAppearanceIds(appearances.data ?? [], fingerprints, currentEvidenceKeys, options.sceneIds);
+    if (!staleIds.length) continue;
+    const staleResult = await db.from("writer_breakdown_appearances")
       .update({ stale: true, updated_at: new Date().toISOString() })
-      .eq("owner_id", userId)
-      .eq("script_id", scriptId)
-      .in("element_id", automatedElementIds)
-      .lt("source_revision", script.revision);
-    if (options.sceneIds?.size) staleQuery = staleQuery.in("scene_id", [...options.sceneIds]);
-    const staleResult = await staleQuery;
-    if (staleResult.error) {
-      throw new WriterProductionError("storage", "No pudimos reconciliar la evidencia anterior.", 500);
-    }
+      .eq("owner_id", userId).eq("script_id", scriptId).in("id", staleIds);
+    if (staleResult.error) throw new WriterProductionError("storage", "No pudimos reconciliar la evidencia anterior.", 500);
   }
   if (operationId) {
     const completed = await db.from("writer_production_operations").update({

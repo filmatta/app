@@ -18,6 +18,7 @@ import {
   WriterProductionAiError,
 } from "@/lib/writer/production-ai-server";
 import { deriveWriterSceneSources } from "@/lib/writer/script-assistant";
+import { normalizeManualTagSelection } from "@/lib/writer/breakdown-tagging";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,7 +50,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const local = await detectAndStoreWriterBreakdown(db, session.user.id, id, {
         scope: "document",
         recordLocalRun: true,
-        reconcileStale: false,
+        reconcileStale: true,
         expectedRevision: script.revision,
       });
       const sceneIds = deriveWriterSceneSources(script.document).map((scene) => scene.sceneId);
@@ -151,27 +152,54 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const db = createAdminClient();
       const sceneId = body.value.sceneId == null ? null : body.value.sceneId;
       if (sceneId !== null && !validUuid(sceneId)) return writerJson({ error: "Escena no válida.", code: "invalid" }, 400);
-      const element = await db.from("writer_breakdown_elements").insert({
-        owner_id: session.user.id,
-        script_id: id,
-        category: body.value.category,
-        name: String(body.value.name).trim(),
-        normalized_name: productionIdentityKey(String(body.value.name)),
-        status: "confirmed",
-        source: "user",
-        fingerprint: `user:${randomUUID()}`,
-      }).select("id").single();
-      if (element.error || !element.data) throw new WriterProductionError("storage", "No pudimos añadir el elemento.", 500);
+      const blockId = body.value.blockId == null ? null : body.value.blockId;
+      const fromOffset = body.value.fromOffset;
+      const toOffset = body.value.toOffset;
+      const selected = blockId !== null;
+      if (selected && (!validUuid(blockId) || !sceneId || !Number.isInteger(fromOffset) || !Number.isInteger(toOffset))) {
+        return writerJson({ error: "Selección inválida.", code: "invalid" }, 400);
+      }
+      const scene = sceneId ? deriveWriterSceneSources(script.document).find((item) => item.sceneId === sceneId) : null;
+      const block = selected ? scene?.blocks.find((item) => item.id === blockId) : null;
+      const name = String(body.value.name).trim();
+      const validatedSelection = block ? normalizeManualTagSelection(block.text, Number(fromOffset), Number(toOffset)) : null;
+      if (selected && (!validatedSelection || validatedSelection.name !== name
+        || validatedSelection.fromOffset !== Number(fromOffset) || validatedSelection.toOffset !== Number(toOffset))) {
+        return writerJson({ error: "La selección cambió. Selecciona el texto otra vez.", code: "stale", }, 409);
+      }
+      const normalized = productionIdentityKey(name);
+      const match = await db.from("writer_breakdown_elements").select("id,status,revision")
+        .eq("owner_id", session.user.id).eq("script_id", id)
+        .eq("category", body.value.category).eq("normalized_name", normalized)
+        .neq("status", "dismissed").order("created_at", { ascending: true }).limit(1).maybeSingle();
+      if (match.error) throw new WriterProductionError("storage", "No pudimos buscar el elemento existente.", 500);
+      let elementId = match.data?.id ? String(match.data.id) : null;
+      if (!elementId) {
+        const element = await db.from("writer_breakdown_elements").insert({
+          owner_id: session.user.id, script_id: id, category: body.value.category,
+          name, normalized_name: normalized, status: "confirmed", source: "user",
+          fingerprint: `user:${randomUUID()}`,
+        }).select("id").single();
+        if (element.error || !element.data) throw new WriterProductionError("storage", "No pudimos añadir el elemento.", 500);
+        elementId = String(element.data.id);
+      } else if (match.data?.status !== "confirmed") {
+        const promote = await db.from("writer_breakdown_elements")
+          .update({ status: "confirmed", revision: Number(match.data?.revision) + 1, updated_at: new Date().toISOString() })
+          .eq("id", elementId).eq("owner_id", session.user.id).eq("revision", match.data?.revision);
+        if (promote.error) throw new WriterProductionError("storage", "No pudimos confirmar el elemento.", 500);
+      }
       if (sceneId) {
         const sourceHash = "0".repeat(64);
-        const appearance = await db.from("writer_breakdown_appearances").insert({
-          owner_id: session.user.id, script_id: id, element_id: element.data.id, scene_id: sceneId,
-          block_id: null, excerpt: "Añadido manualmente a la escena.", nature: "inferred",
+        const appearance = await db.from("writer_breakdown_appearances").upsert({
+          owner_id: session.user.id, script_id: id, element_id: elementId, scene_id: sceneId,
+          block_id: blockId, excerpt: selected ? name : "Añadido manualmente a la escena.", nature: "inferred",
+          from_offset: selected ? Number(fromOffset) : null, to_offset: selected ? Number(toOffset) : null,
           source_revision: script.revision, source_hash: sourceHash,
-        });
+          stale: false, updated_at: new Date().toISOString(),
+        }, { onConflict: "element_id,block_id,from_offset,nature" });
         if (appearance.error) throw new WriterProductionError("storage", "No pudimos vincular la escena.", 500);
       }
-      return writerJson({ created: true, id: element.data.id, breakdown: await loadWriterBreakdown(createAdminClient(), session.user.id, id) }, 201);
+      return writerJson({ created: true, id: elementId, reused: Boolean(match.data), breakdown: await loadWriterBreakdown(db, session.user.id, id) }, 201);
     }
     return writerJson({ error: "Solicitud inválida.", code: "invalid" }, 400);
   } catch (cause) {

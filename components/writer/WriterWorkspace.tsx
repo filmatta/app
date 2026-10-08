@@ -72,6 +72,8 @@ import {
 import { WRITER_KIND_SHORTCUTS, writerKindShortcut, writerShortcutLabel } from "@/lib/writer/shortcuts";
 import WriterImportFlow from "./WriterImportFlow";
 import WriterBreakdownPanel from "./WriterBreakdownPanel";
+import { normalizeManualTagSelection } from "@/lib/writer/breakdown-tagging";
+import type { WriterBreakdownCategory } from "@/lib/writer/production";
 import WriterAssistantNarrative from "./WriterAssistantNarrative";
 import WriterGuidedWriting from "./WriterGuidedWriting";
 import WriterSelectionAnalysisDialog from "./WriterSelectionAnalysisDialog";
@@ -92,6 +94,7 @@ import {
 } from "./WriterSmartFormatting";
 import {
   WriterContextMenu,
+  WriterTagMenu,
   WriterInsertPanel,
   WRITER_KIND_LABELS,
   type WriterContextMenuState,
@@ -317,6 +320,10 @@ export default function WriterWorkspace({
   const [activeFormatObservationId, setActiveFormatObservationId] = useState<string | null>(null);
   const [analysisEpoch, setAnalysisEpoch] = useState(0);
   const [contextMenu, setContextMenu] = useState<WriterContextMenuState | null>(null);
+  const [tagMode, setTagMode] = useState(false);
+  const [tagSelection, setTagSelection] = useState<{ target: WriterSelectionTarget; x: number; y: number } | null>(null);
+  const [breakdownRefreshToken, setBreakdownRefreshToken] = useState(0);
+  const [manualTagCategory, setManualTagCategory] = useState<WriterBreakdownCategory | null>(null);
   const [insertState, setInsertState] = useState<WriterInsertState | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [timelineMounted, setTimelineMounted] = useState(false);
@@ -364,6 +371,7 @@ export default function WriterWorkspace({
   const pointerRef = useRef<{ type: string; at: number }>({ type: "mouse", at: 0 });
   const activeWriterSelectionRef = useRef<WriterSelectionTarget | null>(null);
   const rightClickSelectionRef = useRef<WriterSelectionTarget | null>(null);
+  const tagModeRef = useRef(false);
   const deepLinkHandledRef = useRef(false);
   const importNoticeHandledRef = useRef(false);
   const highlightTimeoutRef = useRef<number | null>(null);
@@ -399,12 +407,24 @@ export default function WriterWorkspace({
   const sessionIdRef = useRef(crypto.randomUUID());
   const internalHistoryKey = useMemo(() => writerInternalHistoryStorageKey(userId), [userId]);
   const openContextMenu = useCallback((next: WriterContextMenuState) => {
+    setTagSelection(null);
     autocompleteRef.current = null;
     setAutocomplete(null);
     setExportMenu(false);
     setInsertState(null);
     setContextMenu(next);
   }, []);
+  function showTagSelection(current: Editor) {
+    if (!tagModeRef.current || current.state.selection.empty || current.view.composing) { setTagSelection(null); return; }
+    const target = captureWriterSelectionTarget(current.state);
+    if (!target || target.multipleBlocks) { setTagSelection(null); return; }
+    const block = findWriterBlockById(current, target.targetId);
+    if (!block || !normalizeManualTagSelection(block.text, target.from - block.position - 1, target.to - block.position - 1)) {
+      setTagSelection(null); return;
+    }
+    const coords = current.view.coordsAtPos(target.to);
+    setTagSelection({ target, x: coords.left, y: coords.bottom + 5 });
+  }
   const openContextMenuAtPointer = useCallback((
     state: EditorState,
     snapshot: WriterSelectionTarget | null,
@@ -799,6 +819,7 @@ export default function WriterWorkspace({
       }
       documentRef.current = canonical;
       setDocument(canonical);
+      setTagSelection(null);
       controllerRef.current?.markChanged({
         title: titleRef.current,
         document: canonical,
@@ -810,6 +831,7 @@ export default function WriterWorkspace({
       if (current.isFocused) activeWriterSelectionRef.current = captureWriterSelectionTarget(current.state);
       syncActiveSceneFromEditor(current.state);
       syncAutocomplete(current);
+      if (tagModeRef.current) showTagSelection(current);
     },
     onFocus: ({ editor: current }) => {
       activeWriterSelectionRef.current = captureWriterSelectionTarget(current.state);
@@ -1860,6 +1882,33 @@ export default function WriterWorkspace({
     });
   }
 
+  async function createManualTag(target: WriterSelectionTarget, category: WriterBreakdownCategory) {
+    if (!editor || !writerSelectionTargetIsCurrent(editor.state, target) || target.multipleBlocks) {
+      setFeedback("La selección cambió. Selecciona el elemento otra vez."); return;
+    }
+    const block = findWriterBlockById(editor, target.targetId);
+    const sceneId = findWriterSceneForBlock(editor.state.doc, target.targetId);
+    const selected = block && normalizeManualTagSelection(block.text, target.from - block.position - 1, target.to - block.position - 1);
+    if (!block || !sceneId || !selected) { setFeedback("Selecciona un elemento dentro de una escena."); return; }
+    try {
+      await ensureCurrentDocumentSaved();
+      if (!writerSelectionTargetIsCurrent(editor.state, target)) throw new Error("La selección cambió antes de guardar. Inténtalo de nuevo.");
+      const response = await fetch(`/api/writer/scripts/${script.id}/breakdown`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "manual", category, name: selected.name, sceneId,
+          blockId: block.id, fromOffset: selected.fromOffset, toOffset: selected.toOffset }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "No pudimos etiquetar el elemento.");
+      setManualTagCategory(category);
+      setBreakdownRefreshToken((value) => value + 1);
+      setTagSelection(null);
+      setFeedback(data.reused ? "Aparición añadida al elemento existente." : "Elemento etiquetado en Breakdown.");
+    } catch (cause) {
+      setFeedback(cause instanceof Error ? cause.message : "No pudimos etiquetar el elemento.");
+    }
+  }
+
   async function analyzeSetupPayoff() {
     setContextMenu(null);
     setObservationsSection("setupPayoff");
@@ -2897,7 +2946,9 @@ export default function WriterWorkspace({
             <span id="writer-character-heading" className="writer-sidebar-heading">Elementos detectados</span><span aria-hidden="true">{charactersCollapsed ? "⌄" : "⌃"}</span>
           </button>
           {!charactersCollapsed && <WriterBreakdownPanel
+            key={breakdownRefreshToken}
             scriptId={script.id}
+            focusCategory={manualTagCategory}
             activeSceneId={activeScene}
             characterCount={characterRows.length}
             onEnsureSaved={ensureCurrentDocumentSaved}
@@ -2976,6 +3027,14 @@ export default function WriterWorkspace({
         <WriterToolbar
           editor={editor}
           words={words}
+          tagMode={tagMode}
+          onToggleTag={() => {
+            const next = !tagModeRef.current;
+            tagModeRef.current = next;
+            setTagMode(next);
+            if (next && editor) showTagSelection(editor);
+            else setTagSelection(null);
+          }}
           onAutoFormat={() => startAutoFormat(readiness.state === "PARTIALLY_FORMATTED" ? "partial" : "document")}
           onSearch={() => { setSearchReplaceMode(false); setSearchOpen(true); }}
           onIdeas={() => openTimeline(null, "ideas")}
@@ -3081,8 +3140,14 @@ export default function WriterWorkspace({
           onAnalyzeSelection={openSelectionAnalysis}
           onAssistant={openAssistantForScene}
           onFeedback={setFeedback}
+          onTagSelection={(target, category) => void createManualTag(target, category)}
         />
       )}
+      {tagSelection && !contextMenu && !focusMode && <WriterTagMenu
+        x={tagSelection.x} y={tagSelection.y}
+        onClose={() => setTagSelection(null)}
+        onChoose={(category) => void createManualTag(tagSelection.target, category)}
+      />}
       {guidedSelection && <WriterSelectionAnalysisDialog
         selection={guidedSelection}
         currentDocumentHash={guidedWriting.documentHash}
@@ -3484,6 +3549,8 @@ function WriterToolbar({
   soundEnabled,
   onToggleSound,
   onInsert,
+  tagMode,
+  onToggleTag,
 }: {
   editor: Editor | null;
   words: number;
@@ -3493,6 +3560,8 @@ function WriterToolbar({
   soundEnabled: boolean;
   onToggleSound: () => void;
   onInsert: (state: WriterInsertState) => void;
+  tagMode: boolean;
+  onToggleTag: () => void;
 }) {
   const [formatOpen, setFormatOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
@@ -3551,6 +3620,7 @@ function WriterToolbar({
       <button className="writer-auto-format-button" type="button" onMouseDown={preserveSelection} onClick={onAutoFormat}>
         <SmartFeatureIndicator label="FORMATO AUTOMÁTICO" />
       </button>
+      <button className="writer-tag-button" type="button" aria-label="Etiquetar elemento" aria-pressed={tagMode} title="Etiquetar elemento" onMouseDown={preserveSelection} onClick={onToggleTag}><WriterIcon name="tag" /><span className="writer-toolbar-label">Etiquetar</span></button>
       <div className="writer-toolbar-desktop-actions">
         <div className="writer-toolbar-formatting-actions">
         <span className="writer-toolbar-divider" aria-hidden="true" />

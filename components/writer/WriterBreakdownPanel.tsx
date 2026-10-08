@@ -24,6 +24,7 @@ const OTHER = new Set<WriterBreakdownCategory>(["extra", "makeup", "practical_ef
 
 export default function WriterBreakdownPanel({
   scriptId,
+  focusCategory,
   activeSceneId,
   characters,
   characterCount,
@@ -31,13 +32,14 @@ export default function WriterBreakdownPanel({
   onNavigate,
 }: {
   scriptId: string;
+  focusCategory: WriterBreakdownCategory | null;
   activeSceneId: string | null;
   characters: React.ReactNode;
   characterCount: number;
   onEnsureSaved: () => Promise<void>;
   onNavigate: (reference: { sceneId: string | null; blockId: string | null; fromOffset: number | null; toOffset: number | null }) => void;
 }) {
-  const [category, setCategory] = useState<WriterBreakdownCategory>("character");
+  const [category, setCategory] = useState<WriterBreakdownCategory>(focusCategory ?? "character");
   const [reviewMode, setReviewMode] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
   const [elements, setElements] = useState<WriterBreakdownElement[]>([]);
@@ -208,13 +210,13 @@ export default function WriterBreakdownPanel({
     finally { setBusy(false); }
   }
 
-  const visible = useMemo(() => elements.filter((element) => (displayScope === "document" || element.appearances.some((appearance) => appearance.sceneId === activeSceneId)) && (showDismissed
+  const visible = useMemo(() => elements.filter((element) => !element.retired && (displayScope === "document" || element.appearances.some((appearance) => appearance.sceneId === activeSceneId && !appearance.stale)) && (showDismissed
     ? element.status === "dismissed"
     : reviewMode ? element.status === "suggested"
     : category === "other" ? OTHER.has(element.category) && element.status !== "dismissed"
       : element.category === category && element.status !== "dismissed")), [activeSceneId, category, displayScope, elements, reviewMode, showDismissed]);
   const countFor = (id: WriterBreakdownCategory) => id === "character" ? characterCount
-    : elements.filter((element) => (id === "other" ? OTHER.has(element.category) : element.category === id) && element.status !== "dismissed").length;
+    : elements.filter((element) => !element.retired && (id === "other" ? OTHER.has(element.category) : element.category === id) && element.status !== "dismissed").length;
   const chooseCategory = (id: WriterBreakdownCategory) => {
     setReviewMode(false);
     setShowDismissed(false);
@@ -241,7 +243,7 @@ export default function WriterBreakdownPanel({
     </div>
     <div className="writer-breakdown-title"><div><span>ELEMENTOS DETECTADOS</span><details><summary aria-label="Ayuda sobre Elementos detectados">?</summary><p>Revisa todo el guion con IA para encontrar elementos de producción. El filtro Mostrar no cambia el alcance del análisis.</p></details></div><button type="button" title="Revisa todo el guion guardado con IA" onClick={() => void detect()} disabled={busy}><SmartFeatureIndicator label={busy ? "Detectando…" : analysis && !analysis.stale && analysis.status === "completed" ? "Reanalizar todo" : "Detectar elementos"} /></button></div>
     <div className="writer-breakdown-head"><div><small>INVENTARIO</small><strong>{showDismissed ? "Descartados" : reviewMode ? "Por revisar" : WRITER_BREAKDOWN_CATEGORY_LABELS[category]} <b>{showDismissed ? visible.length : reviewMode ? pendingCount : countFor(category)}</b></strong></div><div className="writer-breakdown-head-actions"><button type="button" onClick={() => { setReviewMode(true); setShowDismissed(false); setSelectedId(null); }} aria-pressed={reviewMode}>Por revisar {pendingCount}</button><details><summary aria-label="Más opciones">···</summary><button type="button" onClick={() => { setReviewMode(false); setShowDismissed(true); setSelectedId(null); }}>Ver descartados ({elements.filter((element) => element.status === "dismissed").length})</button><button type="button" onClick={() => void addManual()} disabled={busy || category === "character"}>Añadir manualmente</button></details></div></div>
-    <div className={`writer-breakdown-analysis is-${loadError || detectionIssue ? "error" : busy ? "analyzing" : !analysis ? "never" : analysis.stale ? "stale" : analysis.status === "partial" || analysis.model === "local-rules-v1" ? "partial" : analysis.status === "completed" ? "complete" : "error"}`} role={loadError || detectionIssue ? "alert" : "status"}>{loadError ? "No pudimos cargar el estado de detección." : detectionIssue === "provider" ? "La asistencia no está disponible. El inventario local verificable permanece visible." : detectionIssue === "error" ? "La última detección falló. El inventario anterior permanece intacto." : busy ? "Analizando el guion guardado: reglas locales y asistencia por lotes…" : !analysis ? "Aún no se ejecutó la detección completa. El inventario local puede ser parcial." : analysis.stale ? "El resultado corresponde a una revisión anterior." : analysis.status === "partial" ? "Análisis asistido parcial. Se conservaron los lotes válidos y el inventario local." : analysis.model === "local-rules-v1" ? "Detección local completada. La cobertura asistida de todo el guion sigue pendiente." : analysis.status === "completed" ? (elements.length ? `Análisis completo · ${elements.filter((item) => item.status !== "dismissed").length} elementos en inventario.` : "Análisis completo sin elementos adicionales.") : "La última detección no pudo completarse."}</div>
+    <div className={`writer-breakdown-analysis is-${loadError || detectionIssue ? "error" : busy ? "analyzing" : !analysis ? "never" : analysis.stale ? "stale" : analysis.status === "partial" || analysis.model.startsWith("local-") ? "partial" : analysis.status === "completed" ? "complete" : "error"}`} role={loadError || detectionIssue ? "alert" : "status"}>{loadError ? "No pudimos cargar el estado de detección." : detectionIssue === "provider" ? "La asistencia no está disponible. El inventario local verificable permanece visible." : detectionIssue === "error" ? "La última detección falló. El inventario anterior permanece intacto." : busy ? "Analizando el guion guardado: reglas locales y asistencia por lotes…" : !analysis ? "Aún no se ejecutó la detección completa. El inventario local puede ser parcial." : analysis.stale ? "El resultado corresponde a una revisión anterior." : analysis.status === "partial" ? "Análisis asistido parcial. Se conservaron los lotes válidos y el inventario local." : analysis.model.startsWith("local-") ? "Detección local completada. La cobertura asistida de todo el guion sigue pendiente." : analysis.status === "completed" ? (elements.length ? `Análisis completo · ${elements.filter((item) => !item.retired && item.status !== "dismissed").length} elementos en inventario.` : "Análisis completo sin elementos adicionales.") : "La última detección no pudo completarse."}</div>
     {category === "character" && !reviewMode && !showDismissed ? characters : <div className="writer-breakdown-list" role="tabpanel">
       {visible.map((element) => <article key={element.id} className={selectedId === element.id ? "is-selected" : ""}>
         <button className="writer-breakdown-item" type="button" onClick={() => setSelectedId((current) => current === element.id ? null : element.id)}><span className={`writer-breakdown-check is-${element.status}`}>{element.status === "confirmed" ? "✓" : element.status === "suggested" ? "?" : "×"}</span><span><strong>{element.name}</strong><small>{element.status === "confirmed" ? "Confirmado" : element.status === "suggested" ? "Detectado · sin confirmar" : "Descartado"} · {element.appearances.some((item) => item.stale) ? "revisar aparición" : element.appearances.length ? `${element.appearances.length} ${element.appearances.length === 1 ? "aparición" : "apariciones"}` : "sin aparición vinculada"}</small></span><b>Ver</b></button>

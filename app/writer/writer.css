@@ -308,6 +308,12 @@
 .writer-toolbar-history-actions,
 .writer-toolbar-secondary-actions { display: flex; align-items: center; gap: 5px; }
 .writer-toolbar :is(.writer-search-button, .writer-ideas-button) { width: auto; padding-inline: 9px; white-space: nowrap; }
+.writer-toolbar .writer-tag-button { width: auto; padding-inline: 9px; white-space: nowrap; }
+.writer-tag-menu { position: fixed; z-index: 130; display: grid; width: min(230px, calc(100vw - 16px)); max-height: min(420px, calc(100dvh - 16px)); overflow-y: auto; padding: 7px; border: 1px solid var(--writer-border); border-radius: var(--writer-radius-card); color: #f1efe9; background: var(--writer-panel-raised, #11161b); box-shadow: 0 22px 70px rgba(0,0,0,.52); }
+.writer-tag-menu button,.writer-context-tag-categories button { min-height: 34px; padding: 8px 9px; border: 0; color: inherit; background: transparent; text-align: left; font-size: .72rem; }
+.writer-tag-menu button:hover,.writer-tag-menu button:focus-visible,.writer-context-tag-categories button:hover,.writer-context-tag-categories button:focus-visible { outline: 2px solid var(--writer-accent, #e87e79); outline-offset: -2px; background: rgba(255,255,255,.06); }
+.writer-context-tag-categories { display: grid; max-height: 220px; overflow-y: auto; border-top: 1px solid var(--writer-border); border-bottom: 1px solid var(--writer-border); }
+.writer-workspace[data-writer-skin="cream"] .writer-tag-menu { color: #28221d; background: var(--writer-panel-raised); }
 .writer-versions-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .writer-sound-button { width: 36px; margin-left: 3px; }
 .writer-format-wrap { position: relative; display: none; }
@@ -315,6 +321,8 @@
 .writer-toolbar .writer-touch-actions { display: none; }
 .writer-toolbar[data-toolbar-mode="compact"] .writer-toolbar-label,
 .writer-toolbar[data-toolbar-mode="minimal"] .writer-toolbar-label { display: none; }
+.writer-toolbar[data-toolbar-mode="compact"] .writer-tag-button,
+.writer-toolbar[data-toolbar-mode="minimal"] .writer-tag-button { width: 36px; padding: 0; }
 .writer-toolbar[data-toolbar-mode="compact"] :is(.writer-search-button, .writer-ideas-button),
 .writer-toolbar[data-toolbar-mode="minimal"] .writer-search-button { width: 36px; padding: 0; }
 .writer-toolbar[data-toolbar-mode="minimal"] { gap: 4px; padding-inline: 7px; }

@@ -87,7 +87,7 @@ test("Breakdown preserves valid evidence on failures and reuses unchanged comple
   const server = read("lib/writer/production-ai-server.ts");
   const production = read("lib/writer/production-server.ts");
   const panel = read("components/writer/WriterBreakdownPanel.tsx");
-  assert.match(route, /reconcileStale: false/u);
+  assert.match(route, /reconcileStale: true/u);
   assert.match(route, /expectedRevision: script\.revision/u);
   assert.match(route, /includeRules: false/u);
   assert.match(server, /input\.kind === "breakdown_detect"/u);
