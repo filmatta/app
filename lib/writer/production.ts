@@ -76,6 +76,7 @@ export type WriterBreakdownAppearance = {
   toOffset: number | null;
   sourceRevision: number;
   stale: boolean;
+  manual?: boolean;
 };
 
 export type WriterShotlist = {

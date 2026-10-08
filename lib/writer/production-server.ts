@@ -77,6 +77,7 @@ export async function loadWriterBreakdown(db: SupabaseClient, userId: string, sc
       sourceRevision: Number(row.source_revision),
       stale: Boolean(row.stale) || (row.source_hash === "0".repeat(64) && row.block_id != null &&
         currentBlocks.get(String(row.block_id))?.slice(Number(row.from_offset), Number(row.to_offset)) !== row.excerpt),
+      manual: row.source_hash === "0".repeat(64),
     };
     const current = appearancesByElement.get(elementId) ?? [];
     const duplicate = appearance.blockId && appearance.fromOffset != null
@@ -101,8 +102,10 @@ export async function loadWriterBreakdown(db: SupabaseClient, userId: string, sc
     fingerprint: String(row.fingerprint),
     revision: Number(row.revision),
     appearances: appearancesByElement.get(String(row.id)) ?? [],
-    retired: row.status === "suggested" && row.source !== "user" &&
-      !(appearancesByElement.get(String(row.id)) ?? []).some((appearance) => !appearance.stale),
+    retired: (row.status === "suggested" && row.source !== "user" &&
+      !(appearancesByElement.get(String(row.id)) ?? []).some((appearance) => !appearance.stale)) ||
+      (row.source === "user" && String(row.fingerprint).startsWith("user:tag:") &&
+      !(appearancesByElement.get(String(row.id)) ?? []).length),
   }));
   return {
     elements,

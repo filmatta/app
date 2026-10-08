@@ -178,7 +178,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         const element = await db.from("writer_breakdown_elements").insert({
           owner_id: session.user.id, script_id: id, category: body.value.category,
           name, normalized_name: normalized, status: "confirmed", source: "user",
-          fingerprint: `user:${randomUUID()}`,
+          fingerprint: selected ? `user:tag:${randomUUID()}` : `user:${randomUUID()}`,
         }).select("id").single();
         if (element.error || !element.data) throw new WriterProductionError("storage", "No pudimos añadir el elemento.", 500);
         elementId = String(element.data.id);
@@ -222,7 +222,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const current = await db.from("writer_breakdown_elements")
       .select("id,fingerprint,revision").eq("id", body.value.elementId).eq("script_id", id).eq("owner_id", session.user.id).maybeSingle();
     if (current.error || !current.data) return writerJson({ error: "Elemento no encontrado.", code: "not_found" }, 404);
-    if (body.value.action === "status" && ["confirmed", "dismissed", "suggested"].includes(String(body.value.status))) {
+    if (body.value.action === "removeManualAppearance" && validUuid(body.value.appearanceId)) {
+      const removed = await db.from("writer_breakdown_appearances").delete()
+        .eq("id", body.value.appearanceId).eq("element_id", current.data.id)
+        .eq("script_id", id).eq("owner_id", session.user.id)
+        .eq("source_hash", "0".repeat(64)).select("id").maybeSingle();
+      if (removed.error) throw new WriterProductionError("storage", "No pudimos quitar la etiqueta.", 500);
+      if (!removed.data) return writerJson({ error: "La etiqueta manual ya no existe.", code: "not_found" }, 404);
+    } else if (body.value.action === "status" && ["confirmed", "dismissed", "suggested"].includes(String(body.value.status))) {
       const status = String(body.value.status);
       const saved = await db.from("writer_breakdown_elements")
         .update({ status, revision: Number(current.data.revision) + 1, updated_at: new Date().toISOString() })

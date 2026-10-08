@@ -23,13 +23,18 @@ test("Etiquetar creates a manual occurrence without changing screenplay text and
     }
     const payload = route.request().postDataJSON() as Record<string, unknown>;
     posted.push(payload);
+    if (payload.action === "removeManualAppearance") {
+      const element = elements.find((item) => item.id === payload.elementId);
+      if (element) element.appearances = element.appearances.filter((item) => item.id !== payload.appearanceId);
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ saved: true, breakdown: { elements, pendingCount: 0, analysis: null } }) });
+    }
     if (payload.action === "manual") {
       const name = String(payload.name);
       const existing = elements.find((element) => element.name === name && element.category === payload.category);
       if (existing) {
-        existing.appearances.push({ id: crypto.randomUUID(), sceneId, blockId: actionId, excerpt: name, nature: "inferred", fromOffset: Number(payload.fromOffset), toOffset: Number(payload.toOffset), sourceRevision: 2, stale: false });
+        existing.appearances.push({ id: crypto.randomUUID(), sceneId, blockId: actionId, excerpt: name, nature: "inferred", fromOffset: Number(payload.fromOffset), toOffset: Number(payload.toOffset), sourceRevision: 2, stale: false, manual: true });
       } else {
-        elements.push({ id: crypto.randomUUID(), scriptId, category: payload.category as WriterBreakdownElement["category"], name, status: "confirmed", source: "user", canonicalIdentityKey: null, note: null, assetId: null, fingerprint: `user:${name}`, revision: 1, appearances: [{ id: crypto.randomUUID(), sceneId, blockId: actionId, excerpt: name, nature: "inferred", fromOffset: Number(payload.fromOffset), toOffset: Number(payload.toOffset), sourceRevision: 2, stale: false }] });
+        elements.push({ id: crypto.randomUUID(), scriptId, category: payload.category as WriterBreakdownElement["category"], name, status: "confirmed", source: "user", canonicalIdentityKey: null, note: null, assetId: null, fingerprint: `user:${name}`, revision: 1, appearances: [{ id: crypto.randomUUID(), sceneId, blockId: actionId, excerpt: name, nature: "inferred", fromOffset: Number(payload.fromOffset), toOffset: Number(payload.toOffset), sourceRevision: 2, stale: false, manual: true }] });
       }
       return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ created: true, reused: Boolean(existing), breakdown: { elements, pendingCount: 0, analysis: null } }) });
     }
@@ -74,6 +79,11 @@ test("Etiquetar creates a manual occurrence without changing screenplay text and
   await page.reload();
   await page.getByRole("tab", { name: "Props / utilería" }).click();
   await expect(page.getByRole("tabpanel").getByText("prisma de obsidiana", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /prisma de obsidiana.*Ver/ }).click();
+  await page.getByRole("button", { name: "Quitar etiqueta" }).first().click();
+  await expect.poll(() => posted.filter((item) => item.action === "removeManualAppearance").length).toBe(1);
+  expect(elements[0].appearances).toHaveLength(1);
+  expect(await action.textContent()).toBe(before);
   await page.getByRole("button", { name: /Detectar elementos/ }).click();
-  await expect(page.getByRole("tabpanel").getByText("prisma de obsidiana", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /prisma de obsidiana.*Ver/ })).toBeVisible();
 });
