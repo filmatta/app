@@ -784,7 +784,23 @@ export default function WriterWorkspace({
         if (view.composing || event.isComposing || !((event.shiftKey && event.key === "F10") || event.key === "ContextMenu")) {
           return false;
         }
-        const target = captureWriterSelectionTarget(view.state);
+        let target = captureWriterSelectionTarget(view.state);
+        // A keyboard context-menu event can arrive before ProseMirror has read the
+        // browser's final Shift+Arrow selection. Sync only that selection, never text.
+        if (target?.from === target?.to) {
+          const native = view.dom.ownerDocument.getSelection();
+          if (native && !native.isCollapsed && native.anchorNode && native.focusNode &&
+            view.dom.contains(native.anchorNode) && view.dom.contains(native.focusNode)) {
+            try {
+              const anchor = view.posAtDOM(native.anchorNode, native.anchorOffset);
+              const head = view.posAtDOM(native.focusNode, native.focusOffset);
+              if (anchor !== head) {
+                view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, anchor, head)));
+                target = captureWriterSelectionTarget(view.state);
+              }
+            } catch { /* Selection moved outside a valid screenplay position. */ }
+          }
+        }
         if (!target) return false;
         activeWriterSelectionRef.current = target;
         event.preventDefault();

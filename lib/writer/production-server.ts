@@ -62,6 +62,7 @@ export async function loadWriterBreakdown(db: SupabaseClient, userId: string, sc
     throw new WriterProductionError("storage", "No pudimos cargar los elementos detectados.", 500);
   }
   const appearancesByElement = new Map<string, WriterBreakdownAppearance[]>();
+  const manualAppearanceIds = new Set<string>();
   const currentBlocks = new Map(deriveWriterSceneSources(script.document).flatMap((scene) => scene.blocks.map((block) => [block.id, block.text] as const)));
   for (const row of appearancesResult.data ?? []) {
     const elementId = String(row.element_id);
@@ -77,7 +78,15 @@ export async function loadWriterBreakdown(db: SupabaseClient, userId: string, sc
       stale: Boolean(row.stale) || (row.source_hash === "0".repeat(64) && row.block_id != null &&
         currentBlocks.get(String(row.block_id))?.slice(Number(row.from_offset), Number(row.to_offset)) !== row.excerpt),
     };
-    appearancesByElement.set(elementId, [...(appearancesByElement.get(elementId) ?? []), appearance]);
+    const current = appearancesByElement.get(elementId) ?? [];
+    const duplicate = appearance.blockId && appearance.fromOffset != null
+      ? current.findIndex((item) => item.sceneId === appearance.sceneId && item.blockId === appearance.blockId &&
+        item.fromOffset === appearance.fromOffset && item.toOffset === appearance.toOffset)
+      : -1;
+    if (duplicate < 0) current.push(appearance);
+    else if (row.source_hash === "0".repeat(64) || !manualAppearanceIds.has(current[duplicate].id)) current[duplicate] = appearance;
+    if (row.source_hash === "0".repeat(64)) manualAppearanceIds.add(appearance.id);
+    appearancesByElement.set(elementId, current);
   }
   const elements: WriterBreakdownElement[] = (elementsResult.data ?? []).map((row) => ({
     id: String(row.id),
