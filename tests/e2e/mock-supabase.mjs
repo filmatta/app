@@ -18,6 +18,55 @@ let writerReadCount = 0;
 let writerCreateCount = 0;
 let writerCheckpoints = [];
 let workspaceProjects = [];
+const workspaceMetricProjectId = "22222222-2222-4222-8222-222222222222";
+const workspaceMetricScriptId = "66666666-6666-4666-8666-666666666666";
+const workspaceMetricShotlistId = "77777777-7777-4777-8777-777777777777";
+const workspaceMetricProductionId = "88888888-8888-4888-8888-888888888888";
+const workspaceMetricGroupId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const workspaceMetricShotIds = ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc"];
+const workspaceMetricDayId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const workspaceMetricArtifacts = {
+  writer_scripts: [{
+    id: workspaceMetricScriptId, owner_id: id, project_id: workspaceMetricProjectId,
+    title: "LA FRECUENCIA — Guion", document: makeWriterDocument(), updated_at: "2026-10-09T13:00:00Z",
+  }],
+  writer_shotlists: [{
+    id: workspaceMetricShotlistId, owner_id: id, project_id: workspaceMetricProjectId,
+    script_id: workspaceMetricScriptId, title: "LA FRECUENCIA — Shotlist", updated_at: "2026-10-09T13:10:00Z",
+  }],
+  writer_shotlist_groups: [{
+    id: workspaceMetricGroupId, owner_id: id, shotlist_id: workspaceMetricShotlistId,
+    source_scene_id: "11111111-1111-4111-8111-111111111101",
+  }],
+  writer_shotlist_shots: workspaceMetricShotIds.map((shotId) => ({
+    id: shotId, owner_id: id, shotlist_id: workspaceMetricShotlistId, group_id: workspaceMetricGroupId,
+  })),
+  storyboard_panels: [{
+    id: "99999999-9999-4999-8999-999999999999", owner_id: id, project_id: workspaceMetricProjectId,
+    shotlist_id: workspaceMetricShotlistId, shot_id: workspaceMetricShotIds[0],
+    current_revision_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", updated_at: "2026-10-09T13:20:00Z",
+  }],
+  storyboard_panel_revisions: [{
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", owner_id: id, content_kind: "image",
+  }],
+  production_plans: [{
+    id: workspaceMetricProductionId, owner_id: id, project_id: workspaceMetricProjectId,
+    name: "Plan de rodaje", updated_at: "2026-10-09T13:30:00Z",
+  }],
+  production_days: [{
+    id: workspaceMetricDayId, owner_id: id, production_id: workspaceMetricProductionId,
+  }],
+  production_schedule_items: [{
+    id: "ffffffff-ffff-4fff-8fff-ffffffffffff", owner_id: id,
+    production_id: workspaceMetricProductionId, day_id: workspaceMetricDayId,
+    source_shot_id: workspaceMetricShotIds[0],
+  }],
+  production_document_exports: [{
+    id: "10101010-1010-4010-8010-101010101010", owner_id: id,
+    production_id: workspaceMetricProductionId, document_key: "pack",
+    version_major: 1, version_minor: 2, generated_at: "2026-10-09T13:40:00Z",
+  }],
+};
 const shotlistId = "44444444-4444-4444-8444-444444444444";
 const shotlistGroups = [
   { id: "44444444-4444-4444-8444-444444444401", shotlist_id: shotlistId, source_scene_id: null, source_scene_title: null, title: "INT. RADIO K-17 / CABINA — NOCHE", position: 0, source_status: "manual", revision: 1 },
@@ -112,7 +161,46 @@ http
     if (url.pathname === "/health") return res.end("{}");
     if (url.pathname === "/__scenario") {
       scenario = url.searchParams.get("value") ?? "empty";
-      workspaceProjects = scenario === "workspace-populated" ? [{
+      workspaceProjects = scenario === "workspace-multiple" ? [{
+        id: "22222222-2222-4222-8222-222222222222",
+        owner_id: id,
+        title: "LA FRECUENCIA",
+        slug: "la-frecuencia",
+        summary: "Un cortometraje sobre lo que nos conecta.",
+        project_type: "Cortometraje",
+        lifecycle_status: "draft",
+        create_enabled: true,
+        entry_module: "production",
+        cover_image_path: null,
+        updated_at: "2026-10-09T12:00:00Z",
+        created_at: "2026-10-08T12:00:00Z",
+      }, {
+        id: "44444444-4444-4444-8444-444444444444",
+        owner_id: id,
+        title: "SPOT OTOÑO",
+        slug: "spot-otono",
+        summary: "Campaña estacional.",
+        project_type: "Publicidad",
+        lifecycle_status: "draft",
+        create_enabled: true,
+        entry_module: "shotlist",
+        cover_image_path: null,
+        updated_at: "2026-10-08T10:00:00Z",
+        created_at: "2026-10-07T12:00:00Z",
+      }, {
+        id: "55555555-5555-4555-8555-555555555555",
+        owner_id: id,
+        title: "DOCUMENTAL SUR",
+        slug: "documental-sur",
+        summary: "Historias del sur.",
+        project_type: "Documental",
+        lifecycle_status: "draft",
+        create_enabled: true,
+        entry_module: "writer",
+        cover_image_path: null,
+        updated_at: "2026-10-07T09:00:00Z",
+        created_at: "2026-10-06T12:00:00Z",
+      }] : scenario === "workspace-populated" || scenario === "workspace-metrics" ? [{
         id: "22222222-2222-4222-8222-222222222222",
         owner_id: id,
         title: "LA FRECUENCIA",
@@ -275,6 +363,13 @@ http
         const requestedId = url.searchParams.get("id")?.replace(/^eq\./u, "");
         const rows = requestedId ? workspaceProjects.filter((item) => item.id === requestedId) : workspaceProjects;
         return res.end(JSON.stringify(single ? rows[0] ?? null : rows));
+      }
+      if (scenario === "workspace-metrics" && req.method === "GET") {
+        const table = url.pathname.replace(/^\/rest\/v1\//u, "");
+        if (Object.hasOwn(workspaceMetricArtifacts, table)) {
+          const rows = workspaceMetricArtifacts[table];
+          return res.end(JSON.stringify(single ? rows[0] ?? null : rows));
+        }
       }
       if (["writer_scripts", "writer_shotlists", "storyboard_panels", "production_plans", "production_document_exports"].some((table) => url.pathname === `/rest/v1/${table}`)) {
         return res.end(JSON.stringify(single ? null : []));

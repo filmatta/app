@@ -87,7 +87,6 @@ export async function listCreateProjects(db: SupabaseClient, ownerId: string): P
     const id = String(row.id);
     const entryModule = typeof row.entry_module === "string" && isCreateEntryModule(row.entry_module) ? row.entry_module : null;
     const present = modules.get(id) ?? new Set<CreateEntryModule>();
-    if (entryModule) present.add(entryModule);
     return {
       id, name: String(row.title), updatedAt: String(row.updated_at), createdAt: String(row.created_at),
       activityAt: [String(row.updated_at), activity.get(id) ?? ""].sort().at(-1)!,

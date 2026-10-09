@@ -12,7 +12,7 @@ const entryOptions: { id: CreateEntryModule; label: string; description: string;
   { id: "production", label: "Producción", description: "Organiza el rodaje, jornadas, recursos y documentos.", icon: "▦" },
 ];
 
-export default function CreateProjectForm({ empty = false }: { empty?: boolean }) {
+export default function CreateProjectForm() {
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
@@ -50,12 +50,12 @@ export default function CreateProjectForm({ empty = false }: { empty?: boolean }
     }
   }
   return <>
-    <button type="button" className={empty ? "create-empty-trigger" : "create-new-trigger"} onClick={open}>
-      <span aria-hidden="true">＋</span>{empty ? "Crear proyecto" : "Crear proyecto"}
+    <button type="button" className="create-new-trigger" onClick={open}>
+      <span aria-hidden="true">＋</span>Crear proyecto
     </button>
     <dialog ref={dialog} className="create-project-dialog" onClose={() => { setError(null); setStep("module"); setName(""); setEntryModule(null); operationId.current = null; }}>
       <div className="create-dialog-heading">
-        <div><p>FILMATTA CREATE</p><h2>{step === "module" ? "¿Qué tipo de proyecto quieres crear?" : "Ponle nombre a tu proyecto"}</h2></div>
+        <div><p>FILMATTA CREATE</p><h2>{step === "module" ? "¿Con qué módulo quieres empezar?" : "Ponle nombre a tu proyecto"}</h2></div>
         <button type="button" className="create-dialog-close" aria-label="Cerrar" onClick={close}>×</button>
       </div>
       {step === "module" ? <div className="create-entry-options">
