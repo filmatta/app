@@ -596,10 +596,15 @@
 .writer-import-bulk select:focus,
 .writer-import-footer input:focus { border-color: rgba(237,90,85,.65); }
 .writer-import-source label > small { color: rgba(241,239,233,.4); }
-.writer-import-file { padding: 26px; border: 1px dashed rgba(255,255,255,.18); border-radius: 10px; }
-.writer-import-file label { display: block; margin-bottom: 9px; font-weight: 650; }
-.writer-import-file input { padding: 9px; }
-.writer-import-file p { margin: 10px 0 0; color: var(--writer-muted); font-size: .7rem; }
+.writer-import-file { position:relative; display:grid; justify-items:center; gap:8px; padding:30px 26px; border:1px dashed rgba(255,255,255,.22); border-radius:10px; text-align:center; background:rgba(255,255,255,.018); transition:border-color .16s ease,background .16s ease; }
+.writer-import-file[data-dragging="true"] { border-color:rgba(237,90,85,.76); background:rgba(237,90,85,.07); }
+.writer-import-file-input { position:absolute!important; width:1px!important; height:1px!important; margin:-1px!important; padding:0!important; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); border:0!important; white-space:nowrap; }
+.writer-import-file-icon { display:grid; width:34px; height:34px; place-items:center; border:1px solid var(--writer-control-border); border-radius:50%; color:var(--writer-control-text); font-size:1rem; }
+.writer-import-file > strong { color:var(--writer-control-text); font-size:.82rem; }
+.writer-import-file > span:not(.writer-import-file-icon) { color:var(--writer-muted); font-size:.72rem; }
+.writer-import-file > button { margin-top:4px; padding:9px 14px; border-color:rgba(255,255,255,.28); color:var(--writer-control-text); background:var(--writer-control-bg); }
+.writer-import-file p { margin:2px 0 0; color:var(--writer-muted); font-size:.68rem; }
+.writer-import-file small { color:rgba(241,239,233,.42); font-size:.64rem; }
 .writer-import-privacy { margin-top: 20px; padding: 15px 17px; border-left: 2px solid var(--writer-control-border); color: var(--writer-muted); background: var(--writer-panel-raised); }
 .writer-import-privacy strong { color: var(--writer-control-text); }
 .writer-import-privacy p { margin: 5px 0 0; font-size: .72rem; line-height: 1.5; }
@@ -608,6 +613,7 @@
 .writer-import-actions--stacked { display: grid; justify-items: end; }
 .writer-import-actions--stacked > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
 .writer-import-disabled-reason { max-width: 620px; margin: 0; color: #f5aaa6; font-size: .68rem; line-height: 1.45; text-align: right; }
+.writer-import-ai-copy { max-width:620px; margin:0; color:var(--writer-muted); font-size:.72rem; line-height:1.45; text-align:right; }
 .writer-import-stage { margin: 18px 0 0; color: #ffd0cd; font: .72rem/1.5 var(--font-geist-mono); }
 .writer-import-processing { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 13px; margin-top: 18px; padding: 14px 15px; border: 1px solid rgba(237,90,85,.32); border-radius: 9px; background: rgba(237,90,85,.055); }
 .writer-import-processing strong { display: block; color: #f5e9e6; font-size: .76rem; }
@@ -650,6 +656,12 @@
 .writer-import-block-text ul { margin: 7px 0 0; padding-left: 18px; }
 .writer-import-kind { display: grid; gap: 6px; color: var(--writer-muted); font-size: .65rem; }
 .writer-import-kind select { padding-block: 9px; }
+.writer-import-review-group { grid-template-columns:104px minmax(0,1fr) 210px; }
+.writer-import-group-count { display:grid; align-content:start; gap:3px; }
+.writer-import-group-count strong { color:var(--writer-control-text); font:650 1.2rem var(--font-geist-mono); }
+.writer-import-group-count span { color:var(--writer-muted); font-size:.64rem; }
+.writer-import-review-group .writer-import-block-text pre { margin:6px 0; padding:7px 9px; border-left:1px solid var(--writer-border); background:rgba(255,255,255,.015); }
+.writer-import-review-group .writer-import-block-text p { margin:8px 0 0; color:var(--writer-muted); font-size:.65rem; }
 .writer-import-footer { position: sticky; bottom: -34px; z-index: 5; display: grid; grid-template-columns: minmax(220px, 1fr) auto; align-items: end; gap: 18px; margin: 20px -34px -34px; padding: 16px 34px; border-top: 1px solid var(--writer-border); background: var(--writer-panel-raised); }
 .writer-import-footer > label { margin: 0; }
 .writer-import-footer > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }

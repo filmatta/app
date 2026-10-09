@@ -5,6 +5,7 @@ import {
 } from "@/lib/writer/assisted-import-server";
 import { isRecord, validUuid, writerApiSession, writerJson } from "@/lib/writer/api";
 import type { WriterImportFormat } from "@/lib/writer/import";
+import type { WriterDocxParagraph } from "@/lib/writer/docx-import";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -37,7 +38,8 @@ export async function POST(request: Request) {
   }
   if (!isRecord(value) || !validUuid(value.operationId) || typeof value.title !== "string"
     || typeof value.sourceText !== "string" || !isFormat(value.format)
-    || (value.fileName !== undefined && typeof value.fileName !== "string")) {
+    || (value.fileName !== undefined && typeof value.fileName !== "string")
+    || !validSourceParagraphs(value.sourceParagraphs, value.format, value.sourceText)) {
     return writerJson({ error: "Solicitud inválida.", code: "invalid" }, 400);
   }
   try {
@@ -47,6 +49,7 @@ export async function POST(request: Request) {
       format: value.format,
       sourceText: value.sourceText,
       fileName: value.fileName,
+      sourceParagraphs: value.sourceParagraphs as WriterDocxParagraph[] | undefined,
       signal: request.signal,
     }, { appMetadata: session.user.app_metadata });
     return writerJson(result, 201);
@@ -59,5 +62,14 @@ export async function POST(request: Request) {
 }
 
 function isFormat(value: unknown): value is WriterImportFormat {
-  return value === "pasted" || value === "txt" || value === "fdx";
+  return value === "pasted" || value === "txt" || value === "fdx" || value === "docx";
+}
+
+function validSourceParagraphs(value: unknown, format: WriterImportFormat, sourceText: string) {
+  if (value === undefined) return format !== "docx";
+  if (format !== "docx" || !Array.isArray(value) || value.length < 1 || value.length > 10_000) return false;
+  const valid = value.every((paragraph) => isRecord(paragraph)
+    && typeof paragraph.text === "string" && paragraph.text.length <= 100_000
+    && (paragraph.style === null || (typeof paragraph.style === "string" && paragraph.style.length <= 160)));
+  return valid && value.map((paragraph) => (paragraph as WriterDocxParagraph).text).join("\n") === sourceText;
 }

@@ -1,5 +1,6 @@
 import {
   analyzePastedWriterText,
+  analyzeWriterDocxParagraphs,
   analyzeWriterFdx,
   analyzeWriterTxt,
   writerImportPreservesSignificantText,
@@ -7,6 +8,7 @@ import {
   type WriterImportFormat,
   type WriterImportStaging,
 } from "./import.ts";
+import type { WriterDocxParagraph } from "./docx-import.ts";
 import {
   WRITER_SCHEMA_VERSION,
   blockText,
@@ -431,9 +433,12 @@ export function prepareAssistedImportStaging(input: {
   sourceText: string;
   fileName?: string;
   title: string;
+  sourceParagraphs?: WriterDocxParagraph[];
 }) {
   const staging = input.format === "fdx"
     ? analyzeWriterFdx(input.sourceText, input.fileName || "borrador.fdx")
+    : input.format === "docx" && input.sourceParagraphs
+      ? analyzeWriterDocxParagraphs(input.sourceParagraphs, input.fileName || "borrador.docx")
     : input.format === "txt"
       ? analyzeWriterTxt(input.sourceText, input.fileName || "borrador.txt")
       : analyzePastedWriterText(input.sourceText, input.title);

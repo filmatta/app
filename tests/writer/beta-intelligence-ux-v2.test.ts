@@ -68,8 +68,10 @@ test("DOCX is local, bounded and staged through the existing deterministic class
   assert.doesNotMatch(extractor, /fetch\(|OpenAI|service_role/u);
   assert.match(flow, /\.txt,\.fdx,\.docx/u);
   assert.doesNotMatch(flow, /accept=.*\.pdf/u);
-  assert.match(flow, /selectedExtension === "docx"/u);
-  assert.match(flow, /la organización asistida no recibe el archivo/u);
+  assert.match(flow, /sourceParagraphs: extracted\.paragraphs/u);
+  assert.match(flow, /Importar y organizar con IA/u);
+  assert.match(flow, /Seleccionar archivo/u);
+  assert.doesNotMatch(flow, /la organización asistida no recibe el archivo/u);
 });
 
 test("PDF import is not public while PDF export infrastructure remains present", () => {
