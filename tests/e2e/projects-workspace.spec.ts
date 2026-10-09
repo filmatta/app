@@ -135,6 +135,67 @@ test("selecting A then B updates detail, inspector, Overview, and Documents with
   await expect(page.getByRole("heading", { level: 1, name: "SPOT OTOÑO" })).toBeVisible();
 });
 
+test("rapid A to B to A selection ignores the delayed B response", async ({ page, context }) => {
+  await session(context);
+  await scenario(page, "workspace-master-detail");
+  let captureDelayedRequest!: () => void;
+  let releaseDelayedRequest!: () => void;
+  const delayedRequest = new Promise<void>((resolve) => { captureDelayedRequest = resolve; });
+  const release = new Promise<void>((resolve) => { releaseDelayedRequest = resolve; });
+  await page.route(`**/api/create/projects/${multipleProjects.spot}/summary`, async (route) => {
+    captureDelayedRequest();
+    await release;
+    try { await route.continue(); } catch { /* The prior selection may cancel this request. */ }
+  });
+  await page.goto("/create");
+  const list = page.getByRole("table", { name: "Tus proyectos" });
+  await projectRow(list, "SPOT OTOÑO").click();
+  await delayedRequest;
+  await projectRow(list, "LA FRECUENCIA").click();
+  releaseDelayedRequest();
+  const detail = page.locator(".create-selected-main");
+  const inspector = page.locator(".create-dashboard-inspector-desktop").getByRole("region", { name: "Detalles del proyecto" });
+  const documents = page.getByRole("region", { name: "Documentos recientes" });
+  await expect(page).toHaveURL(/\/create$/);
+  await expect(projectRow(list, "LA FRECUENCIA")).toHaveAttribute("aria-selected", "true");
+  await expect(detail.getByRole("heading", { name: "LA FRECUENCIA" })).toBeVisible();
+  await expect(inspector.getByText("LA FRECUENCIA", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Estado del proyecto" }).getByText("2 escenas", { exact: true })).toBeVisible();
+  await expect(documents.getByRole("link", { name: /Production Pack/ })).toContainText("v1.2");
+  await expect(detail.getByRole("heading", { name: "SPOT OTOÑO" })).toHaveCount(0);
+  await expect(inspector.getByText("SPOT OTOÑO", { exact: true })).toHaveCount(0);
+  await expect(documents.getByText("Plan comercial", { exact: true })).toHaveCount(0);
+});
+
+test("failed selection shows only the selected Project and recovers on retry", async ({ page, context }) => {
+  await session(context);
+  await scenario(page, "workspace-master-detail");
+  let failOnce = true;
+  await page.route(`**/api/create/projects/${multipleProjects.spot}/summary`, async (route) => {
+    if (failOnce) {
+      failOnce = false;
+      await route.fulfill({ status: 503, body: "Unavailable" });
+    } else {
+      await route.continue();
+    }
+  });
+  await page.goto("/create");
+  const spot = projectRow(page.getByRole("table", { name: "Tus proyectos" }), "SPOT OTOÑO");
+  await spot.click();
+  await expect(page).toHaveURL(/\/create$/);
+  await expect(spot).toHaveAttribute("aria-selected", "true");
+  const selectionAlert = page.locator(".create-dashboard-select-prompt[role='alert']");
+  await expect(selectionAlert).toContainText("SPOT OTOÑO");
+  await expect(selectionAlert).toContainText("No pudimos cargar el resumen");
+  await expect(page.locator(".create-dashboard-inspector-desktop")).toContainText("SPOT OTOÑO");
+  await expect(page.locator(".create-dashboard-inspector-desktop")).not.toContainText("LA FRECUENCIA");
+  await expect(page.getByRole("region", { name: "Estado del proyecto" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Documentos recientes" })).toHaveCount(0);
+  await spot.click();
+  await expect(page.locator(".create-selected-main").getByRole("heading", { name: "SPOT OTOÑO" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Documentos recientes" }).getByRole("link", { name: /Production Pack/ })).toContainText("v2.1");
+});
+
 test("only explicit module tabs navigate away from the selected dashboard Project", async ({ page, context }) => {
   await session(context);
   await scenario(page, "workspace-master-detail");

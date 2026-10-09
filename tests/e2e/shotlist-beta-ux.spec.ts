@@ -464,7 +464,7 @@ test("Writer handoff, Storyboard and Production keep their approved surfaces", a
   await expect(page.getByRole("heading", { name: "LA FRECUENCIA — Shotlist Beta" })).toBeVisible();
 
   await page.goto("/production");
-  await expect(page.getByRole("heading", { name: "De la escena al plan de rodaje." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Producciones", exact: true })).toBeVisible();
   await expect(page.getByText("Writer y Shotlist permanecen intactos")).toBeVisible();
 });
 
