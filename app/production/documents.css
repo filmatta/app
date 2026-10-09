@@ -67,8 +67,12 @@
 .production-pack-dialog footer button.is-primary:hover { background: #eee; }
 .production-preview-dialog { width: min(860px, 100%); height: min(1040px, calc(100dvh - 44px)); display: flex; flex-direction: column; border: 1px solid #4b4b4b; border-radius: 6px; overflow: hidden; background: #161616; }
 .production-preview-dialog header { min-height: 39px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px 0 16px; color: #eee; font-size: 11px; }
+.production-preview-actions { display: flex; align-items: center; gap: 12px; }
+.production-preview-actions a { border: 1px solid #545454; border-radius: 4px; padding: 5px 8px; color: #eee; font-size: 10px; text-decoration: none; }
+.production-preview-actions a:hover { border-color: #aaa; }
+.production-preview-help { margin: 0; border-top: 1px solid #303030; padding: 7px 16px; color: #aaa; font-size: 10px; }
 .production-preview-dialog iframe { flex: 1; width: 100%; border: 0; background: #555; }
-.production-documents :is(button, input):focus-visible { outline: 2px solid #dedede; outline-offset: 2px; }
+.production-documents :is(button, input, a):focus-visible { outline: 2px solid #dedede; outline-offset: 2px; }
 @media (max-width: 1030px) { .production-document-row { grid-template-columns: 31px minmax(130px, 1fr) auto; } .production-document-state { grid-column: 2; grid-row: 2; } .production-document-actions { grid-column: 3; grid-row: 1 / span 2; } }
 @media (max-width: 700px) { .production-documents-head { align-items: flex-start; flex-direction: column; } .production-documents-layout { grid-template-columns: 1fr; } .production-documents-categories { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid #292929; padding: 8px 0; } .production-documents-categories button { flex: none; } .production-documents-list { padding: 17px 0; } .production-document-row { grid-template-columns: 31px minmax(0, 1fr); } .production-document-state { grid-column: 2; grid-row: auto; } .production-document-actions { grid-column: 2; grid-row: auto; } .production-pack-fields, .production-pack-checks { grid-template-columns: 1fr; } .production-pack-dialog footer { align-items: flex-start; flex-direction: column; } }
 

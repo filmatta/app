@@ -22,6 +22,7 @@ export default function ProductionDocuments({ data, activeDayId, viewerName, var
   const [packOpen, setPackOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState("");
+  const [previewFilename, setPreviewFilename] = useState("documento.pdf");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const rows = useMemo(() => {
@@ -79,9 +80,9 @@ export default function ProductionDocuments({ data, activeDayId, viewerName, var
       if (!response.ok) throw new Error((await response.text()).slice(0, 240));
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
-      if (mode === "preview") { setPreviewTitle(row.title); setPreviewUrl(url); }
+      const filename = response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] || `${row.key}.pdf`;
+      if (mode === "preview") { setPreviewTitle(row.title); setPreviewFilename(filename); setPreviewUrl(url); }
       else {
-        const filename = response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] || `${row.key}.pdf`;
         const anchor = document.createElement("a"); anchor.href = url; anchor.download = filename; document.body.append(anchor); anchor.click(); anchor.remove();
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
         if (packSettings) setPackOpen(false);
@@ -146,7 +147,7 @@ export default function ProductionDocuments({ data, activeDayId, viewerName, var
       </div>
     </div>}
 
-    {previewUrl && <div className="production-preview-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreviewUrl(null); }}><div className="production-preview-dialog" role="dialog" aria-modal="true" aria-label={`Vista previa: ${previewTitle}`}><header><strong>{previewTitle}</strong><button type="button" onClick={() => setPreviewUrl(null)} aria-label="Cerrar vista previa">×</button></header><iframe src={previewUrl} title={`Vista previa: ${previewTitle}`} /></div></div>}
+    {previewUrl && <div className="production-preview-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreviewUrl(null); }}><div className="production-preview-dialog" role="dialog" aria-modal="true" aria-label={`Vista previa: ${previewTitle}`}><header><strong>{previewTitle}</strong><div className="production-preview-actions"><a href={previewUrl} download={previewFilename}>Descargar PDF</a><button type="button" onClick={() => setPreviewUrl(null)} aria-label="Cerrar vista previa">×</button></div></header><p className="production-preview-help">Si el visor no carga, descarga el PDF para abrirlo.</p><iframe src={previewUrl} title={`Vista previa: ${previewTitle}`} /></div></div>}
   </section>;
 }
 
