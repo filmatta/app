@@ -1,38 +1,110 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type KeyboardEvent } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import type { CreateEntryModule, CreateProjectListItem } from "@/lib/create/project";
+import type { CreateEntryModule, CreateProjectContext, CreateProjectListItem } from "@/lib/create/project";
+import type { CreateProjectOverview } from "@/lib/create/overview";
+import type { RecentProjectDocument } from "@/lib/create/recent-documents";
 import CreateProjectForm from "./CreateProjectForm";
+import ProjectDashboardDetail, { ProjectDashboardInspector } from "./ProjectDashboardDetail";
 
 const moduleLabels: Record<CreateEntryModule, string> = {
   writer: "Guion", shotlist: "Shotlist", storyboard: "Storyboard", production: "Producción",
 };
 
-export default function ProjectDashboard({ projects, selectedProjectId, initialSearch, initialSort, detail, inspector }: {
+type DashboardSelection = {
+  project: CreateProjectContext;
+  overview: CreateProjectOverview;
+  recentDocuments: RecentProjectDocument[];
+};
+
+export default function ProjectDashboard({ projects, selectedProjectId: initialProjectId, initialSearch, initialSort, initialSelection }: {
   projects: CreateProjectListItem[];
   selectedProjectId: string | null;
   initialSearch: string;
   initialSort: "recent" | "name";
-  detail: ReactNode;
-  inspector: ReactNode;
+  initialSelection: DashboardSelection | null;
 }) {
   const [search, setSearch] = useState(initialSearch);
   const [sort, setSort] = useState<"recent" | "name">(initialSort);
+  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
+  const [selection, setSelection] = useState(initialSelection);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const selectedIdRef = useRef(initialProjectId);
+  const requestRef = useRef<AbortController | null>(null);
+
+  const loadProject = useCallback(async (projectId: string) => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setSelection(null);
+    setSelectionError(null);
+    try {
+      const response = await fetch(`/api/create/projects/${projectId}/summary`, {
+        credentials: "same-origin", cache: "no-store", signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("No pudimos cargar el resumen de este proyecto.");
+      const result = await response.json() as DashboardSelection;
+      if (result.project?.id !== projectId) throw new Error("El resumen recibido no corresponde a este proyecto.");
+      if (selectedIdRef.current === projectId && requestRef.current === controller) setSelection(result);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (selectedIdRef.current === projectId && requestRef.current === controller) {
+        setSelectionError(error instanceof Error ? error.message : "No pudimos cargar el resumen de este proyecto.");
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    // A server refresh can update a cover while the local selection differs from the URL's initial project.
+    const currentId = selectedIdRef.current;
+    if (!currentId || !projects.some((project) => project.id === currentId)) {
+      requestRef.current?.abort();
+      selectedIdRef.current = initialProjectId;
+      setSelectedProjectId(initialProjectId);
+      setSelection(initialSelection);
+      setSelectionError(null);
+    } else if (currentId === initialProjectId) {
+      requestRef.current?.abort();
+      setSelection(initialSelection);
+      setSelectionError(null);
+    } else if (currentId) {
+      void loadProject(currentId);
+    }
+  }, [initialProjectId, initialSelection, loadProject, projects]);
+
+  useEffect(() => () => requestRef.current?.abort(), []);
+
+  function selectProject(projectId: string) {
+    if (projectId === selectedIdRef.current && selection?.project.id === projectId) return;
+    selectedIdRef.current = projectId;
+    setSelectedProjectId(projectId);
+    void loadProject(projectId);
+  }
+
+  function handleRowClick(event: MouseEvent<HTMLDivElement>, projectId: string) {
+    if ((event.target as HTMLElement).closest("a, button, input, select, textarea, summary")) return;
+    selectProject(projectId);
+  }
+
+  function handleRowKeyDown(event: KeyboardEvent<HTMLDivElement>, projectId: string) {
+    if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    selectProject(projectId);
+  }
   const visible = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("es-MX");
     return projects.filter((project) => project.name.toLocaleLowerCase("es-MX").includes(query))
       .sort((a, b) => sort === "name" ? a.name.localeCompare(b.name, "es-MX") : b.activityAt.localeCompare(a.activityAt));
   }, [projects, search, sort]);
   const selectedVisible = visible.some((project) => project.id === selectedProjectId);
-
-  function selectionHref(projectId: string) {
-    const params = new URLSearchParams({ project: projectId });
-    if (search.trim()) params.set("q", search.trim());
-    if (sort !== "recent") params.set("sort", sort);
-    return `/create?${params.toString()}`;
-  }
+  const selectedListItem = projects.find((project) => project.id === selectedProjectId);
+  const currentSelection = selection?.project.id === selectedProjectId ? selection : null;
+  const detail = currentSelection ? <ProjectDashboardDetail project={currentSelection.project} overview={currentSelection.overview} recentDocuments={currentSelection.recentDocuments} /> :
+    <div className="create-dashboard-select-prompt" role={selectionError ? "alert" : "status"}><strong>{selectedListItem?.name}</strong><span>{selectionError ?? "Cargando resumen del proyecto…"}</span></div>;
+  const inspector = currentSelection ? <ProjectDashboardInspector project={currentSelection.project} overview={currentSelection.overview} /> :
+    <aside className="create-selected-inspector create-selected-inspector-empty" aria-label="Detalles del proyecto"><strong>{selectedListItem?.name}</strong><p>{selectionError ?? "Cargando detalles…"}</p></aside>;
 
   return <div className="create-dashboard-app">
     <aside className="create-dashboard-sidebar" aria-label="Espacio de trabajo">
@@ -57,16 +129,16 @@ export default function ProjectDashboard({ projects, selectedProjectId, initialS
         <main className="create-dashboard-main">
           <div className="create-project-list" role="table" aria-label="Tus proyectos">
             <div className="create-project-list-heading" role="row"><span role="columnheader">Nombre</span><span role="columnheader">Contenido</span><span role="columnheader">Última actividad</span><span role="columnheader" className="sr-only">Acción</span></div>
-            {visible.map((project) => <div className={`create-project-row${project.id === selectedProjectId ? " is-selected" : ""}`} role="row" key={project.id}>
+            {visible.map((project) => <div className={`create-project-row${project.id === selectedProjectId ? " is-selected" : ""}`} role="row" aria-label={`Seleccionar ${project.name}`} aria-selected={project.id === selectedProjectId} tabIndex={0} key={project.id} onClick={(event) => handleRowClick(event, project.id)} onKeyDown={(event) => handleRowKeyDown(event, project.id)}>
               <div className="create-project-row-name" role="cell">
-                <Link href={selectionHref(project.id)} prefetch={false} aria-label={`Seleccionar ${project.name}`} aria-current={project.id === selectedProjectId ? "true" : undefined} className="create-project-select">
-                  {project.coverImagePath ? <Image src={`/api/projects/covers/${project.id}`} alt="" width={48} height={48} unoptimized /> : <span className="create-project-placeholder" aria-hidden="true">▦</span>}
+                <div className="create-project-select">
+                  {project.coverImagePath ? <Image src={`/api/projects/covers/${project.id}`} alt="" width={48} height={48} unoptimized /> : <span className="create-project-placeholder" aria-hidden="true" />}
                   <span className="create-project-row-name-text"><strong>{project.name}</strong><small>Comenzar con {project.entryModule ? moduleLabels[project.entryModule] : "un módulo"}</small></span>
-                </Link>
+                </div>
               </div>
               <div className="create-project-row-modules" role="cell">{project.modules.length ? project.modules.map((module) => moduleLabels[module]).join(" · ") : "Aún sin contenido"}</div>
               <time role="cell" dateTime={project.activityAt}>{formatDate(project.activityAt)}</time>
-              <div className="create-project-row-action" role="cell"><Link href={`/create/projects/${project.id}`} aria-label={`Abrir ${project.name}`}>Abrir <span aria-hidden="true">↗</span></Link></div>
+              <div className="create-project-row-action" role="cell"><Link href={`/create/projects/${project.id}`} aria-label={`Abrir ${project.name}`} onClick={(event) => event.stopPropagation()}>Abrir <span aria-hidden="true">↗</span></Link></div>
             </div>)}
             {!visible.length && <p className="create-project-no-results">No encontramos proyectos con ese nombre.</p>}
           </div>

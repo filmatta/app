@@ -18,6 +18,9 @@ export type CreateProjectListItem = {
 export type CreateProjectContext = {
   id: string;
   name: string;
+  summary?: string | null;
+  projectType?: string | null;
+  city?: string | null;
   ownerId: string;
   writers: CreateArtifact[];
   shotlists: (CreateArtifact & { scriptId: string | null })[];
@@ -98,7 +101,7 @@ export async function listCreateProjects(db: SupabaseClient, ownerId: string): P
 
 export async function getCreateProjectContext(db: SupabaseClient, ownerId: string, projectId: string): Promise<CreateProjectContext> {
   if (!isCreateUuid(projectId)) throw new CreateProjectError("not_found", "Proyecto no encontrado.");
-  const project = await db.from("projects").select("id,owner_id,title,lifecycle_status,entry_module,cover_image_path,updated_at,created_at")
+  const project = await db.from("projects").select("id,owner_id,title,summary,project_type,city,lifecycle_status,entry_module,cover_image_path,updated_at,created_at")
     .eq("id", projectId).eq("owner_id", ownerId).eq("create_enabled", true).maybeSingle();
   if (project.error || !project.data || project.data.lifecycle_status === "archived") {
     throw new CreateProjectError("not_found", "Proyecto no encontrado.");
@@ -125,6 +128,9 @@ export async function getCreateProjectContext(db: SupabaseClient, ownerId: strin
   return {
     id: projectId,
     name: String(project.data.title),
+    summary: typeof project.data.summary === "string" && project.data.summary.trim() ? project.data.summary.trim() : null,
+    projectType: typeof project.data.project_type === "string" && project.data.project_type.trim() && project.data.project_type !== "Otro" ? project.data.project_type : null,
+    city: typeof project.data.city === "string" && project.data.city.trim() ? project.data.city.trim() : null,
     ownerId,
     entryModule: typeof project.data.entry_module === "string" && isCreateEntryModule(project.data.entry_module) ? project.data.entry_module : null,
     coverImagePath: project.data.cover_image_path ? String(project.data.cover_image_path) : null,

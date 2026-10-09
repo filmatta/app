@@ -24,7 +24,6 @@ type InspectorProps = Pick<DetailProps, "project" | "overview">;
 export default function ProjectDashboardDetail({ project, overview, recentDocuments }: DetailProps) {
   const base = `/create/projects/${project.id}`;
   const sections = [
-    { label: "Overview", href: `/create?project=${project.id}`, active: true },
     { label: "Guion", href: createProjectModuleRoute(project, "writer") },
     { label: "Shotlist", href: createProjectModuleRoute(project, "shotlist") },
     { label: "Storyboard", href: createProjectModuleRoute(project, "storyboard") },
@@ -68,7 +67,7 @@ export default function ProjectDashboardDetail({ project, overview, recentDocume
       <div className="create-selected-cover">
         {project.coverImagePath
           ? <Image src={`/api/projects/covers/${project.id}`} alt="" width={320} height={176} unoptimized />
-          : <span className="create-selected-cover-placeholder" aria-hidden="true">▦</span>}
+          : <span className="create-selected-cover-placeholder" aria-hidden="true" />}
         <details className="create-selected-cover-actions">
           <summary>{project.coverImagePath ? "Cambiar portada" : "Añadir portada"}</summary>
           <div><ProjectCoverUpload projectId={project.id} hasCover={Boolean(project.coverImagePath)} /></div>
@@ -79,7 +78,10 @@ export default function ProjectDashboardDetail({ project, overview, recentDocume
           <div><p className="create-selected-eyebrow">PROYECTO SELECCIONADO</p><h2 id="create-selected-title">{project.name}</h2></div>
           <Link className="create-selected-open" href={base}>Abrir espacio <span aria-hidden="true">↗</span></Link>
         </div>
+        {project.summary && <p className="create-selected-summary">{project.summary}</p>}
         <div className="create-selected-meta">
+          {project.projectType && <span>{project.projectType}</span>}
+          {project.city && <span>{project.city}</span>}
           {project.entryModule && <span>Comenzar con: {entryLabels[project.entryModule]}</span>}
           <span>Última actividad: {formatDate(overview.activityAt)}</span>
         </div>
@@ -87,7 +89,8 @@ export default function ProjectDashboardDetail({ project, overview, recentDocume
     </section>
 
     <nav className="create-selected-tabs" aria-label="Secciones del proyecto seleccionado">
-      {sections.map((section) => <Link key={section.label} href={section.href} aria-current={section.active ? "page" : undefined}>{section.label}</Link>)}
+      <span aria-current="page">Overview</span>
+      {sections.map((section) => <Link key={section.label} href={section.href}>{section.label}</Link>)}
     </nav>
 
     <section className="create-selected-status" aria-labelledby="create-selected-status-title">
@@ -120,29 +123,19 @@ export default function ProjectDashboardDetail({ project, overview, recentDocume
 
 export function ProjectDashboardInspector({ project, overview }: InspectorProps) {
   const base = `/create/projects/${project.id}`;
-  const panelCount = project.storyboards.reduce((sum, board) => sum + board.panelCount, 0);
   const details = [
     ["Nombre", project.name],
+    ...(project.projectType ? [["Tipo", project.projectType]] : []),
+    ...(project.city ? [["Ciudad", project.city]] : []),
     ["Creado", formatDate(project.createdAt)],
     ["Actualizado", formatDate(project.updatedAt)],
     ["Última actividad", formatDate(overview.activityAt)],
     ["Punto de entrada", project.entryModule ? entryLabels[project.entryModule] : "—"],
   ];
-  const counts = [
-    ["Guiones", project.writers.length],
-    ["Shotlists", project.shotlists.length],
-    ["Paneles", panelCount],
-    ["Producciones", project.productions.length],
-  ] as const;
-
   return <aside className="create-selected-inspector" role="region" aria-label="Detalles del proyecto">
     <section className="create-selected-inspector-card">
       <h2>Detalles del proyecto</h2>
       <dl>{details.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-    </section>
-    <section className="create-selected-inspector-card">
-      <h2>Contenido real</h2>
-      <dl>{counts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     </section>
     <section className="create-selected-inspector-card create-selected-quick-links">
       <h2>Accesos rápidos</h2>

@@ -67,6 +67,56 @@ const workspaceMetricArtifacts = {
     version_major: 1, version_minor: 2, generated_at: "2026-10-09T13:40:00Z",
   }],
 };
+const workspaceSpotProjectId = "44444444-4444-4444-8444-444444444444";
+const workspaceSpotScriptId = "66666666-6666-4666-8666-666666666667";
+const workspaceSpotShotlistId = "77777777-7777-4777-8777-777777777778";
+const workspaceSpotProductionId = "88888888-8888-4888-8888-888888888889";
+const workspaceSpotGroupId = "dddddddd-dddd-4ddd-8ddd-ddddddddddde";
+const workspaceSpotShotId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc";
+const workspaceSpotArtifacts = {
+  writer_scripts: [{
+    id: workspaceSpotScriptId, owner_id: id, project_id: workspaceSpotProjectId,
+    title: "SPOT OTOÑO — Guion", document: makeLongWriterDocument(1), updated_at: "2026-10-08T13:00:00Z",
+  }],
+  writer_shotlists: [{
+    id: workspaceSpotShotlistId, owner_id: id, project_id: workspaceSpotProjectId,
+    script_id: workspaceSpotScriptId, title: "SPOT OTOÑO — Shotlist", updated_at: "2026-10-08T13:10:00Z",
+  }],
+  writer_shotlist_groups: [{
+    id: workspaceSpotGroupId, owner_id: id, shotlist_id: workspaceSpotShotlistId,
+    source_scene_id: "11111111-1111-4111-8111-000000000001",
+  }],
+  writer_shotlist_shots: [{
+    id: workspaceSpotShotId, owner_id: id, shotlist_id: workspaceSpotShotlistId, group_id: workspaceSpotGroupId,
+  }],
+  storyboard_panels: [],
+  storyboard_panel_revisions: [],
+  production_plans: [{
+    id: workspaceSpotProductionId, owner_id: id, project_id: workspaceSpotProjectId,
+    name: "Plan comercial", updated_at: "2026-10-08T13:30:00Z",
+  }],
+  production_days: [{
+    id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", owner_id: id, production_id: workspaceSpotProductionId,
+  }],
+  production_schedule_items: [],
+  production_document_exports: [{
+    id: "20202020-2020-4020-8020-202020202020", owner_id: id,
+    production_id: workspaceSpotProductionId, document_key: "pack",
+    version_major: 2, version_minor: 1, generated_at: "2026-10-08T13:40:00Z",
+  }],
+};
+
+function workspaceRowsForRequest(rows, url) {
+  return rows.filter((row) => ["id", "project_id", "shotlist_id", "production_id"].every((field) => {
+    const filter = url.searchParams.get(field);
+    if (!filter) return true;
+    if (filter.startsWith("eq.")) return String(row[field]) === filter.slice(3);
+    if (filter.startsWith("in.(") && filter.endsWith(")")) {
+      return filter.slice(4, -1).split(",").includes(String(row[field]));
+    }
+    return true;
+  }));
+}
 const shotlistId = "44444444-4444-4444-8444-444444444444";
 const shotlistGroups = [
   { id: "44444444-4444-4444-8444-444444444401", shotlist_id: shotlistId, source_scene_id: null, source_scene_title: null, title: "INT. RADIO K-17 / CABINA — NOCHE", position: 0, source_status: "manual", revision: 1 },
@@ -161,7 +211,7 @@ http
     if (url.pathname === "/health") return res.end("{}");
     if (url.pathname === "/__scenario") {
       scenario = url.searchParams.get("value") ?? "empty";
-      workspaceProjects = scenario === "workspace-multiple" ? [{
+      workspaceProjects = scenario === "workspace-multiple" || scenario === "workspace-master-detail" ? [{
         id: "22222222-2222-4222-8222-222222222222",
         owner_id: id,
         title: "LA FRECUENCIA",
@@ -364,10 +414,13 @@ http
         const rows = requestedId ? workspaceProjects.filter((item) => item.id === requestedId) : workspaceProjects;
         return res.end(JSON.stringify(single ? rows[0] ?? null : rows));
       }
-      if (scenario === "workspace-metrics" && req.method === "GET") {
+      if ((scenario === "workspace-metrics" || scenario === "workspace-master-detail") && req.method === "GET") {
         const table = url.pathname.replace(/^\/rest\/v1\//u, "");
         if (Object.hasOwn(workspaceMetricArtifacts, table)) {
-          const rows = workspaceMetricArtifacts[table];
+          const rows = workspaceRowsForRequest([
+            ...workspaceMetricArtifacts[table],
+            ...(scenario === "workspace-master-detail" ? workspaceSpotArtifacts[table] : []),
+          ], url);
           return res.end(JSON.stringify(single ? rows[0] ?? null : rows));
         }
       }

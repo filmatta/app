@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
 const multipleProjects = {
   frequency: "22222222-2222-4222-8222-222222222222",
@@ -27,6 +27,10 @@ async function scenario(page: Page, value: string) {
   await page.request.get(`http://127.0.0.1:54329/__scenario?value=${value}`);
 }
 
+function projectRow(list: Locator, name: string) {
+  return list.getByRole("row", { name: `Seleccionar ${name}` });
+}
+
 test("empty account creates each entry type without auto-opening a module", async ({ page, context }) => {
   await session(context);
   for (const [label, code] of [["Guion", "writer"], ["Shotlist", "shotlist"], ["Storyboard", "storyboard"], ["Producción", "production"]] as const) {
@@ -43,12 +47,15 @@ test("empty account creates each entry type without auto-opening a module", asyn
     await page.getByRole("dialog").getByRole("button", { name: "Crear proyecto" }).click();
     await expect(page).toHaveURL(/\/create$/);
     await expect(page.getByRole("link", { name: `Abrir QA ${code}` })).toBeVisible();
+    await expect(projectRow(page.getByRole("table", { name: "Tus proyectos" }), `QA ${code}`)).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".create-selected-project").getByRole("heading", { name: `QA ${code}` })).toBeVisible();
+    await expect(page.locator(".create-dashboard-inspector-desktop").getByRole("region", { name: "Detalles del proyecto" }).getByText(`QA ${code}`, { exact: true })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.locator("a[href^='/writer/']")).toHaveCount(0);
   }
 });
 
-test("Project navigation exposes Documents and unavailable Pack at desktop and mobile sizes", async ({ page, context }) => {
+test("Project navigation exposes Documents and unavailable Pack at desktop and mobile sizes", async ({ page, context }, testInfo) => {
   await session(context);
   await scenario(page, "workspace-populated");
   for (const width of [1536, 1280, 1024, 834, 390]) {
@@ -56,11 +63,11 @@ test("Project navigation exposes Documents and unavailable Pack at desktop and m
     await page.goto("/create");
     await expect(page.getByRole("link", { name: "Abrir LA FRECUENCIA" })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `dashboard width ${width}`).toBe(true);
-    await page.screenshot({ path: `test-results/projects-dashboard-${width}.png`, fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath(`projects-dashboard-${width}.png`), fullPage: true });
     await page.getByRole("link", { name: "Abrir LA FRECUENCIA" }).click();
     await expect(page.getByRole("heading", { name: "LA FRECUENCIA" })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `project width ${width}`).toBe(true);
-    await page.screenshot({ path: `test-results/projects-overview-${width}.png`, fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath(`projects-overview-${width}.png`), fullPage: true });
     if (width === 390) {
       await page.getByText("Sección: Overview").click();
       await page.getByRole("navigation", { name: "Secciones del proyecto en móvil" }).getByRole("link", { name: "Documentos" }).click();
@@ -71,63 +78,112 @@ test("Project navigation exposes Documents and unavailable Pack at desktop and m
     await expect(page.getByRole("heading", { level: 1, name: "Documentos" })).toBeVisible();
     await expect(page.getByText("Production Pack").first()).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `documents width ${width}`).toBe(true);
-    await page.screenshot({ path: `test-results/projects-documents-${width}.png`, fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath(`projects-documents-${width}.png`), fullPage: true });
   }
 });
 
-test("selecting a Project keeps the list visible and synchronizes the URL and inspector", async ({ page, context }) => {
+test("selecting A then B updates detail, inspector, Overview, and Documents without navigation", async ({ page, context }) => {
   await session(context);
-  await scenario(page, "workspace-multiple");
+  await scenario(page, "workspace-master-detail");
   await page.goto("/create");
   const list = page.getByRole("table", { name: "Tus proyectos" });
-  const inspector = page.getByRole("region", { name: "Detalles del proyecto" });
-  await expect(list.getByRole("link", { name: "Seleccionar LA FRECUENCIA" })).toBeVisible();
-  await expect(list.getByRole("link", { name: "Seleccionar SPOT OTOÑO" })).toBeVisible();
-  await expect(list.getByRole("link", { name: "Seleccionar DOCUMENTAL SUR" })).toBeVisible();
+  const detail = page.locator(".create-selected-main");
+  const inspector = page.locator(".create-dashboard-inspector-desktop").getByRole("region", { name: "Detalles del proyecto" });
+  const progress = page.getByRole("region", { name: "Estado del proyecto" });
+  const documents = page.getByRole("region", { name: "Documentos recientes" });
+  const metric = (label: string) => progress.getByRole("link").filter({ has: page.getByRole("heading", { name: label, exact: true }) });
+  const selectFrequency = projectRow(list, "LA FRECUENCIA");
+  const selectSpot = projectRow(list, "SPOT OTOÑO");
+  await expect(page).toHaveURL(/\/create$/);
+  await expect(selectFrequency).toHaveAttribute("aria-selected", "true");
+  await expect(detail.getByRole("heading", { name: "LA FRECUENCIA" })).toBeVisible();
+  await expect(inspector.getByText("LA FRECUENCIA", { exact: true })).toBeVisible();
+  await expect(metric("Guion")).toContainText("2 escenas");
+  await expect(metric("Shotlist")).toContainText("1 de 2 escenas");
+  await expect(documents.getByRole("link", { name: /Production Pack/ })).toContainText("v1.2");
 
-  const selectSpot = list.getByRole("link", { name: "Seleccionar SPOT OTOÑO" });
   await selectSpot.focus();
   await expect(selectSpot).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(new RegExp(`/create\\?project=${multipleProjects.spot}$`));
-  await expect(selectSpot).toHaveAttribute("aria-current", "true");
+  await expect(page).toHaveURL(/\/create$/);
+  await expect(selectSpot).toHaveAttribute("aria-selected", "true");
+  await expect(detail.getByRole("heading", { name: "SPOT OTOÑO" })).toBeVisible();
+  await expect(detail.getByRole("heading", { name: "LA FRECUENCIA" })).toHaveCount(0);
   await expect(inspector.getByText("SPOT OTOÑO", { exact: true })).toBeVisible();
-  await expect(list.getByRole("link", { name: "Seleccionar LA FRECUENCIA" })).toBeVisible();
+  await expect(inspector.getByText("LA FRECUENCIA", { exact: true })).toHaveCount(0);
+  await expect(metric("Guion")).toContainText("1 escena");
+  await expect(metric("Shotlist")).toContainText("1 de 1 escena");
+  await expect(metric("Storyboard")).toContainText("0 de 1 plano");
+  await expect(metric("Producción")).toContainText("0 de 1 plano");
+  const spotPack = documents.getByRole("link", { name: /Production Pack/ });
+  await expect(spotPack).toContainText("Plan comercial");
+  await expect(spotPack).toContainText("v2.1");
+  await expect(spotPack).toHaveAttribute("href", `/create/projects/${multipleProjects.spot}/documents?production=88888888-8888-4888-8888-888888888889`);
+  await expect(documents.getByText("Plan de rodaje", { exact: true })).toHaveCount(0);
 
-  await page.reload();
-  await expect(list.getByRole("link", { name: "Seleccionar SPOT OTOÑO" })).toHaveAttribute("aria-current", "true");
-  await expect(inspector.getByText("SPOT OTOÑO", { exact: true })).toBeVisible();
+  await selectFrequency.click();
+  await expect(page).toHaveURL(/\/create$/);
+  await expect(selectFrequency).toHaveAttribute("aria-selected", "true");
+  await expect(detail.getByRole("heading", { name: "LA FRECUENCIA" })).toBeVisible();
+  await expect(inspector.getByText("LA FRECUENCIA", { exact: true })).toBeVisible();
+  await expect(metric("Guion")).toContainText("2 escenas");
+  await expect(documents.getByRole("link", { name: /Production Pack/ })).toContainText("v1.2");
+  await expect(documents.getByText("Plan comercial", { exact: true })).toHaveCount(0);
+
   await list.getByRole("link", { name: "Abrir SPOT OTOÑO" }).click();
   await expect(page).toHaveURL(new RegExp(`/create/projects/${multipleProjects.spot}$`));
   await expect(page.getByRole("heading", { level: 1, name: "SPOT OTOÑO" })).toBeVisible();
 });
 
+test("only explicit module tabs navigate away from the selected dashboard Project", async ({ page, context }) => {
+  await session(context);
+  await scenario(page, "workspace-master-detail");
+  const cases = [
+    ["Guion", new RegExp(`/writer/66666666-6666-4666-8666-666666666667\\?project=${multipleProjects.spot}$`)],
+    ["Shotlist", new RegExp(`/shotlists/77777777-7777-4777-8777-777777777778\\?project=${multipleProjects.spot}$`)],
+    ["Storyboard", new RegExp(`/shotlists/77777777-7777-4777-8777-777777777778/storyboard\\?project=${multipleProjects.spot}$`)],
+    ["Producción", new RegExp(`/production\\?project=${multipleProjects.spot}$`)],
+    ["Documentos", new RegExp(`/create/projects/${multipleProjects.spot}/documents$`)],
+  ] as const;
+
+  for (const [label, destination] of cases) {
+    await page.goto("/create");
+    await projectRow(page.getByRole("table", { name: "Tus proyectos" }), "SPOT OTOÑO").click();
+    await expect(page).toHaveURL(/\/create$/);
+    await expect(page.locator(".create-selected-project").getByRole("heading", { name: "SPOT OTOÑO" })).toBeVisible();
+    await page.getByRole("navigation", { name: "Secciones del proyecto seleccionado" }).getByRole("link", { name: label, exact: true }).click();
+    await expect(page).toHaveURL(destination);
+    await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
+  }
+});
+
 test("search and sort keep selection tied to the Project, never to a hidden row", async ({ page, context }) => {
   await session(context);
   await scenario(page, "workspace-multiple");
-  await page.goto(`/create?project=${multipleProjects.spot}`);
+  await page.goto("/create");
   const list = page.getByRole("table", { name: "Tus proyectos" });
-  const inspector = page.getByRole("region", { name: "Detalles del proyecto" });
-  const selected = list.getByRole("link", { name: "Seleccionar SPOT OTOÑO" });
-  await expect(selected).toHaveAttribute("aria-current", "true");
+  const inspector = page.locator(".create-dashboard-inspector-desktop").getByRole("region", { name: "Detalles del proyecto" });
+  const selected = projectRow(list, "SPOT OTOÑO");
+  await selected.click();
+  await expect(selected).toHaveAttribute("aria-selected", "true");
   await expect(inspector.getByText("SPOT OTOÑO", { exact: true })).toBeVisible();
 
   await page.getByRole("combobox", { name: "Ordenar proyectos" }).selectOption("name");
-  await expect.poll(async () => list.getByRole("link", { name: /^Seleccionar / }).evaluateAll((links) =>
-    links.map((link) => link.getAttribute("aria-label")))).toEqual([
+  await expect.poll(async () => list.getByRole("row", { name: /^Seleccionar / }).evaluateAll((rows) =>
+    rows.map((row) => row.getAttribute("aria-label")))).toEqual([
       "Seleccionar DOCUMENTAL SUR", "Seleccionar LA FRECUENCIA", "Seleccionar SPOT OTOÑO",
     ]);
-  await expect(selected).toHaveAttribute("aria-current", "true");
+  await expect(selected).toHaveAttribute("aria-selected", "true");
   await expect(inspector.getByText("SPOT OTOÑO", { exact: true })).toBeVisible();
 
   const search = page.getByRole("searchbox", { name: "Buscar proyectos" });
   await search.fill("DOCUMENTAL");
-  await expect(list.getByRole("link", { name: "Seleccionar DOCUMENTAL SUR" })).toBeVisible();
-  await expect(list.getByRole("link", { name: "Seleccionar SPOT OTOÑO" })).toHaveCount(0);
+  await expect(projectRow(list, "DOCUMENTAL SUR")).toBeVisible();
+  await expect(projectRow(list, "SPOT OTOÑO")).toHaveCount(0);
   await expect(inspector.getByText("SPOT OTOÑO", { exact: true })).toHaveCount(0);
-  await list.getByRole("link", { name: "Seleccionar DOCUMENTAL SUR" }).click();
-  await expect(page).toHaveURL(new RegExp(`/create\\?project=${multipleProjects.documentary}&q=DOCUMENTAL&sort=name$`));
-  await expect(list.getByRole("link", { name: "Seleccionar DOCUMENTAL SUR" })).toHaveAttribute("aria-current", "true");
+  await projectRow(list, "DOCUMENTAL SUR").click();
+  await expect(page).toHaveURL(/\/create$/);
+  await expect(projectRow(list, "DOCUMENTAL SUR")).toHaveAttribute("aria-selected", "true");
   await expect(inspector.getByText("DOCUMENTAL SUR", { exact: true })).toBeVisible();
   await expect(search).toHaveValue("DOCUMENTAL");
   await search.fill("SIN RESULTADOS");
@@ -135,13 +191,15 @@ test("search and sort keep selection tied to the Project, never to a hidden row"
   await expect(inspector.getByText("DOCUMENTAL SUR", { exact: true })).toHaveCount(0);
 });
 
-test("master-detail remains usable and contained at each review width", async ({ page, context }) => {
+test("master-detail remains usable and contained at each review width", async ({ page, context }, testInfo) => {
   await session(context);
   await scenario(page, "workspace-multiple");
   for (const width of [1536, 1280, 1024, 834, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto(`/create?project=${multipleProjects.documentary}`);
+    await page.goto("/create");
     const list = page.getByRole("table", { name: "Tus proyectos" });
+    await projectRow(list, "DOCUMENTAL SUR").click();
+    await expect(page).toHaveURL(/\/create$/);
     const details = width <= 1180
       ? page.locator("details").filter({ has: page.locator("summary", { hasText: "Detalles del proyecto" }) })
       : null;
@@ -156,7 +214,7 @@ test("master-detail remains usable and contained at each review width", async ({
       await expect(details).toHaveAttribute("open", "");
     }
     const inspector = page.getByRole("region", { name: "Detalles del proyecto" });
-    await expect(list.getByRole("link", { name: "Seleccionar DOCUMENTAL SUR" })).toHaveAttribute("aria-current", "true");
+    await expect(projectRow(list, "DOCUMENTAL SUR")).toHaveAttribute("aria-selected", "true");
     await expect(inspector.getByText("DOCUMENTAL SUR", { exact: true })).toBeVisible();
     await inspector.scrollIntoViewIfNeeded();
     const box = await inspector.boundingBox();
@@ -164,14 +222,11 @@ test("master-detail remains usable and contained at each review width", async ({
     expect(box!.x, `inspector left at ${width}px`).toBeGreaterThanOrEqual(0);
     expect(box!.x + box!.width, `inspector right at ${width}px`).toBeLessThanOrEqual(width + 1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `dashboard overflow at ${width}px`).toBe(true);
-    await page.screenshot({ path: `test-results/projects-master-detail-${width}.png`, fullPage: true });
-    await list.getByRole("link", { name: "Seleccionar SPOT OTOÑO" }).click();
-    await expect(page).toHaveURL(new RegExp(`/create\\?project=${multipleProjects.spot}$`));
-    await expect(list.getByRole("link", { name: "Seleccionar SPOT OTOÑO" })).toHaveAttribute("aria-current", "true");
-    if (details && (await details.getAttribute("open")) === null) {
-      await details.locator("summary").click();
-      await expect(details).toHaveAttribute("open", "");
-    }
+    await page.screenshot({ path: testInfo.outputPath(`projects-master-detail-${width}.png`), fullPage: true });
+    await projectRow(list, "SPOT OTOÑO").click();
+    await expect(page).toHaveURL(/\/create$/);
+    await expect(projectRow(list, "SPOT OTOÑO")).toHaveAttribute("aria-selected", "true");
+    if (details) await expect(details).toHaveAttribute("open", "");
     await expect(inspector.getByText("SPOT OTOÑO", { exact: true })).toBeVisible();
     await expect(list.getByRole("link", { name: "Abrir SPOT OTOÑO" })).toBeVisible();
   }
@@ -180,7 +235,7 @@ test("master-detail remains usable and contained at each review width", async ({
 test("selected Project shows source-backed progress and a recent Production Pack export", async ({ page, context }) => {
   await session(context);
   await scenario(page, "workspace-metrics");
-  await page.goto(`/create?project=${multipleProjects.frequency}`);
+  await page.goto("/create");
 
   const progress = page.getByRole("region", { name: "Estado del proyecto" });
   const metric = (label: string) => progress.getByRole("link").filter({ has: page.getByRole("heading", { name: label, exact: true }) });
