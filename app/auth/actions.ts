@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSafePostAuthPath } from "@/lib/auth/safe-next-path";
 import { getAuthCallbackOrigin } from "@/lib/auth/callback-origin";
-import { isEmailRateLimit } from "@/lib/auth/feedback";
+import { authErrorDiagnostics, isAuthRequestRateLimit, isEmailRateLimit } from "@/lib/auth/feedback";
 import { createClient } from "@/lib/supabase/server";
 import { allowAuthAttempt } from "@/lib/security/auth-rate-limit";
 
@@ -79,7 +79,8 @@ export async function signUp(formData: FormData) {
   const origin = getAuthCallbackOrigin(requestHeaders);
 
   if (!(await allowAuthAttempt("signup", email))) {
-    redirect(getAuthFeedbackUrl("/registro", nextPath, { error: "signup_limited" }));
+    console.warn("Auth signup blocked", { source: "filmatta.auth-budget" });
+    redirect(getAuthFeedbackUrl("/registro", nextPath, { error: "signup_attempt_limited" }));
   }
 
   if (!isValidEmail(email) || password.length < 8) {
@@ -104,10 +105,11 @@ export async function signUp(formData: FormData) {
   });
 
   if (error) {
-    console.error("Auth signup failed", { code: error.code ?? "unknown", status: error.status });
+    console.error("Auth signup failed", { source: "supabase.auth.signUp", ...authErrorDiagnostics(error) });
     redirect(
       getAuthFeedbackUrl("/registro", nextPath, {
-        error: isEmailRateLimit(error) ? "signup_limited" : "signup_failed",
+        error: isEmailRateLimit(error) ? "signup_limited"
+          : isAuthRequestRateLimit(error) ? "signup_attempt_limited" : "signup_failed",
       })
     );
   }

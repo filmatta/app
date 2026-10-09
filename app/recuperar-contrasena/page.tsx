@@ -40,7 +40,7 @@ export default async function PasswordRecoveryPage({
             navegador.
           </p>
         )}
-        {params.error === "recovery_limited" && (
+        {(params.error === "recovery_limited" || params.error === "recovery_attempt_limited") && (
           <p className="mt-7 rounded-xl border border-red-500/20 bg-red-500/[0.05] p-4 text-sm leading-6 text-red-200" role="alert">
             {authFeedbackError(params.error)}
           </p>

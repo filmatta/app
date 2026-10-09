@@ -38,6 +38,8 @@ test("guest Auth routes, redirects, errors and mobile controls stay safe on Test
     await page.goto("/registro?next=%2Fcreate&error=signup_limited");
     await expect(page.locator("p[role=alert]")).toContainText("temporalmente limitado");
     await expect(page.getByText("over_email_send_rate_limit")).toHaveCount(0);
+    await page.goto("/registro?next=%2Fcreate&error=signup_attempt_limited");
+    await expect(page.locator("p[role=alert]")).toContainText("intentos de registro");
     await page.goto("/login?error=over_email_send_rate_limit&message=sensitive-token");
     await expect(page.getByText("over_email_send_rate_limit")).toHaveCount(0);
     await expect(page.getByText("sensitive-token")).toHaveCount(0);

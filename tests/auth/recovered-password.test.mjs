@@ -17,7 +17,7 @@ function actionsWith(client) {
     },
     "@/lib/auth/safe-next-path": load("lib/auth/safe-next-path.ts"),
     "@/lib/auth/callback-origin": { getAuthCallbackOrigin: () => "https://app.filmatta.com" },
-    "@/lib/auth/feedback": { isEmailRateLimit: () => false },
+    "@/lib/auth/feedback": { isEmailRateLimit: () => false, isAuthRequestRateLimit: () => false, authErrorDiagnostics: () => ({}) },
     "@/lib/security/auth-rate-limit": {
       async allowAuthAttempt() {
         return true;

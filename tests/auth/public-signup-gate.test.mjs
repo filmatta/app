@@ -15,7 +15,7 @@ function redirect(destination) {
   throw Object.assign(new Error("NEXT_REDIRECT"), { destination });
 }
 
-function actionsWith(auth) {
+function actionsWith(auth, allow = true) {
   return load("app/auth/actions.ts", {
     "next/cache": { revalidatePath() {} },
     "next/headers": { async headers() { return requestHeaders(); } },
@@ -23,7 +23,7 @@ function actionsWith(auth) {
     "@/lib/auth/safe-next-path": safeNext,
     "@/lib/auth/callback-origin": origin,
     "@/lib/auth/feedback": feedback,
-    "@/lib/security/auth-rate-limit": { async allowAuthAttempt() { return true; } },
+    "@/lib/security/auth-rate-limit": { async allowAuthAttempt() { return allow; } },
     "@/lib/supabase/server": { async createClient() { return { auth }; } },
   });
 }
@@ -50,7 +50,11 @@ test("only fixed feedback codes render; rate-limit internals stay private", () =
   assert.equal(feedback.authFeedbackError("over_email_send_rate_limit"), null);
   assert.equal(feedback.authFeedbackMessage("<script>"), null);
   assert.equal(feedback.isEmailRateLimit({ code: "over_email_send_rate_limit" }), true);
-  assert.equal(feedback.isEmailRateLimit({ status: 429 }), true);
+  assert.equal(feedback.isEmailRateLimit({ status: 429 }), false);
+  assert.equal(feedback.isAuthRequestRateLimit({ status: 429 }), true);
+  assert.equal(feedback.isAuthRequestRateLimit({ code: "over_request_rate_limit" }), true);
+  assert.equal(feedback.authErrorDiagnostics({ code: "over_email_send_rate_limit", status: 429, message: "email rate limit exceeded" }).message, "email rate limit exceeded");
+  assert.equal(feedback.authErrorDiagnostics({ message: "token=secret@hidden.example" }).message, "[redacted]");
 });
 
 test("public signup preserves Create and uses the exact Preview callback", async () => {
@@ -68,6 +72,20 @@ test("signup rate limit maps to a human error without enumerating an address", a
     async signUp() { return { data: { session: null }, error: { code: "over_email_send_rate_limit", status: 429 } }; },
   });
   await assert.rejects(actions.signUp(signupForm()), (error) => error.destination === "/registro?next=%2Fcreate&error=signup_limited");
+});
+
+test("FILMATTA budget blocks before Supabase and cannot claim the email quota failed", async () => {
+  let calls = 0;
+  const actions = actionsWith({ async signUp() { calls++; return { data: {}, error: null }; } }, false);
+  await assert.rejects(actions.signUp(signupForm()), (error) => error.destination === "/registro?next=%2Fcreate&error=signup_attempt_limited");
+  assert.equal(calls, 0);
+});
+
+test("a generic provider 429 is not mislabeled as an email quota", async () => {
+  const actions = actionsWith({
+    async signUp() { return { data: { session: null }, error: { code: "over_request_rate_limit", status: 429, message: "rate limit exceeded" } }; },
+  });
+  await assert.rejects(actions.signUp(signupForm()), (error) => error.destination === "/registro?next=%2Fcreate&error=signup_attempt_limited");
 });
 
 test("invalid signup inputs never call Supabase", async () => {

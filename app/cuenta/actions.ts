@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSafeNextPath } from "@/lib/auth/safe-next-path";
 import { getAuthCallbackOrigin } from "@/lib/auth/callback-origin";
-import { isEmailRateLimit } from "@/lib/auth/feedback";
+import { authErrorDiagnostics, isAuthRequestRateLimit, isEmailRateLimit } from "@/lib/auth/feedback";
 import { createClient } from "@/lib/supabase/server";
 import { allowAuthAttempt } from "@/lib/security/auth-rate-limit";
 
@@ -89,7 +89,7 @@ export async function requestPasswordReset(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const nextPath = getSafeNextPath(formData.get("next"), "/cuenta");
   const origin = getAuthCallbackOrigin(await headers());
-  let limited = false;
+  let feedback: "sent" | "recovery_limited" | "recovery_attempt_limited" = "sent";
 
   if (isValidEmail(email) && origin && await allowAuthAttempt("recovery", email)) {
     const resetPage = `/restablecer-contrasena?next=${encodeURIComponent(nextPath)}`;
@@ -98,13 +98,14 @@ export async function requestPasswordReset(formData: FormData) {
     });
 
     if (error) {
-      limited = isEmailRateLimit(error);
-      console.error("Auth recovery request failed", { code: error.code ?? "unknown", status: error.status });
+      feedback = isEmailRateLimit(error) ? "recovery_limited"
+        : isAuthRequestRateLimit(error) ? "recovery_attempt_limited" : "sent";
+      console.error("Auth recovery request failed", { source: "supabase.auth.resetPasswordForEmail", ...authErrorDiagnostics(error) });
     }
   }
 
   const searchParams = new URLSearchParams({ next: nextPath });
-  searchParams.set(limited ? "error" : "sent", limited ? "recovery_limited" : "1");
+  searchParams.set(feedback === "sent" ? "sent" : "error", feedback === "sent" ? "1" : feedback);
   redirect(`/recuperar-contrasena?${searchParams.toString()}`);
 }
 
