@@ -77,6 +77,7 @@ test("Project to Production Documents exposes a private Production Pack through 
     const projectBId = await createProjectFromDashboard(page, projectBName);
     report.ids.projectBId = projectBId;
     await page.getByRole("button", { name: "Crear guion" }).click();
+    await expect(page).toHaveURL(new RegExp(`/writer/[0-9a-f-]+\\?project=${projectBId}$`));
     const writerBId = new URL(page.url()).pathname.split("/").at(-1);
     await saveScript(owner.client, writerBId, scriptBTitle, `INT. SET B ${suffix} - NOCHE`);
     report.checks.push("Project B has a separate real Writer source before A's Pack is generated");
@@ -137,7 +138,7 @@ test("Project to Production Documents exposes a private Production Pack through 
     await page.getByRole("link", { name: `Abrir ${projectAName}` }).click();
     await page.getByRole("navigation", { name: "Secciones del proyecto" }).getByRole("link", { name: "Documentos" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Documentos" })).toBeVisible();
-    await expect(page.getByText("Production Pack", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("region", { name: "Centro de documentos" }).getByRole("article").filter({ hasText: "Production Pack" }).getByText("Production Pack", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Preparar Pack" })).toBeVisible();
     report.checks.push("Project-level Documentos exposes the same Pack generator and recorded version");
 
@@ -191,8 +192,8 @@ async function saveScript(client, id, title, heading) {
   assert.equal(saved.error, null);
 }
 
-// PDFKit embeds text as CID hex strings with ToUnicode maps. Decode candidates
-// from the generated PDF without adding a runtime dependency or a host PDF CLI.
+// React PDF emits hexadecimal text with either single-byte standard fonts or
+// CID fonts. Decode the generated PDF without a host PDF CLI.
 function extractPdfCandidateText(pdf) {
   const raw = pdf.toString("latin1");
   const streams = [];
@@ -216,12 +217,14 @@ function extractPdfCandidateText(pdf) {
     }
     return map;
   });
-  assert.ok(maps.length > 0, "Generated PDF has no ToUnicode map for text validation");
-  const chunks = streams.filter((stream) => stream.includes("BT")).flatMap((stream) =>
-    [...stream.matchAll(/\[(.*?)\]\s*TJ/gsu)].flatMap((operator) => [...operator[1].matchAll(/<([0-9a-f]{4,})>/giu)].map((item) => item[1].toLowerCase())));
-  return maps.flatMap((map) => chunks.map((hex) => {
+  const operators = streams.filter((stream) => stream.includes("BT")).flatMap((stream) =>
+    [...stream.matchAll(/\[(.*?)\]\s*TJ/gsu)].map((operator) =>
+      [...operator[1].matchAll(/<([0-9a-f]{2,})>/giu)].map((item) => item[1].toLowerCase())));
+  assert.ok(operators.length > 0, "Generated PDF has no text operators");
+  if (!maps.length) return operators.map((parts) => parts.map((hex) => Buffer.from(hex, "hex").toString("latin1")).join("")).join("\n");
+  return maps.flatMap((map) => operators.map((parts) => parts.map((hex) => {
     let text = "";
     for (let index = 0; index + 3 < hex.length; index += 4) text += map.get(hex.slice(index, index + 4)) ?? "";
     return text;
-  })).join("\n");
+  }).join(""))).join("\n");
 }
