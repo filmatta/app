@@ -6,7 +6,7 @@ const a = load("lib/profiles/activation.ts"),
   safe = load("lib/auth/safe-next-path.ts");
 const read = (p) => fs.readFileSync(p, "utf8");
 test("signup alone and Learn preserve their destination; explicit profile intents opt in", () => {
-  assert.equal(safe.getSafePostAuthPath(null), "/cuenta");
+  assert.equal(safe.getSafePostAuthPath(null), "/create");
   for (const p of ["/learn", "/cursos/fotografia", "/cursos/luz/lecciones/uno"])
     assert.equal(safe.getSafePostAuthPath(p), p);
   for (const i of ["talent", "crew"])

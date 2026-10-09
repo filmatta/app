@@ -1,0 +1,21 @@
+.project-documents-page { min-width: 0; color: #f0f0f0; }
+.project-documents-page-header { display: flex; align-items: end; justify-content: space-between; gap: 16px; padding-bottom: 22px; }
+.project-documents-page-header p { margin: 0 0 8px; color: #999; font-size: 10px; font-weight: 700; letter-spacing: .13em; }
+.project-documents-page-header h1 { margin: 0; font-size: clamp(27px, 3vw, 36px); font-weight: 650; letter-spacing: -.035em; }
+.project-documents-page-header span { display: block; margin-top: 8px; color: #aaa; font-size: 12px; }
+.project-documents-productions { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 1px solid #303030; }
+.project-documents-productions a { display: inline-flex; min-height: 34px; align-items: center; border-bottom: 2px solid transparent; padding: 0 11px; color: #aaa; font-size: 12px; text-decoration: none; }
+.project-documents-productions a:hover, .project-documents-productions a[aria-current="page"] { color: #fff; }
+.project-documents-productions a[aria-current="page"] { border-bottom-color: #e3212d; }
+.project-documents-unavailable { border: 1px solid #303030; border-radius: 6px; background: #111; }
+.project-documents-unavailable > div { display: grid; grid-template-columns: minmax(0, 1fr) 80px 130px 170px; gap: 12px; border-bottom: 1px solid #2b2b2b; padding: 17px 18px; color: #a6a6a6; font-size: 12px; }
+.project-documents-unavailable strong { color: #f1f1f1; font-weight: 600; }
+.project-documents-unavailable p { margin: 16px 18px 5px; color: #aaa; font-size: 12px; }
+.project-documents-unavailable > a { display: inline-block; margin: 4px 18px 17px; color: #f4f4f4; font-size: 12px; }
+.project-documents-unavailable a:hover { text-decoration: underline; }
+.project-documents-page :is(a, button, select, summary):focus-visible { outline: 2px solid #f4f4f4; outline-offset: 2px; }
+@media (max-width: 700px) {
+  .project-documents-unavailable > div { grid-template-columns: minmax(0, 1fr) auto; }
+  .project-documents-unavailable > div span:nth-child(3) { grid-column: 1; }
+  .project-documents-unavailable > div span:nth-child(4) { grid-column: 2; grid-row: 2; }
+}

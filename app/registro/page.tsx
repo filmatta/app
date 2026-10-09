@@ -44,7 +44,7 @@ export default async function RegistroPage({
         <p className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-white/35">
           {nextPath.startsWith("/onboarding/perfil")
             ? "FILMATTA / TU PERFIL"
-            : "FILMATTA Learn"}
+            : "FILMATTA"}
         </p>
 
         <h1 className="text-5xl font-semibold tracking-[-0.04em]">
@@ -54,7 +54,7 @@ export default async function RegistroPage({
         <p className="mt-4 leading-7 text-white/45">
           {nextPath.startsWith("/onboarding/perfil")
             ? "Crea tu cuenta y prepara tu presencia profesional paso a paso. Tu portfolio puede llegar después."
-            : "Empieza a aprender, guarda tus cursos y construye poco a poco tu identidad profesional."}
+            : "Crea tus proyectos, desarrolla tus ideas y vuelve a ellas cuando quieras."}
         </p>
 
         <GoogleSignInForm nextPath={nextPath} />

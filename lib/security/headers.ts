@@ -18,7 +18,7 @@ export function securityHeaders(development = false, supabaseUrl?: string, previ
     `connect-src ${connections.join(" ")}`,
     "media-src 'self' blob: https://*.mux.com",
     "worker-src 'self' blob:",
-    `frame-src https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com${toolbar}`,
+    `frame-src blob: https://player.mux.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com${toolbar}`,
     "object-src 'none'",
     "base-uri 'self'",
     "frame-ancestors 'none'",

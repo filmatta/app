@@ -161,6 +161,11 @@ export default function ProductionWorkspace({ initialData: data, viewerName, pro
 
       <aside className="production-sidebar">
         <div><p>PRODUCTION ASSISTANT</p><h2>{data.production.name}</h2><span>{sourceDescription(data)}</span></div>
+        <div className="production-mobile-navigation"><label>Sección de Production
+          <select value={view} onChange={(event) => { const next = event.target.value as WorkspaceView; if (next === "locations") setLocationCreateRequest(0); setView(next); }}>
+            {nav.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+        </label><button type="button" onClick={() => setView("documents")}>Documentos</button></div>
         <nav aria-label="Secciones de Production">
           {nav.map((item) => <button key={item.id} type="button" className={view === item.id ? "is-active" : ""} onClick={() => { if (item.id === "locations") setLocationCreateRequest(0); setView(item.id); }}><i>{item.icon}</i>{item.label}{item.id === "tasks" && pendingTasks > 0 && <em>{pendingTasks}</em>}</button>)}
         </nav>

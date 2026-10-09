@@ -117,7 +117,6 @@ body:has(.production-route-state) {
 .production-index-empty .production-primary { min-height: 36px; }
 .production-index { background: #080808; }
 .production-index-header { height: 55px; background: #0b0b0b; }
-.production-index-grid li > a:hover { border-color: #666; }
 
 @media (max-width: 1180px) {
   .production-workspace { grid-template-columns: 205px minmax(0, 1fr); }

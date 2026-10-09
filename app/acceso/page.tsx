@@ -11,7 +11,7 @@ type AccessPageProps = {
 
 export default async function AccessPage({ searchParams }: AccessPageProps) {
   const params = await searchParams;
-  const nextPath = getSafePostAuthPath(params.next ?? null, "/cuenta");
+  const nextPath = getSafePostAuthPath(params.next ?? null, "/create");
   const viewer = await getViewer();
 
   if (viewer) {

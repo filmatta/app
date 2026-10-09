@@ -41,10 +41,13 @@ export async function createProductionAction(input: {
     const scriptId = nullableUuid(input.scriptId);
     const shotlistId = nullableUuid(input.shotlistId);
     if (input.scriptId && !scriptId || input.shotlistId && !shotlistId) invalid();
-    const project = await db.from("projects").select("id").eq("id", input.projectId).eq("owner_id", userId).neq("lifecycle_status", "archived").maybeSingle();
+    const project = await db.from("projects").select("id,entry_module").eq("id", input.projectId).eq("owner_id", userId).neq("lifecycle_status", "archived").maybeSingle();
     if (project.error || !project.data) invalid("Proyecto no disponible.");
     const sources = await validateOwnedSources(db, userId, scriptId, shotlistId);
     if (sources.script && sources.script.projectId !== input.projectId || sources.shotlist && sources.shotlist.projectId !== input.projectId) invalid("Las fuentes pertenecen a otro proyecto.");
+    if (project.data.entry_module != null && (!sources.script || !sources.shotlist || sources.shotlist.scriptId !== sources.script.id)) {
+      invalid("Esta producción necesita un guion y una Shotlist vinculada a ese guion dentro del proyecto.");
+    }
     const created = await db.from("production_plans").insert({
       owner_id: userId,
       project_id: input.projectId,
@@ -58,8 +61,14 @@ export async function createProductionAction(input: {
     }).select("id").maybeSingle();
     let id = created.data?.id ? String(created.data.id) : null;
     if (created.error?.code === "23505") {
-      const existing = await db.from("production_plans").select("id").eq("owner_id", userId).eq("creation_operation_id", input.operationId).maybeSingle();
-      id = existing.data?.id ? String(existing.data.id) : null;
+      const existing = await db.from("production_plans").select("id,project_id,script_id,shotlist_id,name,timezone")
+        .eq("owner_id", userId).eq("creation_operation_id", input.operationId).maybeSingle();
+      if (existing.error || !existing.data || existing.data.project_id !== input.projectId
+        || existing.data.script_id !== (sources.script?.id ?? null) || existing.data.shotlist_id !== (sources.shotlist?.id ?? null)
+        || existing.data.name !== input.name.trim() || existing.data.timezone !== input.timezone) {
+        invalid("Esta solicitud de creación ya se usó para otra producción.");
+      }
+      id = String(existing.data.id);
     } else if (created.error) storage();
     if (!id) storage();
     if (input.importRequirements && sources.script) await importRequirements(db, userId, id, sources.script.id);

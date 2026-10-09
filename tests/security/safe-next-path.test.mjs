@@ -69,8 +69,9 @@ test("rejects malformed encodings and sanitizes an unsafe fallback", () => {
 });
 
 test("prevents post-auth loops while preserving valid recovery destinations", () => {
-  assert.equal(getSafePostAuthPath("/login?next=/cuenta"), "/cuenta");
-  assert.equal(getSafePostAuthPath("/registro"), "/cuenta");
+  assert.equal(getSafePostAuthPath(null), "/create");
+  assert.equal(getSafePostAuthPath("/login?next=/cuenta"), "/create");
+  assert.equal(getSafePostAuthPath("/registro"), "/create");
   assert.equal(
     getSafePostAuthPath("/restablecer-contrasena?next=/cuenta"),
     "/restablecer-contrasena?next=/cuenta",

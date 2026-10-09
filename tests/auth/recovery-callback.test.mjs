@@ -131,7 +131,7 @@ test("invalid or reused email confirmation link fails without reflecting the tok
     async verifyOtp() { return { data: { session: null }, error: { code: "otp_expired" } }; },
   });
   const response = await route.GET(request("/auth/callback?token_hash=sensitive-token&type=email&next=https%3A%2F%2Fevil.example"));
-  assert.equal(response.headers.get("location"), "https://app.filmatta.com/login?next=%2Fcuenta&error=confirmation_invalid");
+  assert.equal(response.headers.get("location"), "https://app.filmatta.com/login?next=%2Fcreate&error=confirmation_invalid");
   assert.equal(response.headers.get("location").includes("sensitive-token"), false);
 });
 
@@ -173,7 +173,7 @@ test("unsafe next is rejected", async () => {
 
   assert.equal(
     response.headers.get("location"),
-    "https://app.filmatta.com/cuenta",
+    "https://app.filmatta.com/create",
   );
 });
 
@@ -183,7 +183,7 @@ test("callback without authentication parameters fails safely", async () => {
   const destination = new URL(response.headers.get("location"));
 
   assert.equal(destination.pathname, "/login");
-  assert.equal(destination.searchParams.get("next"), "/cuenta");
+  assert.equal(destination.searchParams.get("next"), "/create");
   assert.ok(destination.searchParams.get("error"));
 });
 

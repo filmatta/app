@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const type = request.nextUrl.searchParams.get("type");
   const nextPath = getSafePostAuthPath(
     request.nextUrl.searchParams.get("next"),
-    "/cuenta"
+    "/create"
   );
 
   if (tokenHash && !code && (type === "recovery" || type === "email")) {
