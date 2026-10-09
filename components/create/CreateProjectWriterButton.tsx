@@ -10,7 +10,7 @@ export default function CreateProjectWriterButton({ projectId }: { projectId: st
   const submitting = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  async function create() {
+  async function create(openImport: boolean) {
     if (submitting.current) return;
     submitting.current = true;
     setBusy(true); setError(null);
@@ -18,12 +18,14 @@ export default function CreateProjectWriterButton({ projectId }: { projectId: st
     try {
       const result = await createWriterInProjectAction(projectId, operationId.current);
       if (!result.ok) { setError(result.message); return; }
-      router.push(`/writer/${result.writerId}?project=${projectId}`);
+      router.push(`/writer/${result.writerId}?project=${projectId}${openImport ? "&import=1" : ""}`);
     } catch {
       setError("No pudimos confirmar la creación. Reintenta para abrir el mismo guion.");
     } finally { submitting.current = false; setBusy(false); }
   }
-  return <div className="mt-4"><button type="button" className="rounded-md border border-white/30 px-4 py-3 text-sm" onClick={() => void create()} disabled={busy}>{busy ? "Creando…" : "Crear Writer en este proyecto"}</button>
-    {error && <p className="mt-2 text-sm text-red-300" role="alert">{error}</p>}
+  return <div className="create-source-action">
+    <button type="button" onClick={() => void create(false)} disabled={busy}>{busy ? "Creando…" : "Crear guion"}</button>
+    <button type="button" onClick={() => void create(true)} disabled={busy}>Importar guion</button>
+    {error && <p role="alert">{error}</p>}
   </div>;
 }

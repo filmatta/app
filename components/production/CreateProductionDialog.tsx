@@ -14,7 +14,7 @@ export default function CreateProductionDialog({
   compact = false,
 }: {
   sources: { scripts: SourceScriptOption[]; shotlists: SourceShotlistOption[] };
-  projects: { id: string; name: string }[];
+  projects: { id: string; name: string; entryModule?: string | null }[];
   preferredProjectId: string | null;
   preferredScriptId: string | null;
   preferredShotlistId: string | null;
@@ -35,12 +35,15 @@ export default function CreateProductionDialog({
   const [error, setError] = useState<string | null>(null);
   const projectScripts = useMemo(() => sources.scripts.filter((item) => item.projectId === projectId), [sources.scripts, projectId]);
   const projectShotlists = useMemo(() => sources.shotlists.filter((item) => item.projectId === projectId), [sources.shotlists, projectId]);
+  const workspaceProject = Boolean(projects.find((item) => item.id === projectId)?.entryModule);
   const shotlist = useMemo(() => projectShotlists.find((item) => item.id === shotlistId) ?? null, [shotlistId, projectShotlists]);
   const effectiveScriptId = scriptId || shotlist?.scriptId || "";
   const script = projectScripts.find((item) => item.id === effectiveScriptId) ?? null;
   const incompatible = Boolean(scriptId && shotlist?.scriptId && scriptId !== shotlist.scriptId);
+  const sourceReady = workspaceProject ? Boolean(script && shotlist && shotlist.scriptId === script.id) : Boolean(effectiveScriptId || shotlistId) && !incompatible;
 
   function open(nextMode: "source" | "manual") {
+    if (nextMode === "manual" && workspaceProject) return;
     setMode(nextMode); setError(null);
     if (nextMode === "manual") { setScriptId(""); setShotlistId(""); }
     dialog.current?.showModal();
@@ -48,7 +51,7 @@ export default function CreateProductionDialog({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitting.current || incompatible || !projectId) return;
+    if (submitting.current || !projectId || mode === "manual" && workspaceProject || mode === "source" && !sourceReady) return;
     submitting.current = true;
     setBusy(true); setError(null);
     const fallbackName = mode === "manual" ? "Producción sin título" : shotlist?.title || script?.title || "Producción sin título";
@@ -70,15 +73,15 @@ export default function CreateProductionDialog({
   return (
     <div className={`production-create-actions${compact ? " is-compact" : ""}`}>
       <button type="button" className="production-primary" onClick={() => open("source")}>✦ {compact ? "Nueva producción" : "GENERAR PRODUCCIÓN"}</button>
-      {!compact && <><span>o</span><button type="button" className="production-secondary" onClick={() => open("manual")}>CREAR MANUALMENTE</button></>}
+      {!compact && !workspaceProject && <><span>o</span><button type="button" className="production-secondary" onClick={() => open("manual")}>CREAR MANUALMENTE</button></>}
       <dialog ref={dialog} className="production-dialog" onClose={() => { setBusy(false); setError(null); }}>
         <form onSubmit={submit}>
           <header>
             <div><p className="production-eyebrow">{mode === "source" ? "SIN IA" : "ESPACIO VACÍO"}</p><h2>{mode === "source" ? "Crear estructura desde tu guion o Shotlist" : "Crear producción manual"}</h2></div>
             <button type="button" className="production-icon-button" onClick={() => dialog.current?.close()} aria-label="Cerrar">×</button>
           </header>
-          <p className="production-dialog-lead">{mode === "source" ? "Elige fuentes tuyas y revisa lo que estará disponible. No se inventarán jornadas, horarios ni responsables." : "Empezarás sin fuentes. Podrás vincularlas e incorporar necesidades después."}</p>
-          <label>Proyecto<select value={projectId} onChange={(event) => { setProjectId(event.target.value); setScriptId(""); setShotlistId(""); }} required><option value="">Selecciona un proyecto</option>{projects.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
+          <p className="production-dialog-lead">{mode === "source" ? workspaceProject ? "Para empezar en este proyecto necesitas un guion y una Shotlist vinculada a ese mismo guion." : "Elige fuentes tuyas y revisa lo que estará disponible. No se inventarán jornadas, horarios ni responsables." : "Empezarás sin fuentes. Podrás vincularlas e incorporar necesidades después."}</p>
+          <label>Proyecto<select value={projectId} onChange={(event) => { const nextProjectId = event.target.value; setProjectId(nextProjectId); setScriptId(""); setShotlistId(""); if (projects.find((item) => item.id === nextProjectId)?.entryModule) setMode("source"); }} required><option value="">Selecciona un proyecto</option>{projects.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
           <label>Nombre de la producción<input value={name} onChange={(event) => setName(event.target.value)} placeholder={shotlist?.title || script?.title || "Mi producción"} maxLength={160} /></label>
           <label>Zona horaria<input value={timezone} onChange={(event) => setTimezone(event.target.value)} list="production-timezones" maxLength={80} required /><datalist id="production-timezones"><option value="America/Mexico_City" /><option value="America/Tijuana" /><option value="America/New_York" /><option value="America/Los_Angeles" /><option value="Europe/Madrid" /></datalist></label>
           {mode === "source" && <>
@@ -87,7 +90,8 @@ export default function CreateProductionDialog({
               <label>Shotlist<select value={shotlistId} onChange={(event) => setShotlistId(event.target.value)}><option value="">Sin Shotlist</option>{projectShotlists.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
             </div>
             {incompatible && <p className="production-form-error" role="alert">La Shotlist pertenece a otro guion. Selecciona fuentes compatibles.</p>}
-            {!effectiveScriptId && !shotlistId && <p className="production-form-note">Selecciona al menos una fuente o usa “Crear manualmente”.</p>}
+            {workspaceProject && !sourceReady && <p className="production-form-note">{!projectScripts.length ? "Falta un guion en este proyecto." : !projectShotlists.length ? "Falta una Shotlist vinculada al guion." : "Selecciona un guion y su Shotlist compatible."}</p>}
+            {!workspaceProject && !effectiveScriptId && !shotlistId && <p className="production-form-note">Selecciona al menos una fuente o usa “Crear manualmente”.</p>}
             {(script || shotlist) && <section className="production-import-review">
               <h3>Se incorporará como estructura disponible</h3>
               <dl>
@@ -100,7 +104,7 @@ export default function CreateProductionDialog({
             <p className="production-foundation-note">La organización inteligente de jornadas no está incluida en esta Foundation.</p>
           </>}
           {error && <p className="production-form-error" role="alert">{error}</p>}
-          <footer><button type="button" className="production-secondary" onClick={() => dialog.current?.close()}>Cancelar</button><button className="production-primary" disabled={busy || !projectId || mode === "source" && (!effectiveScriptId && !shotlistId || incompatible)}>{busy ? "Creando…" : mode === "source" ? "Crear estructura" : "Crear producción"}</button></footer>
+          <footer><button type="button" className="production-secondary" onClick={() => dialog.current?.close()}>Cancelar</button><button className="production-primary" disabled={busy || !projectId || mode === "manual" && workspaceProject || mode === "source" && !sourceReady}>{busy ? "Creando…" : mode === "source" ? "Crear estructura" : "Crear producción"}</button></footer>
         </form>
       </dialog>
     </div>

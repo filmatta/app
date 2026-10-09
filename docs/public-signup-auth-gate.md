@@ -10,7 +10,7 @@ outside this gate.
 | Step | Implementation | Destination |
 | --- | --- | --- |
 | Public signup | `/registro` → `signUp` in `app/auth/actions.ts` → Supabase Auth | Confirmation email, then `/auth/callback?next=...` |
-| Login | `/login` → `login` in `app/auth/actions.ts` | Validated internal `next` path, default `/cuenta` |
+| Login | `/login` → `login` in `app/auth/actions.ts` | Validated internal `next` path, default `/create` |
 | Logout | `logout` in `app/cuenta/actions.ts` | `/` after Supabase sign-out |
 | Recovery request | `/recuperar-contrasena` → `requestPasswordReset` | Email link to `/auth/callback?next=/restablecer-contrasena...` |
 | Confirmation/recovery callback | `app/auth/callback/route.ts` | Server-side OTP verification, session cookie, then Create or reset form |

@@ -55,7 +55,7 @@ test("guest Auth routes, redirects, errors and mobile controls stay safe on Test
     const invalid = await context.request.get("/auth/callback?token_hash=invalid-token&type=email&next=https%3A%2F%2Fevil.example", { maxRedirects: 0 });
     assert.equal(invalid.status(), 307);
     assert.equal(new URL(invalid.headers().location).pathname, "/login");
-    assert.equal(new URL(invalid.headers().location).searchParams.get("next"), "/cuenta");
+    assert.equal(new URL(invalid.headers().location).searchParams.get("next"), "/create");
     assert.equal(invalid.headers()["referrer-policy"], "no-referrer");
     assert.equal(invalid.headers().location.includes("invalid-token"), false);
     assert.equal(invalid.headers().location.includes("evil.example"), false);

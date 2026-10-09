@@ -14,7 +14,7 @@ export function getSafeNextPath(
 
 export function getSafePostAuthPath(
   value: FormDataEntryValue | string | null,
-  fallback = "/cuenta"
+  fallback = "/create"
 ) {
   const path = getSafeNextPath(value, fallback);
   const rawPathname = path.split(/[?#]/, 1)[0];
@@ -27,7 +27,7 @@ export function getSafePostAuthPath(
     pathname === "/recuperar-contrasena" ||
     pathname === "/auth/callback"
   ) {
-    return getSafeNextPath(fallback, "/cuenta");
+    return getSafeNextPath(fallback, "/create");
   }
 
   return path;

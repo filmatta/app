@@ -47,29 +47,23 @@ export default async function ProductionPage({
       <section className="production-index-intro">
         <div>
           <p className="production-eyebrow">PRODUCTION ASSISTANT</p>
-          <h1>De la escena al plan de rodaje.</h1>
-          <p>Organiza jornadas, planos, necesidades, recursos y tareas sin alterar tus fuentes creativas.</p>
+          <h1>Producciones</h1>
+          <p>Abre una producción para planear jornadas, consultar documentos y generar el Production Pack.</p>
         </div>
         {productions.length > 0 && <CreateProductionDialog sources={scopedSources} projects={scopedProjects} preferredProjectId={preferredProjectId} preferredScriptId={preferredScriptId} preferredShotlistId={preferredShotlistId} compact />}
       </section>
       {productions.length ? (
-        <ul className="production-index-grid">
-          {productions.map((production) => (
-            <li key={production.id}>
-              <Link href={`/production/${production.id}${requested.project ? `?project=${requested.project}` : ""}`}>
-                <span className="production-index-status"><i /> Planificación activa</span>
-                <h2>{production.name}</h2>
-                <p>{production.shotlistId ? "Guion + Shotlist" : production.scriptId ? "Guion vinculado" : "Producción manual"}</p>
-                <dl>
-                  <div><dt>Jornadas</dt><dd>{production.dayCount}</dd></div>
-                  <div><dt>Programados</dt><dd>{production.scheduledCount}</dd></div>
-                  <div><dt>Pendientes</dt><dd>{production.pendingTaskCount}</dd></div>
-                </dl>
-                <small>Actualizada {new Date(production.updatedAt).toLocaleString("es-MX")}</small>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <section className="production-index-list" aria-label="Tus producciones">
+          <div className="production-index-list-head" aria-hidden="true"><span>Producción</span><span>Jornadas</span><span>Última actividad</span><span /></div>
+          <ul>{productions.map((production) => <li key={production.id}>
+            <Link href={`/production/${production.id}${requested.project ? `?project=${requested.project}` : ""}`}>
+              <span className="production-index-list-name"><strong>{production.name}</strong><small>{production.shotlistId ? "Guion · Shotlist" : production.scriptId ? "Guion vinculado" : "Producción manual"}</small></span>
+              <span className="production-index-list-count">{production.dayCount}</span>
+              <time dateTime={production.updatedAt}>{new Date(production.updatedAt).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}</time>
+              <span className="production-index-list-open">Abrir →</span>
+            </Link>
+          </li>)}</ul>
+        </section>
       ) : (
         <section className="production-index-empty">
           <div className="production-empty-visual" aria-hidden="true">
@@ -78,8 +72,12 @@ export default async function ProductionPage({
           <div>
             <p className="production-eyebrow">DE GUION A SET</p>
             <h2>Prepara tu producción</h2>
-            <p>Crea una estructura desde tus fuentes existentes o empieza con un espacio completamente manual.</p>
-            <CreateProductionDialog sources={scopedSources} projects={scopedProjects} preferredProjectId={preferredProjectId} preferredScriptId={preferredScriptId} preferredShotlistId={preferredShotlistId} />
+            <p>{scopedProjects.some((item) => item.entryModule)
+              ? "Vincula un guion y una Shotlist del mismo proyecto para iniciar la planificación."
+              : "Crea una estructura desde tus fuentes existentes o empieza con un espacio manual."}</p>
+            {scopedProjects.length
+              ? <CreateProductionDialog sources={scopedSources} projects={scopedProjects} preferredProjectId={preferredProjectId} preferredScriptId={preferredScriptId} preferredShotlistId={preferredShotlistId} />
+              : <Link className="production-primary production-index-start-link" href="/create">Crear proyecto →</Link>}
           </div>
         </section>
       )}

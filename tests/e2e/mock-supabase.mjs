@@ -17,6 +17,7 @@ let writerSaveCount = 0;
 let writerReadCount = 0;
 let writerCreateCount = 0;
 let writerCheckpoints = [];
+let workspaceProjects = [];
 const shotlistId = "44444444-4444-4444-8444-444444444444";
 const shotlistGroups = [
   { id: "44444444-4444-4444-8444-444444444401", shotlist_id: shotlistId, source_scene_id: null, source_scene_title: null, title: "INT. RADIO K-17 / CABINA — NOCHE", position: 0, source_status: "manual", revision: 1 },
@@ -111,6 +112,18 @@ http
     if (url.pathname === "/health") return res.end("{}");
     if (url.pathname === "/__scenario") {
       scenario = url.searchParams.get("value") ?? "empty";
+      workspaceProjects = scenario === "workspace-populated" ? [{
+        id: "22222222-2222-4222-8222-222222222222",
+        owner_id: id,
+        title: "LA FRECUENCIA",
+        slug: "la-frecuencia",
+        lifecycle_status: "draft",
+        create_enabled: true,
+        entry_module: "production",
+        cover_image_path: null,
+        updated_at: "2026-10-09T12:00:00Z",
+        created_at: "2026-10-08T12:00:00Z",
+      }] : [];
       profileDelayMs = Math.min(5000, Math.max(0, Number(url.searchParams.get("delay")) || 0));
       writerSaveDelayMs = Math.min(5000, Math.max(0, Number(url.searchParams.get("writerSaveDelay")) || 0));
       if (scenario === "profiles-polish") resetProfileFixture();
@@ -247,6 +260,25 @@ http
     if (scenario === "failure") {
       res.statusCode = 500;
       return res.end('{"code":"XX000","message":"fixture transport error"}');
+    }
+    if (scenario.startsWith("workspace-")) {
+      const single = req.headers.accept?.includes("vnd.pgrst.object");
+      if (url.pathname === "/rest/v1/rpc/create_workspace_project_v1" && req.method === "POST") {
+        const body = await readJson(req);
+        const existing = workspaceProjects.find((item) => item.creation_operation_id === body.p_operation_id);
+        if (existing) return res.end(JSON.stringify(existing.id));
+        const nextId = "33333333-3333-4333-8333-333333333333";
+        workspaceProjects.push({ id: nextId, owner_id: id, title: body.p_title, slug: "nuevo-proyecto", lifecycle_status: "draft", create_enabled: true, entry_module: body.p_entry_module, cover_image_path: null, updated_at: new Date().toISOString(), created_at: new Date().toISOString(), creation_operation_id: body.p_operation_id });
+        return res.end(JSON.stringify(nextId));
+      }
+      if (url.pathname === "/rest/v1/projects" && req.method === "GET") {
+        const requestedId = url.searchParams.get("id")?.replace(/^eq\./u, "");
+        const rows = requestedId ? workspaceProjects.filter((item) => item.id === requestedId) : workspaceProjects;
+        return res.end(JSON.stringify(single ? rows[0] ?? null : rows));
+      }
+      if (["writer_scripts", "writer_shotlists", "storyboard_panels", "production_plans", "production_document_exports"].some((table) => url.pathname === `/rest/v1/${table}`)) {
+        return res.end(JSON.stringify(single ? null : []));
+      }
     }
     if (scenario === "published") {
       const body =

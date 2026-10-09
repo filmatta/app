@@ -16,7 +16,8 @@ test("one artifact opens directly with its canonical Project context", () => {
   assert.equal(createProjectModuleRoute(project, "breakdown"), "/writer/writer-a?project=project-a");
   assert.equal(createProjectModuleRoute(project, "shotlist"), "/shotlists/shotlist-a?project=project-a");
   assert.equal(createProjectModuleRoute(project, "storyboard"), "/shotlists/shotlist-a/storyboard?project=project-a");
-  assert.equal(createProjectModuleRoute(project, "production"), "/production/production-a?project=project-a");
+  assert.equal(createProjectModuleRoute(project, "production"), "/production?project=project-a");
+  assert.equal(createProjectModuleRoute(project, "documents"), "/create/projects/project-a/documents");
 });
 
 test("multiple or missing artifacts open the Project list, never an arbitrary first row", () => {
@@ -28,7 +29,7 @@ test("multiple or missing artifacts open the Project list, never an arbitrary fi
   };
   assert.equal(createProjectModuleRoute(multiple, "shotlist"), "/create/projects/project-a#shotlists");
   assert.equal(createProjectModuleRoute(multiple, "storyboard"), "/create/projects/project-a#storyboards");
-  assert.equal(createProjectModuleRoute(multiple, "production"), "/create/projects/project-a#production");
+  assert.equal(createProjectModuleRoute(multiple, "production"), "/production?project=project-a");
   assert.equal(createProjectModuleRoute({ ...project, writers: [] }, "writer"), "/create/projects/project-a#writer");
-  assert.equal(createProjectModuleRoute({ ...project, productions: [] }, "production"), "/create/projects/project-a#production");
+  assert.equal(createProjectModuleRoute({ ...project, productions: [] }, "production"), "/production?project=project-a");
 });

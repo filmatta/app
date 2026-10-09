@@ -17,16 +17,15 @@ export default async function CreateProjectNavigation({ projectId, ownerId, acti
     recordCreateEvent(active === "writer" ? "writer_opened" : "storyboard_opened", { userId: ownerId, projectId });
   }
   const modules: { id: CreateModule; label: string }[] = [
-    { id: "writer", label: "Writer" }, { id: "breakdown", label: "Breakdown" },
+    { id: "writer", label: "Guion" }, { id: "breakdown", label: "Breakdown" },
     { id: "shotlist", label: "Shotlist" }, { id: "storyboard", label: "Storyboard" },
-    { id: "production", label: "Production" },
+    { id: "production", label: "Producción" }, { id: "documents", label: "Documentos" },
   ];
   return <details className="create-project-navigation">
     <summary aria-label={`Navegar por el proyecto ${project.name}`}>Proyecto · {project.name}</summary>
     <nav aria-label={`Módulos de ${project.name}`}>
-      <Link href={`/create/projects/${project.id}`}>Ver proyecto</Link>
+      <Link href={`/create/projects/${project.id}`}>Overview</Link>
       {modules.map((module) => <Link key={module.id} href={createProjectModuleRoute(project, module.id)} aria-current={active === module.id ? "page" : undefined}>{module.label}</Link>)}
-      <span aria-disabled="true">Rec · próximamente</span>
     </nav>
   </details>;
 }
