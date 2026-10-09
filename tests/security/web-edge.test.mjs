@@ -63,6 +63,7 @@ test("CSP confines runtime, media and app Auth to explicit sources with framing 
   assert.ok(!csp.includes("unsafe-eval"));
   assert.ok(!csp.includes("wasm-unsafe-eval"));
   for (const value of ["frame-ancestors 'none'", "object-src 'none'", "https://test.supabase.co", "wss://test.supabase.co", "https://*.litix.io", "https://storage.googleapis.com", "https://checkout.stripe.com"]) assert.ok(csp.includes(value), value);
+  assert.match(csp, /(?:^|; )frame-src blob: https:\/\/player\.mux\.com/u);
   assert.equal(headers["X-Content-Type-Options"], "nosniff");
   assert.equal(headers["X-Frame-Options"], "DENY");
   assert.equal(headers["Referrer-Policy"], "strict-origin-when-cross-origin");
