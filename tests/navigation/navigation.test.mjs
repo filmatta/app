@@ -19,7 +19,7 @@ test("primary navigation is focused on CREATE and excludes marketplace verticals
   }
 });
 test("Crear contains only real creation destinations", () => {
-  assert.equal(nav.getCreateNavigation().map((item) => item.href).join(","), "/writer,/shotlists");
+  assert.equal(nav.getCreateNavigation().map((item) => item.href).join(","), "/crear,/writer,/shotlists");
   assert.ok(nav.getCreateNavigation().every((item) => fs.existsSync(`app${item.href}/page.tsx`)));
 });
 

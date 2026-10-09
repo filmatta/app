@@ -32,7 +32,11 @@ export function getPrimaryNavigation(_authenticated: boolean): NavigationItem[] 
   ];
 }
 export function getCreateNavigation(): NavigationLink[] {
-  return surfacesFor("create").flatMap((surface) =>
+  return [{
+    label: "Empezar una idea",
+    href: "/crear",
+    description: "Platica, desarrolla y organiza tu historia.",
+  }, ...surfacesFor("create").flatMap((surface) =>
     surface.href
       ? [{
           label: surface.id === "writer" ? "Nuevo guion" : "Nueva shotlist",
@@ -42,11 +46,12 @@ export function getCreateNavigation(): NavigationLink[] {
             : "Crea una shotlist libre o desde Writer.",
         }]
       : [],
-  );
+  )];
 }
 export function getAccountNavigation(role: string): NavigationLink[] {
   return [
     { label: "Dashboard", href: "/cuenta" },
+    { label: "Mis ideas", href: "/crear" },
     { label: "Mis guiones", href: "/writer" },
     { label: "Mis shotlists", href: "/shotlists" },
     { label: "Mi aprendizaje", href: "/cuenta/configuracion#mis-cursos" },

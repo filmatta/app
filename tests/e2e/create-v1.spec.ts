@@ -46,6 +46,7 @@ test("authenticated dashboard and CREATE menu expose only owned creation surface
 
   await expect(page.getByRole("link", { name: /Crear proyecto/ }).first()).toHaveAttribute("href", "/create");
   await page.getByRole("button", { name: "Crear", exact: true }).click();
+  await expect(page.getByRole("link", { name: /Empezar una idea/ })).toHaveAttribute("href", "/crear");
   await expect(page.getByRole("link", { name: /Nuevo guion/ })).toHaveAttribute("href", "/writer");
   await expect(page.getByRole("link", { name: /Nueva shotlist/ })).toHaveAttribute("href", "/shotlists");
   for (const label of ["Proyecto", "Oportunidad", "Locación", "Servicio"]) {

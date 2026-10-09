@@ -57,7 +57,7 @@ export function AccountNavigation({ role, displayName, portrait }: { role: strin
   const pathname = usePathname();
   const [hash, setHash] = useState("");
   const accountLinks = getAccountNavigation(role);
-  const personalLinks = ["/writer", "/shotlists", "/cuenta/configuracion#mis-cursos", "/mi-perfil", "/cuenta/suscripcion"]
+  const personalLinks = ["/crear", "/writer", "/shotlists", "/cuenta/configuracion#mis-cursos", "/mi-perfil", "/cuenta/suscripcion"]
     .map(href => accountLinks.find(item => item.href === href)!);
   const settings = accountLinks.find(item => item.href === "/cuenta/configuracion#configuracion")!;
   const admin = accountLinks.find(item => item.href === "/admin");
