@@ -38,6 +38,11 @@ create index create_onboarding_states_project_idx on public.create_onboarding_st
 alter table public.create_onboarding_states enable row level security;
 alter table public.create_idea_drafts enable row level security;
 
+revoke all on public.create_onboarding_states from public, anon;
+revoke all on public.create_idea_drafts from public, anon;
+grant select, insert, update on public.create_onboarding_states to authenticated;
+grant select, insert, update, delete on public.create_idea_drafts to authenticated;
+
 create policy create_onboarding_owner_select on public.create_onboarding_states for select to authenticated using (owner_id = (select auth.uid()));
 create policy create_onboarding_owner_insert on public.create_onboarding_states for insert to authenticated with check (owner_id = (select auth.uid()));
 create policy create_onboarding_owner_update on public.create_onboarding_states for update to authenticated using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()));
