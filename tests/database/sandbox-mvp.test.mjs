@@ -26,9 +26,9 @@ test("Sandbox migration, quota, retry, decisions, handoff and owner isolation", 
       create table public.projects(id uuid primary key, owner_id uuid not null references auth.users(id) on delete cascade,
         unique(id,owner_id));
       create table public.writer_scripts(id uuid primary key, owner_id uuid not null references auth.users(id) on delete cascade,
-        project_id uuid references public.projects(id) on delete cascade);
+        project_id uuid references public.projects(id) on delete cascade, document jsonb not null);
       insert into public.projects values ('${projectA}','${ownerA}'),('${projectB}','${ownerB}'),('${projectC}','${ownerA}');
-      insert into public.writer_scripts values ('${writerA}','${ownerA}','${projectA}');
+      insert into public.writer_scripts values ('${writerA}','${ownerA}','${projectA}','{"type":"doc","content":[]}'::jsonb);
       alter table public.projects enable row level security;
       alter table public.writer_scripts enable row level security;
       grant select on public.projects, public.writer_scripts to authenticated;
@@ -113,6 +113,8 @@ test("Sandbox migration, quota, retry, decisions, handoff and owner isolation", 
       [projectA,operation,writerA,[competing],null,{ sandboxHandoff: { selectedIds: [competing] } }, { sections: {}, cues: [] }]
     )).rows[0].id;
     const guideId = await handoff();
+    assert.deepEqual((await db.query("select document from writer_scripts where id=$1", [writerA])).rows[0].document,
+      { type: "doc", content: [] });
     assert.equal(await handoff(), guideId);
     assert.equal((await db.query("select count(*)::int as count from sandbox_guide_versions where operation_id=$1", [operation])).rows[0].count, 1);
     await assert.rejects(db.query("select public.sandbox_apply_handoff_v1($1,$2,$3,$4,$5,$6,$7)",
