@@ -24,7 +24,7 @@ const questions = [
   ["theme", "¿Qué quieres que permanezca?", "Una pregunta, sensación o tema que quieras dejar en quien la vea."],
 ] as const;
 
-export default function CreateProjectForm({ ownerId, autoOpen, initialState, initialDraft }: { ownerId: string; autoOpen: boolean; initialState: CreateOnboardingState | null; initialDraft: CreateIdeaDraft | null }) {
+export default function CreateProjectForm({ ownerId, autoOpen, hasProjects, initialState, initialDraft }: { ownerId: string; autoOpen: boolean; hasProjects: boolean; initialState: CreateOnboardingState | null; initialDraft: CreateIdeaDraft | null }) {
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -115,7 +115,7 @@ export default function CreateProjectForm({ ownerId, autoOpen, initialState, ini
 
   return <>
     <button ref={trigger} type="button" className="create-new-trigger" onClick={openSelector}><span aria-hidden="true">＋</span>Crear proyecto</button>
-    {guided && <div className="create-guided-overlay" role="dialog" aria-modal="true" aria-label="Crear tu proyecto"><div className="create-guided-card"><p>PRIMER PASO</p><h2>Todo en FILMATTA empieza en un Project.</h2><span>Aquí vivirán tu guion, Shotlist, Storyboard, Production y documentos.</span><div><button type="button" onClick={() => setGuided(null)}>Ahora no</button><button type="button" onClick={() => { setStep("name"); dialog.current?.showModal(); }}>Crear mi primer proyecto</button></div></div></div>}
+    {guided && <div className="create-guided-overlay" role="dialog" aria-modal="true" aria-label="Crear tu proyecto"><div className="create-guided-card"><p>{hasProjects ? "NUEVO PROJECT" : "PRIMER PASO"}</p><h2>{hasProjects ? "Cada historia tiene su propio Project." : "Todo en FILMATTA empieza en un Project."}</h2><span>Aquí vivirán tu guion, Shotlist, Storyboard, Production y documentos.</span><div><button type="button" onClick={() => setGuided(null)}>Ahora no</button><button type="button" onClick={() => { setStep("name"); dialog.current?.showModal(); }}>{hasProjects ? "Crear Project" : "Crear mi primer proyecto"}</button></div></div></div>}
     <dialog ref={dialog} className={`create-project-dialog is-${step}`} onCancel={(event) => { event.preventDefault(); close(); }} onClose={() => { setError(null); operationId.current = null; }}>
       <div className="create-dialog-heading"><div><p>FILMATTA CREATE</p><h2>{step === "intent" ? "¿Dónde estás con tu proyecto?" : step === "name" ? "Ponle nombre a tu proyecto" : step === "idea" ? "Cuéntame tu idea" : step === "detail" ? questions[questionIndex][1] : "Tu idea está a salvo"}</h2></div><button type="button" className="create-dialog-close" aria-label="Cerrar" onClick={close}>×</button></div>
       {step === "intent" && <div className="create-intention-step"><p>Elige el punto que mejor describe dónde estás. Podrás cambiar de rumbo después.</p><div className="create-entry-options">{intentions.map((option) => <button key={option.id} type="button" onClick={() => void choose(option.id)}><span><strong>{option.label}</strong><small>{option.description}</small></span><span aria-hidden="true">→</span></button>)}</div><button className="create-explore" type="button" onClick={() => void explore()}>Explorar por mi cuenta</button></div>}
