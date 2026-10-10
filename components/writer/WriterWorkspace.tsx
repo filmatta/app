@@ -211,6 +211,7 @@ import type { WriterNarrativeElement } from "@/lib/writer/setup-payoff";
 import { useWriterGuidedWriting } from "@/lib/writer/guided-writing-client";
 import type { WriterGuidedReference, WriterGuidedSelection } from "@/lib/writer/guided-writing";
 import WriterApplicationMenu from "./WriterApplicationMenu";
+import { saveCreateOnboardingAction } from "@/app/create/actions";
 
 type ScriptInput = {
   id: string;
@@ -256,12 +257,17 @@ export default function WriterWorkspace({
   script,
   userId,
   previewNoCredits,
+  projectNavigation,
+  onboarding,
 }: {
   script: ScriptInput;
   userId: string;
   previewNoCredits: boolean;
+  projectNavigation?: { name: string; items: { label: string; href: string; active?: boolean }[] };
+  onboarding?: "new_script" | "existing_script" | null;
 }) {
   const router = useRouter();
+  const [onboardingIntroOpen, setOnboardingIntroOpen] = useState(Boolean(onboarding));
   const [title, setTitle] = useState(script.title);
   const titleRef = useRef(script.title);
   const [document, setDocument] = useState(script.document);
@@ -2793,7 +2799,9 @@ export default function WriterWorkspace({
         onWarmFilter={() => commitAppearance({ warmFilter: !appearanceRef.current.warmFilter })}
         onTypewriterSound={toggleTypewriterSound}
         onShortcuts={() => setShortcutsOpen(true)}
+        projectNavigation={projectNavigation}
       />}
+      {onboardingIntroOpen && <div className="writer-onboarding-backdrop" role="dialog" aria-modal="true" aria-labelledby="writer-onboarding-title"><section className="writer-onboarding-card"><p>WRITER</p><h2 id="writer-onboarding-title">{onboarding === "existing_script" ? "Writer es donde vive tu guion." : "Empieza por la primera escena."}</h2><span>{onboarding === "existing_script" ? "Puedes escribir desde cero o importar el archivo que ya tienes." : "Escribe en la página y usa los tipos básicos de bloque. Focus te ayuda a trabajar sin distracciones."}</span><div><button type="button" onClick={() => { setOnboardingIntroOpen(false); void saveCreateOnboardingAction({ status: "completed", intention: onboarding, currentStep: "writer_ready" }); }}>Entendido</button>{onboarding === "existing_script" && <button type="button" onClick={() => { setOnboardingIntroOpen(false); void saveCreateOnboardingAction({ status: "completed", intention: onboarding, currentStep: "writer_import_opened" }); openImportFlow(); }}>Importar guion</button>}</div></section></div>}
       <header className="writer-header">
         <div className="writer-header-brand">
           <Link href="/" aria-label="FILMATTA — Inicio">FILMATTA</Link>

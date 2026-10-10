@@ -16,7 +16,7 @@ test("one artifact opens directly with its canonical Project context", () => {
   assert.equal(createProjectModuleRoute(project, "breakdown"), "/writer/writer-a?project=project-a");
   assert.equal(createProjectModuleRoute(project, "shotlist"), "/shotlists/shotlist-a?project=project-a");
   assert.equal(createProjectModuleRoute(project, "storyboard"), "/shotlists/shotlist-a/storyboard?project=project-a");
-  assert.equal(createProjectModuleRoute(project, "production"), "/production?project=project-a");
+  assert.equal(createProjectModuleRoute(project, "production"), "/production/production-a?project=project-a");
   assert.equal(createProjectModuleRoute(project, "documents"), "/create/projects/project-a/documents");
 });
 

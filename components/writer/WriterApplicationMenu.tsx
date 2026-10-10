@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { ScreenplayKind } from "@/lib/writer/document";
 import type { WriterSkin } from "@/lib/writer/appearance";
 import WriterIcon from "./WriterIcon";
+import Link from "next/link";
 
 export type WriterApplicationMenuProps = {
   canBack: boolean;
@@ -42,6 +43,7 @@ export type WriterApplicationMenuProps = {
   onWarmFilter: () => void;
   onTypewriterSound: () => void;
   onShortcuts: () => void;
+  projectNavigation?: { name: string; items: { label: string; href: string; active?: boolean }[] };
 };
 
 const KINDS: Array<{ kind: ScreenplayKind; label: string }> = [
@@ -54,7 +56,7 @@ const KINDS: Array<{ kind: ScreenplayKind; label: string }> = [
   { kind: "authorNote", label: "Nota" },
 ];
 
-type MenuName = "file" | "edit" | "view" | "help";
+type MenuName = "file" | "project" | "edit" | "view" | "help";
 
 export default function WriterApplicationMenu(props: WriterApplicationMenuProps) {
   const [open, setOpen] = useState<MenuName | null>(null);
@@ -115,6 +117,9 @@ export default function WriterApplicationMenu(props: WriterApplicationMenuProps)
           <MenuItem onClick={() => run(() => props.onExport("json"))}>Respaldo JSON</MenuItem>
         </MenuGroup>
       </MenuButton>
+      {props.projectNavigation && <MenuButton label={props.projectNavigation.name} name="project" open={open} onToggle={toggle}>
+        {props.projectNavigation.items.map((item) => <MenuLink key={item.label} href={item.href} current={item.active}>{item.label}</MenuLink>)}
+      </MenuButton>}
       <MenuButton label="Editar" name="edit" open={open} onToggle={toggle}>
         <MenuItem disabled={!props.hasEditorContext || !props.canUndo} onClick={() => run(props.onUndo)}>Deshacer</MenuItem>
         <MenuItem disabled={!props.hasEditorContext || !props.canRedo} onClick={() => run(props.onRedo)}>Rehacer</MenuItem>
@@ -163,6 +168,10 @@ function MenuButton({ label, name, open, onToggle, children }: { label: string; 
 
 function MenuItem({ children, disabled = false, onClick }: { children: ReactNode; disabled?: boolean; onClick?: () => void }) {
   return <button type="button" role="menuitem" disabled={disabled} onClick={onClick}>{children}</button>;
+}
+
+function MenuLink({ children, href, current = false }: { children: ReactNode; href: string; current?: boolean }) {
+  return <Link role="menuitem" href={href} aria-current={current ? "page" : undefined}>{children}</Link>;
 }
 
 function MenuCheck({ children, checked, onClick }: { children: ReactNode; checked: boolean; onClick: () => void }) {

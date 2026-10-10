@@ -6,9 +6,10 @@ import CreateProjectWriterButton from "./CreateProjectWriterButton";
 import CreateProjectShotlistButton from "./CreateProjectShotlistButton";
 import ProjectCoverUpload from "./ProjectCoverUpload";
 
-export default function ProjectOverview({ project, overview }: {
+export default function ProjectOverview({ project, overview, guidedIntent = null }: {
   project: CreateProjectContext;
   overview: CreateProjectOverview;
+  guidedIntent?: "new_script" | "existing_script" | null;
 }) {
   const base = `/create/projects/${project.id}`;
   const hasScript = project.writers.length > 0;
@@ -37,25 +38,26 @@ export default function ProjectOverview({ project, overview }: {
       </a>)}</div>
     </section>
 
-    <section className="create-overview-section" aria-labelledby="project-content-title"><div className="create-section-heading"><div><h2 id="project-content-title">Contenido del proyecto</h2><p>Abre un módulo o prepara su fuente.</p></div></div>
+    {guidedIntent && !hasScript && <section className="create-workspace-guide" aria-label="Siguiente paso"><p>SIGUIENTE PASO</p><h2>Tu guion vive dentro del Project.</h2><span>{guidedIntent === "existing_script" ? "Crea el espacio de Writer; allí podrás importar el archivo que ya tienes." : "Crea un Writer vacío para empezar a escribir."}</span></section>}
+    <section className={`create-overview-section${guidedIntent && !hasScript ? " is-guided" : ""}`} aria-labelledby="project-content-title"><div className="create-section-heading"><div><h2 id="project-content-title">Contenido del proyecto</h2><p>Abre un módulo o prepara su fuente.</p></div></div>
       <div className="create-module-list">
         <section id="writer" className="create-module-row"><div><h3>Guion</h3><p>{hasScript ? "Guiones de este Project" : "Escribe un guion nuevo o importa uno existente para preparar los demás módulos."}</p></div><div className="create-module-row-actions">
-          {project.writers.map((writer) => <Link key={writer.id} href={`/writer/${writer.id}?project=${project.id}`}>{writer.title} →</Link>)}
-          {!hasScript && <CreateProjectWriterButton projectId={project.id} />}
+          {project.writers.map((writer) => <Link key={writer.id} href={`/writer/${writer.id}?project=${project.id}`}>Ver guion →</Link>)}
+          {!hasScript && <CreateProjectWriterButton projectId={project.id} guidedIntent={guidedIntent} />}
         </div></section>
         <section id="shotlists" className="create-module-row"><div><h3>Shotlist</h3><p>{hasScript ? "Vincula una Shotlist al guion de este Project." : "Para crear tu Shotlist necesitamos un guion del Project."}</p></div><div className="create-module-row-actions">
-          {project.shotlists.map((shotlist) => <Link key={shotlist.id} href={`/shotlists/${shotlist.id}?project=${project.id}`}>{shotlist.title} →</Link>)}
+          {project.shotlists.map((shotlist) => <Link key={shotlist.id} href={`/shotlists/${shotlist.id}?project=${project.id}`}>Ver Shotlist →</Link>)}
           {hasScript ? <CreateProjectShotlistButton projectId={project.id} writers={project.writers} /> : <a href="#writer">Preparar guion →</a>}
         </div></section>
         <section id="storyboards" className="create-module-row"><div><h3>Storyboard</h3><p>{!hasScript ? "Necesita un guion. El tablero actual usa planos de una Shotlist real." : !project.shotlists.length ? "Prepara una Shotlist real para abrir el tablero de planos." : "Visualiza los planos del Project."}</p></div><div className="create-module-row-actions">
-          {availableBoards.map((board) => <Link key={board.id} href={`/shotlists/${board.id}/storyboard?project=${project.id}`}>{board.title} · {board.panelCount} paneles →</Link>)}
-          {!availableBoards.length && <a href={hasScript ? "#shotlists" : "#writer"}>Preparar fuente →</a>}
+          {availableBoards.map((board) => <Link key={board.id} href={`/shotlists/${board.id}/storyboard?project=${project.id}`}>{board.panelCount ? "Ver Storyboard" : "Crear Storyboard"} →</Link>)}
+          {!availableBoards.length && <a href={hasScript ? "#shotlists" : "#writer"}>{hasScript ? "Crear Shotlist" : "Crear guion"} →</a>}
         </div></section>
         <section id="production" className="create-module-row"><div><h3>Producción</h3><p>{hasScript && hasShotlist ? "Planifica jornadas, recursos y documentos desde guion y Shotlist." : "Para comenzar Production se necesitan un guion y una Shotlist vinculada."}</p></div><div className="create-module-row-actions">
-          {project.productions.map((production) => <Link key={production.id} href={`/production/${production.id}?project=${project.id}`}>{production.title} →</Link>)}
-          {hasScript && hasShotlist ? <Link href={`/production?project=${project.id}`}>Abrir Producción →</Link> : <a href={hasScript ? "#shotlists" : "#writer"}>Preparar fuentes →</a>}
+          {project.productions.map((production) => <Link key={production.id} href={`/production/${production.id}?project=${project.id}`}>Ver producción →</Link>)}
+          {!project.productions.length && (hasScript && hasShotlist ? <Link href={`/production?project=${project.id}`}>Crear producción →</Link> : <a href={hasScript ? "#shotlists" : "#writer"}>{hasScript ? "Crear Shotlist" : "Crear guion"} →</a>)}
         </div></section>
-        <section className="create-module-row"><div><h3>Documentos</h3><p>Production Pack y documentos generados desde el contenido disponible.</p></div><div className="create-module-row-actions"><Link href={`${base}/documents`}>Abrir Documentos →</Link></div></section>
+        <section className="create-module-row"><div><h3>Documentos</h3><p>Production Pack y documentos generados desde el contenido disponible.</p></div><div className="create-module-row-actions"><Link href={`${base}/documents`}>Ver documentos →</Link></div></section>
       </div>
     </section>
   </>;

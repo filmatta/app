@@ -6,6 +6,7 @@ import { getCreateProjectOverview } from "@/lib/create/overview";
 import { getRecentProjectDocuments } from "@/lib/create/recent-documents";
 import SiteHeader from "@/components/SiteHeader";
 import ProjectDashboard from "@/components/create/ProjectDashboard";
+import { getCreateIdeaDraft, getCreateOnboarding } from "@/lib/create/onboarding";
 import "@/components/create/project-workspace.css";
 
 export const metadata: Metadata = { title: "Create · Projects", robots: { index: false, follow: false } };
@@ -19,6 +20,9 @@ export default async function CreatePage({ searchParams }: {
   if (auth.error || !auth.data.user) redirect("/login?next=/create");
   const query = await searchParams;
   const projects = await listCreateProjects(db, auth.data.user.id);
+  const [onboardingState, ideaDraft] = await Promise.all([
+    getCreateOnboarding(db, auth.data.user.id), getCreateIdeaDraft(db, auth.data.user.id),
+  ]);
   const selectedId = projects.find((project) => project.id === query.project)?.id ?? projects[0]?.id;
   const selectedProject = selectedId ? await getCreateProjectContext(db, auth.data.user.id, selectedId) : null;
   const [overview, recentDocuments] = selectedProject ? await Promise.all([
@@ -29,6 +33,8 @@ export default async function CreatePage({ searchParams }: {
     <SiteHeader />
     <ProjectDashboard projects={projects} selectedProjectId={selectedId ?? null}
       initialSearch={query.q ?? ""} initialSort={query.sort === "name" ? "name" : "recent"}
-      initialSelection={selectedProject && overview ? { project: selectedProject, overview, recentDocuments } : null} />
+      initialSelection={selectedProject && overview ? { project: selectedProject, overview, recentDocuments } : null}
+      ownerId={auth.data.user.id} onboardingState={onboardingState} ideaDraft={ideaDraft}
+      autoOpenOnboarding={projects.length === 0 && (!onboardingState || !["completed", "skipped"].includes(onboardingState.status))} />
   </div>;
 }

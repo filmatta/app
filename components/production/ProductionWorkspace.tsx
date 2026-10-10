@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import ProductionCalendar from "@/components/production/ProductionCalendar";
 import ProductionDocuments from "@/components/production/ProductionDocuments";
@@ -250,7 +251,7 @@ function DaysView({ data, activeDay, setActiveDayId, dayItems, overlaps, selecte
     {!activeDay ? <section className="production-no-day"><span>□</span><h2>Crea una jornada</h2><p>Una jornada puede tener fecha y horarios, o empezar como una secuencia ordenada sin horario.</p><DayCreateForm productionId={data.production.id} nextNumber={1} mutate={mutate} busyKey={busyKey} /></section> : <>
       <section className="production-plan-panel">
         <header><div><p className="production-eyebrow">PLAN DE RODAJE</p><h2>{activeDay.name}</h2><span>{activeDay.shootDate ? `${formatDate(activeDay.shootDate)} · ${data.production.timezone}` : `Sin fecha · ${data.production.timezone}`}</span></div><details><summary>Editar jornada</summary><DayEditForm productionId={data.production.id} day={activeDay} itemCount={dayItems.length} coverageCount={data.coverages.filter((coverage) => coverage.dayId === activeDay.id).length} mutate={mutate} busyKey={busyKey} /></details></header>
-        <div className="production-plan-toolbar"><details><summary>＋ Bloque manual</summary><ScheduleBlockForm productionId={data.production.id} dayId={activeDay.id} kind="manual" mutate={mutate} busyKey={busyKey} /></details><details><summary>＋ Logística</summary><ScheduleBlockForm productionId={data.production.id} dayId={activeDay.id} kind="logistics" mutate={mutate} busyKey={busyKey} /></details><span>{dayItems.length} bloques · {dayItems.filter((item) => item.shootMinutes).reduce((total, item) => total + (item.shootMinutes ?? 0), 0)} min estimados</span></div>
+        <div className="production-plan-toolbar"><AnchoredProductionPopover label="＋ Bloque manual"><ScheduleBlockForm productionId={data.production.id} dayId={activeDay.id} kind="manual" mutate={mutate} busyKey={busyKey} /></AnchoredProductionPopover><AnchoredProductionPopover label="＋ Logística"><ScheduleBlockForm productionId={data.production.id} dayId={activeDay.id} kind="logistics" mutate={mutate} busyKey={busyKey} /></AnchoredProductionPopover><span>{dayItems.length} bloques · {dayItems.filter((item) => item.shootMinutes).reduce((total, item) => total + (item.shootMinutes ?? 0), 0)} min estimados</span></div>
         {overlaps.length > 0 && <div className="production-overlap-warning">Revisar solapamientos: {overlaps.join(", ")}. No se reajustaron horarios automáticamente.</div>}
         <ProductionTimeline data={data} day={activeDay} items={dayItems} selectedItemId={selectedItemId} onSelect={setSelectedItemId} />
       </section>
@@ -325,6 +326,37 @@ function DayCreateForm({ productionId, nextNumber, mutate, busyKey }: { producti
 
 function DayEditForm({ productionId, day, itemCount, coverageCount, mutate, busyKey }: { productionId: string; day: ProductionDay; itemCount: number; coverageCount: number; mutate: <T>(key: string, operation: Promise<ActionResult<T>>, after?: () => void) => Promise<boolean>; busyKey: string | null }) {
   return <form className="production-popover-form" onSubmit={(event) => { event.preventDefault(); const values = new FormData(event.currentTarget); void mutate(`day-${day.id}`, updateDayAction({ productionId, dayId: day.id, expectedRevision: day.revision, name: String(values.get("name")), shootDate: String(values.get("date")), callTime: String(values.get("call")), wrapTime: String(values.get("wrap")), wrapNextDay: values.get("nextDay") === "on", notes: String(values.get("notes")) })); }}><label>Nombre<input name="name" defaultValue={day.name} required maxLength={120} /></label><div><label>Fecha<input type="date" name="date" defaultValue={day.shootDate ?? ""} /></label><label>Call<input type="time" name="call" defaultValue={day.callTime ?? ""} /></label></div><div><label>Wrap<input type="time" name="wrap" defaultValue={day.wrapTime ?? ""} /></label><label className="production-check"><input type="checkbox" name="nextDay" defaultChecked={day.wrapNextDay} /> Día siguiente</label></div><label>Notas<textarea name="notes" defaultValue={day.notes ?? ""} maxLength={4000} /></label><button className="production-primary" disabled={Boolean(busyKey)}>Guardar jornada</button><button type="button" className="production-danger" disabled={Boolean(busyKey)} onClick={() => window.confirm(`Se retirarán ${itemCount} bloques a “Sin programar” y se eliminarán ${coverageCount} coberturas específicas de ${day.name}. Las fuentes no se borrarán. ¿Continuar?`) && mutate(`delete-day-${day.id}`, deleteDayAction({ productionId, dayId: day.id, expectedRevision: day.revision }))}>Eliminar jornada</button></form>;
+}
+
+function AnchoredProductionPopover({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: 12, top: 70, maxHeight: 500 });
+  useLayoutEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(320, window.innerWidth - 24);
+      const estimatedHeight = Math.min(panelRef.current?.scrollHeight ?? 470, window.innerHeight - 24);
+      const below = window.innerHeight - rect.bottom - 12;
+      const top = below >= Math.min(estimatedHeight, 420) ? rect.bottom + 7 : Math.max(12, rect.top - estimatedHeight - 7);
+      setPosition({ left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)), top, maxHeight: window.innerHeight - 24 });
+    };
+    update();
+    window.addEventListener("resize", update); document.addEventListener("scroll", update, true);
+    return () => { window.removeEventListener("resize", update); document.removeEventListener("scroll", update, true); };
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    panelRef.current?.querySelector<HTMLElement>("input,select,textarea,button")?.focus();
+    const dismiss = (event: PointerEvent) => { const target = event.target as Node; if (!triggerRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); setOpen(false); triggerRef.current?.focus(); } };
+    document.addEventListener("pointerdown", dismiss); document.addEventListener("keydown", escape, true);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape, true); };
+  }, [open]);
+  return <><button ref={triggerRef} type="button" className="production-popover-trigger" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{label}</button>{open && createPortal(<div ref={panelRef} className="production-floating-popover" role="dialog" aria-label={label} style={position}>{children}</div>, document.body)}</>;
 }
 
 function ScheduleBlockForm({ productionId, dayId, kind, mutate, busyKey }: { productionId: string; dayId: string; kind: "manual" | "logistics"; mutate: <T>(key: string, operation: Promise<ActionResult<T>>, after?: () => void) => Promise<boolean>; busyKey: string | null }) {

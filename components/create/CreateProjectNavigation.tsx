@@ -21,11 +21,5 @@ export default async function CreateProjectNavigation({ projectId, ownerId, acti
     { id: "shotlist", label: "Shotlist" }, { id: "storyboard", label: "Storyboard" },
     { id: "production", label: "Producción" }, { id: "documents", label: "Documentos" },
   ];
-  return <details className="create-project-navigation">
-    <summary aria-label={`Navegar por el proyecto ${project.name}`}>Proyecto · {project.name}</summary>
-    <nav aria-label={`Módulos de ${project.name}`}>
-      <Link href={`/create/projects/${project.id}`}>Overview</Link>
-      {modules.map((module) => <Link key={module.id} href={createProjectModuleRoute(project, module.id)} aria-current={active === module.id ? "page" : undefined}>{module.label}</Link>)}
-    </nav>
-  </details>;
+  return <div className="create-project-navigation"><Link className="create-project-navigation-brand" href="/create">FILMATTA</Link><strong title={project.name}>{project.name}</strong><nav aria-label={`Módulos de ${project.name}`}><Link href={`/create/projects/${project.id}`}>Overview</Link>{modules.map((module) => <Link key={module.id} href={createProjectModuleRoute(project, module.id)} aria-current={active === module.id ? "page" : undefined}>{module.label}</Link>)}</nav></div>;
 }
