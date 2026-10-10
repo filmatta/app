@@ -245,7 +245,8 @@
 .create-selected-open:hover { border-color: var(--create-accent); }
 .create-selected-summary { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-width: 620px; margin: 0; color: #c4cbd2; font-size: 11px; line-height: 1.4; }
 .create-selected-meta { display: flex; flex-wrap: wrap; gap: 7px 18px; color: #a3adb7; font-size: 11px; }
-.create-selected-tabs { display: flex; gap: 12px; overflow-x: auto; margin-top: 6px; border-bottom: 1px solid #30363d; scrollbar-width: thin; }
+.create-selected-tabs { display: flex; gap: 12px; overflow-x: auto; margin-top: 6px; border-bottom: 1px solid #30363d; scrollbar-width: none; }
+.create-selected-tabs::-webkit-scrollbar { display: none; }
 .create-selected-tabs a, .create-selected-tabs span[aria-current] { display: inline-block; flex: 0 0 auto; padding: 8px 9px; border-bottom: 2px solid transparent; color: #acb5bf; font-size: 11px; white-space: nowrap; }
 .create-selected-tabs span[aria-current] { border-color: var(--create-accent); color: #fff; font-weight: 680; }
 .create-selected-tabs a:hover { color: #fff; }
