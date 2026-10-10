@@ -7,7 +7,8 @@ import { createClient } from "@/lib/supabase/server";
 import { WRITER_SCHEMA_VERSION, validateWriterDocument } from "@/lib/writer/document";
 import { getCreateProjectContext } from "@/lib/create/project";
 import { createProjectModuleRoute } from "@/lib/create/routes";
-import { isIdeationSynthesis } from "@/lib/create/ideation/contract";
+import { isIdeationSynthesis, isRecord } from "@/lib/create/ideation/contract";
+import { isCreateUuid } from "@/lib/create/uuid";
 
 export const metadata: Metadata = {
   title: "Editor · Writer",
@@ -32,11 +33,26 @@ export default async function WriterDocumentPage({ params, searchParams }: { par
     return <WriterCompatibilityError title={result.data.title} rawDocument={result.data.document} />;
   }
   const projectContext = result.data.project_id ? await getCreateProjectContext(supabase, viewer.id, result.data.project_id) : null;
-  const guideRow = result.data.project_id ? await supabase.from("create_ideation_guides").select("synthesis")
+  const guideRow = result.data.project_id ? await supabase.from("create_ideation_guides").select("context,synthesis")
     .eq("owner_id", viewer.id).eq("writer_id", id).eq("project_id", result.data.project_id).maybeSingle() : null;
   const ideationGuide = guideRow?.data && isIdeationSynthesis(guideRow.data.synthesis) ? guideRow.data.synthesis : null;
+  const handoff = guideRow?.data && isRecord(guideRow.data.context) && isRecord(guideRow.data.context.sandboxHandoff)
+    ? guideRow.data.context.sandboxHandoff : null;
+  const selectedIds = handoff && Array.isArray(handoff.selectedIds)
+    ? handoff.selectedIds.filter((value): value is string => typeof value === "string" && isCreateUuid(value)).slice(0, 30) : [];
+  const selectedRows = selectedIds.length && result.data.project_id
+    ? await supabase.from("create_ideation_possibilities").select("id,content,state")
+      .eq("owner_id", viewer.id).eq("project_id", result.data.project_id).in("id", selectedIds) : null;
+  const sandboxHandoff = handoff ? {
+    decisions: selectedIds.map((selectedId) => selectedRows?.data?.find((row) => row.id === selectedId))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row))
+      .map((row) => ({ content: row.content, state: row.state === "canon" ? "canon" as const : "maybe" as const })) ?? [],
+    questions: Array.isArray(handoff.questions) ? handoff.questions.filter((value): value is string => typeof value === "string").slice(0, 12) : [],
+    newDecisions: Array.isArray(handoff.newDecisions) ? handoff.newDecisions.filter((value): value is string => typeof value === "string").slice(0, 8) : [],
+  } : null;
   const projectNavigation = projectContext ? { name: projectContext.name, items: [
     { label: "Overview", href: `/create/projects/${projectContext.id}` },
+    { label: "Sandbox", href: createProjectModuleRoute(projectContext, "sandbox") },
     { label: "Writer", href: createProjectModuleRoute(projectContext, "writer"), active: true },
     { label: "Breakdown", href: createProjectModuleRoute(projectContext, "breakdown") },
     { label: "Shotlist", href: createProjectModuleRoute(projectContext, "shotlist") },
@@ -48,7 +64,8 @@ export default async function WriterDocumentPage({ params, searchParams }: { par
       userId={viewer.id}
       previewNoCredits={process.env.VERCEL_ENV !== "production"}
       ideationGuide={ideationGuide}
-      ideationExploreHref={ideationGuide && result.data.project_id ? `/create/projects/${result.data.project_id}/explore` : null}
+      sandboxHandoff={sandboxHandoff}
+      ideationExploreHref={ideationGuide && result.data.project_id ? `/create/projects/${result.data.project_id}/sandbox` : null}
       projectNavigation={projectNavigation}
       onboarding={onboarding === "new_script" || onboarding === "existing_script" ? onboarding : null}
       script={{

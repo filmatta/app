@@ -13,6 +13,7 @@ const project: CreateProjectContext = {
 
 test("one artifact opens directly with its canonical Project context", () => {
   assert.equal(createProjectModuleRoute(project, "writer"), "/writer/writer-a?project=project-a");
+  assert.equal(createProjectModuleRoute(project, "sandbox"), "/create/projects/project-a/sandbox");
   assert.equal(createProjectModuleRoute(project, "breakdown"), "/writer/writer-a?project=project-a");
   assert.equal(createProjectModuleRoute(project, "shotlist"), "/shotlists/shotlist-a?project=project-a");
   assert.equal(createProjectModuleRoute(project, "storyboard"), "/shotlists/shotlist-a/storyboard?project=project-a");

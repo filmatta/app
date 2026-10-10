@@ -116,7 +116,7 @@ export async function completeIdeationAction(draftId: string, name: string, dest
     if (converted.error) throw new Error("convert_failed");
     await db.from("create_onboarding_states").upsert({ owner_id: user.id, status: "completed", intention: "idea", current_step: destination === "writer" ? "writer_ready" : "explore_ready", project_id: projectId, writer_id: writerId, updated_at: new Date().toISOString() }, { onConflict: "owner_id" });
     revalidatePath("/create");
-    return { ok: true, href: destination === "writer" ? `/writer/${writerId}?project=${projectId}&ideation=1` : `/create/projects/${projectId}/explore` };
+    return { ok: true, href: destination === "writer" ? `/writer/${writerId}?project=${projectId}&ideation=1` : `/create/projects/${projectId}/sandbox` };
   } catch {
     return { ok: false, message: "No pudimos terminar el traspaso. Reintenta: reutilizaremos el Project y Writer existentes." };
   }

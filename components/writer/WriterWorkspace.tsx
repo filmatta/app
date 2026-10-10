@@ -263,6 +263,7 @@ export default function WriterWorkspace({
   onboarding,
   ideationGuide,
   ideationExploreHref,
+  sandboxHandoff,
 }: {
   script: ScriptInput;
   userId: string;
@@ -271,6 +272,7 @@ export default function WriterWorkspace({
   onboarding?: "new_script" | "existing_script" | null;
   ideationGuide?: IdeationSynthesis | null;
   ideationExploreHref?: string | null;
+  sandboxHandoff?: { decisions: { content: string; state: "canon" | "maybe" }[]; questions: string[]; newDecisions: string[] } | null;
 }) {
   const router = useRouter();
   const [onboardingIntroOpen, setOnboardingIntroOpen] = useState(Boolean(onboarding));
@@ -3157,6 +3159,12 @@ export default function WriterWorkspace({
         {ideationGuide && ideationGuideOpen && !focusMode && <aside className="writer-ideation-guide" aria-label="Guía de ideación">
           <header><div><small>IDEATION · GUÍA</small><strong>Hitos para escribir</strong></div><button type="button" onClick={() => setIdeationGuideOpen(false)} aria-label="Ocultar guía">×</button></header>
           <p>Estas sugerencias no forman parte del guion ni aparecen en el PDF. {ideationExploreHref && <Link href={ideationExploreHref}>Ver idea original y posibilidades ↗</Link>}</p>
+          {sandboxHandoff && (sandboxHandoff.decisions.length > 0 || sandboxHandoff.newDecisions.length > 0 || sandboxHandoff.questions.length > 0) &&
+            <section className="writer-sandbox-handoff"><strong>Desde Sandbox</strong>
+              {sandboxHandoff.decisions.map((item, index) => <p key={`${item.content}-${index}`}><small>{item.state.toUpperCase()}</small> {item.content}</p>)}
+              {sandboxHandoff.newDecisions.map((item, index) => <p key={`${item}-${index}`}><small>DECISIÓN</small> {item}</p>)}
+              {sandboxHandoff.questions.map((item, index) => <p key={`${item}-${index}`}><small>PREGUNTA</small> {item}</p>)}
+            </section>}
           <ol>{ideationGuide.cues.map((cue, index) => <li key={`${cue.label}-${index}`}><small>{cue.basis === "suggestion" ? "POSIBILIDAD" : "DE TU IDEA"}</small><strong>{cue.label}</strong>{cue.objective && <p><b>Objetivo:</b> {cue.objective}</p>}{cue.cue && <p><b>Cue:</b> {cue.cue}</p>}{cue.characters.length > 0 && <p><b>Personajes:</b> {cue.characters.join(", ")}</p>}{cue.setup && <p><b>Setup:</b> {cue.setup}</p>}{cue.payoff && <p><b>Payoff:</b> {cue.payoff}</p>}<button type="button" onClick={() => {
             if (!editor) return;
             const created = applyWriterImportedDocument(editor, { type: "doc", content: [createBlock("sceneHeading"), createBlock("action")] }, "append");

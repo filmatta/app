@@ -330,6 +330,10 @@
 .writer-ideation-guide li p { margin: 0; color: var(--writer-muted); font-size: 11px; line-height: 1.45; }
 .writer-ideation-guide li p b { color: var(--writer-chrome-text); }
 .writer-ideation-guide li button { justify-self: start; margin-top: 5px; padding: 7px 9px; font-size: 11px; }
+.writer-sandbox-handoff { display: grid; gap: 8px; margin-top: 14px; padding: 12px 0; border-block: 1px solid var(--writer-border); }
+.writer-sandbox-handoff > strong { font-size: 12px; }
+.writer-sandbox-handoff p { margin: 0; color: var(--writer-muted); font-size: 11px; line-height: 1.5; }
+.writer-sandbox-handoff p small { margin-right: 6px; color: var(--writer-chrome-text); font-size: 10px; letter-spacing: .06em; }
 .writer-editor-notices:empty { display: none; }
 .writer-navigation-back { margin: 6px 12px 0; padding: 6px 10px; width: fit-content; border: 1px solid var(--writer-border); border-radius: 6px; color: var(--writer-muted); background: var(--writer-control-bg); font-size: .66rem; }
 .writer-workspace--timeline { grid-template-rows: 32px 64px minmax(0, 1fr) min(var(--writer-timeline-panel-height), 68dvh); }

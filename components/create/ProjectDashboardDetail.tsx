@@ -24,6 +24,7 @@ type InspectorProps = Pick<DetailProps, "project" | "overview">;
 export default function ProjectDashboardDetail({ project, overview, recentDocuments }: DetailProps) {
   const base = `/create/projects/${project.id}`;
   const sections = [
+    { label: "Sandbox", href: createProjectModuleRoute(project, "sandbox") },
     { label: "Guion", href: createProjectModuleRoute(project, "writer") },
     { label: "Shotlist", href: createProjectModuleRoute(project, "shotlist") },
     { label: "Storyboard", href: createProjectModuleRoute(project, "storyboard") },

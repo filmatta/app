@@ -17,6 +17,7 @@ export default async function CreateProjectNavigation({ projectId, ownerId, acti
     recordCreateEvent(active === "writer" ? "writer_opened" : "storyboard_opened", { userId: ownerId, projectId });
   }
   const modules: { id: CreateModule; label: string }[] = [
+    { id: "sandbox", label: "Sandbox" },
     { id: "writer", label: "Guion" }, { id: "breakdown", label: "Breakdown" },
     { id: "shotlist", label: "Shotlist" }, { id: "storyboard", label: "Storyboard" },
     { id: "production", label: "Producción" }, { id: "documents", label: "Documentos" },

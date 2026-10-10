@@ -6,7 +6,18 @@ type CreateEvent =
   | "shotlist_created"
   | "storyboard_opened"
   | "production_created"
-  | "production_pack_exported";
+  | "production_pack_exported"
+  | "sandbox_opened"
+  | "sandbox_message_sent"
+  | "sandbox_response_received"
+  | "sandbox_possibility_saved"
+  | "sandbox_marked_maybe"
+  | "sandbox_marked_canon"
+  | "sandbox_possibility_discarded"
+  | "sandbox_handoff_started"
+  | "sandbox_handoff_applied"
+  | "sandbox_free_limit_reached"
+  | "sandbox_upgrade_clicked";
 
 type CreateModule = "project" | "writer" | "shotlist" | "storyboard" | "production";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

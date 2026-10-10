@@ -1,0 +1,115 @@
+.sandbox { --sb-line: #292929; --sb-muted: #929292; color: #ededed; min-height: calc(100dvh - 76px); }
+.sandbox * { box-sizing: border-box; }
+.sandbox :focus-visible { outline: 2px solid #e0e0e0; outline-offset: 3px; }
+.sandbox button, .sandbox textarea { font: inherit; }
+.sandbox button { cursor: pointer; }
+.sandbox-heading { display: flex; justify-content: space-between; align-items: end; gap: 20px; padding: 29px 0 22px; border-bottom: 1px solid var(--sb-line); }
+.sandbox-heading h1 { margin: 5px 0 4px; font-size: clamp(30px, 3vw, 43px); line-height: 1.08; letter-spacing: -.045em; }
+.sandbox-heading span { color: var(--sb-muted); font-size: 13px; }
+.sandbox-eyebrow, .sandbox-context small, .sandbox-handoff small { color: #a9a9a9; font-size: 10px; font-weight: 700; letter-spacing: .1em; }
+.sandbox-eyebrow { margin: 0; }
+.sandbox-heading-actions { display: flex; gap: 9px; }
+.sandbox-heading-actions button, .sandbox-composer button, .sandbox-handoff footer button:last-child { min-height: 35px; padding: 0 14px; border: 1px solid #d0d0d0; border-radius: 5px; background: #e8e8e8; color: #111; font-size: 12px; font-weight: 650; }
+.sandbox-heading-actions .sandbox-context-toggle { display: none; border-color: #3a3a3a; background: #171717; color: #eee; }
+.sandbox-heading-actions .sandbox-context-desktop-toggle { border-color: #3a3a3a; background: transparent; color: #b9b9b9; }
+.sandbox-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(255px, 305px); gap: clamp(22px, 3.8vw, 56px); }
+.sandbox-layout.is-collapsed { grid-template-columns: minmax(0, 1fr); }
+.sandbox-layout.is-collapsed .sandbox-context { display: none; }
+.sandbox-conversation { min-width: 0; max-width: 850px; display: flex; flex-direction: column; }
+.sandbox-mode { display: flex; align-items: center; gap: 5px; min-height: 64px; border-bottom: 1px solid var(--sb-line); }
+.sandbox-mode button { padding: 8px 13px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #9f9f9f; font-size: 12px; }
+.sandbox-mode button[aria-pressed="true"] { border-color: #3c3c3c; background: #1b1b1b; color: #f3f3f3; }
+.sandbox-mode span { margin-left: auto; color: #777; font-size: 11px; }
+.sandbox-thread { flex: 1; min-height: 360px; display: flex; flex-direction: column; gap: 30px; padding: 31px 0 55px; }
+.sandbox-brief { max-width: 650px; border-left: 2px solid #8e3c41; padding: 0 0 0 18px; }
+.sandbox-brief small, .sandbox-user-message small, .sandbox-assistant-message small { color: #898989; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.sandbox-brief p { margin: 10px 0 0; color: #d3d3d3; font-size: 14px; line-height: 1.7; }
+.sandbox-entry p { margin: 0 0 11px; color: #a0a0a0; font-size: 12px; }
+.sandbox-entry > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.sandbox-entry button { padding: 8px 12px; border: 1px solid #303030; border-radius: 5px; background: #151515; color: #cacaca; font-size: 11px; }
+.sandbox-entry button:hover, .sandbox-suggestion button:hover, .sandbox-decision-section button:hover { border-color: #777; color: #fff; }
+.sandbox-turn { display: flex; flex-direction: column; gap: 16px; }
+.sandbox-user-message { align-self: flex-end; max-width: min(82%, 610px); padding: 13px 17px; border: 1px solid #303030; border-radius: 9px; background: #191919; }
+.sandbox-user-message p, .sandbox-assistant-message > p { margin: 8px 0 0; white-space: pre-wrap; line-height: 1.62; font-size: 13px; }
+.sandbox-assistant-message { max-width: 700px; padding: 2px 0 4px; }
+.sandbox-assistant-message > p { color: #e0e0e0; }
+.sandbox-notes { margin-top: 18px; padding: 12px 0 0; border-top: 1px solid #282828; }
+.sandbox-notes strong, .sandbox-suggestions > strong { color: #b8b8b8; font-size: 11px; }
+.sandbox-notes ul { margin: 9px 0 0; padding-left: 17px; color: #a9a9a9; font-size: 12px; line-height: 1.6; }
+.sandbox-suggestions { display: grid; gap: 9px; margin-top: 18px; }
+.sandbox-suggestion { padding: 13px 15px; border: 1px solid #292929; border-radius: 6px; background: #111; }
+.sandbox-suggestion p { margin: 0 0 12px; font-size: 12px; line-height: 1.55; }
+.sandbox-suggestion > div, .sandbox-decision-section li > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.sandbox-suggestion button, .sandbox-decision-section button { padding: 6px 9px; border: 1px solid #383838; border-radius: 4px; background: transparent; color: #aaa; font-size: 10px; }
+.sandbox-thinking { color: #999; font-size: 12px; }
+.sandbox-retry { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; color: #c7aaaa; font-size: 12px; }
+.sandbox-retry button { padding: 6px 10px; border: 1px solid #7d5555; border-radius: 4px; background: transparent; color: #f0d0d0; }
+.sandbox-error { color: #f0abab; font-size: 12px; }
+.sandbox-composer { position: sticky; bottom: 0; z-index: 2; padding: 15px 0 22px; border-top: 1px solid var(--sb-line); background: #080808; }
+.sandbox-composer label { display: block; margin-bottom: 8px; color: #bcbcbc; font-size: 11px; }
+.sandbox-composer textarea, .sandbox-handoff textarea { display: block; width: 100%; min-height: 78px; padding: 13px; resize: vertical; border: 1px solid #383838; border-radius: 6px; background: #111; color: #eee; font-size: 13px; line-height: 1.55; }
+.sandbox-composer > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 9px; }
+.sandbox-composer small { color: #777; font-size: 10px; }
+.sandbox-composer button:disabled { opacity: .48; cursor: not-allowed; }
+.sandbox-context { min-width: 0; align-self: start; padding: 22px 0 40px 21px; border-left: 1px solid var(--sb-line); }
+.sandbox-context-head { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+.sandbox-context-head h2 { margin: 5px 0 0; font-size: 18px; }
+.sandbox-context-head button { display: none; border: 0; background: transparent; color: #ddd; font-size: 22px; }
+.sandbox-context section { padding: 18px 0; border-bottom: 1px solid var(--sb-line); }
+.sandbox-context h3 { margin: 0 0 11px; font-size: 12px; }
+.sandbox-context h3 span { color: #777; font-weight: 400; }
+.sandbox-context section > p, .sandbox-context li p { margin: 8px 0 0; color: #a6a6a6; font-size: 11px; line-height: 1.6; }
+.sandbox-context ul { margin: 0; padding-left: 17px; }
+.sandbox-context ul li { margin-bottom: 9px; color: #a6a6a6; font-size: 11px; line-height: 1.5; }
+.sandbox-decision-section ul { padding: 0; list-style: none; }
+.sandbox-decision-section li { margin: 0 0 13px; }
+.sandbox-decision-section li > div { margin-top: 8px; }
+.sandbox-context details { margin-top: 17px; }
+.sandbox-context summary { color: #999; cursor: pointer; font-size: 11px; }
+.sandbox-limit { padding: 20px; border: 1px solid #49403f; border-radius: 7px; background: #171412; }
+.sandbox-limit h2 { margin: 0; font-size: 19px; }
+.sandbox-limit p { color: #bcb3ae; font-size: 12px; line-height: 1.6; }
+.sandbox-limit > div { display: flex; flex-wrap: wrap; gap: 9px; }
+.sandbox-limit a, .sandbox-limit button { padding: 9px 11px; border: 1px solid #56504e; border-radius: 4px; background: #24201d; color: #f2ede9; font-size: 11px; text-decoration: none; }
+.sandbox-context-backdrop { display: none; }
+.sandbox-dialog-backdrop { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 15px; background: #000b; }
+.sandbox-dialog-backdrop > section { width: min(100%, 610px); max-height: 88dvh; overflow: auto; padding: 25px; border: 1px solid #454545; border-radius: 8px; background: #111; color: #eee; }
+.sandbox-dialog-backdrop h2 { margin: 0 0 13px; font-size: 20px; }
+.sandbox-dialog-backdrop p { color: #b1b1b1; font-size: 12px; line-height: 1.6; }
+.sandbox-dialog-backdrop button { padding: 9px 12px; border: 1px solid #4a4a4a; border-radius: 4px; background: #1c1c1c; color: #eee; font-size: 11px; }
+.sandbox-dialog-backdrop > section > div:last-child, .sandbox-handoff footer { display: flex; flex-wrap: wrap; gap: 8px; }
+.sandbox-handoff header { display: flex; justify-content: space-between; align-items: start; gap: 15px; }
+.sandbox-handoff header button { border: 0; background: transparent; font-size: 20px; }
+.sandbox-handoff-list { display: grid; gap: 9px; margin: 20px 0; }
+.sandbox-handoff-list > strong, .sandbox-handoff-new { color: #dadada; font-size: 12px; }
+.sandbox-handoff-list label { display: flex; gap: 10px; align-items: start; padding: 10px; border: 1px solid #303030; border-radius: 5px; }
+.sandbox-handoff-list label span { display: grid; gap: 4px; color: #c7c7c7; font-size: 12px; line-height: 1.5; }
+.sandbox-handoff-list input { margin-top: 3px; accent-color: #ddd; }
+.sandbox-handoff-new textarea { margin-top: 9px; }
+.sandbox-handoff-preview { margin: 20px 0; padding: 15px; border: 1px solid #383838; border-radius: 5px; }
+.sandbox-handoff-preview strong { font-size: 12px; }
+.sandbox-handoff-preview p { margin: 7px 0; }
+.sandbox-handoff-preview small { letter-spacing: 0; font-weight: 400; }
+.sandbox-handoff footer { justify-content: flex-end; }
+@media (max-width: 1100px) { .sandbox-layout { grid-template-columns: minmax(0,1fr) 255px; gap: 25px; } }
+@media (max-width: 840px) {
+  .sandbox-layout { display: block; }
+  .sandbox-layout.is-collapsed .sandbox-context { display: block; }
+  .sandbox-conversation { max-width: none; }
+  .sandbox-heading-actions .sandbox-context-toggle { display: inline-block; }
+  .sandbox-heading-actions .sandbox-context-desktop-toggle { display: none; }
+  .sandbox-context { position: fixed; z-index: 82; inset: auto 0 0; max-height: 85dvh; overflow: auto; padding: 22px 25px 32px; border: 1px solid #444; border-radius: 12px 12px 0 0; background: #101010; transform: translateY(110%); transition: transform .2s ease; }
+  .sandbox-context.is-open { transform: translateY(0); }
+  .sandbox-context-head button { display: inline-block; }
+  .sandbox-context-backdrop { position: fixed; z-index: 81; inset: 0; display: block; border: 0; background: #000a; }
+  .sandbox-thread { min-height: 50dvh; }
+}
+@media (max-width: 500px) {
+  .sandbox-heading { align-items: start; flex-direction: column; padding-top: 20px; }
+  .sandbox-heading-actions { width: 100%; }
+  .sandbox-heading-actions button { flex: 1; }
+  .sandbox-mode span { display: none; }
+  .sandbox-user-message { max-width: 92%; }
+  .sandbox-dialog-backdrop > section { padding: 18px; }
+  .sandbox-composer { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+}

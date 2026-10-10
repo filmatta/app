@@ -1,9 +1,10 @@
 import type { CreateProjectContext } from "./project";
 
-export type CreateModule = "writer" | "breakdown" | "shotlist" | "storyboard" | "production" | "documents";
+export type CreateModule = "sandbox" | "writer" | "breakdown" | "shotlist" | "storyboard" | "production" | "documents";
 
 export function createProjectModuleRoute(project: CreateProjectContext, module: CreateModule) {
   const base = `/create/projects/${project.id}`;
+  if (module === "sandbox") return `${base}/sandbox`;
   if (module === "writer" || module === "breakdown") {
     return project.writers.length === 1 ? `/writer/${project.writers[0].id}?project=${project.id}` : `${base}#writer`;
   }
