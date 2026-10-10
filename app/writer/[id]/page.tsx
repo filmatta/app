@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { WRITER_SCHEMA_VERSION, validateWriterDocument } from "@/lib/writer/document";
 import { getCreateProjectContext } from "@/lib/create/project";
 import { createProjectModuleRoute } from "@/lib/create/routes";
+import { isIdeationSynthesis } from "@/lib/create/ideation/contract";
 
 export const metadata: Metadata = {
   title: "Editor · Writer",
@@ -31,6 +32,9 @@ export default async function WriterDocumentPage({ params, searchParams }: { par
     return <WriterCompatibilityError title={result.data.title} rawDocument={result.data.document} />;
   }
   const projectContext = result.data.project_id ? await getCreateProjectContext(supabase, viewer.id, result.data.project_id) : null;
+  const guideRow = result.data.project_id ? await supabase.from("create_ideation_guides").select("synthesis")
+    .eq("owner_id", viewer.id).eq("writer_id", id).eq("project_id", result.data.project_id).maybeSingle() : null;
+  const ideationGuide = guideRow?.data && isIdeationSynthesis(guideRow.data.synthesis) ? guideRow.data.synthesis : null;
   const projectNavigation = projectContext ? { name: projectContext.name, items: [
     { label: "Overview", href: `/create/projects/${projectContext.id}` },
     { label: "Writer", href: createProjectModuleRoute(projectContext, "writer"), active: true },
@@ -43,6 +47,8 @@ export default async function WriterDocumentPage({ params, searchParams }: { par
   return <WriterWorkspace
       userId={viewer.id}
       previewNoCredits={process.env.VERCEL_ENV !== "production"}
+      ideationGuide={ideationGuide}
+      ideationExploreHref={ideationGuide && result.data.project_id ? `/create/projects/${result.data.project_id}/explore` : null}
       projectNavigation={projectNavigation}
       onboarding={onboarding === "new_script" || onboarding === "existing_script" ? onboarding : null}
       script={{

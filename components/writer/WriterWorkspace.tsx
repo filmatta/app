@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   WRITER_SCHEMA_VERSION,
+  createBlock,
   blockText,
   canonicalWriterDocument,
   countDocumentWords,
@@ -20,6 +21,7 @@ import {
   type WriterDocument,
   type WriterSnapshot,
 } from "@/lib/writer/document";
+import type { IdeationSynthesis } from "@/lib/create/ideation/contract";
 import {
   parseAssistedImportAnalysisStatus,
   writerImportCompletionMessage,
@@ -259,15 +261,20 @@ export default function WriterWorkspace({
   previewNoCredits,
   projectNavigation,
   onboarding,
+  ideationGuide,
+  ideationExploreHref,
 }: {
   script: ScriptInput;
   userId: string;
   previewNoCredits: boolean;
   projectNavigation?: { name: string; items: { label: string; href: string; active?: boolean }[] };
   onboarding?: "new_script" | "existing_script" | null;
+  ideationGuide?: IdeationSynthesis | null;
+  ideationExploreHref?: string | null;
 }) {
   const router = useRouter();
   const [onboardingIntroOpen, setOnboardingIntroOpen] = useState(Boolean(onboarding));
+  const [ideationGuideOpen, setIdeationGuideOpen] = useState(Boolean(ideationGuide));
   const [title, setTitle] = useState(script.title);
   const titleRef = useRef(script.title);
   const [document, setDocument] = useState(script.document);
@@ -3142,10 +3149,20 @@ export default function WriterWorkspace({
           }}
         />
         <div className="writer-editor-notices">
+          {ideationGuide && !focusMode && <button className="writer-ideation-open" type="button" onClick={() => setIdeationGuideOpen((value) => !value)}>{ideationGuideOpen ? "Ocultar guía" : "Ver guía de idea"}</button>}
           {!focusMode && shotlistReturnPath && <Link className="writer-navigation-back" href={shotlistReturnPath}>← Volver a Shotlist</Link>}
           {!focusMode && navigationDepth > 0 && <button className="writer-navigation-back" type="button" onClick={navigateBack}>← Volver</button>}
           {feedback && <div className="writer-editor-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback(null)}>Cerrar</button></div>}
         </div>
+        {ideationGuide && ideationGuideOpen && !focusMode && <aside className="writer-ideation-guide" aria-label="Guía de ideación">
+          <header><div><small>IDEATION · GUÍA</small><strong>Hitos para escribir</strong></div><button type="button" onClick={() => setIdeationGuideOpen(false)} aria-label="Ocultar guía">×</button></header>
+          <p>Estas sugerencias no forman parte del guion ni aparecen en el PDF. {ideationExploreHref && <Link href={ideationExploreHref}>Ver idea original y posibilidades ↗</Link>}</p>
+          <ol>{ideationGuide.cues.map((cue, index) => <li key={`${cue.label}-${index}`}><small>{cue.basis === "suggestion" ? "POSIBILIDAD" : "DE TU IDEA"}</small><strong>{cue.label}</strong>{cue.objective && <p><b>Objetivo:</b> {cue.objective}</p>}{cue.cue && <p><b>Cue:</b> {cue.cue}</p>}{cue.characters.length > 0 && <p><b>Personajes:</b> {cue.characters.join(", ")}</p>}{cue.setup && <p><b>Setup:</b> {cue.setup}</p>}{cue.payoff && <p><b>Payoff:</b> {cue.payoff}</p>}<button type="button" onClick={() => {
+            if (!editor) return;
+            const created = applyWriterImportedDocument(editor, { type: "doc", content: [createBlock("sceneHeading"), createBlock("action")] }, "append");
+            if (created.applied) { setFeedback("Escena vacía creada. Escribe el encabezado y el contenido con tus palabras."); setIdeationGuideOpen(false); }
+          }}>Crear escena vacía</button></li>)}</ol>
+        </aside>}
         <div
           ref={paperRef}
           className="writer-paper"

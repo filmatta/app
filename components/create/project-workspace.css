@@ -68,6 +68,21 @@
 .create-idea-step > small { color: #7f878d; font-size: 10px; line-height: 1.45; }
 .create-prepare-now { justify-self: start; border: 0; color: #b9cddd; background: transparent; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
 .create-idea-saved button { justify-self: start; min-height: 40px; padding: 0 14px; border: 1px solid #6f899e; border-radius: 5px; color: #081117; background: #9bb6cd; font-weight: 700; }
+.create-project-dialog.is-review { width: min(94vw, 820px); max-height: 94dvh; }
+.create-ideation-review { display: grid; gap: 18px; padding: 22px 26px 26px; }
+.create-ideation-review > p { margin: 0; color: #b4b4b4; font-size: 12px; line-height: 1.5; }
+.create-ideation-review > small { color: #929292; font-size: 11px; }
+.create-ideation-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+.create-ideation-sections label { display: grid; gap: 7px; min-width: 0; }
+.create-ideation-sections label > span { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: #eee; font-size: 12px; font-weight: 650; }
+.create-ideation-sections small { color: #9b9b9b; font-size: 10px; font-weight: 400; }
+.create-ideation-sections textarea { width: 100%; min-height: 76px; resize: vertical; border: 1px solid #3d3d3d; border-radius: 5px; padding: 10px; color: #efefef; background: #0b0b0b; font: inherit; font-size: 12px; line-height: 1.5; }
+.create-ideation-branches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.create-ideation-branches button { display: grid; gap: 5px; padding: 15px; border: 1px solid #464646; border-radius: 6px; color: #eee; background: #171717; text-align: left; cursor: pointer; }
+.create-ideation-branches button:hover { border-color: #a4a4a4; background: #202020; }
+.create-ideation-branches strong { font-size: 13px; }
+.create-ideation-branches span { color: #aaa; font-size: 11px; line-height: 1.4; }
+@media (max-width: 620px) { .create-ideation-sections, .create-ideation-branches { grid-template-columns: 1fr; } .create-ideation-review { padding: 18px; } }
 .create-name-step { display: grid; gap: 11px; padding: 22px 26px 26px; }
 .create-name-step > p:first-child { color: #999; margin: 0 0 8px; font-size: 12px; }
 .create-name-step > p:first-child strong { color: #eee; }

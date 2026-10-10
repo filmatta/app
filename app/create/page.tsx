@@ -11,6 +11,7 @@ import "@/components/create/project-workspace.css";
 
 export const metadata: Metadata = { title: "Create · Projects", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export default async function CreatePage({ searchParams }: {
   searchParams: Promise<{ project?: string; q?: string; sort?: string }>;
