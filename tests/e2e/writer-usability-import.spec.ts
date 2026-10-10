@@ -189,15 +189,15 @@ test("paste import requires review, updates the open canonical document, and exp
   await page.getByRole("button", { name: "Más acciones de Writer" }).click();
   await page.getByRole("dialog", { name: "Más acciones de Writer" }).getByRole("button", { name: "Importar guion" }).click();
   await dialog.getByRole("tab", { name: "Archivo TXT, FDX o DOCX" }).click();
-  const fileInput = dialog.getByLabel("Selecciona un archivo");
+  const fileInput = dialog.locator('input[type="file"]');
   await fileInput.setInputFiles({
     name: "sintetico.fdx",
     mimeType: "application/xml",
     buffer: Buffer.from(`<?xml version="1.0"?><FinalDraft><Content><Paragraph Type="Scene Heading"><Text>INT. CAFÉ - DÍA</Text></Paragraph><Paragraph Type="Character"><Text>ÁNGELA</Text></Paragraph><Paragraph Type="Dialogue"><Text>¿Qué ocurrió?</Text></Paragraph></Content></FinalDraft>`),
   });
-  await expect(dialog.getByText("Preparado:")).toBeVisible();
+  await expect(dialog.getByText("Archivo listo")).toBeVisible();
   await expect(dialog.getByText("ÁNGELA", { exact: true })).toBeHidden();
-  await dialog.getByRole("button", { name: "Revisar importación" }).click();
+  await dialog.getByRole("button", { name: "Importar y organizar" }).click();
   await expect(dialog.getByText("ÁNGELA", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Volver al origen" }).click();
   await fileInput.setInputFiles({
@@ -206,7 +206,7 @@ test("paste import requires review, updates the open canonical document, and exp
     buffer: Buffer.from("EXT. CALLE - NOCHE\n\nESPERANZA\nSeguimos aquí."),
   });
   await expect(dialog.getByText("ESPERANZA", { exact: true })).toBeHidden();
-  await dialog.getByRole("button", { name: "Revisar importación" }).click();
+  await dialog.getByRole("button", { name: "Importar y organizar" }).click();
   await expect(dialog.getByText("ESPERANZA", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Volver al origen" }).click();
   await dialog.getByRole("tab", { name: "Texto pegado" }).click();
@@ -221,11 +221,10 @@ No podemos esperar más.
 CORTE A:
 
 MISTERIO`);
-  await dialog.getByRole("button", { name: "Revisar importación" }).click();
-  await expect(dialog.getByRole("button", { name: /Revisar \(1\)/ })).toBeVisible();
+  await dialog.getByRole("button", { name: "Importar y organizar" }).click();
+  await expect(dialog.getByRole("button", { name: /Revisar dudas \(1\)/ })).toBeVisible();
   await expect(dialog.getByText("MISTERIO", { exact: true })).toBeVisible();
-  const characterSummary = dialog.locator(".writer-import-summary button").filter({ hasText: "Personaje — encabezado de diálogo" });
-  await expect(characterSummary.getByText("1", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "1 Personajes" })).toBeVisible();
   await expect(dialog.getByText("Este guion ya tiene contenido. La importación se anexará", { exact: false })).toBeVisible();
   await expect(originalEditor).toContainText("ANA observa la VENTANA.");
 
@@ -238,9 +237,9 @@ MISTERIO`);
     expect(cardBox!.x + cardBox!.width).toBeLessThanOrEqual(viewport.width);
   }
   const unresolvedCard = dialog.locator(".writer-import-list article").filter({ hasText: "MISTERIO" });
-  await unresolvedCard.getByLabel("Tipo").selectOption("action");
-  await expect(dialog.getByRole("button", { name: "Revisar (0)" })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Importar tal cual" }).click();
+  await unresolvedCard.getByLabel("Resolver grupo").selectOption("action");
+  await expect(dialog.getByRole("button", { name: "Revisar dudas (0)" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Importar y organizar" }).click();
   await expect(page).toHaveURL(new RegExp(`/writer/${scriptId}$`));
   expect((await (await page.request.get("http://127.0.0.1:54329/__writer_state")).json()).creates).toBe(0);
   const editor = page.getByLabel("Editor de guion");
