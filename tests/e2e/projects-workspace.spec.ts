@@ -31,28 +31,35 @@ function projectRow(list: Locator, name: string) {
   return list.getByRole("row", { name: `Seleccionar ${name}` });
 }
 
-test("empty account creates each entry type without auto-opening a module", async ({ page, context }) => {
+test("empty account offers guided script creation without auto-opening a module", async ({ page, context }) => {
   await session(context);
-  for (const [label, code] of [["Guion", "writer"], ["Shotlist", "shotlist"], ["Storyboard", "storyboard"], ["Producción", "production"]] as const) {
+  for (const [label, code, intention] of [["Quiero escribir un guion nuevo", "new-script", "new_script"], ["Ya tengo un guion o borrador", "existing-script", "existing_script"]] as const) {
     await scenario(page, "workspace-empty");
     await page.goto("/create");
     await expect(page.getByRole("heading", { name: "Tus proyectos", exact: true })).toBeVisible();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page.getByRole("button", { name: "Crear proyecto" }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await page.getByRole("dialog").getByRole("button", { name: new RegExp(`^${label}\\b`) }).click();
+    const selector = page.locator("dialog.create-project-dialog");
+    await expect(selector).toBeVisible();
+    await selector.getByRole("button", { name: new RegExp(`^${label}`) }).click();
+    await page.getByRole("dialog", { name: "Crear tu proyecto" }).getByRole("button", { name: "Crear mi primer proyecto" }).click();
     await expect(page.getByRole("heading", { name: "Ponle nombre a tu proyecto" })).toBeVisible();
-    await expect(page.getByRole("dialog")).toContainText(`Comenzar con: ${label}`);
     await page.getByLabel("Nombre del proyecto").fill(`QA ${code}`);
-    await page.getByRole("dialog").getByRole("button", { name: "Crear proyecto" }).click();
-    await expect(page).toHaveURL(/\/create$/);
-    await expect(page.getByRole("link", { name: `Abrir QA ${code}` })).toBeVisible();
-    await expect(projectRow(page.getByRole("table", { name: "Tus proyectos" }), `QA ${code}`)).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator(".create-selected-project").getByRole("heading", { name: `QA ${code}` })).toBeVisible();
-    await expect(page.locator(".create-dashboard-inspector-desktop").getByRole("region", { name: "Detalles del proyecto" }).getByText(`QA ${code}`, { exact: true })).toBeVisible();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await selector.getByRole("button", { name: "Crear proyecto" }).click();
+    await expect(page).toHaveURL(new RegExp(`/create/projects/33333333-3333-4333-8333-333333333333\\?onboarding=${intention}$`));
     await expect(page.locator("a[href^='/writer/']")).toHaveCount(0);
   }
+});
+
+test("first-run Explore closes the selector and Create project opens it again", async ({ page, context }) => {
+  await session(context);
+  await scenario(page, "workspace-empty");
+  await page.goto("/create");
+  const selector = page.locator("dialog.create-project-dialog");
+  await expect(selector).toBeVisible();
+  await selector.getByRole("button", { name: "Explorar por mi cuenta" }).click();
+  await expect(selector).not.toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tus proyectos", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Crear proyecto" }).click();
+  await expect(selector.getByRole("heading", { name: "¿Dónde estás con tu proyecto?" })).toBeVisible();
 });
 
 test("Project navigation exposes Documents and unavailable Pack at desktop and mobile sizes", async ({ page, context }, testInfo) => {
@@ -203,7 +210,7 @@ test("only explicit module tabs navigate away from the selected dashboard Projec
     ["Guion", new RegExp(`/writer/66666666-6666-4666-8666-666666666667\\?project=${multipleProjects.spot}$`)],
     ["Shotlist", new RegExp(`/shotlists/77777777-7777-4777-8777-777777777778\\?project=${multipleProjects.spot}$`)],
     ["Storyboard", new RegExp(`/shotlists/77777777-7777-4777-8777-777777777778/storyboard\\?project=${multipleProjects.spot}$`)],
-    ["Producción", new RegExp(`/production\\?project=${multipleProjects.spot}$`)],
+    ["Producción", new RegExp(`/production/88888888-8888-4888-8888-888888888889\\?project=${multipleProjects.spot}$`)],
     ["Documentos", new RegExp(`/create/projects/${multipleProjects.spot}/documents$`)],
   ] as const;
 

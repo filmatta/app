@@ -155,7 +155,7 @@ export default function CreateProjectForm({ ownerId, autoOpen, hasProjects, init
     } catch { setError("No pudimos iniciar la idea. Reintenta: mantendremos el mismo borrador."); }
     finally { setBusy(false); }
   }
-  async function dismissGuided() { await saveCreateOnboardingAction({ status: "skipped", currentStep: "dashboard" }); setGuided(null); trigger.current?.focus(); }
+  async function dismissGuided() { await saveCreateOnboardingAction({ status: "skipped", currentStep: "dashboard" }); setGuided(null); close(); }
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (busy || !intention) return;
     setBusy(true); setError(null); operationId.current ??= crypto.randomUUID();
