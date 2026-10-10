@@ -68,7 +68,9 @@ test("Sandbox migration, quota, retry, decisions, handoff and owner isolation", 
     await assert.rejects(reserve(projectA, first.sessionId, turnA, "Otra historia"));
     assert.equal((await quota()).used, 0);
     assert.equal((await db.query("select public.sandbox_fail_turn_v1($1,$2) as result", [turnA,"provider"])).rows[0].result, true);
-    assert.equal((await reserve(projectA, first.sessionId, turnA, "Una historia de memoria prestada")).status, "reserved");
+    const retry = await reserve(projectA, null, turnA, "Una historia de memoria prestada");
+    assert.equal(retry.status, "reserved");
+    assert.equal(retry.sessionId, first.sessionId);
     const reply = { assistant_message: "Podemos abrir tres caminos.",
       possibilities: [{ title: "La memoria es ajena", content: "Cada día recuerda a otra persona.", conflicts_with_canon_id: null }],
       questions: ["¿Quién conserva la identidad?"], contradictions: [], signals: [], session_summary: "La memoria sigue abierta." };
