@@ -9,11 +9,15 @@ alter table public.create_idea_drafts
   add column prepare_project_name text,
   add column project_id uuid references public.projects(id) on delete set null,
   add column writer_id uuid references public.writer_scripts(id) on delete set null,
-  add column archived_at timestamptz;
+  add column archived_at timestamptz,
+  add column status text not null default 'active';
 
 drop index public.create_idea_drafts_one_active_per_owner;
-create unique index create_idea_drafts_one_active_per_owner on public.create_idea_drafts(owner_id) where archived_at is null;
-create index create_idea_drafts_archive_owner_idx on public.create_idea_drafts(owner_id, archived_at desc) where archived_at is not null;
+create unique index create_idea_drafts_one_active_per_owner on public.create_idea_drafts(owner_id) where status = 'active';
+create index create_idea_drafts_recent_owner_idx on public.create_idea_drafts(owner_id, updated_at desc);
+alter table public.create_idea_drafts add constraint create_idea_drafts_status_check check (status in ('active','archived','converted'));
+revoke delete on public.create_idea_drafts from authenticated;
+drop policy if exists create_idea_drafts_owner_delete on public.create_idea_drafts;
 
 alter table public.create_idea_drafts drop constraint create_idea_drafts_step_check;
 alter table public.create_idea_drafts add constraint create_idea_drafts_step_check
@@ -44,6 +48,55 @@ create policy create_idea_drafts_owner_update on public.create_idea_drafts for u
   ))
 );
 
+create function public.create_idea_draft_lock_conversion_v1() returns trigger language plpgsql set search_path = '' as $$
+begin
+  if old.status = 'converted' and new.status <> 'converted' then raise exception 'DRAFT_ALREADY_CONVERTED'; end if;
+  if old.project_id is not null and new.project_id is not null and old.project_id <> new.project_id then raise exception 'DRAFT_PROJECT_LOCKED'; end if;
+  if old.status = 'converted' and old.project_id is null and new.project_id is not null then raise exception 'DRAFT_PROJECT_LOCKED'; end if;
+  return new;
+end;
+$$;
+create trigger create_idea_draft_lock_conversion before update on public.create_idea_drafts
+  for each row execute function public.create_idea_draft_lock_conversion_v1();
+
+create or replace function public.create_start_idea_draft_v1(p_draft_id uuid)
+returns uuid language plpgsql security definer set search_path = '' as $$
+declare actor uuid := auth.uid(); existing_owner uuid; existing_status text;
+begin
+  if actor is null or p_draft_id is null then raise exception 'UNAUTHORIZED'; end if;
+  perform pg_advisory_xact_lock(hashtextextended(actor::text, 0));
+  select owner_id, status into existing_owner, existing_status from public.create_idea_drafts where id = p_draft_id;
+  if found then
+    if existing_owner <> actor or existing_status <> 'active' then raise exception 'DRAFT_UNAVAILABLE'; end if;
+    return p_draft_id;
+  end if;
+  update public.create_idea_drafts set status = 'archived', archived_at = now(), updated_at = now()
+    where owner_id = actor and status = 'active';
+  insert into public.create_idea_drafts(id, owner_id, status) values (p_draft_id, actor, 'active');
+  return p_draft_id;
+end;
+$$;
+revoke all on function public.create_start_idea_draft_v1(uuid) from public, anon;
+grant execute on function public.create_start_idea_draft_v1(uuid) to authenticated;
+
+create or replace function public.create_activate_idea_draft_v1(p_draft_id uuid)
+returns uuid language plpgsql security definer set search_path = '' as $$
+declare actor uuid := auth.uid(); draft_status text;
+begin
+  if actor is null or p_draft_id is null then raise exception 'UNAUTHORIZED'; end if;
+  perform pg_advisory_xact_lock(hashtextextended(actor::text, 0));
+  select status into draft_status from public.create_idea_drafts where id = p_draft_id and owner_id = actor;
+  if not found or draft_status = 'converted' then raise exception 'DRAFT_UNAVAILABLE'; end if;
+  update public.create_idea_drafts set status = 'archived', archived_at = now(), updated_at = now()
+    where owner_id = actor and status = 'active' and id <> p_draft_id;
+  update public.create_idea_drafts set status = 'active', archived_at = null, updated_at = now()
+    where id = p_draft_id and owner_id = actor;
+  return p_draft_id;
+end;
+$$;
+revoke all on function public.create_activate_idea_draft_v1(uuid) from public, anon;
+grant execute on function public.create_activate_idea_draft_v1(uuid) to authenticated;
+
 create table public.create_ideation_guides (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -58,6 +111,7 @@ create table public.create_ideation_guides (
   constraint create_ideation_guides_synthesis_object check (jsonb_typeof(synthesis) = 'object'),
   constraint create_ideation_guides_one_per_project unique (project_id)
 );
+create unique index create_ideation_guides_one_per_draft on public.create_ideation_guides(source_draft_id) where source_draft_id is not null;
 
 create index create_ideation_guides_owner_idx on public.create_ideation_guides(owner_id);
 create index create_ideation_guides_writer_idx on public.create_ideation_guides(writer_id) where writer_id is not null;

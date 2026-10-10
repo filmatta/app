@@ -37,6 +37,7 @@ export async function saveCreateOnboardingAction(input: {
 }
 
 export async function saveCreateIdeaDraftAction(input: {
+  draftId: string;
   idea: string;
   answers: Record<string, string>;
   currentQuestionId: string | null;
@@ -45,30 +46,30 @@ export async function saveCreateIdeaDraftAction(input: {
   const db = await createClient();
   const auth = await db.auth.getUser();
   if (auth.error || !auth.data.user) return { ok: false, message: "Inicia sesión para guardar tu idea." };
-  if (input.idea.length > 10000 || !["capture", "detail", "ready"].includes(input.currentStep) || input.currentQuestionId && input.currentQuestionId.length > 80) return { ok: false, message: "Revisa el contenido del borrador." };
+  if (!isCreateUuid(input.draftId) || input.idea.length > 10000 || !["capture", "detail", "ready"].includes(input.currentStep) || input.currentQuestionId && input.currentQuestionId.length > 80) return { ok: false, message: "Revisa el contenido del borrador." };
   const answers = Object.fromEntries(Object.entries(input.answers).filter(([key, value]) => key.length <= 80 && typeof value === "string" && value.length <= 10000));
   const updatedAt = new Date().toISOString();
-  const current = await db.from("create_idea_drafts").select("id").eq("owner_id", auth.data.user.id).is("archived_at", null).maybeSingle();
-  if (current.error) return { ok: false, message: "No pudimos sincronizar el borrador." };
-  const payload = { owner_id: auth.data.user.id, idea: input.idea, answers, current_question_id: input.currentQuestionId, current_step: input.currentStep, updated_at: updatedAt };
-  const saved = current.data
-    ? await db.from("create_idea_drafts").update(payload).eq("id", current.data.id).eq("owner_id", auth.data.user.id).is("archived_at", null).select("id").single()
-    : await db.from("create_idea_drafts").insert(payload).select("id").single();
+  const payload = { idea: input.idea, answers, current_question_id: input.currentQuestionId, current_step: input.currentStep, updated_at: updatedAt };
+  const saved = await db.from("create_idea_drafts").update(payload).eq("id", input.draftId).eq("owner_id", auth.data.user.id).eq("status", "active").select("id").maybeSingle();
   return saved.error || !saved.data ? { ok: false, message: "No pudimos sincronizar el borrador." } : { ok: true, id: saved.data.id, updatedAt };
 }
 
-export async function archiveCompletedIdeaDraftAction(): Promise<{ ok: true } | { ok: false; message: string }> {
+export async function startCreateIdeaDraftAction(draftId: string): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
   const db = await createClient();
   const auth = await db.auth.getUser();
   if (auth.error || !auth.data.user) return { ok: false, message: "Inicia sesión para empezar otra idea." };
-  const draft = await db.from("create_idea_drafts").select("id,project_id").eq("owner_id", auth.data.user.id).is("archived_at", null).maybeSingle();
-  if (draft.error) return { ok: false, message: "No pudimos iniciar otra idea." };
-  if (!draft.data) return { ok: true };
-  if (!draft.data.project_id) return { ok: false, message: "Termina o recupera tu borrador antes de empezar otra idea." };
-  const guide = await db.from("create_ideation_guides").select("id").eq("project_id", draft.data.project_id).eq("owner_id", auth.data.user.id).maybeSingle();
-  if (guide.error || !guide.data) return { ok: false, message: "No pudimos confirmar que tu idea anterior esté guardada en su Project." };
-  const archived = await db.from("create_idea_drafts").update({ archived_at: new Date().toISOString() }).eq("id", draft.data.id).eq("owner_id", auth.data.user.id).is("archived_at", null).select("id").maybeSingle();
-  return archived.error || !archived.data ? { ok: false, message: "No pudimos iniciar otra idea." } : { ok: true };
+  if (!isCreateUuid(draftId)) return { ok: false, message: "Identificador de idea inválido." };
+  const result = await db.rpc("create_start_idea_draft_v1", { p_draft_id: draftId });
+  return result.error || result.data !== draftId ? { ok: false, message: "No pudimos iniciar otra idea. Reintenta; conservaremos el mismo borrador." } : { ok: true, id: draftId };
+}
+
+export async function continueCreateIdeaDraftAction(draftId: string): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  const db = await createClient();
+  const auth = await db.auth.getUser();
+  if (auth.error || !auth.data.user) return { ok: false, message: "Inicia sesión para continuar tu idea." };
+  if (!isCreateUuid(draftId)) return { ok: false, message: "Identificador de idea inválido." };
+  const result = await db.rpc("create_activate_idea_draft_v1", { p_draft_id: draftId });
+  return result.error || result.data !== draftId ? { ok: false, message: "No pudimos recuperar esta idea." } : { ok: true, id: draftId };
 }
 
 export async function createProjectAction(name: string, entryModule: string, operationId: string): Promise<

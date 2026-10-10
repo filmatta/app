@@ -20,7 +20,7 @@ type DashboardSelection = {
   recentDocuments: RecentProjectDocument[];
 };
 
-export default function ProjectDashboard({ projects, selectedProjectId: initialProjectId, initialSearch, initialSort, initialSelection, ownerId, onboardingState, ideaDraft, autoOpenOnboarding }: {
+export default function ProjectDashboard({ projects, selectedProjectId: initialProjectId, initialSearch, initialSort, initialSelection, ownerId, onboardingState, ideaDraft, ideaDrafts, autoOpenOnboarding }: {
   projects: CreateProjectListItem[];
   selectedProjectId: string | null;
   initialSearch: string;
@@ -29,6 +29,7 @@ export default function ProjectDashboard({ projects, selectedProjectId: initialP
   ownerId: string;
   onboardingState: CreateOnboardingState | null;
   ideaDraft: CreateIdeaDraft | null;
+  ideaDrafts: CreateIdeaDraft[];
   autoOpenOnboarding: boolean;
 }) {
   const [search, setSearch] = useState(initialSearch);
@@ -125,7 +126,7 @@ export default function ProjectDashboard({ projects, selectedProjectId: initialP
             <label className="create-project-search"><span className="sr-only">Buscar proyectos</span><span aria-hidden="true">⌕</span><input type="search" placeholder="Buscar proyectos" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
             <label className="create-project-sort"><span className="sr-only">Ordenar proyectos</span><select value={sort} onChange={(event) => setSort(event.target.value as "recent" | "name")}><option value="recent">Más recientes</option><option value="name">Nombre</option></select></label>
           </>}
-          <CreateProjectForm ownerId={ownerId} autoOpen={autoOpenOnboarding} hasProjects={projects.length > 0} initialState={onboardingState} initialDraft={ideaDraft} />
+          <CreateProjectForm ownerId={ownerId} autoOpen={autoOpenOnboarding} hasProjects={projects.length > 0} initialState={onboardingState} initialDraft={ideaDraft} initialDrafts={ideaDrafts} />
         </div>
       </header>
       {projects.length === 0 ? <main className="create-dashboard-empty" aria-label="Crear tu primer proyecto">
