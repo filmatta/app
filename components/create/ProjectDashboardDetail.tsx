@@ -35,7 +35,7 @@ export default function ProjectDashboardDetail({ project, overview, recentDocume
       label: "Guion", icon: "▤", href: createProjectModuleRoute(project, "writer"),
       value: overview.scriptScenes === null ? "Sin guion" : `${overview.scriptScenes} ${overview.scriptScenes === 1 ? "escena" : "escenas"}`,
       detail: overview.scriptUpdatedAt ? `Editado ${formatDate(overview.scriptUpdatedAt)}` : "Fuente pendiente",
-      current: null, total: null,
+      current: null, total: null, action: project.writers.length ? "Ver guion" : "Crear guion",
     },
     {
       label: "Shotlist", icon: "☷", href: createProjectModuleRoute(project, "shotlist"),
@@ -43,13 +43,13 @@ export default function ProjectDashboardDetail({ project, overview, recentDocume
         ? "Guion pendiente"
         : `${overview.coveredScenes ?? 0} de ${overview.totalScenes} ${overview.totalScenes === 1 ? "escena" : "escenas"}`,
       detail: "Escenas con al menos un plano",
-      current: overview.coveredScenes, total: overview.totalScenes,
+      current: overview.coveredScenes, total: overview.totalScenes, action: project.shotlists.length ? "Ver Shotlist" : project.writers.length ? "Crear Shotlist" : "Crear guion",
     },
     {
       label: "Storyboard", icon: "▧", href: createProjectModuleRoute(project, "storyboard"),
       value: overview.totalShots === null ? "Sin planos" : `${overview.visualizedShots ?? 0} de ${overview.totalShots} ${overview.totalShots === 1 ? "plano" : "planos"}`,
       detail: "Planos con panel visual",
-      current: overview.visualizedShots, total: overview.totalShots,
+      current: overview.visualizedShots, total: overview.totalShots, action: project.storyboards.some((item) => item.panelCount) ? "Ver Storyboard" : project.shotlists.length ? "Crear Storyboard" : "Crear Shotlist",
     },
     {
       label: "Producción", icon: "▦", href: createProjectModuleRoute(project, "production"),
@@ -58,7 +58,7 @@ export default function ProjectDashboardDetail({ project, overview, recentDocume
         : `${overview.productionDays} ${overview.productionDays === 1 ? "jornada" : "jornadas"}`,
       detail: project.productions.length === 0 ? "Plan de rodaje pendiente" : "Planos programados",
       current: project.productions.length ? overview.scheduledShots : null,
-      total: overview.totalShots,
+      total: overview.totalShots, action: project.productions.length ? "Ver producción" : project.shotlists.length ? "Crear producción" : "Preparar fuentes",
     },
   ];
 
@@ -101,7 +101,7 @@ export default function ProjectDashboardDetail({ project, overview, recentDocume
           <strong>{metric.value}</strong>
           {metric.current !== null && metric.total !== null && metric.total > 0 && <progress value={metric.current} max={metric.total} aria-label={`${metric.label}: ${metric.current} de ${metric.total}`} />}
           <small>{metric.detail}</small>
-          <span className="create-selected-metric-action">Abrir <span aria-hidden="true">→</span></span>
+          <span className="create-selected-metric-action">{metric.action} <span aria-hidden="true">→</span></span>
         </Link>)}
       </div>
     </section>

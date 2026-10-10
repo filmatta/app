@@ -17,5 +17,5 @@ export function createProjectModuleRoute(project: CreateProjectContext, module: 
       ? `/shotlists/${available[0].id}/storyboard?project=${project.id}` : `${base}#storyboards`;
   }
   if (module === "documents") return `${base}/documents`;
-  return `/production?project=${project.id}`;
+  return project.productions.length === 1 ? `/production/${project.productions[0].id}?project=${project.id}` : `/production?project=${project.id}`;
 }

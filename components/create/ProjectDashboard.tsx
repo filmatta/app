@@ -8,6 +8,7 @@ import type { CreateProjectOverview } from "@/lib/create/overview";
 import type { RecentProjectDocument } from "@/lib/create/recent-documents";
 import CreateProjectForm from "./CreateProjectForm";
 import ProjectDashboardDetail, { ProjectDashboardInspector } from "./ProjectDashboardDetail";
+import type { CreateIdeaDraft, CreateOnboardingState } from "@/lib/create/onboarding";
 
 const moduleLabels: Record<CreateEntryModule, string> = {
   writer: "Guion", shotlist: "Shotlist", storyboard: "Storyboard", production: "Producción",
@@ -19,12 +20,17 @@ type DashboardSelection = {
   recentDocuments: RecentProjectDocument[];
 };
 
-export default function ProjectDashboard({ projects, selectedProjectId: initialProjectId, initialSearch, initialSort, initialSelection }: {
+export default function ProjectDashboard({ projects, selectedProjectId: initialProjectId, initialSearch, initialSort, initialSelection, ownerId, onboardingState, ideaDraft, ideaDrafts, autoOpenOnboarding }: {
   projects: CreateProjectListItem[];
   selectedProjectId: string | null;
   initialSearch: string;
   initialSort: "recent" | "name";
   initialSelection: DashboardSelection | null;
+  ownerId: string;
+  onboardingState: CreateOnboardingState | null;
+  ideaDraft: CreateIdeaDraft | null;
+  ideaDrafts: CreateIdeaDraft[];
+  autoOpenOnboarding: boolean;
 }) {
   const [search, setSearch] = useState(initialSearch);
   const [sort, setSort] = useState<"recent" | "name">(initialSort);
@@ -120,7 +126,7 @@ export default function ProjectDashboard({ projects, selectedProjectId: initialP
             <label className="create-project-search"><span className="sr-only">Buscar proyectos</span><span aria-hidden="true">⌕</span><input type="search" placeholder="Buscar proyectos" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
             <label className="create-project-sort"><span className="sr-only">Ordenar proyectos</span><select value={sort} onChange={(event) => setSort(event.target.value as "recent" | "name")}><option value="recent">Más recientes</option><option value="name">Nombre</option></select></label>
           </>}
-          <CreateProjectForm />
+          <CreateProjectForm ownerId={ownerId} autoOpen={autoOpenOnboarding} hasProjects={projects.length > 0} initialState={onboardingState} initialDraft={ideaDraft} initialDrafts={ideaDrafts} />
         </div>
       </header>
       {projects.length === 0 ? <main className="create-dashboard-empty" aria-label="Crear tu primer proyecto">

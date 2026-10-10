@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   WRITER_SCHEMA_VERSION,
+  createBlock,
   blockText,
   canonicalWriterDocument,
   countDocumentWords,
@@ -20,6 +21,7 @@ import {
   type WriterDocument,
   type WriterSnapshot,
 } from "@/lib/writer/document";
+import type { IdeationSynthesis } from "@/lib/create/ideation/contract";
 import {
   parseAssistedImportAnalysisStatus,
   writerImportCompletionMessage,
@@ -211,6 +213,7 @@ import type { WriterNarrativeElement } from "@/lib/writer/setup-payoff";
 import { useWriterGuidedWriting } from "@/lib/writer/guided-writing-client";
 import type { WriterGuidedReference, WriterGuidedSelection } from "@/lib/writer/guided-writing";
 import WriterApplicationMenu from "./WriterApplicationMenu";
+import { saveCreateOnboardingAction } from "@/app/create/actions";
 
 type ScriptInput = {
   id: string;
@@ -256,12 +259,22 @@ export default function WriterWorkspace({
   script,
   userId,
   previewNoCredits,
+  projectNavigation,
+  onboarding,
+  ideationGuide,
+  ideationExploreHref,
 }: {
   script: ScriptInput;
   userId: string;
   previewNoCredits: boolean;
+  projectNavigation?: { name: string; items: { label: string; href: string; active?: boolean }[] };
+  onboarding?: "new_script" | "existing_script" | null;
+  ideationGuide?: IdeationSynthesis | null;
+  ideationExploreHref?: string | null;
 }) {
   const router = useRouter();
+  const [onboardingIntroOpen, setOnboardingIntroOpen] = useState(Boolean(onboarding));
+  const [ideationGuideOpen, setIdeationGuideOpen] = useState(Boolean(ideationGuide));
   const [title, setTitle] = useState(script.title);
   const titleRef = useRef(script.title);
   const [document, setDocument] = useState(script.document);
@@ -2793,7 +2806,9 @@ export default function WriterWorkspace({
         onWarmFilter={() => commitAppearance({ warmFilter: !appearanceRef.current.warmFilter })}
         onTypewriterSound={toggleTypewriterSound}
         onShortcuts={() => setShortcutsOpen(true)}
+        projectNavigation={projectNavigation}
       />}
+      {onboardingIntroOpen && <div className="writer-onboarding-backdrop" role="dialog" aria-modal="true" aria-labelledby="writer-onboarding-title"><section className="writer-onboarding-card"><p>WRITER</p><h2 id="writer-onboarding-title">{onboarding === "existing_script" ? "Writer es donde vive tu guion." : "Empieza por la primera escena."}</h2><span>{onboarding === "existing_script" ? "Puedes escribir desde cero o importar el archivo que ya tienes." : "Escribe en la página y usa los tipos básicos de bloque. Focus te ayuda a trabajar sin distracciones."}</span><div><button type="button" onClick={() => { setOnboardingIntroOpen(false); void saveCreateOnboardingAction({ status: "completed", intention: onboarding, currentStep: "writer_ready" }); }}>Entendido</button>{onboarding === "existing_script" && <button type="button" onClick={() => { setOnboardingIntroOpen(false); void saveCreateOnboardingAction({ status: "completed", intention: onboarding, currentStep: "writer_import_opened" }); openImportFlow(); }}>Importar guion</button>}</div></section></div>}
       <header className="writer-header">
         <div className="writer-header-brand">
           <Link href="/" aria-label="FILMATTA — Inicio">FILMATTA</Link>
@@ -3134,10 +3149,20 @@ export default function WriterWorkspace({
           }}
         />
         <div className="writer-editor-notices">
+          {ideationGuide && !focusMode && <button className="writer-ideation-open" type="button" onClick={() => setIdeationGuideOpen((value) => !value)}>{ideationGuideOpen ? "Ocultar guía" : "Ver guía de idea"}</button>}
           {!focusMode && shotlistReturnPath && <Link className="writer-navigation-back" href={shotlistReturnPath}>← Volver a Shotlist</Link>}
           {!focusMode && navigationDepth > 0 && <button className="writer-navigation-back" type="button" onClick={navigateBack}>← Volver</button>}
           {feedback && <div className="writer-editor-feedback" role="status">{feedback}<button type="button" onClick={() => setFeedback(null)}>Cerrar</button></div>}
         </div>
+        {ideationGuide && ideationGuideOpen && !focusMode && <aside className="writer-ideation-guide" aria-label="Guía de ideación">
+          <header><div><small>IDEATION · GUÍA</small><strong>Hitos para escribir</strong></div><button type="button" onClick={() => setIdeationGuideOpen(false)} aria-label="Ocultar guía">×</button></header>
+          <p>Estas sugerencias no forman parte del guion ni aparecen en el PDF. {ideationExploreHref && <Link href={ideationExploreHref}>Ver idea original y posibilidades ↗</Link>}</p>
+          <ol>{ideationGuide.cues.map((cue, index) => <li key={`${cue.label}-${index}`}><small>{cue.basis === "suggestion" ? "POSIBILIDAD" : "DE TU IDEA"}</small><strong>{cue.label}</strong>{cue.objective && <p><b>Objetivo:</b> {cue.objective}</p>}{cue.cue && <p><b>Cue:</b> {cue.cue}</p>}{cue.characters.length > 0 && <p><b>Personajes:</b> {cue.characters.join(", ")}</p>}{cue.setup && <p><b>Setup:</b> {cue.setup}</p>}{cue.payoff && <p><b>Payoff:</b> {cue.payoff}</p>}<button type="button" onClick={() => {
+            if (!editor) return;
+            const created = applyWriterImportedDocument(editor, { type: "doc", content: [createBlock("sceneHeading"), createBlock("action")] }, "append");
+            if (created.applied) { setFeedback("Escena vacía creada. Escribe el encabezado y el contenido con tus palabras."); setIdeationGuideOpen(false); }
+          }}>Crear escena vacía</button></li>)}</ol>
+        </aside>}
         <div
           ref={paperRef}
           className="writer-paper"

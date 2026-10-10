@@ -9,8 +9,9 @@ import ProjectOverview from "@/components/create/ProjectOverview";
 export const metadata: Metadata = { title: "Project · Create", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
-export default async function CreateProjectPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CreateProjectPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ onboarding?: string }> }) {
   const { id } = await params;
+  const { onboarding } = await searchParams;
   const db = await createClient();
   const auth = await db.auth.getUser();
   if (auth.error || !auth.data.user) redirect(`/login?next=/create/projects/${encodeURIComponent(id)}`);
@@ -18,5 +19,6 @@ export default async function CreateProjectPage({ params }: { params: Promise<{ 
   try { project = await getCreateProjectContext(db, auth.data.user.id, id); }
   catch (cause) { if (cause instanceof CreateProjectError && cause.code === "not_found") notFound(); throw cause; }
   const overview = await getCreateProjectOverview(db, auth.data.user.id, project);
-  return <ProjectWorkspaceShell project={project} active="overview"><ProjectOverview project={project} overview={overview} /></ProjectWorkspaceShell>;
+  const guidedIntent = onboarding === "new_script" || onboarding === "existing_script" ? onboarding : null;
+  return <ProjectWorkspaceShell project={project} active="overview"><ProjectOverview project={project} overview={overview} guidedIntent={guidedIntent} /></ProjectWorkspaceShell>;
 }
