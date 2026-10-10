@@ -351,7 +351,7 @@ export default function WriterImportFlow({ onClose, beforeCreate, destination = 
     setBusy("creating");
     setError(null);
     try {
-      await currentDocument.onApply(writerImportToDocument(staging.blocks), { organize: true, format: staging.source.format });
+      await currentDocument.onApply(writerImportToDocument(staging.blocks), { organize: false, format: staging.source.format });
       onClose();
     } catch (cause) {
       setError(importError(cause));
