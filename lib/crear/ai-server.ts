@@ -1,6 +1,7 @@
 import "server-only";
 
 import OpenAI from "openai";
+import { classifyWriterProviderFailure } from "@/lib/writer/provider-diagnostics";
 import type { CrearItem, CrearMessage, CrearSession, CrearSuggestion } from "./types";
 import { isCrearItemType } from "./server";
 
@@ -36,6 +37,7 @@ export async function generateCrearReply(input: {
     throw new CrearAiError("provider_unavailable", "FILMATTA no puede responder ahora. Tu mensaje quedó guardado.");
   }
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 60_000 });
+  const startedAt = Date.now();
   let response;
   try {
     response = await client.responses.create({
@@ -58,7 +60,21 @@ export async function generateCrearReply(input: {
       headers: { "Idempotency-Key": `crear-${input.operationId}` },
       signal: input.signal,
     });
-  } catch {
+  } catch (cause) {
+    const failure = classifyWriterProviderFailure(cause, { outboundAttempted: true, aborted: input.signal?.aborted });
+    const providerMessage = cause instanceof Error ? safeProviderMessage(cause.message) : null;
+    console.error("crear_ai_diagnostic", {
+      stage: "provider_request",
+      model: CREAR_MODEL,
+      status: failure.providerStatus,
+      code: failure.providerErrorCode,
+      type: failure.providerErrorType,
+      param: failure.providerErrorParam,
+      requestId: failure.providerRequestId,
+      origin: failure.failureOrigin,
+      message: providerMessage,
+      latencyMs: Date.now() - startedAt,
+    });
     throw new CrearAiError("provider_unavailable", "FILMATTA no puede responder ahora. Tu mensaje quedó guardado.");
   }
   if (response.status !== "completed" || !response.output_text) {
@@ -69,6 +85,11 @@ export async function generateCrearReply(input: {
   } catch {
     throw new CrearAiError("invalid_output", "FILMATTA no pudo preparar una respuesta válida. Tu mensaje quedó guardado.");
   }
+}
+
+function safeProviderMessage(message: string): string | null {
+  if (!/^(?:400\s+)?(?:Invalid schema|Unsupported parameter|Unsupported value|Invalid value|Unknown parameter|The model)\b/iu.test(message)) return null;
+  return message.replace(/[\r\n]+/gu, " ").slice(0, 500);
 }
 
 function buildProviderInput(session: CrearSession, messages: CrearMessage[], items: CrearItem[]) {
