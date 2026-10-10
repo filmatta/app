@@ -350,8 +350,8 @@ export default function CrearWorkspace({ sessionId }: { sessionId: string }) {
         </div>
 
         <div className="crear-composer-zone">
-          {feedback && <div className="crear-feedback" role="status"><span>{feedback}</span><button type="button" onClick={() => setFeedback(null)} aria-label="Cerrar aviso">×</button></div>}
-          {pendingMessage && !sending && <div className="crear-feedback" role="status"><span>Tu mensaje está guardado y espera respuesta.</span><button className="crear-retry" type="button" onClick={() => void sendMessage(undefined, pendingMessage)}>Intentar de nuevo</button></div>}
+          {feedback && <div className="crear-feedback" role="status"><span>{feedback}</span>{pendingMessage && !sending && <button className="crear-retry" type="button" onClick={() => void sendMessage(undefined, pendingMessage)}>Intentar de nuevo</button>}<button type="button" onClick={() => setFeedback(null)} aria-label="Cerrar aviso">×</button></div>}
+          {pendingMessage && !feedback && !sending && <div className="crear-feedback" role="status"><span>Tu mensaje está guardado y espera respuesta.</span><button className="crear-retry" type="button" onClick={() => void sendMessage(undefined, pendingMessage)}>Intentar de nuevo</button></div>}
           <form className="crear-composer" onSubmit={(event) => void sendMessage(event)}>
             {replyTo && <div className="crear-composer-reply"><span>Respondiendo a {replyTo.role === "assistant" ? "FILMATTA" : "tu mensaje"}</span><p>{shortText(replyTo.content, 130)}</p><button type="button" onClick={() => setReplyTo(null)} aria-label="Cancelar respuesta">×</button></div>}
             <label className="sr-only" htmlFor="crear-message">Mensaje</label>
