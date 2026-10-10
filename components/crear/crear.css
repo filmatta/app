@@ -190,6 +190,7 @@ body:has(.crear-workspace) { margin: 0; overflow: hidden; background: #080808; }
 .crear-privacy { margin: 7px auto 0; color: #505050; font-size: 8px; text-align: center; }
 .crear-feedback { display: flex; width: min(790px,100%); align-items: center; justify-content: space-between; gap: 12px; margin: 0 auto 7px; padding: 7px 10px; border-left: 2px solid #696969; color: #b4b4b4; background: #111; font-size: 9px; }
 .crear-feedback button { border: 0; color: #777; background: transparent; font-size: 15px; }
+.crear-feedback .crear-retry { flex: none; color: #e4e4e4; font-size: 10px; text-decoration: underline; text-underline-offset: 3px; }
 
 /* Live structure */
 .crear-structure-rail { min-width: 0; overflow-y: auto; border-left: 1px solid var(--crear-line); background: #0b0b0b; scrollbar-color: #464646 transparent; scrollbar-width: thin; }

@@ -53,8 +53,10 @@ export default function CrearWorkspace({ sessionId }: { sessionId: string }) {
       const next = await crearJson<CrearSessionDetail>(`/api/crear/sessions/${sessionId}`);
       setDetail(next);
       setTitleDraft(next.session.title);
+      return next;
     } catch (cause) {
       setPageError(apiMessage(cause, "No pudimos abrir esta idea."));
+      return null;
     } finally {
       if (withLoading) setLoading(false);
     }
@@ -144,29 +146,32 @@ export default function CrearWorkspace({ sessionId }: { sessionId: string }) {
     }
   }
 
-  async function sendMessage(event?: FormEvent) {
+  async function sendMessage(event?: FormEvent, retry?: CrearMessage) {
     event?.preventDefault();
-    const content = composer.trim();
+    const content = retry?.content ?? composer.trim();
     if (!detail || !content || sending) return;
-    const localId = `local-${crypto.randomUUID()}`;
-    const optimistic: CrearMessage = {
-      id: localId,
-      sessionId,
-      role: "user",
-      content,
-      parentMessageId: replyTo?.id ?? null,
-      metadata: {},
-      createdAt: new Date().toISOString(),
-    };
-    setDetail({ ...detail, messages: [...detail.messages, optimistic] });
-    setComposer("");
-    setReplyTo(null);
+    const parentMessageId = retry?.parentMessageId ?? replyTo?.id ?? null;
+    const originalReply = replyTo;
+    if (!retry) {
+      const optimistic: CrearMessage = {
+        id: `local-${crypto.randomUUID()}`,
+        sessionId,
+        role: "user",
+        content,
+        parentMessageId,
+        metadata: {},
+        createdAt: new Date().toISOString(),
+      };
+      setDetail({ ...detail, messages: [...detail.messages, optimistic] });
+      setComposer("");
+      setReplyTo(null);
+    }
     setSending(true);
     setFeedback(null);
     try {
       const result = await crearJson<{ messages: CrearMessage[]; items: CrearItem[] }>(`/api/crear/sessions/${sessionId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ content, parentMessageId: optimistic.parentMessageId }),
+        body: JSON.stringify({ content, parentMessageId }),
       });
       setDetail((current) => current ? { ...current, messages: result.messages, items: result.items } : current);
       void loadSessions();
@@ -175,7 +180,12 @@ export default function CrearWorkspace({ sessionId }: { sessionId: string }) {
       setFeedback(cause instanceof CrearApiError && cause.code === "provider_unavailable"
         ? `${message} Tu mensaje quedó visible; puedes continuar cuando el servicio vuelva.`
         : message);
-      await loadDetail(false);
+      const saved = await loadDetail(false);
+      if (!retry && !saved?.messages.some((entry) => entry.role === "user" && entry.content === content
+        && entry.parentMessageId === parentMessageId && entry.metadata.awaitingAssistant === true)) {
+        setComposer(content);
+        setReplyTo(originalReply);
+      }
     } finally {
       setSending(false);
       composerRef.current?.focus();
@@ -286,6 +296,7 @@ export default function CrearWorkspace({ sessionId }: { sessionId: string }) {
 
   if (loading) return <CrearWorkspaceLoading />;
   if (pageError || !detail) return <CrearWorkspaceError message={pageError ?? "No encontramos esta idea."} onRetry={() => void loadDetail(true)} />;
+  const pendingMessage = detail.messages.findLast((message) => message.role === "user" && message.metadata.awaitingAssistant === true) ?? null;
 
   return (
     <main className="crear-workspace">
@@ -338,6 +349,7 @@ export default function CrearWorkspace({ sessionId }: { sessionId: string }) {
 
         <div className="crear-composer-zone">
           {feedback && <div className="crear-feedback" role="status"><span>{feedback}</span><button type="button" onClick={() => setFeedback(null)} aria-label="Cerrar aviso">×</button></div>}
+          {pendingMessage && !sending && <div className="crear-feedback" role="status"><span>Tu mensaje está guardado y espera respuesta.</span><button className="crear-retry" type="button" onClick={() => void sendMessage(undefined, pendingMessage)}>Intentar de nuevo</button></div>}
           <form className="crear-composer" onSubmit={(event) => void sendMessage(event)}>
             {replyTo && <div className="crear-composer-reply"><span>Respondiendo a {replyTo.role === "assistant" ? "FILMATTA" : "tu mensaje"}</span><p>{shortText(replyTo.content, 130)}</p><button type="button" onClick={() => setReplyTo(null)} aria-label="Cancelar respuesta">×</button></div>}
             <label className="sr-only" htmlFor="crear-message">Mensaje</label>

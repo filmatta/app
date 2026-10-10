@@ -42,6 +42,7 @@ type Reaction = { messageId: string; emoji: string; active: boolean };
 function mockCrear(page: Page) {
   const details = new Map<string, { session: Session; messages: Message[]; items: Item[]; reactions: Reaction[] }>();
   let sequence = 0;
+  let failuresRemaining = 0;
   const id = () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`;
   const now = () => new Date().toISOString();
   const list = () => [...details.values()].map((entry) => entry.session);
@@ -74,7 +75,15 @@ function mockCrear(page: Page) {
     }
     if (action === "messages" && method === "POST") {
       const body = request.postDataJSON() as { content: string; parentMessageId?: string | null };
-      detail.messages.push({ id: id(), sessionId, role: "user", content: body.content, parentMessageId: body.parentMessageId ?? null, metadata: {}, createdAt: now() });
+      const userMessage = detail.messages.findLast((entry) => entry.role === "user" && entry.content === body.content
+        && entry.parentMessageId === (body.parentMessageId ?? null) && (entry.metadata as { awaitingAssistant?: boolean }).awaitingAssistant === true)
+        ?? { id: id(), sessionId, role: "user" as const, content: body.content, parentMessageId: body.parentMessageId ?? null, metadata: { awaitingAssistant: true }, createdAt: now() };
+      if (!detail.messages.includes(userMessage)) detail.messages.push(userMessage);
+      if (failuresRemaining > 0) {
+        failuresRemaining--;
+        return json(route, { code: "provider_unavailable", error: "FILMATTA no puede responder ahora. Tu mensaje quedó guardado.", userMessage }, 503);
+      }
+      userMessage.metadata = { awaitingAssistant: false };
       detail.messages.push({ id: id(), sessionId, role: "assistant", content: "Hay una decisión potente en esa premisa.", parentMessageId: null, metadata: { blockIndex: 0, blockCount: 2 }, createdAt: now() });
       const suggestionSource = id();
       detail.messages.push({ id: suggestionSource, sessionId, role: "assistant", content: "¿Qué cambiaría si las Arcas desconocen a las demás?", parentMessageId: null, metadata: { blockIndex: 1, blockCount: 2, suggestions: [{ type: "world", title: "Regla de las Arcas", content: "Las Arcas desconocen a las demás." }] }, createdAt: now() });
@@ -108,8 +117,26 @@ function mockCrear(page: Page) {
     if (action === "convert" && method === "POST") return json(route, { projectId, writerId });
     return json(route, { error: "Ruta no simulada" }, 404);
   });
-  return { details, list };
+  return { details, list, failNextMessages: (count: number) => { failuresRemaining = count; } };
 }
+
+test("Crear preserves the saved message and a new draft after a provider error, then retries one turn", async ({ page, context }) => {
+  await authenticate(context);
+  const fixture = mockCrear(page);
+  fixture.failNextMessages(1);
+  await page.goto("/crear");
+  await page.getByRole("button", { name: /Empezar una idea/ }).click();
+  await page.getByRole("textbox", { name: "Mensaje" }).fill("Una idea de prueba breve.");
+  await page.getByRole("button", { name: "Enviar mensaje" }).click();
+  await expect(page.getByRole("button", { name: "Intentar de nuevo" })).toBeVisible();
+  await expect(page.locator("article.crear-message")).toHaveCount(1);
+  await page.getByRole("textbox", { name: "Mensaje" }).fill("Borrador que no debo perder.");
+  await page.getByRole("button", { name: "Intentar de nuevo" }).click();
+  await expect(page.locator("article.crear-message")).toHaveCount(3);
+  await expect(page.getByRole("textbox", { name: "Mensaje" })).toHaveValue("Borrador que no debo perder.");
+  await expect(page.getByRole("button", { name: "Intentar de nuevo" })).toHaveCount(0);
+  expect(fixture.details.values().next().value?.messages.filter((message) => message.role === "user")).toHaveLength(1);
+});
 
 test("Crear keeps conversation, reply, reactions and decisions through reload, then opens Writer", async ({ page, context }) => {
   await authenticate(context);
