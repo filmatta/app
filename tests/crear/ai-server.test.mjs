@@ -31,6 +31,7 @@ test("Crear sends a private Responses request and parses structured blocks", asy
   const result = await generateCrearReply({ userId: "test", operationId: message.id, session, messages: [message], items: [] });
   assert.equal(request.model, "gpt-5.6-terra");
   assert.equal(request.store, false);
+  assert.equal(request.prompt_cache_key, undefined);
   assert.equal(request.text.format.type, "json_schema");
   assert.equal(request.text.format.strict, true);
   assert.equal(result.blocks.length, 2);

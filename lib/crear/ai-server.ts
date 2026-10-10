@@ -47,7 +47,6 @@ export async function generateCrearReply(input: {
       max_output_tokens: MAX_OUTPUT_TOKENS,
       instructions: CREAR_INSTRUCTIONS,
       input: buildProviderInput(input.session, input.messages, input.items),
-      prompt_cache_key: `crear:${input.userId}:${input.session.id}`,
       text: {
         format: {
           type: "json_schema",
