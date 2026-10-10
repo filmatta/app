@@ -84,13 +84,15 @@ export default function WriterImportFlow({ onClose, beforeCreate, destination = 
     return staging.blocks.filter((block) => block.proposedKind === filter);
   }, [filter, staging]);
   const sourceReady = mode === "paste" ? Boolean(pastedText.trim()) : Boolean(selectedFile);
+  const selectedFileExtension = selectedFile?.name.split(".").pop()?.toLowerCase() ?? null;
+  const canOrganizeLocally = mode === "file" && (selectedFileExtension === "fdx" || selectedFileExtension === "docx");
   const assistedDisabledReason = currentDocument ? null : busy
     ? "Ya hay un proceso en curso."
     : !title.trim()
       ? "Escribe un título para el nuevo guion."
       : !sourceReady
         ? "Añade texto o selecciona un archivo TXT/FDX/DOCX."
-        : availability.enabled ? null : availability.reason;
+        : availability.enabled || canOrganizeLocally ? null : availability.reason;
 
   async function openImported(scriptId: string, writerQuery: string) {
     if (destination === "writer") {
@@ -258,6 +260,12 @@ export default function WriterImportFlow({ onClose, beforeCreate, destination = 
           setAssistedStartedAt(null);
           return;
         }
+      }
+      if (!availability.enabled) {
+        throw new WriterImportRequestError(
+          "unavailable",
+          availability.reason ?? "La organización asistida no está disponible en este momento.",
+        );
       }
       await beforeCreate?.();
       operationIdRef.current ??= availability.operationId ?? crypto.randomUUID();
