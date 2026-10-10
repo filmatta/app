@@ -69,7 +69,8 @@ test("DOCX is local, bounded and staged through the existing deterministic class
   assert.match(flow, /\.txt,\.fdx,\.docx/u);
   assert.doesNotMatch(flow, /accept=.*\.pdf/u);
   assert.match(flow, /sourceParagraphs: extracted\.paragraphs/u);
-  assert.match(flow, /Importar y organizar con IA/u);
+  assert.match(flow, /Importar y organizar/u);
+  assert.match(flow, /usará IA cuando sea necesario/u);
   assert.match(flow, /Seleccionar archivo/u);
   assert.match(flow, /availability\.enabled \|\| canOrganizeLocally/u);
   assert.match(flow, /selectedFileExtension === "fdx" \|\| selectedFileExtension === "docx"/u);

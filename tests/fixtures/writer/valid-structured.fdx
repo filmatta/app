@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FinalDraft DocumentType="Script" Template="No" Version="1">
+  <Content>
+    <Paragraph Type="Scene Heading"><Text>INT. TALLER - NOCHE</Text></Paragraph>
+    <Paragraph Type="Action"><Text>Camila apaga la soldadora.</Text></Paragraph>
+    <Paragraph Type="Character"><Text>CAMILA</Text></Paragraph>
+    <Paragraph Type="Dialogue"><Text>No queda tiempo.</Text></Paragraph>
+    <Paragraph Type="Character"><Text>JORGE</Text></Paragraph>
+    <Paragraph Type="Dialogue"><Text>Sí queda.</Text></Paragraph>
+    <Paragraph Type="Scene Heading"><Text>EXT. CALLE - AMANECER</Text></Paragraph>
+    <Paragraph Type="Action"><Text>Un camión dobla la esquina.</Text></Paragraph>
+  </Content>
+</FinalDraft>

@@ -158,7 +158,7 @@ export function analyzeWriterDocxParagraphs(
 
 export function analyzeWriterRawText(
   text: string,
-  input: { format: "pasted" | "txt" | "docx"; name: string; suggestedTitle: string },
+  input: { format: "pasted" | "txt" | "docx" | "fdx"; name: string; suggestedTitle: string },
 ): WriterImportStaging {
   validateExtractedTextSize(text);
   const normalized = text.replace(/\r\n?/gu, "\n");
@@ -178,6 +178,15 @@ export function analyzeWriterRawText(
     suggestedTitle: input.suggestedTitle,
     blocks,
   };
+}
+
+export function analyzeWriterRawFdx(xml: string, fileName: string): WriterImportStaging {
+  const structured = analyzeWriterFdx(xml, fileName);
+  return analyzeWriterRawText(structured.source.extractedText, {
+    format: "fdx",
+    name: fileName,
+    suggestedTitle: structured.suggestedTitle,
+  });
 }
 
 export function analyzeWriterFdx(xml: string, fileName: string): WriterImportStaging {

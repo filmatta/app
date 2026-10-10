@@ -8,6 +8,7 @@ import {
   analyzePastedWriterText,
   analyzeWriterFdx,
   analyzeWriterDocxParagraphs,
+  analyzeWriterRawFdx,
   analyzeWriterRawText,
   analyzeWriterTxt,
   changeWriterImportKind,
@@ -19,6 +20,7 @@ import {
 } from "../../lib/writer/import.ts";
 import type { WriterDocxParagraph } from "../../lib/writer/docx-import.ts";
 import { blockText, validateWriterDocument } from "../../lib/writer/document.ts";
+import { buildAssistedImportBatches } from "../../lib/writer/assisted-import.ts";
 
 const PLAIN_TEXT = `INT. CASA - DÍA
 
@@ -155,6 +157,53 @@ test("similar ambiguities become one decision and raw mode imports without a rev
   assert.equal(writerImportReviewGroups(raw.blocks).length, 0);
   assert.equal(writerImportPreservesSignificantText(raw), true);
   assert.equal(writerImportToDocument(raw.blocks).content.length, 510);
+});
+
+test("raw FDX imports visible paragraphs as editable action without IA or decisions", () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<FinalDraft DocumentType="Script" Template="No" Version="1">
+  <Content>
+    <Paragraph Type="Scene Heading"><Text>INT. TALLER - NOCHE</Text></Paragraph>
+    <Paragraph Type="Character"><Text>CAMILA</Text></Paragraph>
+    <Paragraph Type="Dialogue"><Text>No queda tiempo.</Text></Paragraph>
+  </Content>
+</FinalDraft>`;
+  const raw = analyzeWriterRawFdx(xml, "manual.fdx");
+  assert.deepEqual(raw.blocks.map((block) => block.originalText), ["INT. TALLER - NOCHE", "CAMILA", "No queda tiempo."]);
+  assert.equal(raw.blocks.every((block) => block.proposedKind === "action" && block.confidence === "high"), true);
+  assert.equal(writerImportReviewGroups(raw.blocks).length, 0);
+  assert.equal(writerImportPreservesSignificantText(raw), true);
+});
+
+test("real fallback fixtures enter IA only when deterministic structure is incomplete", async () => {
+  const fixtureDirectory = path.join(process.cwd(), "tests", "fixtures", "writer");
+  const poorDocx = path.join(fixtureDirectory, "fallback-poor-structure.docx");
+  const poorZip = await JSZip.loadAsync(fs.readFileSync(poorDocx));
+  const poorXml = await poorZip.file("word/document.xml")!.async("string");
+  const poor = analyzeWriterDocxParagraphs(fixtureParagraphs(poorXml), "fallback-poor-structure.docx");
+  assert.equal(writerImportPreservesSignificantText(poor), true);
+  assert.ok(writerImportReviewGroups(poor.blocks).length > 0);
+  assert.ok(buildAssistedImportBatches(poor).length > 0);
+
+  const plainSource = fs.readFileSync(path.join(fixtureDirectory, "fallback-plain.txt"), "utf8");
+  const plain = analyzeWriterTxt(plainSource, "fallback-plain.txt");
+  assert.equal(writerImportPreservesSignificantText(plain), true);
+  assert.ok(writerImportReviewGroups(plain.blocks).length > 0);
+  assert.ok(buildAssistedImportBatches(plain).length > 0);
+
+  const fdxSource = fs.readFileSync(path.join(fixtureDirectory, "valid-structured.fdx"), "utf8");
+  const fdx = analyzeWriterFdx(fdxSource, "valid-structured.fdx");
+  assert.equal(writerImportPreservesSignificantText(fdx), true);
+  assert.equal(writerImportReviewGroups(fdx.blocks).length, 0);
+  assert.equal(buildAssistedImportBatches(fdx).length, 0);
+  assert.deepEqual(writerImportSummary(fdx.blocks), {
+    byKind: { sceneHeading: 2, action: 2, character: 2, dialogue: 2, parenthetical: 0, transition: 0, authorNote: 0 },
+    distinctCharacterNames: 2,
+    possibleActionCharacters: 0,
+    unresolved: 0,
+    needsReview: 0,
+    total: 8,
+  });
 });
 
 function fixtureParagraphs(xml: string): WriterDocxParagraph[] {

@@ -8,6 +8,7 @@ import {
   analyzePastedWriterText,
   analyzeWriterFdx,
   analyzeWriterDocxParagraphs,
+  analyzeWriterRawFdx,
   analyzeWriterRawText,
   analyzeWriterTxt,
   changeWriterImportKind,
@@ -214,18 +215,14 @@ export default function WriterImportFlow({ onClose, beforeCreate, destination = 
     setStage("Preparando el texto sin formato…");
     try {
       const input = await sourceInput();
-      if (input.format === "fdx") {
-        startReview(analyzeWriterFdx(input.sourceText, input.fileName!), "structured");
-      } else {
-        startReview({
-          ...analyzeWriterRawText(input.sourceText, {
-            format: input.format,
-            name: input.fileName ?? "Texto pegado",
-            suggestedTitle: input.fileName?.replace(/\.[^.]+$/u, "") || title,
-          }),
-          warnings: input.warnings,
-        }, "raw");
-      }
+      const raw = input.format === "fdx"
+        ? analyzeWriterRawFdx(input.sourceText, input.fileName!)
+        : analyzeWriterRawText(input.sourceText, {
+          format: input.format,
+          name: input.fileName ?? "Texto pegado",
+          suggestedTitle: input.fileName?.replace(/\.[^.]+$/u, "") || title,
+        });
+      startReview({ ...raw, warnings: input.warnings }, "raw");
       setStage(null);
     } catch (cause) {
       setError(importError(cause));
@@ -425,12 +422,12 @@ export default function WriterImportFlow({ onClose, beforeCreate, destination = 
           ) : stage ? <p className="writer-import-stage" role="status">{stage}</p> : null}
           {error && <p className="writer-feedback writer-feedback--error" role="alert">{error}</p>}
           <div className="writer-import-actions writer-import-actions--stacked">
-            <p className="writer-import-ai-copy">La IA identificará escenas, acción, personajes y diálogo. Sólo revisarás las dudas.</p>
+            <p className="writer-import-ai-copy">FILMATTA detectará automáticamente la estructura y usará IA cuando sea necesario.</p>
             <div>
               <button type="button" onClick={requestClose} disabled={busy === "assisted"}>Cancelar</button>
               <button type="button" onClick={() => void importRaw()} disabled={busy !== null || !sourceReady || (!currentDocument && !title.trim())}>{busy === "basic" ? "Preparando…" : "Importar como texto sin formato"}</button>
               <button className="writer-primary-button" type="button" onClick={() => void (currentDocument ? analyzeBasic() : importAssisted())} disabled={busy !== null || !sourceReady || (!currentDocument && !title.trim()) || Boolean(assistedDisabledReason)}>
-                {busy === "assisted" ? "Organizando…" : "Importar y organizar con IA"}
+                {busy === "assisted" ? "Organizando…" : "Importar y organizar"}
               </button>
             </div>
             {assistedDisabledReason && <p className="writer-import-disabled-reason">{assistedDisabledReason}</p>}
