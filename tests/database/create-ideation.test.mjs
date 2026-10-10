@@ -59,6 +59,7 @@ test("Ideation migration is additive and keeps guides and possibilities private"
     let rows = (await db.query("select id,idea,status from create_idea_drafts where owner_id=$1 order by id", [ownerA])).rows;
     assert.deepEqual(rows, [{ id: ideaA, idea: "Idea A", status: "archived" }, { id: ideaB, idea: "", status: "active" }]);
     await db.query("update create_idea_drafts set idea='Idea B', current_step='review', project_id=$2, writer_id=$3 where id=$1", [ideaB, projectA, writerA]);
+    assert.deepEqual((await db.query("select idea,status from create_idea_drafts where id=$1 and owner_id=$2", [ideaB, ownerA])).rows[0], { idea: "Idea B", status: "active" });
     await db.query("insert into create_ideation_guides(owner_id,project_id,writer_id,source_draft_id,context,synthesis) values($1,$2,$3,$4,'{}','{}')", [ownerA, projectA, writerA, ideaB]);
     await db.query("insert into create_ideation_possibilities(owner_id,project_id,content) values($1,$2,'Una posibilidad')", [ownerA, projectA]);
     await db.query("update create_idea_drafts set status='converted' where id=$1", [ideaB]);
