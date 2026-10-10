@@ -55,7 +55,9 @@ export default function CrearWorkspace({ sessionId }: { sessionId: string }) {
       setTitleDraft(next.session.title);
       return next;
     } catch (cause) {
-      setPageError(apiMessage(cause, "No pudimos abrir esta idea."));
+      const message = apiMessage(cause, "No pudimos abrir esta idea.");
+      if (withLoading) setPageError(message);
+      else setFeedback(message);
       return null;
     } finally {
       if (withLoading) setLoading(false);
