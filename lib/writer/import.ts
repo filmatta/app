@@ -6,8 +6,10 @@ import {
   type WriterDocument,
 } from "./document.ts";
 import { isClearlyNonCharacterLine, isWriterDateLine, isWriterTimeLine } from "./character-cues.ts";
+import type { WriterDocxParagraph } from "./docx-import.ts";
+import { WRITER_IMPORT_PLAN_CONFIG } from "./import-plan.ts";
 
-export const WRITER_IMPORT_MAX_FILE_BYTES = 5_000_000;
+export const WRITER_IMPORT_MAX_FILE_BYTES = WRITER_IMPORT_PLAN_CONFIG.raw.maxBytes;
 export const WRITER_IMPORT_MAX_TEXT_CHARACTERS = 1_500_000;
 
 export type WriterImportConfidence = "high" | "medium" | "review";
@@ -78,6 +80,22 @@ const FDX_KIND_MAP: Readonly<Record<string, ScreenplayKind>> = {
   note: "authorNote",
 };
 
+const DOCX_STYLE_KIND_MAP: Readonly<Record<string, ScreenplayKind>> = {
+  screenplayscene: "sceneHeading",
+  screenplayaction: "action",
+  screenplaycue: "character",
+  screenplaydialogue: "dialogue",
+  screenplayparenthetical: "parenthetical",
+  screenplaytransition: "transition",
+  screenplaynote: "authorNote",
+  screenplaydisplay: "action",
+  screenplayend: "action",
+  title: "action",
+  coversubtitle: "action",
+  coverduration: "action",
+  covernote: "action",
+};
+
 export function analyzePastedWriterText(text: string, title = "Borrador importado") {
   return analyzePlainText(text, {
     format: "pasted",
@@ -102,6 +120,73 @@ export function analyzeWriterDocxText(text: string, fileName: string, warnings: 
     suggestedTitle: titleFromFileName(fileName),
   });
   return { ...staging, warnings };
+}
+
+export function analyzeWriterDocxParagraphs(
+  paragraphs: readonly WriterDocxParagraph[],
+  fileName: string,
+  warnings: string[] = [],
+): WriterImportStaging {
+  const meaningful = paragraphs.flatMap((paragraph) => paragraph.text.replace(/\r\n?/gu, "\n").split("\n")
+    .filter((text) => text.trim().length > 0)
+    .map((text) => ({ text, style: paragraph.style })));
+  if (!meaningful.length) throw new Error("El DOCX no contiene párrafos de texto legibles.");
+  const extractedText = meaningful.map((paragraph) => paragraph.text).join("\n");
+  validateExtractedTextSize(extractedText);
+  const fallback = analyzePlainText(extractedText, {
+    format: "docx",
+    name: fileName,
+    suggestedTitle: titleFromFileName(fileName),
+  });
+  const blocks = fallback.blocks.map((block, index) => {
+    const paragraph = meaningful[index];
+    const sourceType = paragraph?.style?.trim() || undefined;
+    const proposedKind = sourceType
+      ? DOCX_STYLE_KIND_MAP[normalizeDocxStyle(sourceType)] ?? null
+      : null;
+    if (!proposedKind) return { ...block, sourceType };
+    return {
+      ...block,
+      proposedKind,
+      confidence: "high" as const,
+      signals: [`Word declara el estilo de guion “${sourceType}”.`],
+      sourceType,
+    };
+  });
+  return { ...fallback, blocks, warnings };
+}
+
+export function analyzeWriterRawText(
+  text: string,
+  input: { format: "pasted" | "txt" | "docx" | "fdx"; name: string; suggestedTitle: string },
+): WriterImportStaging {
+  validateExtractedTextSize(text);
+  const normalized = text.replace(/\r\n?/gu, "\n");
+  const blocks = normalized.split("\n").flatMap((originalText, index) => originalText.trim() ? [{
+    id: crypto.randomUUID(),
+    originalText,
+    sourceStartLine: index + 1,
+    sourceEndLine: index + 1,
+    proposedKind: "action" as const,
+    confidence: "high" as const,
+    signals: ["Importación sin formato: Writer conserva el párrafo para que puedas darle formato manualmente."],
+  }] : []);
+  if (!blocks.length) throw new Error("No encontramos texto significativo para importar.");
+  enforceBlockLimit(blocks.length);
+  return {
+    source: buildSource(input.format, input.name, normalized),
+    suggestedTitle: input.suggestedTitle,
+    blocks,
+  };
+}
+
+export function analyzeWriterRawFdx(xml: string, fileName: string): WriterImportStaging {
+  const structured = analyzeWriterFdx(xml, fileName);
+  return analyzeWriterRawText(structured.source.extractedText, {
+    format: "fdx",
+    name: fileName,
+    suggestedTitle: structured.suggestedTitle,
+  });
 }
 
 export function analyzeWriterFdx(xml: string, fileName: string): WriterImportStaging {
@@ -209,6 +294,37 @@ export function writerImportSummary(blocks: readonly WriterImportBlock[]) {
     needsReview,
     total: blocks.length,
   };
+}
+
+export type WriterImportReviewGroup = {
+  id: string;
+  proposedKind: ScreenplayKind | null;
+  blockIds: string[];
+  blocks: WriterImportBlock[];
+  signal: string;
+};
+
+export function writerImportReviewGroups(blocks: readonly WriterImportBlock[]): WriterImportReviewGroup[] {
+  const groups = new Map<string, WriterImportReviewGroup>();
+  for (const block of blocks) {
+    if (block.confidence === "high" && block.proposedKind) continue;
+    const signal = block.signals[0] ?? "El formato no tiene señales suficientes.";
+    const key = `${block.proposedKind ?? "unresolved"}:${signal}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.blockIds.push(block.id);
+      existing.blocks.push(block);
+      continue;
+    }
+    groups.set(key, {
+      id: key,
+      proposedKind: block.proposedKind,
+      blockIds: [block.id],
+      blocks: [block],
+      signal,
+    });
+  }
+  return [...groups.values()];
 }
 
 export function validateWriterImportFile(file: { name: string; size: number; type: string }) {
@@ -461,6 +577,10 @@ function titleFromFileName(fileName: string) {
 
 function hasLetters(value: string) {
   return /\p{L}/u.test(value);
+}
+
+function normalizeDocxStyle(value: string) {
+  return value.normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu, "").toLocaleLowerCase("en-US");
 }
 
 function significantCharacterCount(value: string) {

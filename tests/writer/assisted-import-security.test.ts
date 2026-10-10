@@ -101,10 +101,10 @@ test("private endpoint authenticates before reading the body and ignores client 
   assert.match(budgetPolicySource, /VERCEL_GIT_COMMIT_REF === "staging"/u);
 });
 
-test("main import flow is one click, discloses OpenAI, and keeps manual review optional", () => {
+test("main import flow is one click, accurately describes smart detection, and keeps manual review optional", () => {
   assert.ok(interfaceSource.includes("Importar y organizar"));
-  assert.ok(interfaceSource.includes("Importar sin IA"));
-  assert.ok(interfaceSource.includes("Ajustar formato manualmente"));
+  assert.ok(interfaceSource.includes("FILMATTA detectará automáticamente la estructura y usará IA cuando sea necesario."));
+  assert.ok(interfaceSource.includes("Importar como texto sin formato"));
   assert.match(interfaceSource, /Enviaremos el texto necesario a OpenAI/u);
   assert.doesNotMatch(interfaceSource, /IMPORT FOUNDATION V0/u);
   assert.doesNotMatch(interfaceSource, />Revisar \(0\)</u);

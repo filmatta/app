@@ -55,7 +55,9 @@ import {
   type AssistedImportStage,
 } from "./assisted-import-plan";
 import type { WriterImportFormat } from "./import";
+import type { WriterDocxParagraph } from "./docx-import";
 import { assistedImportDatabaseErrorDescriptor } from "./assisted-import-errors";
+import { writerImportPageCount, writerImportPlanFromAppMetadata, writerImportPlanLimit } from "./import-plan";
 
 const PIPELINE_MODEL = `${TERRA_MODEL}+${SOL_MODEL}`;
 
@@ -65,6 +67,7 @@ export type AssistedImportRequest = {
   format: WriterImportFormat;
   sourceText: string;
   fileName?: string;
+  sourceParagraphs?: WriterDocxParagraph[];
   signal?: AbortSignal;
 };
 
@@ -76,6 +79,7 @@ export type AssistedImportAvailability = {
     maxBytes: number;
     maxWords: number;
     maxSourceTokens: number;
+    maxPages: number;
     completedPerAccount: number;
   };
 };
@@ -116,7 +120,7 @@ type AssistedImportAuthContext = { appMetadata?: Record<string, unknown> };
 export function assistedImportAvailability(userId: string, auth: AssistedImportAuthContext = {}): AssistedImportAvailability {
   const access = checkAssistedImportAccess(process.env, userId, auth.appMetadata);
   if (!access.enabled) return unavailable(access.reason);
-  return { enabled: true, reason: null, limits: limits() };
+  return { enabled: true, reason: null, limits: limits(auth.appMetadata) };
 }
 
 export async function assistedImportAccountStatus(userId: string, auth: AssistedImportAuthContext = {}) {
@@ -131,7 +135,9 @@ export async function assistedImportAccountStatus(userId: string, auth: Assisted
     db.rpc("writer_assisted_import_qa_budget_status", { p_user_id: userId }),
   ]);
   if (completed.error || active.error || attempts.error || grants.error) return unavailable("El control de cupo asistido no está disponible.");
-  if ((completed.count ?? 0) >= 1) return unavailable("Esta cuenta ya utilizó su importación asistida gratuita.");
+  const plan = writerImportPlanFromAppMetadata(auth.appMetadata);
+  const completedLimit = writerImportPlanLimit(plan).assistedImports;
+  if (completedLimit !== null && (completed.count ?? 0) >= completedLimit) return unavailable("Esta cuenta ya utilizó su importación asistida gratuita.", auth.appMetadata);
   if (active.data) return unavailable(active.data.status === "uncertain"
     ? "Hay una operación anterior pendiente de conciliación segura."
     : "Ya hay una importación asistida en curso para esta cuenta.");
@@ -165,6 +171,11 @@ export async function executeAssistedImport(
   if (staging.source.words > WRITER_ASSISTED_IMPORT_MAX_WORDS) {
     throw new AssistedImportError("too_many_words", "El borrador supera el límite de 30,000 palabras.", 413);
   }
+  const plan = writerImportPlanFromAppMetadata(dependencies.appMetadata);
+  const maximumPages = writerImportPlanLimit(plan).maxPagesPerImport;
+  if (writerImportPageCount(staging.source.words) > maximumPages) {
+    throw new AssistedImportError("page_limit", `El guion supera el límite de ${maximumPages} páginas para este plan. Puedes importarlo como texto sin formato.`, 413);
+  }
   const sourceTokens = countAssistedImportTokens(staging.source.extractedText);
   if (sourceTokens > WRITER_ASSISTED_IMPORT_MAX_SOURCE_TOKENS) {
     throw new AssistedImportError("too_many_tokens", "El borrador supera el límite de 80,000 tokens de origen.", 413);
@@ -172,7 +183,7 @@ export async function executeAssistedImport(
 
   const db = dependencies.db ?? createAdminClient();
   const budgetPolicy = assistedImportBudgetPolicy();
-  const sourceHash = sha256(request.sourceText);
+  const sourceHash = sha256(JSON.stringify({ text: request.sourceText, paragraphs: request.sourceParagraphs ?? null }));
   const authorization = await rpcJson(db, "writer_assisted_import_authorized_budget", {
     p_user_id: userId,
     p_operation_id: request.operationId,
@@ -687,17 +698,20 @@ function operationUsage(value: Record<string, unknown>) {
   };
 }
 
-function limits() {
+function limits(appMetadata?: Record<string, unknown>) {
+  const plan = writerImportPlanFromAppMetadata(appMetadata);
+  const planLimit = writerImportPlanLimit(plan);
   return {
     maxBytes: WRITER_ASSISTED_IMPORT_MAX_BYTES,
     maxWords: WRITER_ASSISTED_IMPORT_MAX_WORDS,
     maxSourceTokens: WRITER_ASSISTED_IMPORT_MAX_SOURCE_TOKENS,
-    completedPerAccount: 1,
+    maxPages: planLimit.maxPagesPerImport,
+    completedPerAccount: planLimit.assistedImports ?? Number.MAX_SAFE_INTEGER,
   };
 }
 
-function unavailable(reason: string): AssistedImportAvailability {
-  return { enabled: false, reason, limits: limits() };
+function unavailable(reason: string, appMetadata?: Record<string, unknown>): AssistedImportAvailability {
+  return { enabled: false, reason, limits: limits(appMetadata) };
 }
 
 function sha256(value: string) {

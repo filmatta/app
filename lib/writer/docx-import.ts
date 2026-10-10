@@ -8,7 +8,12 @@ const MAX_COMPRESSION_RATIO = 120;
 export type WriterDocxExtraction = {
   text: string;
   warnings: string[];
-  paragraphs: number;
+  paragraphs: WriterDocxParagraph[];
+};
+
+export type WriterDocxParagraph = {
+  text: string;
+  style: string | null;
 };
 
 export async function extractWriterDocx(buffer: ArrayBuffer): Promise<WriterDocxExtraction> {
@@ -36,9 +41,20 @@ export async function extractWriterDocx(buffer: ArrayBuffer): Promise<WriterDocx
   const parsed = new DOMParser().parseFromString(xml, "application/xml");
   if (parsed.querySelector("parsererror")) throw new Error("El contenido XML del DOCX está dañado.");
   const paragraphNodes = [...parsed.getElementsByTagNameNS("*", "p")];
-  const paragraphs = paragraphNodes.map(readParagraph).filter((value) => value.trim().length > 0);
+  const paragraphs = paragraphNodes.map((paragraph) => ({
+    text: readParagraph(paragraph),
+    style: readParagraphStyle(paragraph),
+  })).filter((paragraph) => paragraph.text.trim().length > 0);
   if (!paragraphs.length) throw new Error("El DOCX no contiene párrafos de texto legibles.");
-  return { text: paragraphs.join("\n"), warnings, paragraphs: paragraphs.length };
+  return { text: paragraphs.map((paragraph) => paragraph.text).join("\n"), warnings, paragraphs };
+}
+
+function readParagraphStyle(paragraph: Element) {
+  const style = paragraph.getElementsByTagNameNS("*", "pStyle").item(0);
+  return style?.getAttributeNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "val")
+    ?? style?.getAttribute("w:val")
+    ?? style?.getAttribute("val")
+    ?? null;
 }
 
 function readParagraph(paragraph: Element) {

@@ -31,14 +31,15 @@ test("Writer internal history branches after Back without duplicating adjacent r
   assert.equal(stepWriterInternalHistory(history, 1), null);
 });
 
-test("Writer V3 keeps import in the current document and Pulse preserves its panel", () => {
+test("Writer V3 keeps local import in the current document and exposes assisted new-script import", () => {
   const workspace = fs.readFileSync("components/writer/WriterWorkspace.tsx", "utf8");
   const timeline = fs.readFileSync("components/writer/WriterTimeline.tsx", "utf8");
   const library = fs.readFileSync("components/writer/WriterLibrary.tsx", "utf8");
   assert.match(workspace, /currentDocument=\{\{ title, empty:/u);
   assert.match(workspace, /applyWriterImportedDocument\(editor, imported/u);
   assert.match(timeline, /onSelectScene=\{\(scene\) => activateScene\(scene, true\)\}/u);
-  assert.doesNotMatch(library, /<WriterImportFlow/u);
+  assert.match(library, /<WriterImportFlow onClose=/u);
+  assert.match(library, />\s*Importar guion\s*</u);
   assert.match(library, /\+ Crear guión/u);
 });
 

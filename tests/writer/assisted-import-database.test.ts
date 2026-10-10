@@ -8,6 +8,7 @@ const owner = "11111111-1111-4111-8111-111111111111";
 const other = "22222222-2222-4222-8222-222222222222";
 const attemptsUser = "44444444-4444-4444-8444-444444444444";
 const historicalUser = "33333333-3333-4333-8333-333333333334";
+const docxUser = "abababab-abab-4bab-8bab-abababababab";
 const historicalOperation = "33333333-3333-4333-8333-333333333335";
 const operation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const sourceHash = "a".repeat(64);
@@ -42,7 +43,7 @@ before(async () => {
           raise exception 'WRITER_INVALID_DOCUMENT';
         end if;
       end$$;
-    insert into auth.users values('${owner}'),('${other}'),('${attemptsUser}'),('${historicalUser}');
+    insert into auth.users values('${owner}'),('${other}'),('${attemptsUser}'),('${historicalUser}'),('${docxUser}');
   `);
   await db.exec(fs.readFileSync("supabase/migrations/20260930020000_writer_assisted_imports.sql", "utf8"));
   await db.query(`insert into writer_assisted_imports(
@@ -54,6 +55,7 @@ before(async () => {
   await db.exec(fs.readFileSync("supabase/migrations/20260930031000_writer_assisted_import_budget_status.sql", "utf8"));
   await db.exec(fs.readFileSync("supabase/migrations/20260930032000_writer_assisted_import_ordinary_budget.sql", "utf8"));
   await db.exec(fs.readFileSync("supabase/migrations/20260930033000_writer_assisted_import_staging_budget_policy.sql", "utf8"));
+  await db.exec(fs.readFileSync("supabase/migrations/20261009020000_writer_assisted_import_docx_format.sql", "utf8"));
 });
 
 after(() => db.close());
@@ -63,6 +65,15 @@ async function as(role: "postgres" | "service_role" | "authenticated", uid = "")
   await db.query("select set_config('request.jwt.claim.sub',$1,false)", [uid]);
   if (role !== "postgres") await db.exec(`set role ${role}`);
 }
+
+test("DOCX can reserve the same assisted pipeline after local extraction", async () => {
+  await as("service_role");
+  const result = ((await db.query(
+    "select writer_reserve_assisted_import($1,$2,$3,$4,'docx',$5,12,40,1300,$6,100000,200000) value",
+    [docxUser, "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd", "5".repeat(64), optionsHash, "DOCX QA", "gpt-5.6-terra"],
+  )).rows[0] as { value: RpcValue }).value;
+  assert.equal(result.status, "reserved");
+});
 
 test("reservation, provider accounting, finalization, and the lifetime Free right are atomic and idempotent", async () => {
   await as("service_role");
