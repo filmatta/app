@@ -87,6 +87,7 @@ test("Sandbox migration, quota, retry, decisions, handoff and owner isolation", 
       [projectA,possibility,"maybe",null])).rows[0].result.state, "maybe");
     assert.equal((await db.query("select public.sandbox_set_possibility_state_v1($1,$2,$3,$4) as result",
       [projectA,possibility,"canon",null])).rows[0].result.state, "canon");
+    await assert.rejects(db.query("update create_ideation_possibilities set state='discarded' where id=$1", [possibility]));
     const second = await reserve(projectA, first.sessionId, turnB, "Lo contrario también podría ocurrir");
     assert.equal(second.status, "reserved");
     const conflicting = { ...reply, possibilities: [{ title: "No hay memoria ajena", content: "Nunca recuerda a otra persona.",
