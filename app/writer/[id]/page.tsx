@@ -8,7 +8,6 @@ import { WRITER_SCHEMA_VERSION, validateWriterDocument } from "@/lib/writer/docu
 import { getCreateProjectContext } from "@/lib/create/project";
 import { createProjectModuleRoute } from "@/lib/create/routes";
 import { isIdeationSynthesis, isRecord } from "@/lib/create/ideation/contract";
-import { isCreateUuid } from "@/lib/create/uuid";
 
 export const metadata: Metadata = {
   title: "Editor · Writer",
@@ -38,15 +37,11 @@ export default async function WriterDocumentPage({ params, searchParams }: { par
   const ideationGuide = guideRow?.data && isIdeationSynthesis(guideRow.data.synthesis) ? guideRow.data.synthesis : null;
   const handoff = guideRow?.data && isRecord(guideRow.data.context) && isRecord(guideRow.data.context.sandboxHandoff)
     ? guideRow.data.context.sandboxHandoff : null;
-  const selectedIds = handoff && Array.isArray(handoff.selectedIds)
-    ? handoff.selectedIds.filter((value): value is string => typeof value === "string" && isCreateUuid(value)).slice(0, 30) : [];
-  const selectedRows = selectedIds.length && result.data.project_id
-    ? await supabase.from("create_ideation_possibilities").select("id,content,state")
-      .eq("owner_id", viewer.id).eq("project_id", result.data.project_id).in("id", selectedIds) : null;
   const sandboxHandoff = handoff ? {
-    decisions: selectedIds.map((selectedId) => selectedRows?.data?.find((row) => row.id === selectedId))
-      .filter((row): row is NonNullable<typeof row> => Boolean(row))
-      .map((row) => ({ content: row.content, state: row.state === "canon" ? "canon" as const : "maybe" as const })) ?? [],
+    decisions: Array.isArray(handoff.selected) ? handoff.selected.filter((value) =>
+      isRecord(value) && typeof value.content === "string" && value.content.length <= 2000 &&
+      (value.state === "canon" || value.state === "maybe")).slice(0, 30)
+      .map((value) => ({ content: String(value.content), state: value.state === "canon" ? "canon" as const : "maybe" as const })) : [],
     questions: Array.isArray(handoff.questions) ? handoff.questions.filter((value): value is string => typeof value === "string").slice(0, 12) : [],
     newDecisions: Array.isArray(handoff.newDecisions) ? handoff.newDecisions.filter((value): value is string => typeof value === "string").slice(0, 8) : [],
   } : null;

@@ -61,6 +61,7 @@ export async function applySandboxHandoffAction(input: HandoffInput): Promise<Re
   const chosen = input.selectedPossibilityIds.map((id) => selected.find((item) => item.id === id)).filter((item): item is NonNullable<typeof item> => Boolean(item));
   const nextContext = { ...priorContext, sandboxHandoff: {
     version: 1, selectedIds: input.selectedPossibilityIds,
+    selected: chosen.map((item) => ({ id: item.id, content: item.content, state: item.state })),
     questions: input.questions.map((value) => value.trim()),
     newDecisions: input.newDecisions.map((value) => value.trim()),
     updatedAt: new Date().toISOString(),
