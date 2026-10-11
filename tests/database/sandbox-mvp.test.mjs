@@ -24,9 +24,11 @@ test("Sandbox migration, quota, retry, decisions, handoff and owner isolation", 
       create table auth.users(id uuid primary key);
       insert into auth.users(id) values ('${ownerA}'),('${ownerB}');
       create table public.projects(id uuid primary key, owner_id uuid not null references auth.users(id) on delete cascade,
+        create_enabled boolean not null default true,
         unique(id,owner_id));
       create table public.writer_scripts(id uuid primary key, owner_id uuid not null references auth.users(id) on delete cascade,
-        project_id uuid references public.projects(id) on delete cascade, document jsonb not null);
+        project_id uuid references public.projects(id) on delete cascade, document jsonb not null,
+        revision bigint not null default 1, unique(id,owner_id,project_id));
       insert into public.projects values ('${projectA}','${ownerA}'),('${projectB}','${ownerB}'),('${projectC}','${ownerA}');
       insert into public.writer_scripts values ('${writerA}','${ownerA}','${projectA}','{"type":"doc","content":[]}'::jsonb);
       alter table public.projects enable row level security;
@@ -61,6 +63,17 @@ test("Sandbox migration, quota, retry, decisions, handoff and owner isolation", 
     const quota = async () => (await db.query("select public.sandbox_quota_v1() as result")).rows[0].result;
 
     await as(ownerA);
+    const summary = { premise: "Una memoria prestada", characters: "Mateo", motivations: "", conflicts: "Duda de sí mismo", structure: "", events: "" };
+    const accept = async (project, writer, revision) => (await db.query(
+      "select public.sandbox_accept_writer_context_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) as result",
+      [project,writer,revision,summary,"gpt-5.6-terra",100,0,50,0.0008,null,1000])).rows[0].result;
+    assert.equal(await accept(projectA, writerA, 1), true);
+    assert.equal((await db.query("select count(*)::int as n from public.sandbox_writer_contexts where project_id=$1", [projectA])).rows[0].n, 1);
+    await as(ownerB);
+    assert.equal((await db.query("select count(*)::int as n from public.sandbox_writer_contexts")).rows[0].n, 0);
+    await assert.rejects(accept(projectA, writerA, 1));
+    await as(ownerA);
+    await assert.rejects(accept(projectA, writerA, 2));
     const first = await reserve(projectA, null, turnA, "Una historia de memoria prestada");
     assert.equal(first.status, "reserved");
     assert.equal(first.limit, 3);

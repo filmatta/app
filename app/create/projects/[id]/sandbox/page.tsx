@@ -6,6 +6,7 @@ import { isCreateUuid } from "@/lib/create/uuid";
 import { initialSandboxBrief, sandboxEntryPrompts, type SandboxGuide } from "@/lib/create/sandbox/context";
 import type { SandboxMessage, SandboxPossibility, SandboxQuota, SandboxSession, SandboxTurn } from "@/lib/create/sandbox/types";
 import { recordCreateEvent } from "@/lib/create/telemetry";
+import { getActiveWriterContext } from "@/lib/create/sandbox/writer-context-server";
 import ProjectWorkspaceShell from "@/components/create/ProjectWorkspaceShell";
 import SandboxWorkspace from "@/components/create/SandboxWorkspace";
 import "./sandbox.css";
@@ -41,12 +42,13 @@ export default async function SandboxPage({ params }: { params: Promise<{ id: st
   ]) : [{ data: [], error: null }, { data: [], error: null }];
   if (turnResult.error || messageResult.error) throw new Error("Sandbox conversation unavailable");
   const guide = guideResult.data as SandboxGuide | null;
+  const writerContext = guide ? null : await getActiveWriterContext(db, auth.data.user.id, id);
   const rawQuota = quotaResult.data as Record<string, unknown>;
   const quota: SandboxQuota = { plan: rawQuota?.plan === "unlocked" ? "unlocked" : "free",
     limit: Number(rawQuota?.limit ?? 3), used: Number(rawQuota?.used ?? 0) };
   recordCreateEvent("sandbox_opened", { userId: auth.data.user.id, projectId: id });
   return <ProjectWorkspaceShell project={project} active="sandbox">
-    <SandboxWorkspace project={project} session={session} guide={guide}
+    <SandboxWorkspace project={project} session={session} guide={guide} writerContext={writerContext}
       brief={initialSandboxBrief(project, guide)} entryPrompts={sandboxEntryPrompts(guide)}
       turns={[...(turnResult.data ?? [])].reverse() as SandboxTurn[]}
       messages={[...(messageResult.data ?? [])].reverse() as SandboxMessage[]}

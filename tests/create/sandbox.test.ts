@@ -7,6 +7,32 @@ import { estimateSandboxCostUsd, SANDBOX_DEFAULT_MODEL, SANDBOX_FREE_RESPONSE_LI
 import { isSandboxAiResponse } from "../../lib/create/sandbox/types.ts";
 import { addSandboxGuideMaterial, emptySandboxSynthesis } from "../../lib/create/sandbox/handoff.ts";
 import { createEmptyWriterDocument } from "../../lib/writer/document.ts";
+import { createBlock } from "../../lib/writer/document.ts";
+import { extractBoundedWriterEvidence, isSandboxWriterSummary } from "../../lib/create/sandbox/writer-context.ts";
+
+test("Writer context needs explicit source extraction and stays bounded", () => {
+  const empty = createEmptyWriterDocument();
+  assert.equal(extractBoundedWriterEvidence(empty), null);
+  const document = { type: "doc" as const, content: [createBlock("sceneHeading", "INT. CASA - NOCHE"),
+    ...Array.from({ length: 100 }, (_, index) => createBlock("action", `Mateo busca a Lucía ${index}. ` + "x".repeat(300))),
+    createBlock("character", "MATEO")] };
+  const evidence = extractBoundedWriterEvidence(document);
+  assert.ok(evidence && evidence.length <= 8000);
+  assert.match(evidence, /MATEO/u);
+  assert.ok(!evidence.includes("Mateo busca a Lucía 99."));
+  assert.ok(isSandboxWriterSummary({ premise: "Memoria ajena", characters: "Mateo", motivations: "", conflicts: "", structure: "", events: "" }));
+});
+
+test("Writer summary has provenance and is omitted when Ideation guide exists", () => {
+  const writerContext = { writerId: "writer-a", writerRevision: 7,
+    summary: { premise: "Memoria prestada", characters: "Mateo", motivations: "Buscar su pasado",
+      conflicts: "Sus recuerdos se contradicen", structure: "Tres actos", events: "Encuentra una carta" } };
+  const input = { project, possibilities: [], messages: [], memorySummary: "", mode: "divergence" as const, writerContext };
+  const fromWriter = buildSandboxProviderContext({ ...input, guide: null });
+  assert.deepEqual(fromWriter.writerContext, { source: "writer_opt_in", writerId: "writer-a", writerRevision: 7,
+    narrative: writerContext.summary });
+  assert.equal(buildSandboxProviderContext({ ...input, guide }).writerContext, null);
+});
 
 const project = { id: "project-a", name: "Memoria prestada", summary: "Un hombre recuerda otras vidas.",
   projectType: null, writers: [] };

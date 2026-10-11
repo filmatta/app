@@ -8,6 +8,8 @@ import { buildSandboxProviderContext, type SandboxGuide } from "@/lib/create/san
 import { generateSandboxResponse, SandboxAiError } from "@/lib/create/sandbox/ai-server";
 import { isSandboxAiResponse, type SandboxMessage, type SandboxMode, type SandboxPossibility, type SandboxQuota } from "@/lib/create/sandbox/types";
 import { recordCreateEvent } from "@/lib/create/telemetry";
+import { extractBoundedWriterEvidence } from "@/lib/create/sandbox/writer-context";
+import { getActiveWriterContext, summarizeWriterEvidence } from "@/lib/create/sandbox/writer-context-server";
 
 type Failure = { ok: false; kind: "invalid" | "unavailable" | "limit" | "pending" | "conflict"; message: string; turnId?: string; conflict?: { id: string; content: string } };
 type Success = { ok: true; sessionId?: string; turnId?: string; quota?: SandboxQuota };
@@ -66,11 +68,12 @@ export async function sendSandboxMessageAction(input: {
       db.from("sandbox_sessions").select("id,memory_summary").eq("id", sessionId).eq("project_id", project.id).eq("owner_id", ownerId).single(),
     ]);
     if (guideResult.error || possibilitiesResult.error || messagesResult.error || sessionResult.error || !sessionResult.data) throw new Error("context_unavailable");
+    const writerContext = guideResult.data ? null : await getActiveWriterContext(db, ownerId, project.id);
     const context = buildSandboxProviderContext({
       project, guide: guideResult.data as SandboxGuide | null,
       possibilities: [...(possibilitiesResult.data ?? [])].reverse() as SandboxPossibility[],
       messages: [...(messagesResult.data ?? [])].reverse() as SandboxMessage[],
-      memorySummary: String(sessionResult.data.memory_summary ?? ""), mode: input.mode,
+      memorySummary: String(sessionResult.data.memory_summary ?? ""), mode: input.mode, writerContext,
     });
     const { response, usage } = await generateSandboxResponse(context, input.turnId);
     const knownCanon = new Set((possibilitiesResult.data ?? []).filter((item) => item.state === "canon").map((item) => item.id));
@@ -132,4 +135,37 @@ export async function setSandboxPossibilityAction(projectId: string, possibility
 export async function sandboxUpgradeIntentAction(projectId: string): Promise<void> {
   const access = await authorizedProject(projectId);
   if (access) recordCreateEvent("sandbox_upgrade_clicked", { userId: access.ownerId, projectId });
+}
+
+export async function acceptWriterContextAction(projectId: string, writerId: string): Promise<Success | Failure> {
+  if (!isCreateUuid(writerId)) return { ok: false, kind: "invalid", message: "Selecciona un guion válido." };
+  const access = await authorizedProject(projectId);
+  if (!access || !access.project.writers.some((writer) => writer.id === writerId))
+    return { ok: false, kind: "unavailable", message: "Este guion no está disponible para el Project." };
+  const { db, ownerId } = access;
+  const guide = await db.from("create_ideation_guides").select("id").eq("owner_id", ownerId)
+    .eq("project_id", projectId).maybeSingle();
+  if (guide.error || guide.data) return { ok: false, kind: "unavailable", message: "Este Project ya tiene una guía de Ideation." };
+  const existing = await getActiveWriterContext(db, ownerId, projectId);
+  if (existing?.writerId === writerId) return { ok: true };
+  const script = await db.from("writer_scripts").select("id,revision,document").eq("id", writerId)
+    .eq("owner_id", ownerId).eq("project_id", projectId).maybeSingle();
+  if (script.error || !script.data) return { ok: false, kind: "unavailable", message: "No pudimos leer el guion." };
+  const evidence = extractBoundedWriterEvidence(script.data.document);
+  if (!evidence) return { ok: false, kind: "invalid", message: "El guion todavía no tiene contenido narrativo para resumir." };
+  try {
+    const { summary, usage } = await summarizeWriterEvidence(evidence, crypto.randomUUID());
+    const stored = await db.rpc("sandbox_accept_writer_context_v1", {
+      p_project_id: projectId, p_writer_id: writerId, p_writer_revision: Number(script.data.revision),
+      p_summary: summary, p_model: usage.model, p_input_tokens: usage.inputTokens,
+      p_cached_input_tokens: usage.cachedInputTokens, p_output_tokens: usage.outputTokens,
+      p_estimated_cost_usd: usage.estimatedCostUsd, p_provider_request_id: usage.requestId,
+      p_latency_ms: usage.latencyMs,
+    });
+    if (stored.error || stored.data !== true) throw new Error("writer_context_save_failed");
+    revalidatePath(route(projectId));
+    return { ok: true };
+  } catch {
+    return { ok: false, kind: "unavailable", message: "No pudimos resumir el guion. Puedes intentarlo de nuevo; el texto original sigue intacto." };
+  }
 }

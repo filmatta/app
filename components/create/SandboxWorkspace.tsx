@@ -7,13 +7,15 @@ import type { CreateProjectContext } from "@/lib/create/project";
 import { isIdeationSynthesis } from "@/lib/create/ideation/contract";
 import type { SandboxGuide } from "@/lib/create/sandbox/context";
 import type { SandboxMessage, SandboxMode, SandboxPossibility, SandboxQuota, SandboxSession, SandboxTurn } from "@/lib/create/sandbox/types";
-import { sendSandboxMessageAction, setSandboxModeAction, setSandboxPossibilityAction, sandboxUpgradeIntentAction } from "@/app/create/projects/[id]/sandbox/actions";
+import { acceptWriterContextAction, sendSandboxMessageAction, setSandboxModeAction, setSandboxPossibilityAction, sandboxUpgradeIntentAction } from "@/app/create/projects/[id]/sandbox/actions";
+import type { ActiveWriterContext } from "@/lib/create/sandbox/writer-context-server";
 import { applySandboxHandoffAction } from "@/app/create/projects/[id]/sandbox/handoff-actions";
 
 type Props = {
   project: CreateProjectContext;
   session: SandboxSession | null;
   guide: SandboxGuide | null;
+  writerContext: ActiveWriterContext | null;
   brief: string;
   entryPrompts: string[];
   turns: SandboxTurn[];
@@ -24,7 +26,7 @@ type Props = {
 type Pending = { id: string; content: string; mode: SandboxMode };
 type Conflict = { possibilityId: string; canonId: string; canonContent: string };
 
-export default function SandboxWorkspace({ project, session, guide, brief, entryPrompts, turns, messages, possibilities, quota }: Props) {
+export default function SandboxWorkspace({ project, session, guide, writerContext, brief, entryPrompts, turns, messages, possibilities, quota }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState<SandboxMode>(session?.mode ?? "divergence");
   const [composer, setComposer] = useState("");
@@ -32,6 +34,9 @@ export default function SandboxWorkspace({ project, session, guide, brief, entry
   const [now, setNow] = useState(0);
   const [pending, setPending] = useState<Pending | null>(null);
   const [error, setError] = useState("");
+  const [writerContextBusy, setWriterContextBusy] = useState(false);
+  const [writerContextError, setWriterContextError] = useState("");
+  const [selectedWriterId, setSelectedWriterId] = useState(project.writers[0]?.id ?? "");
   const [contextOpen, setContextOpen] = useState(false);
   const [contextCollapsed, setContextCollapsed] = useState(false);
   const [conflict, setConflict] = useState<Conflict | null>(null);
@@ -73,6 +78,17 @@ export default function SandboxWorkspace({ project, session, guide, brief, entry
       if (!result.ok) { setMode(previous); setError(result.message); }
       else router.refresh();
     } catch { setMode(previous); setError("No pudimos guardar el modo. Inténtalo de nuevo."); }
+  }
+
+  async function applyWriterContext() {
+    if (writerContextBusy || !selectedWriterId) return;
+    setWriterContextBusy(true); setWriterContextError("");
+    try {
+      const result = await acceptWriterContextAction(project.id, selectedWriterId);
+      if (!result.ok) setWriterContextError(result.message);
+      else router.refresh();
+    } catch { setWriterContextError("No pudimos preparar el contexto. Inténtalo de nuevo."); }
+    finally { setWriterContextBusy(false); }
   }
 
   async function send(turn: Pending) {
@@ -165,6 +181,20 @@ export default function SandboxWorkspace({ project, session, guide, brief, entry
         </div>
         <div className="sandbox-thread" aria-live="polite">
           <article className="sandbox-brief"><small>CONTEXTO DEL PROJECT</small><p>{brief}</p></article>
+          {!guide && project.writers.length > 0 && <section className="sandbox-writer-context" aria-label="Contexto de Writer">
+            <small>WRITER → SANDBOX</small>
+            {writerContext ? <p>Usando un resumen narrativo de Writer (revisión {writerContext.writerRevision}).</p> : <>
+              <p>Si quieres, Sandbox puede usar tu guion como contexto. Al aceptarlo, se enviarán a la IA fragmentos narrativos seleccionados (máximo 8.000 caracteres) para crear un resumen breve. El guion no cambiará.</p>
+              {project.writers.length > 1 && <label>Guion
+                <select value={selectedWriterId} onChange={(event) => setSelectedWriterId(event.target.value)}>
+                  {project.writers.map((writer) => <option key={writer.id} value={writer.id}>{writer.title}</option>)}
+                </select></label>}
+              <button type="button" disabled={writerContextBusy} onClick={() => void applyWriterContext()}>
+                {writerContextBusy ? "Preparando contexto…" : "Usar guion como contexto"}
+              </button>
+            </>}
+            {writerContextError && <p className="sandbox-error" role="alert">{writerContextError}</p>}
+          </section>}
           {turns.length === 0 && <div className="sandbox-entry"><p>¿Por dónde quieres empezar?</p>
             <div>{entryPrompts.map((prompt) => <button type="button" key={prompt} onClick={() => setComposer(prompt)}>{prompt}</button>)}</div>
           </div>}
@@ -215,7 +245,7 @@ export default function SandboxWorkspace({ project, session, guide, brief, entry
       <aside className={`sandbox-context ${contextOpen ? "is-open" : ""}`} aria-label="Contexto y decisiones">
         <div className="sandbox-context-head"><div><small>ESTRUCTURA VIVA</small><h2>Tu historia</h2></div>
           <button type="button" onClick={() => setContextOpen(false)} aria-label="Cerrar contexto">×</button></div>
-        <section><h3>Lo que sabemos</h3><p>{synthesis?.sections.premise.text || project.summary || "Premisa aún abierta."}</p>
+        <section><h3>Lo que sabemos</h3><p>{synthesis?.sections.premise.text || writerContext?.summary.premise || project.summary || "Premisa aún abierta."}</p>
           {synthesis?.sections.protagonists.text && <p><strong>Protagonista:</strong> {synthesis.sections.protagonists.text}</p>}</section>
         <DecisionSection title="Canon" items={canon} onDecide={decide} />
         <DecisionSection title="Maybe" items={maybe} onDecide={decide} />

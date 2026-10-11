@@ -16,6 +16,28 @@ create table public.sandbox_sessions (
 create unique index sandbox_one_active_session_per_project on public.sandbox_sessions(owner_id, project_id) where status = 'active';
 create index sandbox_sessions_owner_recent on public.sandbox_sessions(owner_id, updated_at desc);
 
+-- An explicitly requested, bounded narrative summary of one Writer revision.
+-- No screenplay text or provider prompt is stored in this table.
+create table public.sandbox_writer_contexts (
+  project_id uuid primary key,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  writer_id uuid not null,
+  writer_revision bigint not null check (writer_revision > 0),
+  summary jsonb not null check (jsonb_typeof(summary) = 'object' and octet_length(summary::text) <= 4000),
+  source_kind text not null default 'writer_opt_in' check (source_kind = 'writer_opt_in'),
+  model text not null,
+  input_tokens integer not null default 0 check (input_tokens >= 0),
+  cached_input_tokens integer not null default 0 check (cached_input_tokens >= 0),
+  output_tokens integer not null default 0 check (output_tokens >= 0),
+  estimated_cost_usd numeric(12,6),
+  provider_request_id text,
+  latency_ms integer not null default 0 check (latency_ms >= 0),
+  accepted_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  foreign key (project_id, owner_id) references public.projects(id, owner_id) on delete cascade,
+  foreign key (writer_id, owner_id, project_id) references public.writer_scripts(id, owner_id, project_id) on delete cascade
+);
+
 create table public.sandbox_entitlements (
   owner_id uuid primary key references auth.users(id) on delete cascade,
   sandbox_plan text not null default 'free' check (sandbox_plan in ('free', 'unlocked')),
@@ -123,22 +145,62 @@ create table public.sandbox_guide_versions (
 create index sandbox_guide_versions_project_recent on public.sandbox_guide_versions(project_id, created_at desc);
 
 alter table public.sandbox_sessions enable row level security;
+alter table public.sandbox_writer_contexts enable row level security;
 alter table public.sandbox_entitlements enable row level security;
 alter table public.sandbox_turns enable row level security;
 alter table public.sandbox_messages enable row level security;
 alter table public.sandbox_decision_events enable row level security;
 alter table public.sandbox_guide_versions enable row level security;
-revoke all on public.sandbox_sessions, public.sandbox_entitlements, public.sandbox_turns,
+revoke all on public.sandbox_sessions, public.sandbox_writer_contexts, public.sandbox_entitlements, public.sandbox_turns,
   public.sandbox_messages, public.sandbox_decision_events, public.sandbox_guide_versions
   from public, anon, authenticated;
-grant select on public.sandbox_sessions, public.sandbox_entitlements, public.sandbox_turns,
+grant select on public.sandbox_sessions, public.sandbox_writer_contexts, public.sandbox_entitlements, public.sandbox_turns,
   public.sandbox_messages, public.sandbox_decision_events, public.sandbox_guide_versions to authenticated;
 create policy sandbox_sessions_owner_read on public.sandbox_sessions for select to authenticated using (owner_id = (select auth.uid()));
+create policy sandbox_writer_contexts_owner_read on public.sandbox_writer_contexts for select to authenticated using (owner_id = (select auth.uid()));
 create policy sandbox_entitlements_owner_read on public.sandbox_entitlements for select to authenticated using (owner_id = (select auth.uid()));
 create policy sandbox_turns_owner_read on public.sandbox_turns for select to authenticated using (owner_id = (select auth.uid()));
 create policy sandbox_messages_owner_read on public.sandbox_messages for select to authenticated using (owner_id = (select auth.uid()));
 create policy sandbox_decisions_owner_read on public.sandbox_decision_events for select to authenticated using (owner_id = (select auth.uid()));
 create policy sandbox_guide_versions_owner_read on public.sandbox_guide_versions for select to authenticated using (owner_id = (select auth.uid()));
+
+create function public.sandbox_accept_writer_context_v1(
+  p_project_id uuid,p_writer_id uuid,p_writer_revision bigint,p_summary jsonb,
+  p_model text,p_input_tokens integer,p_cached_input_tokens integer,
+  p_output_tokens integer,p_estimated_cost_usd numeric,p_provider_request_id text,p_latency_ms integer
+) returns boolean language plpgsql security definer set search_path = '' as $$
+declare actor uuid := (select auth.uid());
+begin
+  if actor is null then raise exception using errcode='42501',message='SANDBOX_UNAUTHENTICATED'; end if;
+  if p_project_id is null or p_writer_id is null or p_writer_revision is null or p_writer_revision<1
+    or jsonb_typeof(p_summary)<>'object' or octet_length(p_summary::text)>4000
+    or p_model is null or char_length(p_model) not between 1 and 100
+    or p_input_tokens<0 or p_cached_input_tokens<0 or p_output_tokens<0 or p_latency_ms<0 then
+    raise exception using errcode='22023',message='SANDBOX_WRITER_CONTEXT_INVALID';
+  end if;
+  if not exists(select 1 from public.projects where id=p_project_id and owner_id=actor and create_enabled=true)
+    or not exists(select 1 from public.writer_scripts where id=p_writer_id and owner_id=actor
+      and project_id=p_project_id and revision=p_writer_revision)
+    or exists(select 1 from public.create_ideation_guides where owner_id=actor and project_id=p_project_id) then
+    raise exception using errcode='42501',message='SANDBOX_WRITER_CONTEXT_UNAVAILABLE';
+  end if;
+  insert into public.sandbox_writer_contexts
+    (project_id,owner_id,writer_id,writer_revision,summary,model,input_tokens,cached_input_tokens,
+     output_tokens,estimated_cost_usd,provider_request_id,latency_ms)
+  values (p_project_id,actor,p_writer_id,p_writer_revision,p_summary,p_model,p_input_tokens,
+    p_cached_input_tokens,p_output_tokens,p_estimated_cost_usd,p_provider_request_id,p_latency_ms)
+  on conflict(project_id) do update set
+    writer_id=excluded.writer_id,writer_revision=excluded.writer_revision,summary=excluded.summary,
+    model=excluded.model,input_tokens=excluded.input_tokens,cached_input_tokens=excluded.cached_input_tokens,
+    output_tokens=excluded.output_tokens,estimated_cost_usd=excluded.estimated_cost_usd,
+    provider_request_id=excluded.provider_request_id,latency_ms=excluded.latency_ms,
+    accepted_at=now(),updated_at=now()
+  where public.sandbox_writer_contexts.owner_id=actor;
+  return true;
+end;
+$$;
+revoke all on function public.sandbox_accept_writer_context_v1(uuid,uuid,bigint,jsonb,text,integer,integer,integer,numeric,text,integer) from public,anon;
+grant execute on function public.sandbox_accept_writer_context_v1(uuid,uuid,bigint,jsonb,text,integer,integer,integer,numeric,text,integer) to authenticated;
 
 create function public.sandbox_reserve_turn_v1(
   p_project_id uuid, p_session_id uuid, p_turn_id uuid, p_content text, p_mode text

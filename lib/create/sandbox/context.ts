@@ -1,6 +1,7 @@
 import { isIdeationSynthesis, isRecord, type IdeationSynthesis } from "../ideation/contract.ts";
 import type { CreateProjectContext } from "../project";
 import type { SandboxMessage, SandboxMode, SandboxPossibility } from "./types";
+import type { ActiveWriterContext } from "./writer-context-server";
 
 export type SandboxGuide = { context: unknown; synthesis: unknown; source_draft_id?: string | null };
 
@@ -39,6 +40,7 @@ export function buildSandboxProviderContext(input: {
   messages: SandboxMessage[];
   memorySummary: string;
   mode: SandboxMode;
+  writerContext?: ActiveWriterContext | null;
 }) {
   const synthesis: IdeationSynthesis | null = input.guide && isIdeationSynthesis(input.guide.synthesis) ? input.guide.synthesis : null;
   const source = input.guide && isRecord(input.guide.context) ? input.guide.context : {};
@@ -60,6 +62,10 @@ export function buildSandboxProviderContext(input: {
       cues: synthesis.cues.slice(0, 10),
     } : null,
     openQuestions: synthesis?.sections.openQuestions.text ?? "",
+    writerContext: !synthesis && input.writerContext ? {
+      source: "writer_opt_in", writerId: input.writerContext.writerId,
+      writerRevision: input.writerContext.writerRevision, narrative: input.writerContext.summary,
+    } : null,
     sessionSummary: input.memorySummary.slice(0, 2400),
     recentMessages: latest,
   };
