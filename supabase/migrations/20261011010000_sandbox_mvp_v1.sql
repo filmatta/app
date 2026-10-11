@@ -51,6 +51,7 @@ create table private.sandbox_limits (
   paid_monthly_limit integer not null default 100 check (paid_monthly_limit between 1 and 100000)
 );
 insert into private.sandbox_limits(id, free_response_limit, paid_monthly_limit) values (true, 3, 100);
+alter table private.sandbox_limits enable row level security;
 revoke all on private.sandbox_limits from public, anon, authenticated;
 
 create table public.sandbox_turns (
